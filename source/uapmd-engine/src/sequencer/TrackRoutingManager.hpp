@@ -44,7 +44,6 @@ namespace uapmd {
             uint32_t outputBusIndex) const;
         uint32_t downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const;
         double downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const;
-        double tailLengthSecondsToSamples(double seconds) const;
         uint32_t cachedTrackOutputBusPathLatencyInSamples(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;

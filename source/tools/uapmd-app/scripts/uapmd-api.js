@@ -259,6 +259,10 @@ globalThis.uapmd = {
         removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId),
         createEmptyMidiClip: (trackIndex, positionSamples = 0, tickResolution = 480, bpm = 120.0) =>
             __remidy_timeline_create_empty_midi_clip(trackIndex, positionSamples, tickResolution, bpm),
+        getLatencyCompensationState: () => __remidy_timeline_get_latency_compensation_state(),
+        setLatencyCompensationState: (payload) => __remidy_timeline_set_latency_compensation_state(payload),
+        getLatencyCompensationDebugState: () => __remidy_timeline_get_latency_compensation_debug_state(),
+        setLatencyCompensationDebugState: (payload) => __remidy_timeline_set_latency_compensation_debug_state(payload),
         getClipUmpEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_ump_events(trackIndex, clipId),
         addUmpEvent: (trackIndex, clipId, tick, words) => __remidy_timeline_add_ump_event(trackIndex, clipId, tick, words),
         removeUmpEvent: (trackIndex, clipId, eventIndex) => __remidy_timeline_remove_ump_event(trackIndex, clipId, eventIndex),

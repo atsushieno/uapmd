@@ -129,7 +129,7 @@ void ExporterWindow::render(float uiScale) {
         state_.guardSeconds = 0.0;
     int infiniteTailPolicy = static_cast<int>(state_.infiniteTailPolicy);
     const char* infiniteTailPolicyItems[] = {
-        "Guard / Silence Stop",
+        "Guard / Silence Stop (offline only)",
         "Latency Fallback",
     };
     if (ImGui::Combo("Infinite Tail", &infiniteTailPolicy, infiniteTailPolicyItems, IM_ARRAYSIZE(infiniteTailPolicyItems)))

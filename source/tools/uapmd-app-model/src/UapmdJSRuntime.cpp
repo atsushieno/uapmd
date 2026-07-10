@@ -1332,8 +1332,6 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
                      playbackCompensationModeToString(manager.playbackCompensationMode()));
     result.setMember("inputMonitoringPolicy",
                      inputMonitoringPolicyToString(manager.inputMonitoringPolicy()));
-    result.setMember("debugRealtimeInfiniteTailPolicy",
-                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
     auto tracks = choc::value::createEmptyArray();
     for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
         auto track = choc::value::createObject("LatencyCompensationTrackState");
@@ -1343,6 +1341,13 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
         tracks.addArrayElement(track);
     }
     result.setMember("tracks", tracks);
+    return result;
+}
+
+choc::value::Value serializeLatencyCompensationDebugState(uapmd::LatencyCompensationManager& manager) {
+    auto result = choc::value::createObject("LatencyCompensationDebugState");
+    result.setMember("realtimeInfiniteTailPolicy",
+                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
     return result;
 }
 
@@ -1417,16 +1422,6 @@ void UapmdJSRuntime::registerTimelineAPI()
             manager->inputMonitoringPolicy(policy);
             markProjectDirty = true;
         }
-        if (payload.hasObjectMember("debugRealtimeInfiniteTailPolicy")) {
-            uapmd::RealtimeInfiniteTailPolicy policy;
-            const auto text = payload["debugRealtimeInfiniteTailPolicy"].get<std::string>();
-            if (!parseRealtimeInfiniteTailPolicy(text, policy)) {
-                result.setMember("success", false);
-                result.setMember("error", "debugRealtimeInfiniteTailPolicy is invalid");
-                return result;
-            }
-            manager->realtimeInfiniteTailPolicy(policy);
-        }
         if (payload.hasObjectMember("tracks")) {
             auto tracks = payload["tracks"];
             if (!tracks.isArray()) {
@@ -1452,6 +1447,49 @@ void UapmdJSRuntime::registerTimelineAPI()
 
         if (markProjectDirty)
             appModel.markProjectDirty();
+        result.setMember("success", true);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_debug_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& appModel = uapmd::AppModel::instance();
+        auto* engine = appModel.sequencer().engine();
+        if (!engine || !engine->latencyCompensationManager())
+            return choc::value::createObject("LatencyCompensationDebugState");
+        return serializeLatencyCompensationDebugState(*engine->latencyCompensationManager());
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_set_latency_compensation_debug_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto result = choc::value::createObject("LatencyCompensationDebugMutation");
+        if (args.size() < 1 || args[0] == nullptr || !args[0]->isObject()) {
+            result.setMember("success", false);
+            result.setMember("error", "payload must be an object");
+            return result;
+        }
+
+        auto& appModel = uapmd::AppModel::instance();
+        auto* engine = appModel.sequencer().engine();
+        auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+        if (!manager) {
+            result.setMember("success", false);
+            result.setMember("error", "latency compensation manager is unavailable");
+            return result;
+        }
+
+        auto payload = args[0]->getView();
+        if (payload.hasObjectMember("realtimeInfiniteTailPolicy")) {
+            uapmd::RealtimeInfiniteTailPolicy policy;
+            const auto text = payload["realtimeInfiniteTailPolicy"].get<std::string>();
+            if (!parseRealtimeInfiniteTailPolicy(text, policy)) {
+                result.setMember("success", false);
+                result.setMember("error", "realtimeInfiniteTailPolicy is invalid");
+                return result;
+            }
+            manager->realtimeInfiniteTailPolicy(policy);
+        }
+
         result.setMember("success", true);
         return result;
     });

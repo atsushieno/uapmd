@@ -1,10 +1,10 @@
 #include "TrackRoutingManager.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
+#include <vector>
 
 #include "LatencyCompensationManagerImpl.hpp"
+#include "StopDrainUtilities.hpp"
 
 namespace uapmd {
 
@@ -354,56 +354,38 @@ namespace uapmd {
         };
     }
 
-    double TrackRoutingManager::tailLengthSecondsToSamples(double seconds) const {
-        if (!(seconds > 0.0))
-            return 0.0;
-        if (!std::isfinite(seconds))
-            return std::numeric_limits<double>::infinity();
-        return std::ceil(seconds * static_cast<double>(sample_rate_));
-    }
-
     int64_t TrackRoutingManager::maxStopDrainInSamples() const {
-        double totalDrainSamples =
-            static_cast<double>(master_track_ ? master_track_->renderLeadInSamples() : 0) +
-            tailLengthSecondsToSamples(master_track_ ? master_track_->tailLengthInSeconds() : 0.0);
-
+        std::vector<StopDrainPathInfo> paths;
         for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
             auto* track = tracks_[trackIndex].get();
             if (!track)
                 continue;
+            paths.reserve(paths.size() + track->graph().outputBusCount());
 
             for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
-                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
+                const auto target =
+                    effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
                 if (target.type == TrackOutputRoutingTargetType::DISABLED)
                     continue;
-
-                const double trackPathSamples =
-                    static_cast<double>(cachedTrackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)) +
-                    tailLengthSecondsToSamples(track->tailLengthInSeconds()) +
-                    tailLengthSecondsToSamples(downstreamTailLengthInSecondsForTarget(target));
-                if (!std::isfinite(trackPathSamples))
-                    return latency_compensation_manager_.realtimeInfiniteTailPolicy() ==
-                        RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
-                        ? 0
-                        : static_cast<int64_t>(std::max(
-                            maxTrackRenderLeadInSamples(),
-                            master_track_ ? master_track_->renderLeadInSamples() : 0));
-                totalDrainSamples = std::max(totalDrainSamples, trackPathSamples);
+                paths.push_back(StopDrainPathInfo{
+                    cachedTrackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex),
+                    track->tailLengthInSeconds() + downstreamTailLengthInSecondsForTarget(target),
+                });
             }
         }
 
-        if (!std::isfinite(totalDrainSamples))
-            return latency_compensation_manager_.realtimeInfiniteTailPolicy() ==
+        return computeStopDrainFrames(
+            sample_rate_,
+            master_track_ ? master_track_->renderLeadInSamples() : 0,
+            master_track_ ? master_track_->tailLengthInSeconds() : 0.0,
+            std::max(
+                maxTrackRenderLeadInSamples(),
+                master_track_ ? master_track_->renderLeadInSamples() : 0),
+            latency_compensation_manager_.realtimeInfiniteTailPolicy() ==
                 RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
-                ? 0
-                : static_cast<int64_t>(std::max(
-                    maxTrackRenderLeadInSamples(),
-                    master_track_ ? master_track_->renderLeadInSamples() : 0));
-        if (totalDrainSamples <= 0.0)
-            return 0;
-        if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
-            return std::numeric_limits<int64_t>::max();
-        return static_cast<int64_t>(totalDrainSamples);
+                ? InfiniteTailDrainFallback::ZERO
+                : InfiniteTailDrainFallback::LATENCY_FALLBACK,
+            paths);
     }
 
     void TrackRoutingManager::reconfigureMasterTrackInputBuses() {

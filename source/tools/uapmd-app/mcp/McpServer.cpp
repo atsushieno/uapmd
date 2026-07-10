@@ -296,8 +296,6 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
                      playbackCompensationModeToString(manager.playbackCompensationMode()));
     result.setMember("inputMonitoringPolicy",
                      inputMonitoringPolicyToString(manager.inputMonitoringPolicy()));
-    result.setMember("debugRealtimeInfiniteTailPolicy",
-                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
     auto tracks = choc::value::createEmptyArray();
     for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
         auto track = choc::value::createObject("");
@@ -307,6 +305,14 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
         tracks.addArrayElement(track);
     }
     result.setMember("tracks", tracks);
+    return result;
+}
+
+choc::value::Value serializeLatencyCompensationDebugState(uapmd::LatencyCompensationManager& manager)
+{
+    auto result = choc::value::createObject("");
+    result.setMember("realtimeInfiniteTailPolicy",
+                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
     return result;
 }
 
@@ -434,8 +440,18 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "set_latency_compensation_state",
-            "Update latency-compensation settings. String enums: playbackCompensationMode=compensated|lowLatency, inputMonitoringPolicy=tapeStyle|auto|off, debugRealtimeInfiniteTailPolicy=latencyFallback|immediateStop.",
-            R"j({"type":"object","properties":{"playbackCompensationMode":{"type":"string"},"inputMonitoringPolicy":{"type":"string"},"debugRealtimeInfiniteTailPolicy":{"type":"string"},"tracks":{"type":"array","items":{"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"recordArmed":{"type":"boolean"},"monitoringEnabled":{"type":"boolean"}}}}}})j"
+            "Update project latency-compensation settings. String enums: playbackCompensationMode=compensated|lowLatency, inputMonitoringPolicy=tapeStyle|auto|off.",
+            R"j({"type":"object","properties":{"playbackCompensationMode":{"type":"string"},"inputMonitoringPolicy":{"type":"string"},"tracks":{"type":"array","items":{"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"recordArmed":{"type":"boolean"},"monitoringEnabled":{"type":"boolean"}}}}}})j"
+        },
+        {
+            "get_latency_compensation_debug_state",
+            "Get debug-only latency-compensation runtime state.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "set_latency_compensation_debug_state",
+            "Update debug-only latency-compensation runtime state. String enums: realtimeInfiniteTailPolicy=latencyFallback|immediateStop.",
+            R"j({"type":"object","properties":{"realtimeInfiniteTailPolicy":{"type":"string"}}})j"
         },
         {
             "set_tempo",
@@ -862,12 +878,6 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
         manager->inputMonitoringPolicy(policy);
         markProjectDirty = true;
     }
-    if (args.hasObjectMember("debugRealtimeInfiniteTailPolicy")) {
-        uapmd::RealtimeInfiniteTailPolicy policy;
-        if (!parseRealtimeInfiniteTailPolicy(args["debugRealtimeInfiniteTailPolicy"].get<std::string>(), policy))
-            throw std::invalid_argument("debugRealtimeInfiniteTailPolicy is invalid");
-        manager->realtimeInfiniteTailPolicy(policy);
-    }
     if (args.hasObjectMember("tracks")) {
         auto tracks = args["tracks"];
         if (!tracks.isArray())
@@ -886,6 +896,38 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
 
     if (markProjectDirty)
         appModel.markProjectDirty();
+    auto result = choc::value::createObject("");
+    result.setMember("success", true);
+    return result;
+}
+
+static choc::value::Value toolGetLatencyCompensationDebugState(const choc::value::Value&)
+{
+    auto& sequencer = AppModel::instance().sequencer();
+    auto* engine = sequencer.engine();
+    auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+    if (!manager)
+        throw std::runtime_error("latency compensation manager is unavailable");
+    return serializeLatencyCompensationDebugState(*manager);
+}
+
+static choc::value::Value toolSetLatencyCompensationDebugState(const choc::value::Value& args)
+{
+    if (!args.isObject())
+        throw std::invalid_argument("payload must be an object");
+
+    auto* engine = AppModel::instance().sequencer().engine();
+    auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+    if (!manager)
+        throw std::runtime_error("latency compensation manager is unavailable");
+
+    if (args.hasObjectMember("realtimeInfiniteTailPolicy")) {
+        uapmd::RealtimeInfiniteTailPolicy policy;
+        if (!parseRealtimeInfiniteTailPolicy(args["realtimeInfiniteTailPolicy"].get<std::string>(), policy))
+            throw std::invalid_argument("realtimeInfiniteTailPolicy is invalid");
+        manager->realtimeInfiniteTailPolicy(policy);
+    }
+
     auto result = choc::value::createObject("");
     result.setMember("success", true);
     return result;
@@ -1415,6 +1457,8 @@ struct McpServer::Impl {
             else if (toolName == "get_timeline_state")  toolResult = toolGetTimelineState (args);
             else if (toolName == "get_latency_compensation_state") toolResult = toolGetLatencyCompensationState (args);
             else if (toolName == "set_latency_compensation_state") toolResult = toolSetLatencyCompensationState (args);
+            else if (toolName == "get_latency_compensation_debug_state") toolResult = toolGetLatencyCompensationDebugState (args);
+            else if (toolName == "set_latency_compensation_debug_state") toolResult = toolSetLatencyCompensationDebugState (args);
             else if (toolName == "set_tempo")           toolResult = toolSetTempo (args);
             else if (toolName == "list_clips")               toolResult = toolListClips (args);
             else if (toolName == "get_clip_audio_events")    toolResult = toolGetClipAudioEvents (args);

@@ -12,6 +12,8 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 
+#include "StopDrainUtilities.hpp"
+
 namespace uapmd {
 namespace {
 
@@ -21,23 +23,13 @@ double makePositiveSeconds(double value) {
     return std::max(0.0, value);
 }
 
-double tailLengthSecondsToSamples(double seconds, int32_t sampleRate) {
-    if (!(seconds > 0.0))
-        return 0.0;
-    if (!std::isfinite(seconds))
-        return std::numeric_limits<double>::infinity();
-    return std::ceil(seconds * static_cast<double>(sampleRate));
-}
-
 int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
                                       int32_t sampleRate,
                                       OfflineInfiniteTailPolicy infiniteTailPolicy) {
     auto* masterTrack = engine.masterTrack();
     auto& tracks = engine.tracks();
     const uint32_t masterLead = engine.masterTrackRenderLeadInSamples();
-    double totalSamples =
-        static_cast<double>(masterLead) +
-        tailLengthSecondsToSamples(masterTrack ? masterTrack->tailLengthInSeconds() : 0.0, sampleRate);
+    std::vector<StopDrainPathInfo> paths;
     uint32_t maxTrackRenderLead = 0;
     for (size_t i = 0; i < tracks.size(); ++i) {
         auto* track = tracks[i];
@@ -45,6 +37,7 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
             continue;
         const auto trackLead = engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i));
         maxTrackRenderLead = std::max(maxTrackRenderLead, trackLead);
+        paths.reserve(paths.size() + track->graph().outputBusCount());
         for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
             const auto target = engine.trackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(i), busIndex);
             if (target.type == TrackOutputRoutingTargetType::DISABLED)
@@ -53,29 +46,22 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
             const bool routesThroughMaster = target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS;
             const uint32_t outputLatency = track->graph().outputLatencyInSamples(busIndex);
             const uint32_t pathLatency = outputLatency + (routesThroughMaster ? masterLead : 0);
-            const double pathTail =
-                tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate) +
-                tailLengthSecondsToSamples(
-                    routesThroughMaster && masterTrack ? masterTrack->tailLengthInSeconds() : 0.0,
-                    sampleRate);
-            const double trackPathSamples = static_cast<double>(pathLatency) + pathTail;
-            if (!std::isfinite(trackPathSamples))
-                return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
-                    ? static_cast<int64_t>(std::max(maxTrackRenderLead, masterLead))
-                    : 0;
-            totalSamples = std::max(totalSamples, trackPathSamples);
+            paths.push_back(StopDrainPathInfo{
+                pathLatency,
+                track->tailLengthInSeconds() +
+                    (routesThroughMaster && masterTrack ? masterTrack->tailLengthInSeconds() : 0.0),
+            });
         }
     }
-
-    if (!std::isfinite(totalSamples))
-        return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
-            ? static_cast<int64_t>(std::max(maxTrackRenderLead, masterLead))
-            : 0;
-    if (totalSamples <= 0.0)
-        return 0;
-    if (totalSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
-        return std::numeric_limits<int64_t>::max();
-    return static_cast<int64_t>(totalSamples);
+    return computeStopDrainFrames(
+        sampleRate,
+        masterLead,
+        masterTrack ? masterTrack->tailLengthInSeconds() : 0.0,
+        std::max(maxTrackRenderLead, masterLead),
+        infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
+            ? InfiniteTailDrainFallback::LATENCY_FALLBACK
+            : InfiniteTailDrainFallback::ZERO,
+        paths);
 }
 
 class EngineStateGuard {
