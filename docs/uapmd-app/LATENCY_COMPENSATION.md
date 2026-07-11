@@ -19,8 +19,9 @@ The implemented latency-compensation stack currently aims to provide:
 - output-path alignment when different buses have different downstream latency
 - a first-cut monitoring model that can trade phase correctness for lower live-input latency
 
-It does not yet claim full DAW-grade completeness for dynamic latency changes,
-complex downstream routing, or all timeline corner cases.
+It does not yet claim full DAW-grade completeness for complex downstream
+routing, all timeline corner cases, or dynamic timing in AAP, whose current
+public protocol has no timing-reporting mechanism.
 
 ## Architectural split
 
@@ -69,6 +70,40 @@ The full DAG graph computes them from compiled graph connections.
 
 `renderLeadInSamples()` is currently a practical scheduling value.
 It is not yet a fully route-aware audible-path model.
+
+## Runtime timing changes
+
+Runtime latency and tail changes are propagated through the existing plugin
+timing listener path. Backend callbacks do not rebuild graph state directly.
+They update or invalidate the plugin timing value, and
+`LatencyCompensationManagerImpl` performs the non-realtime transition:
+
+1. Re-query the current latency and tail values.
+2. Filter notifications against the per-instance timing snapshot.
+3. Refresh derived timing in the owning graph.
+4. Rebuild routing-derived compensation state.
+5. Preserve the audible playhead and re-preroll if playback is active.
+
+Backend mechanisms currently implemented:
+
+- VST3 re-queries `IAudioProcessor::getLatencySamples()` and tail after every
+  `restartComponent()` request.
+- CLAP advertises `CLAP_EXT_LATENCY` and `CLAP_EXT_TAIL`; latency restart requests
+  deactivate and reactivate the plugin before timing is refreshed.
+- AUv2 and AUv3 observe native latency and tail property changes.
+- LV2 reads the standard `lv2:latency` output control port after each process
+  block, publishes the cache atomically, and forwards changes from a
+  non-realtime monitor.
+- WebCLAP compares updated capability values and emits timing notifications.
+
+Host-driven parameter, preset, and state operations also compare timing before
+and after the operation. Realtime parameter/event paths rely on the backend's
+native timing mechanism rather than querying or rebuilding from the audio
+thread.
+
+AAP currently reports zero latency and tail because its public plugin protocol
+does not define timing values or timing-change notifications. Supporting
+dynamic AAP timing requires an AAP protocol extension.
 
 ### Sequencer layer
 
@@ -156,6 +191,63 @@ This is currently implemented with the routing model that exists today:
 - or toward the main mix path
 
 It is functional, but still narrower than a full DAW mixer/routing design.
+
+## Not-yet-implemented routing work
+
+### Route-aware scheduling for DAG and multi-output graphs
+
+The current `renderLeadInSamples()` value is a graph-local summary. In the
+full DAG case it can conservatively use the maximum latency among graph
+outputs, but it does not yet trace each output through the actual downstream
+route to its audible destination.
+
+This is insufficient when a graph has multiple outputs or fans out to several
+destinations. A monitor path, master path, side path, and disconnected output
+do not necessarily have the same timing requirements. Treating all outputs as
+one maximum can add unnecessary lead, while selecting only a local graph value
+can fail to provide enough lead for a slower downstream route.
+
+The intended model is:
+
+- resolve the actual audible destinations of each graph output;
+- accumulate latency through downstream graphs and mixer buses;
+- exclude outputs that do not contribute to the selected audible destination;
+- use the slowest relevant destination for shared source rendering;
+- apply path-specific holdback when paths merge later.
+
+Routing and timing changes must recompute this state outside the audio thread.
+Completion requires aligned output for DAG fan-out projects, correct behavior
+when only one downstream route changes, and identical path calculations for
+realtime monitoring and offline rendering.
+
+### Full downstream routing and bus-preserving compensation
+
+The current implementation stages graph output buses before mixing them into
+the master or main mix path. This provides useful output alignment today, but
+it is not yet a complete downstream routing model: compensation is finalized
+at the current handoff instead of at every real destination.
+
+A typical DAW needs to preserve the identity and timing of each bus while it
+travels through downstream tracks, mixer buses, sends, returns, and the master
+path. Faster inputs should be delayed where paths actually merge. One output
+may also feed multiple destinations, each with different cumulative latency,
+without those destinations sharing one incorrect compensation value.
+
+The intended model is:
+
+- explicit output-bus-to-destination routing edges;
+- cumulative latency and tail calculation along each route;
+- bus-preserving timing metadata until the destination merge;
+- destination-local compensation for fan-in and downstream mixing;
+- separate timing decisions for master, monitoring, and side-chain paths.
+
+Graph-local edges should remain owned by the graph implementation. Cross-track
+and master destinations should remain owned by the routing/sequencer layer so
+the simple linear graph does not acquire DAG-specific data structures.
+
+Completion requires route-correct compensation for fan-out, fan-in, sends, and
+returns in realtime playback, monitoring, and offline rendering, with route
+edits updating only the affected compensation state.
 
 ## Monitoring policy model
 
@@ -352,15 +444,17 @@ Current measures include:
 - cached routing-derived timing values
 - mutation-driven reconfiguration outside steady-state processing
 
-This does not mean every related code path is complete or optimal yet, but it is
-the intended design rule.
+LV2 timing detection follows the same rule: the audio block only performs
+atomic cache/update operations; event dispatch and compensation changes happen
+outside realtime processing. This does not mean every related code path is
+complete or optimal yet, but it is the intended design rule.
 
 ## Non-goals of this document
 
 This document does not define:
 
 - future DAW-grade routing behavior
-- future runtime latency-change convergence behavior
+- an AAP timing protocol extension
 - final placement of all product UI
 - complete validation coverage for complex song projects
 
