@@ -1,15 +1,12 @@
 #pragma once
 
-#include "remidy/detail/plugin-format.hpp"
-
 #if defined(__ANDROID__)
+
 #include <functional>
 #include <jni.h>
-#endif
+#include "remidy/detail/plugin-format.hpp"
 
 namespace remidy::gui::android {
-
-#if defined(__ANDROID__)
 
     // Attaches the plugin-provided SurfaceView to the ContainerWindow overlay referenced by handle.
     inline void (*attachSurfaceView)(void* windowHandle, jobject surfaceView) = nullptr;
@@ -45,8 +42,6 @@ namespace remidy::gui::android {
     // Called when the Kotlin overlay close button is pressed.
     inline void (*notifyOverlayClosed)(void* windowHandle) = nullptr;
 
-#endif
-
 }
 
 namespace remidy {
@@ -66,3 +61,5 @@ namespace remidy {
         static std::unique_ptr<PluginFormatAAP> create();
     };
 }
+
+#endif
