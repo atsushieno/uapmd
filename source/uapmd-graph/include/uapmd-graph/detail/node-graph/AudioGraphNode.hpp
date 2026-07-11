@@ -72,6 +72,15 @@ namespace uapmd {
         virtual double tailLengthInSeconds() const = 0;
         virtual remidy::PluginAudioBuses* audioBuses() = 0;
 
+        // Declares the per-bus channel counts this node requires (one entry per bus).
+        // An empty vector (the default) means "no opinion" - the owning graph should
+        // fall back to its own default bus/channel layout, matching every node that
+        // does not change channel topology (e.g. GainNode). Nodes that reshape channel
+        // layout (e.g. ChannelMergerNode/ChannelSplitterNode) override these to report
+        // their actual bus counts and widths.
+        virtual std::vector<uint32_t> requiredAudioInputChannelCounts() const { return {}; }
+        virtual std::vector<uint32_t> requiredAudioOutputChannelCounts() const { return {}; }
+
         virtual ParameterUpdateEvent& parameterUpdateEvent() = 0;
         virtual ParameterMetadataRefreshEvent& parameterMetadataRefreshEvent() = 0;
     };

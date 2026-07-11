@@ -283,9 +283,13 @@ namespace uapmd {
                     ? pluginAudioInputBusCount(instance)
                     : pluginEventInputBusCount(instance);
             }
-            return busType == AudioPluginGraphBusType::Audio
-                ? state.runtime_layout.audio_input_bus_count
-                : state.runtime_layout.event_input_bus_count;
+            if (busType == AudioPluginGraphBusType::Audio) {
+                auto counts = node->requiredAudioInputChannelCounts();
+                if (!counts.empty())
+                    return static_cast<uint32_t>(counts.size());
+                return state.runtime_layout.audio_input_bus_count;
+            }
+            return state.runtime_layout.event_input_bus_count;
         }
 
         uint32_t nodeOutputBusCount(const GraphState& state, const std::shared_ptr<AudioGraphNode>& node, AudioPluginGraphBusType busType) {
@@ -299,9 +303,13 @@ namespace uapmd {
                     ? pluginAudioOutputBusCount(instance)
                     : pluginEventOutputBusCount(instance);
             }
-            return busType == AudioPluginGraphBusType::Audio
-                ? state.runtime_layout.audio_output_bus_count
-                : state.runtime_layout.event_output_bus_count;
+            if (busType == AudioPluginGraphBusType::Audio) {
+                auto counts = node->requiredAudioOutputChannelCounts();
+                if (!counts.empty())
+                    return static_cast<uint32_t>(counts.size());
+                return state.runtime_layout.audio_output_bus_count;
+            }
+            return state.runtime_layout.event_output_bus_count;
         }
 
         constexpr auto kOutputRoutingPropertyKey = "output_routing";
@@ -482,8 +490,16 @@ namespace uapmd {
                     return sourceSide || targetSide;
                 }
                 if (busType == AudioPluginGraphBusType::Audio) {
-                    const bool sourceSide = endpoint.bus_index < state.runtime_layout.audio_output_bus_count;
-                    const bool targetSide = endpoint.bus_index < state.runtime_layout.audio_input_bus_count;
+                    const auto outputCounts = node->requiredAudioOutputChannelCounts();
+                    const auto inputCounts = node->requiredAudioInputChannelCounts();
+                    const auto outputBusCount = !outputCounts.empty()
+                        ? static_cast<uint32_t>(outputCounts.size())
+                        : state.runtime_layout.audio_output_bus_count;
+                    const auto inputBusCount = !inputCounts.empty()
+                        ? static_cast<uint32_t>(inputCounts.size())
+                        : state.runtime_layout.audio_input_bus_count;
+                    const bool sourceSide = endpoint.bus_index < outputBusCount;
+                    const bool targetSide = endpoint.bus_index < inputBusCount;
                     return sourceSide || targetSide;
                 }
                 const bool sourceSide = endpoint.bus_index < state.runtime_layout.event_output_bus_count;
@@ -622,12 +638,29 @@ namespace uapmd {
             } else {
                 std::vector<remidy::AudioBusSpec> audioInputSpecs;
                 std::vector<remidy::AudioBusSpec> audioOutputSpecs;
-                audioInputSpecs.reserve(state.runtime_layout.audio_input_bus_count);
-                audioOutputSpecs.reserve(state.runtime_layout.audio_output_bus_count);
-                for (uint32_t bus = 0; bus < state.runtime_layout.audio_input_bus_count; ++bus)
-                    audioInputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
-                for (uint32_t bus = 0; bus < state.runtime_layout.audio_output_bus_count; ++bus)
-                    audioOutputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
+
+                auto requiredInputs = node->requiredAudioInputChannelCounts();
+                if (!requiredInputs.empty()) {
+                    audioInputSpecs.reserve(requiredInputs.size());
+                    for (auto channels : requiredInputs)
+                        audioInputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, channels, kGraphScratchCapacityFrames});
+                } else {
+                    audioInputSpecs.reserve(state.runtime_layout.audio_input_bus_count);
+                    for (uint32_t bus = 0; bus < state.runtime_layout.audio_input_bus_count; ++bus)
+                        audioInputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
+                }
+
+                auto requiredOutputs = node->requiredAudioOutputChannelCounts();
+                if (!requiredOutputs.empty()) {
+                    audioOutputSpecs.reserve(requiredOutputs.size());
+                    for (auto channels : requiredOutputs)
+                        audioOutputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, channels, kGraphScratchCapacityFrames});
+                } else {
+                    audioOutputSpecs.reserve(state.runtime_layout.audio_output_bus_count);
+                    for (uint32_t bus = 0; bus < state.runtime_layout.audio_output_bus_count; ++bus)
+                        audioOutputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
+                }
+
                 runtime->process.configureAudioInputBuses(audioInputSpecs);
                 runtime->process.configureAudioOutputBuses(audioOutputSpecs);
             }
