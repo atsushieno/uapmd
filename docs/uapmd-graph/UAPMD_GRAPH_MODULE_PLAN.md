@@ -1,4 +1,4 @@
-# UAPMD Graph Module Plan
+# UAPMD Graph Module Plan (AI slop)
 
 ## Status
 

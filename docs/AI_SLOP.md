@@ -2,6 +2,8 @@
 
 UAPMD contains a lot of AI-generated and even AI-designed sources that are not suitable for human consumption for health. They indicate that the API is either not polished enough, or implementation is often awkward and not simplified enough.
 
+Note that it is just an overview and never means strict distinction at all.
+
 Unless otherwise noted, "I" points to @atsushieno.
 
 ## remidy

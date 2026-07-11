@@ -1,4 +1,4 @@
-# EventLoop Integration Guide for Linux
+# EventLoop Integration Guide for Linux (AI slop)
 
 This documentation was entirely written by Claude Code.
 

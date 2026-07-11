@@ -1,4 +1,4 @@
-# Android Project Load Automation
+# Android Project Load Automation (AI slop)
 
 This note documents how to load a `uapmd` project on Android without driving the system document picker.
 

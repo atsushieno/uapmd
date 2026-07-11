@@ -12,6 +12,13 @@ Currently there are two graph implementations:
 `AudioPluginGraph` implementation classes must provide realtime-safe `processAudio()` implementation that might be in 
 an isolated process such as Web `AudioWorklet` or AUv3 audio processor.
 
+uapmd-graph also features `AudioGraph` and `AudioGraphNode` interfaces, that provide implementation-agnostic ways to process custom audio nodes such as gain or splitter, so that basic audio track operation can be performed.
+The graph node API also involves saving and loading to the UAPMD project data.
+
+Since UAPMD aims to provide product-agnostic ways to save and load project data, we try our best to avoid defining "standard set" of built-in audio nodes by ourselves.
+What we do here instead is to reuse Web Audio API - we define operational graph nodes such as `webaudio:Gain`.
+Nothing is saved without splitting namespaces in the serialized JSON object - we assign pseudo namespace prefixes for the factory built-in nodes.
+
 ## AudioGraphProvider
 
 While `AudioPluginGraph` abstracts away how it organizes its plugin connections, there are handful of areas that the audio graph structure matters:
