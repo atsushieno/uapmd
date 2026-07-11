@@ -64,7 +64,7 @@ $ cmake --build build
 $ cmake --build build --target package # if you prefer package files
 ```
 
-After successful build on those desktop platforms, the artifacts are found like: `*.deb`, `*.rpm`, `*.tar.xz`, `uapmd-*.zip`, or `*.dmg` (under `build` directory)
+After successful build on those desktop platforms, the artifacts are found like: `*.deb`, `*.rpm`, `*.tar.xz`, `uapmd-*.zip`, `*.exe`, or `*.dmg` (under `build` directory)
 
 If you target Android:
 

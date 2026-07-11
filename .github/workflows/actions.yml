@@ -58,6 +58,11 @@ jobs:
       if: ${{ startsWith(matrix.os, 'macos') }}
       run: |
         brew install sdl3
+    - name: install NSIS on Windows
+      if: matrix.os == 'windows-2025-vs2026'
+      run: |
+        choco install nsis --no-progress -y
+        echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
     - name: setup build on Windows
       if: matrix.os == 'windows-2025-vs2026'
@@ -91,6 +96,7 @@ jobs:
           build/*.rpm
           build/*.tar.xz
           build/uapmd-*.zip
+          build/*.exe
           build/*.dmg
 
     - name: upload build failure logs

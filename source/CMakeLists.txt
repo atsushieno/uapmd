@@ -367,7 +367,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # -----------------
-# CPack (Deb/RPM/TXZ)
+# CPack
 # -----------------
 set(CPACK_PACKAGE_NAME "uapmd")
 set(CPACK_PACKAGE_VENDOR "uapmd")
