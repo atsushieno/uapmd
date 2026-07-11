@@ -6,6 +6,8 @@
 #include <thread>
 #if defined(__ANDROID__)
 #include <android/log.h>
+#else
+#include "GLContextGuard.hpp"
 #endif
 
 #include <remidy/detail/event-loop.hpp>

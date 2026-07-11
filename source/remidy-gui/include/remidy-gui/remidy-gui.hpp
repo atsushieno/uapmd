@@ -6,6 +6,4 @@
 #include <remidy-gui/detail/ContainerWindow.hpp>
 #if defined(__ANDROID__)
 #include <remidy-gui/detail/AndroidContainerWindow.hpp>
-#else
-#include <remidy-gui/detail/GLContextGuard.hpp>
 #endif
