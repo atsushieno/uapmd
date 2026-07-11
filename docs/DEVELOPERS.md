@@ -5,17 +5,20 @@
 
 In the latest source tree, the following description applies to the `source` directory.
 
-- `include/`: the library public API (`include/{module}`)
-  - They are split under `include/{module}/priv` (direct references to those files may break at any version)
-- `src/`: the library sources.
-  - `src/remidy/`: plugin API abstraction (VST3/AU/LV2/CLAP backends).
-  - `src/remidy-tooling/`: commonized scanning/instancing utilities.
-  - `src/uapmd/`: virtual MIDI 2.0 device foundation (function block manager, plugin hosting API integration).
-  - `src/uapmd-data/`: sequencer data structures.
-  - `src/uapmd-engine/`: sequencer engine.
+- `remidy/`: plugin API abstraction (VST3/AU/LV2/CLAP backends).
+- `remidy-gui`: common GUI helper that is required by plugin formats (such as `ContainerWindow`)
+- `remidy-tooling/`: commonized scanning/instancing utilities.
+- `uapmd/`: virtual MIDI 2.0 device foundation (function block manager, plugin hosting API integration).
+- `uapmd-graph/`: audio graph and graph nodes.
+- `uapmd-data/`: sequencer data structures.
+- `uapmd-file/`: platform abstraction API for file dialog and file system.
+- `uapmd-engine/`: sequencer engine.
 - `tools/`: tools
-  - `uapmd-app`: an example plugin host that also serves virtual UMP devices
+  - `uapmd-app`: an example DAW-like sequencer that also serves virtual UMP devices, for dogfooding
+  - `uapmd-app-model`: model API for uapmd-app, to be shared with C API and bindings
   - `uapmd-scan`: standalone plugin scanner (same engine as the app's `--scan-only` mode)
+  - `uapmd-apply`: console tool to statically renderer UAPMD project to audio file.
+  - `remidy-gui-shared`: some uapmd-specific shared code to implement GUI features (it used to be shared between multiple apps, but not nowaday)
 - `external/`: Third‑party dependencies (submodules/FetchContent).
 - `cmake/`: CMake build helpers
 
