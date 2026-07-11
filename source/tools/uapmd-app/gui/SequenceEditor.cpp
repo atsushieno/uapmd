@@ -98,6 +98,16 @@ const char* timelineUnitsLabel(const SequenceEditor::RenderContext& context) {
     }
     return "seconds";
 }
+
+bool timelineStyleMatches(const ImTimelineStyle& style, const SequenceEditor::RenderContext& context) {
+    const int expectedHeaderHeight = static_cast<int>(24.0f * context.uiScale);
+    const int expectedScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
+    const float expectedSeekbarWidth = 2.0f * context.uiScale;
+    return std::fabs(style.LegendWidth - context.legendWidth) < 0.5f &&
+        style.HeaderHeight == expectedHeaderHeight &&
+        style.ScrollbarThickness == expectedScrollbarThickness &&
+        std::fabs(style.SeekbarWidth - expectedSeekbarWidth) < 0.5f;
+}
 } // namespace
 
 SequenceEditor::~SequenceEditor() = default;
@@ -300,6 +310,8 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
 void SequenceEditor::renderNavigator(const RenderContext& context, float barStartScreenX) {
     // Rebuild eagerly so the navigator works even when it renders before the timeline widget
     // (it lives in the always-visible toolbar row, outside the track scroll area).
+    if (unified_.timeline && !timelineStyleMatches(unified_.style, context))
+        unified_.dirty = true;
     if (unified_.dirty)
         rebuildUnifiedTimeline(context);
     if (!unified_.timeline)
@@ -337,6 +349,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         availableHeight = ImGui::GetContentRegionAvail().y;
     availableHeight = std::max(availableHeight, 120.0f * context.uiScale);
 
+    if (unified_.timeline && !timelineStyleMatches(unified_.style, context))
+        unified_.dirty = true;
     if (unified_.dirty)
         rebuildUnifiedTimeline(context);
 
