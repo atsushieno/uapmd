@@ -12,23 +12,6 @@
 #include <android/log.h>
 #include "../AndroidUiBridge.hpp"
 #include <jni.h>
-namespace remidy::gui::android {
-    void attachSurfaceView(void* windowHandle, jobject surfaceView);
-    void detachSurfaceView(void* windowHandle);
-    void queryDimensions(void* windowHandle, int& width, int& height);
-    void androidPixelsToWindowSize(int& width, int& height);
-    void resizeContentPixels(void* windowHandle, int width, int height);
-    bool queryRemoteViewPreferredSize(
-        const char* pluginPackageName,
-        const char* pluginId,
-        int instanceId,
-        int& width,
-        int& height);
-    void setSurfaceReadyCallback(void* windowHandle, std::function<void()> callback);
-    void setViewportCallback(
-        void* windowHandle,
-        std::function<void(int, int, int, int, int, int)> callback);
-}
 #endif
 
 namespace remidy {

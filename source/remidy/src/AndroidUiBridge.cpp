@@ -101,6 +101,19 @@ void initAndroidUiBridge(JNIEnv* env, jobject activity)
     env->GetJavaVM(&g_vm);
 }
 
+JNIEnv* getAndroidJNIEnv()
+{
+    if (!g_vm)
+        return nullptr;
+
+    JNIEnv* env = nullptr;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_OK)
+        return env;
+    if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        return nullptr;
+    return env;
+}
+
 void runOnAndroidUiThread(std::function<void()> task)
 {
     if (!g_vm) {

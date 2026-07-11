@@ -10,6 +10,7 @@ namespace remidy {
 
 #if defined(__ANDROID__)
 void initAndroidUiBridge(JNIEnv* env, jobject activity);
+JNIEnv* getAndroidJNIEnv();
 #endif
 void runOnAndroidUiThread(std::function<void()> task);
 void runOnAndroidUiThreadSync(std::function<void()> task);

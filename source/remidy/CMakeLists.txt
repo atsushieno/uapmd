@@ -32,6 +32,7 @@ endif ()
 
 if (${REMIDY_SUPPORT_AAP})
     set(REMIDY_AAP_SUPPORT_SOURCES
+            src/aap/AndroidContainerWindow.cpp
             src/aap/PluginFormatAAP.cpp
             src/aap/PluginInstanceAAP.cpp
             src/aap/PluginInstanceAAP.Buses.cpp

@@ -3,6 +3,7 @@
 #include <utility>
 #include <string>
 #include <jni.h>
+#include "remidy/remidy.hpp"
 #include "remidy-gui/remidy-gui.hpp"
 
 namespace {
@@ -67,50 +68,6 @@ void callResize(JNIEnv* env, jlong handle, jint width, jint height) {
     env->CallStaticVoidMethod(cls, mid, handle, width, height);
 }
 
-bool callQueryRemoteViewPreferredSize(
-    JNIEnv* env,
-    const char* pluginPackageName,
-    const char* pluginId,
-    jint instanceId,
-    jint& width,
-    jint& height)
-{
-    if (!env)
-        return false;
-    auto cls = env->FindClass("dev/atsushieno/uapmd/MainActivity");
-    if (!cls)
-        return false;
-    auto mid = env->GetStaticMethodID(
-        cls,
-        "queryRemoteViewPreferredSize",
-        "(Ljava/lang/String;Ljava/lang/String;I)[I");
-    if (!mid) {
-        env->DeleteLocalRef(cls);
-        return false;
-    }
-    auto jPackageName = env->NewStringUTF(pluginPackageName ? pluginPackageName : "");
-    auto jPluginId = env->NewStringUTF(pluginId ? pluginId : "");
-    auto result = static_cast<jintArray>(
-        env->CallStaticObjectMethod(cls, mid, jPackageName, jPluginId, instanceId));
-    env->DeleteLocalRef(jPackageName);
-    env->DeleteLocalRef(jPluginId);
-    env->DeleteLocalRef(cls);
-    if (!result)
-        return false;
-    bool ok = false;
-    if (env->GetArrayLength(result) >= 2) {
-        jint values[2] = {};
-        env->GetIntArrayRegion(result, 0, 2, values);
-        if (values[0] > 0 && values[1] > 0) {
-            width = values[0];
-            height = values[1];
-            ok = true;
-        }
-    }
-    env->DeleteLocalRef(result);
-    return ok;
-}
-
 void constrainContentSize(JNIEnv* env, jint& width, jint& height) {
     auto cls = getOverlayManagerClass(env);
     if (!cls)
@@ -142,6 +99,10 @@ void callAttachSurfaceView(JNIEnv* env, jlong handle, jobject surfaceView) {
 
 }
 
+namespace {
+void assignAndroidContainerWindowFunctions();
+}
+
 namespace remidy::gui {
 
 namespace {
@@ -152,9 +113,6 @@ int scaledDimension(int value) {
     return (value > 0 ? value : kFallbackDimension) * kAndroidUiScale;
 }
 
-int unscaledDimension(int value) {
-    return (value > 0 ? value : kFallbackDimension) / kAndroidUiScale;
-}
 } // namespace
 
 class AndroidContainerWindow : public ContainerWindow {
@@ -300,97 +258,86 @@ private:
 };
 
 std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
+    assignAndroidContainerWindowFunctions();
     return std::make_unique<AndroidContainerWindow>(title, width, height, std::move(closeCallback));
 }
 
 } // namespace remidy::gui
 
-namespace remidy::gui::android {
+namespace {
 
-void attachSurfaceView(void* windowHandle, jobject surfaceView) {
+void attachSurfaceViewImpl(void* windowHandle, jobject surfaceView) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->attachSurface(surfaceView);
 }
 
-void detachSurfaceView(void* windowHandle) {
+void detachSurfaceViewImpl(void* windowHandle) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->detachSurface();
 }
 
-void queryDimensions(void* windowHandle, int& width, int& height) {
+void queryDimensionsImpl(void* windowHandle, int& width, int& height) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     width = window->getBounds().width;
     height = window->getBounds().height;
 }
 
-void androidPixelsToWindowSize(int& width, int& height) {
-    width = unscaledDimension(width);
-    height = unscaledDimension(height);
-}
-
-void resizeContentPixels(void* windowHandle, int width, int height) {
+void resizeContentPixelsImpl(void* windowHandle, int width, int height) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->resizeContentPixels(width, height);
 }
 
-bool queryRemoteViewPreferredSize(
-    const char* pluginPackageName,
-    const char* pluginId,
-    int instanceId,
-    int& width,
-    int& height)
-{
-    auto* env = getEnv();
-    if (!env)
-        return false;
-    jint preferredWidth = 0;
-    jint preferredHeight = 0;
-    if (!callQueryRemoteViewPreferredSize(
-            env,
-            pluginPackageName,
-            pluginId,
-            static_cast<jint>(instanceId),
-            preferredWidth,
-            preferredHeight))
-        return false;
-    width = preferredWidth;
-    height = preferredHeight;
-    return true;
-}
-
-void setSurfaceReadyCallback(void* windowHandle, std::function<void()> callback) {
+void setSurfaceReadyCallbackImpl(void* windowHandle, std::function<void()> callback) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->setSurfaceReadyCallback(std::move(callback));
 }
 
-void setViewportCallback(
+void setViewportCallbackImpl(
     void* windowHandle,
     std::function<void(int, int, int, int, int, int)> callback)
 {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->setViewportCallback(std::move(callback));
 }
 
-void notifyOverlayClosed(void* windowHandle) {
+void notifyOverlayClosedImpl(void* windowHandle) {
     if (!windowHandle)
         return;
-    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(windowHandle);
     window->requestCloseFromOverlay();
 }
 
-} // namespace remidy::gui::android
+void assignAndroidContainerWindowFunctions() {
+    using namespace remidy::gui::android;
+    if (!attachSurfaceView)
+        attachSurfaceView = attachSurfaceViewImpl;
+    if (!detachSurfaceView)
+        detachSurfaceView = detachSurfaceViewImpl;
+    if (!queryDimensions)
+        queryDimensions = queryDimensionsImpl;
+    if (!resizeContentPixels)
+        resizeContentPixels = resizeContentPixelsImpl;
+    if (!setSurfaceReadyCallback)
+        setSurfaceReadyCallback = setSurfaceReadyCallbackImpl;
+    if (!setViewportCallback)
+        setViewportCallback = setViewportCallbackImpl;
+    if (!notifyOverlayClosed)
+        notifyOverlayClosed = notifyOverlayClosedImpl;
+}
+
+} // namespace
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_atsushieno_uapmd_MainActivity_nativeOnOverlayClosed(
