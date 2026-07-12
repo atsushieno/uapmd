@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['glcontextguard_0',['GLContextGuard',['../d4/d55/classremidy_1_1gui_1_1GLContextGuard.html',1,'remidy::gui']]]
+  ['idocumentprovider_0',['IDocumentProvider',['../d8/d01/classuapmd_1_1IDocumentProvider.html',1,'uapmd']]]
 ];

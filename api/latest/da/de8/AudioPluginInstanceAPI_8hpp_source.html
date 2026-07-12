@@ -214,20 +214,24 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> clearDirty() = 0;</div>
 <div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>        <span class="keyword">virtual</span> remidy::EventListenerId addDirtyStateListener(std::function&lt;<span class="keywordtype">void</span>(<span class="keywordtype">bool</span>)&gt; listener) = 0;</div>
 <div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> removeDirtyStateListener(remidy::EventListenerId listenerId) = 0;</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span> </div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../d0/d24/classuapmd_1_1AudioPluginInstanceExtension.html">AudioPluginInstanceExtension</a>* extension(std::string_view extensionId) {</div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>            (void) extensionId;</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>            <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>        }</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    };</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>        <span class="keyword">virtual</span> remidy::EventListenerId addTimingInfoChangeListener(</div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>            std::function&lt;<span class="keywordtype">void</span>(<a class="code hl_struct" href="../../d6/dd1/structremidy_1_1PluginTimingInfoChange.html">remidy::PluginTimingInfoChange</a>)&gt; listener) = 0;</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> removeTimingInfoChangeListener(remidy::EventListenerId listenerId) = 0;</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span> </div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../d0/d24/classuapmd_1_1AudioPluginInstanceExtension.html">AudioPluginInstanceExtension</a>* extension(std::string_view extensionId) {</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>            (void) extensionId;</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>            <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>        }</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    };</div>
 </div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span> </div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>}</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span> </div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>}</div>
 <div class="ttc" id="aclassremidy_1_1AudioProcessContext_html"><div class="ttname"><a href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a></div><div class="ttdef"><b>Definition</b> processing-context.hpp:97</div></div>
 <div class="ttc" id="aclassremidy_1_1PluginAudioBuses_html"><div class="ttname"><a href="../../d3/d8b/classremidy_1_1PluginAudioBuses.html">remidy::PluginAudioBuses</a></div><div class="ttdef"><b>Definition</b> plugin-audio-buses.hpp:8</div></div>
 <div class="ttc" id="aclassremidy_1_1PluginParameterSupport_html"><div class="ttname"><a href="../../d4/dfc/classremidy_1_1PluginParameterSupport.html">remidy::PluginParameterSupport</a></div><div class="ttdef"><b>Definition</b> plugin-parameter.hpp:148</div></div>
 <div class="ttc" id="aclassuapmd_1_1AudioPluginInstanceAPI_html"><div class="ttname"><a href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">uapmd::AudioPluginInstanceAPI</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:54</div></div>
 <div class="ttc" id="aclassuapmd_1_1AudioPluginInstanceExtension_html"><div class="ttname"><a href="../../d0/d24/classuapmd_1_1AudioPluginInstanceExtension.html">uapmd::AudioPluginInstanceExtension</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:40</div></div>
+<div class="ttc" id="astructremidy_1_1PluginTimingInfoChange_html"><div class="ttname"><a href="../../d6/dd1/structremidy_1_1PluginTimingInfoChange.html">remidy::PluginTimingInfoChange</a></div><div class="ttdef"><b>Definition</b> plugin-instance.hpp:12</div></div>
 <div class="ttc" id="astructuapmd_1_1ParameterMetadata_html"><div class="ttname"><a href="../../dc/dc7/structuapmd_1_1ParameterMetadata.html">uapmd::ParameterMetadata</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:18</div></div>
 <div class="ttc" id="astructuapmd_1_1ParameterNamedValue_html"><div class="ttname"><a href="../../d9/d43/structuapmd_1_1ParameterNamedValue.html">uapmd::ParameterNamedValue</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:13</div></div>
 <div class="ttc" id="astructuapmd_1_1PresetsMetadata_html"><div class="ttname"><a href="../../d7/d86/structuapmd_1_1PresetsMetadata.html">uapmd::PresetsMetadata</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:32</div></div>
