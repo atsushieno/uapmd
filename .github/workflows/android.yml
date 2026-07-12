@@ -5,6 +5,13 @@ name: build android
 # `main` (or the ref you choose) is in a state where uapmd builds.
 
 on:
+  workflow_call:
+    inputs:
+      aap_core_ref:
+        description: 'aap-core git ref to build against (branch / tag / sha)'
+        required: false
+        type: string
+        default: 'main'
   workflow_dispatch:
     inputs:
       aap_core_ref:
@@ -72,7 +79,7 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v6
       with:
-        name: uapmd-android-apk
+        name: build-android
         path: android/app/build/outputs/apk/debug/*.apk
 
     - name: upload build failure logs
