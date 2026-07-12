@@ -168,6 +168,7 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       aap_core_ref: ${{ inputs.aap_core_ref }}
+    secrets: inherit
 
   release:
     if: github.event_name == 'workflow_dispatch'

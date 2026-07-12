@@ -22,7 +22,7 @@ on:
 
 jobs:
   build-android:
-    name: 'build uapmd-app APK'
+    name: 'build uapmd-app Android artifacts'
     runs-on: ubuntu-24.04
     steps:
     - name: checkout uapmd
@@ -69,18 +69,36 @@ jobs:
       working-directory: android/external/aap-core
       run: ./gradlew --no-daemon publishToMavenLocal
 
+    - name: bump Android versionCode
+      uses: chkfung/android-version-actions@v1.2.1
+      with:
+        gradlePath: android/app/build.gradle.kts
+        versionCode: ${{ github.run_number }}
+
     - name: build uapmd-app
       working-directory: android
       env:
         CPM_SOURCE_CACHE: /home/runner/.cache/CPM/uapmd
-      run: ./gradlew --no-daemon assembleDebug
+      run: ./gradlew --no-daemon assembleDebug bundleRelease
 
-    - name: upload APK
+    - name: sign release app bundle
+      uses: r0adkll/sign-android-release@v1
+      id: sign_app
+      with:
+        releaseDirectory: android/app/build/outputs/bundle/release
+        signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
+        alias: ${{ secrets.SIGNING_KEY_ALIAS }}
+        keyStorePassword: ${{ secrets.SIGNING_KEY_STORE_PASSWORD }}
+        keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+
+    - name: upload Android artifacts
       if: success()
       uses: actions/upload-artifact@v6
       with:
         name: build-android
-        path: android/app/build/outputs/apk/debug/*.apk
+        path: |
+          android/app/build/outputs/apk/debug/*.apk
+          ${{ steps.sign_app.outputs.signedReleaseFile }}
 
     - name: upload build failure logs
       if: failure()
