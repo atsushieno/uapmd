@@ -1089,7 +1089,13 @@ namespace uapmd {
             if (pluginImpl && pluginNode) {
                 pluginImpl->drainQueueToPending();
                 group = resolveGroup(pluginNode->instanceId());
-                pluginImpl->fillEventBufferForGroup(runtime.process.eventIn(), group);
+                // Honor stop-flush requests (transport stop/pause, engine shutdown) the
+                // same way the simple chain graph does: emit All Sound/Notes Off plus
+                // note-offs for every tracked active note, instead of regular events.
+                if (pluginImpl->consumeStopFlushRequest())
+                    pluginImpl->prepareStopFlush(runtime.process.eventIn(), group);
+                else
+                    pluginImpl->fillEventBufferForGroup(runtime.process.eventIn(), group);
             }
 
             for (const auto& connection : runtime.incoming_event) {
@@ -1129,6 +1135,9 @@ namespace uapmd {
                 if (instance->bypassed()) {
                     runtime.process.copyInputsToOutputs();
                 } else {
+                    // Keep the active-note bitmask in sync with what the plugin actually
+                    // receives, so a stop flush can emit genuine note-offs later.
+                    pluginImpl->trackInputEvents(runtime.process.eventIn());
                     auto status = instance->processAudio(runtime.process);
                     if (status != 0)
                         return status;

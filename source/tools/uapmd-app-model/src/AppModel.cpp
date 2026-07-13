@@ -679,28 +679,34 @@ void uapmd::AppModel::completeAudioEngineShutdown() {
 
 void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
     joinAudioShutdownWorker();
+
+    if (enabled && isAudioEngineEnabled())
+        return;
     audioEngineEnabled_.store(enabled, std::memory_order_release);
 
     auto* host = sequencer_.engine()->pluginHost();
-    const bool isPlaying = sequencer_.isAudioPlaying() != 0;
     if (enabled) {
-        // Skip re-activation when a shutdown drain was cancelled before it reached
-        // plugin deactivation — the instances are still processing in that case.
-        if (pluginsProcessingStopped_) {
-            for (auto id : host->instanceIds())
-                host->getInstance(id)->startProcessing();
-            pluginsProcessingStopped_ = false;
+        // If the shutdown drain was cancelled before it reached plugin deactivation,
+        // finish it synchronously now: turning the engine back on must ALWAYS start
+        // from deactivated, reset plugins so no previous synthesis can resume.
+        if (!pluginsProcessingStopped_) {
+            audioEngineEnabled_.store(false, std::memory_order_release);
+            completeAudioEngineShutdown();
+            audioEngineEnabled_.store(true, std::memory_order_release);
         }
+        for (auto id : host->instanceIds())
+            host->getInstance(id)->startProcessing();
+        pluginsProcessingStopped_ = false;
         sequencer_.engine()->setOutputMuted(false);
         sequencer_.engine()->setEngineActive(true);
-        if (!isPlaying) {
+        if (sequencer_.isAudioPlaying() == 0) {
             if (sequencer_.startAudio() != 0) {
                 std::cerr << "Failed to start audio engine" << std::endl;
                 audioEngineEnabled_.store(false, std::memory_order_release);
                 sequencer_.engine()->setEngineActive(false);
             }
         }
-    } else if (isPlaying) {
+    } else if (sequencer_.isAudioPlaying() != 0) {
         transportController_->stop();
         // stop() requested a note-off flush on every plugin node; it is delivered by
         // the next audio cycles. Mute the device output immediately, but keep the

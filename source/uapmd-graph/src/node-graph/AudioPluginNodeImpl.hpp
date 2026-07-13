@@ -250,15 +250,18 @@ namespace uapmd {
                     const auto status = static_cast<uint8_t>((words[i] >> 20) & 0xF) << 4;
                     const auto channel = static_cast<uint8_t>((words[i] >> 16) & 0xF);
                     const auto note = static_cast<uint8_t>((words[i] >> 8) & 0x7F);
-                    // MIDI 2.0 note-on with velocity 0 is a real note-on; only MIDI 1.0
-                    // treats it as a note-off.
-                    const bool midi1ZeroVelocity = messageType == umppi::MidiMessageType::MIDI1 &&
-                        (words[i] & 0x7Fu) == 0;
-                    if (status == umppi::MidiChannelStatus::NOTE_ON && !midi1ZeroVelocity) {
+                    // Note-on with velocity 0: MIDI 1.0 defines it as note-off, and even
+                    // for MIDI 2.0 (where the spec says it is a real note-on) virtually
+                    // every synth treats it as a release — SMF-imported content encodes
+                    // note ends this way. Track what the synth will actually do.
+                    const bool zeroVelocity = messageType == umppi::MidiMessageType::MIDI1
+                        ? (words[i] & 0x7Fu) == 0
+                        : (i + 1 < count && (words[i + 1] >> 16) == 0);
+                    if (status == umppi::MidiChannelStatus::NOTE_ON && !zeroVelocity) {
                         active_notes_[group][channel][note >> 6] |= 1ull << (note & 63);
                         has_active_notes_ = true;
                     } else if (status == umppi::MidiChannelStatus::NOTE_OFF ||
-                               (status == umppi::MidiChannelStatus::NOTE_ON && midi1ZeroVelocity)) {
+                               (status == umppi::MidiChannelStatus::NOTE_ON && zeroVelocity)) {
                         active_notes_[group][channel][note >> 6] &= ~(1ull << (note & 63));
                     }
                 }
@@ -271,9 +274,27 @@ namespace uapmd {
             eventIn.position(0);
             bool flushComplete = true;
 
-            // Emit a genuine note-off for every note still held. This is the only
+            auto appendUmp64 = [&eventIn](uint64_t ump64) {
+                const uapmd_ump_t words[2]{
+                    static_cast<uapmd_ump_t>(ump64 >> 32),
+                    static_cast<uapmd_ump_t>(ump64 & 0xFFFFFFFFu)
+                };
+                return appendUmpToEventBuffer(eventIn, words, 2);
+            };
+
+            // Emit the kill switches FIRST so they are never deferred behind a large
+            // note-off flood: CC 120 (All Sound Off) and CC 123 (All Notes Off) on
+            // every channel of the node's group.
+            const uint8_t flushGroup = group == 0xFF ? 0 : group;
+            for (uint8_t channel = 0; channel < 16 && flushComplete; ++channel) {
+                if (!appendUmp64(umppi::UmpFactory::midi2CC(flushGroup, channel, 120, 0)) ||
+                    !appendUmp64(umppi::UmpFactory::midi2CC(flushGroup, channel, 123, 0)))
+                    flushComplete = false;
+            }
+
+            // Then a genuine note-off for every note still held. This is the only
             // portable way to release voices: e.g. VST3 has no All Sound Off event,
-            // and CC 120 below only works when the plugin maps it via IMidiMapping.
+            // and the CCs above only work when the plugin honors them.
             if (has_active_notes_) {
                 for (uint8_t noteGroup = 0; noteGroup < 16 && flushComplete; ++noteGroup) {
                     for (uint8_t channel = 0; channel < 16 && flushComplete; ++channel) {
@@ -282,13 +303,8 @@ namespace uapmd {
                             while (bits) {
                                 const auto bit = static_cast<uint8_t>(std::countr_zero(bits));
                                 const auto note = static_cast<uint8_t>(half * 64 + bit);
-                                const uint64_t ump64 = umppi::UmpFactory::midi2NoteOff(
-                                    noteGroup, channel, note, 0, 0x8000, 0);
-                                const uapmd_ump_t words[2]{
-                                    static_cast<uapmd_ump_t>(ump64 >> 32),
-                                    static_cast<uapmd_ump_t>(ump64 & 0xFFFFFFFFu)
-                                };
-                                if (!appendUmpToEventBuffer(eventIn, words, 2)) {
+                                if (!appendUmp64(umppi::UmpFactory::midi2NoteOff(
+                                        noteGroup, channel, note, 0, 0x8000, 0))) {
                                     flushComplete = false;
                                     break;
                                 }
@@ -301,18 +317,6 @@ namespace uapmd {
                     has_active_notes_ = false;
             }
 
-            const uint8_t flushGroup = group == 0xFF ? 0 : group;
-            for (uint8_t channel = 0; channel < 16 && flushComplete; ++channel) {
-                const uint64_t ump64 = umppi::UmpFactory::midi2CC(flushGroup, channel, 120, 0);
-                const uapmd_ump_t words[2]{
-                    static_cast<uapmd_ump_t>(ump64 >> 32),
-                    static_cast<uapmd_ump_t>(ump64 & 0xFFFFFFFFu)
-                };
-                if (!appendUmpToEventBuffer(eventIn, words, 2)) {
-                    flushComplete = false;
-                    break;
-                }
-            }
             if (!flushComplete)
                 stop_flush_requested_.store(true, std::memory_order_release);
         }
