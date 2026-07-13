@@ -24,7 +24,7 @@ The GitHub Actions workflow at `.github/workflows/pages.yml` is responsible for
 building the Emscripten artifacts and publishing this site tree to the
 repository's `gh-pages` branch.
 
-The workflow runs automatically for pushes to `main` and for tags. Configure
+Run the workflow manually when you want to refresh the whole site. Configure
 the repository's GitHub Pages source once to deploy from the `gh-pages` branch
 at the repository root.
 

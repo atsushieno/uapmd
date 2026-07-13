@@ -1,9 +1,6 @@
 name: publish pages
 
 on:
-  push:
-    branches: [main]
-    tags: ['*']
   workflow_dispatch:
     inputs:
       version_tag:
