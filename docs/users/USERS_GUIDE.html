@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="uapmd-users-guide">UAPMD Users Guide</h1>
+<p>uapmd-app is primarily an audio plugin host which is demonstrating
+various audio plugin features in a DAW-like sequencer, to demonstrate
+how uapmd (library) and its feature is usable. It runs on desktop
+(Windows / macOS / Linux), Android, iOS (tested only on simulators /
+rarely tested), and Web. It features:</p>
+<ul>
+<li>overall audio plugin hosting
+<ul>
+<li>and register them as virtual MIDI 2.0 UMP devices.</li>
+</ul></li>
+<li>multi-track sequencing of audio and MIDI 2.0 clips, over simple
+linear audio plugin graph
+<ul>
+<li>can import MIDI 1.0 SMF (translated to MIDI2 clips) and audio files
+into split tracks (source separation)</li>
+</ul></li>
+<li>save as a project (of audio and MIDI 2.0 sequences) and load
+ones</li>
+<li>manipulates all using JavaScript and MCP endpoints</li>
+<li>document edit model that should be capable enough to handle
+ARA2.</li>
+</ul>
+<p>(Screenshots might be outdated, but they would still mostly make
+sense.)</p>
+<h2 id="general-notes">General Notes</h2>
+<p>Please bear in mind that UAPMD is still under heavy development.
+There are still some features that do not work as expected. It is not
+much tested (there is no decent testable environment that sets up
+plugins on the CI server).</p>
+<p>UAPMD is NOT a quality DAW project - it aims to provide DAW sequencer
+engine capacity. Building an entire DAW requires much more. We provide
+ways to combine your individual audio and MIDI 2.0 clips and play them
+as a music project. You find ways to create the individual items, and/or
+"build your own DAW" on top of UAPMD sequencer engine (which is rather
+like developers' activity).</p>
+<h2 id="prepare">Prepare</h2>
+<h3 id="set-up-audio-plugins-you-want-to-use">set up audio plugins you
+want to use</h3>
+<p>On desktop, uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP
+format, so just install whatever you would like to use. There may be
+plugins that do not work with uapmd-app, but it's hard to tell in prior.
+We have some list of working and not-working plugins on <a
+href="https://github.com/atsushieno/uapmd/wiki/KnownToWork">the wiki
+page</a>.</p>
+<p>You can find some open source audio plugins by using <a
+href="https://studiorack.github.io/studiorack-site/">StudioRack</a>
+(just note that there are instrument files that uapmd-app does not
+directly support).</p>
+<p>On Android: find existing plugins from The AAP (Audio Plugins For
+Android) Project, using <a
+href="https://obtainium.imranr.dev/">Obtainium</a> or <a
+href="https://github.com/atsushieno/android-ci-package-installer">AAP
+APK Installer</a>. You can search "aap-" in the Obtainium's search box
+to find the plugin apps. Note that you will have to dare to install from
+"untrusted" sources (they are @atsushieno's projects, totally built on
+GitHub Actions, which is completely transparent to everyone).</p>
+<p>On Web: we only have limited plugins that are explicitly listed on
+the sources, so you don't have to do anything here.</p>
+<h2 id="the-main-sequencer">The main sequencer</h2>
+<p>UAPMD is a multi-track sequencer that processes audio and MIDI
+sequences. When you launch <code>uapmd-app</code>, what you will see
+first is the main sequencer track list.</p>
+<p><img src="../images/uapmd-v0.5-launched.png"
+alt="UAPMD on macOS launched" /></p>
+<p>A track is bound to an audio graph. You usually have one instrument
+plugin and zero or more effect plugins for MIDI clip tracks, or just
+zero or more effect plugins for audio clip tracks.</p>
+<p>A track can contain both audio and MIDI 2.0 clips. You usually want
+either of them, but if you want to apply automation on effect plugins on
+audio clips, you can create a track with an audio clip that contains the
+audio file, and a MIDI 2.0 clip that contains automation Assignable
+Controllers.</p>
+<p>On playback, those audio and MIDI 2.0 "inputs" are both processed as
+input to the audio graph, sliced and passed per sample block.</p>
+<h3 id="set-up-tracks-and-clips">Set up tracks and clips</h3>
+<p>UAPMD initially launches with a few empty tracks. You can either
+import MIDI 2.0 Clip Files (<code>*.midi2</code>), MIDI 1.0 SMF files
+(<code>.mid</code>) or audio files (<code>.wav</code>,
+<code>.ogg</code>, <code>.flac</code>).</p>
+<p>Audio files can be imported as multiple, source-separated tracks (we
+have built-in Demucs support). To use it, however, you have to provide a
+model file by yourself. Check <a
+href="https://github.com/sevagh/demucs.cpp">demucs.cpp project
+README</a> and find links to their HuggingFace repo.</p>
+<p><img src="../images/uapmd-v0.5-imported-smf.png"
+alt="UAPMD track list after importing an SMF" /></p>
+<p><img src="../images/uapmd-v0.5-imported-split-audio.png"
+alt="UAPMD track list after importing an audio, split" /></p>
+<p>In either import, they don't come up with any plugins, so the next
+step is to apply audio plugins to each track. (For split track you may
+not need any.)</p>
+<h2 id="the-plugin-list">The plugin list</h2>
+<p>When UAPMD is launched, it will first perform "fast plugin scanning"
+that does not involve instantiating the plugins. CLAP, LV2, AUv2, AUv3,
+and VST3 that contains moduleinfo.json do not involve instantiation.
+Once <code>uapmd-app</code> is launched, press <code>Plugins</code>
+button to see what are available:</p>
+<p><img src="../images/uapmd-v0.5-plugin-list-init.png"
+alt="UAPMD plugin list at initial state" /></p>
+<p>(The fast plugin scanning is always performed, as it is supposed to
+be fast enough - CLAP plugin scanning is still problematic in theory,
+but fortunately there is not a lot of CLAP plugins in the market to
+cause problems in practice.)</p>
+<p>Many VST3 plugins do not support fast scanning; they don't show up
+until you perform "Scan Plugins". It will launch a plugin scanner in
+another process (on desktop).</p>
+<p><img src="../images/uapmd-v0.5-plugin-list-after-slow-scanning.png"
+alt="UAPMD plugin list after slow scanning" /></p>
+<h2 id="plugin-instance-details">Plugin instance details</h2>
+<p>Once you found a plugin that you want to use on the plugin list, you
+can select it and "Instantiate Plugin". A new track will be added. (You
+might find find existing tracks in the way - you can delete them.) If
+you press the plugin name button ("Serum 2" in the screen shot below),
+it shows some options.</p>
+<p><img src="../images/uapmd-v0.5-track-plugin-context-action.png"
+alt="uampd-app plugin context action" /></p>
+<p>If you choose "Show [plugin name] Details", it shows its playground
+window. You can also show the plugin UI there.</p>
+<p><img src="../images/uapmd-v0.5-instance-details-and-gui.png"
+alt="uampd-app plugin details and UI" /></p>
+<p>It would give you some feeling like you were using it on a DAW.</p>
+    </main>
+</div>
+</body>
+</html>

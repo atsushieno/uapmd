@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="audio-graph-abstraction">Audio Graph abstraction</h1>
+<p><code>AudioPluginGraph</code> is designed to customizable enough to
+allow external implementation while being decoupled from other UAPMD
+components.</p>
+<p>Currently there are two graph implementations:</p>
+<ul>
+<li>simple linear graph</li>
+<li>full DAG</li>
+</ul>
+<p><code>AudioPluginGraph</code> implementation classes must provide
+realtime-safe <code>processAudio()</code> implementation that might be
+in an isolated process such as Web <code>AudioWorklet</code> or AUv3
+audio processor.</p>
+<p>uapmd-graph also features <code>AudioGraph</code> and
+<code>AudioGraphNode</code> interfaces, that provide
+implementation-agnostic ways to process custom audio nodes such as gain
+or splitter, so that basic audio track operation can be performed. The
+graph node API also involves saving and loading to the UAPMD project
+data.</p>
+<p>Since UAPMD aims to provide product-agnostic ways to save and load
+project data, we try our best to avoid defining "standard set" of
+built-in audio nodes by ourselves. What we do here instead is to reuse
+Web Audio API - we define operational graph nodes such as
+<code>webaudio:Gain</code>. Nothing is saved without splitting
+namespaces in the serialized JSON object - we assign pseudo namespace
+prefixes for the factory built-in nodes.</p>
+<h2 id="audiographprovider">AudioGraphProvider</h2>
+<p>While <code>AudioPluginGraph</code> abstracts away how it organizes
+its plugin connections, there are handful of areas that the audio graph
+structure matters:</p>
+<ul>
+<li>Serialization in the project tracks: in uapmd-data, each
+<code>TimelineTrack</code> should contain data to populate an
+<code>AudioPluginGraph</code>, and it has to be serialized to and from
+data bytes and files.
+<ul>
+<li>it is still independent of the project serialization itself; the
+caller can save it in either a consolidated file or embed within the
+project.</li>
+</ul></li>
+<li>Latency compensation</li>
+<li>Tail length</li>
+</ul>
+<p>They have to be provided per graph (which need implementation).</p>
+    </main>
+</div>
+</body>
+</html>

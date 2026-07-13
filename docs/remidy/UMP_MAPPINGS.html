@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="dealing-with-ump-sequence">Dealing with UMP Sequence</h1>
+<p>Every plugin format specifies their own event I/O messages for their
+audio processing. We can commonize some of them as UMP, which was the
+original idea in the core of UAPMD. But there are more commonized
+features in remidy API that are more expressive than UMP, and converting
+all events to UMP is not a versatile option. We also have to deal with
+plugin-format-specific MIDI mapping features. Therefore, the idea is to
+deal with them in some uniform and consistent way across platforms.</p>
+<h2 id="event-types">Event Types</h2>
+<p>The following event types need to be supported:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Type</th>
+<th>has remidy-intrinsic</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>note on and off</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>parameter changes</td>
+<td>+</td>
+</tr>
+<tr class="odd">
+<td>per-note controllers</td>
+<td>+</td>
+</tr>
+<tr class="even">
+<td>program changes</td>
+<td>+</td>
+</tr>
+<tr class="odd">
+<td>pitch bend</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-core-concept-behind-the-rewrites">The Core Concept behind
+the Rewrites</h2>
+<p>The initial optimistic <code>UmpInputDispatcher</code> design was
+based on the assumption that plugins in the format which accepts native
+MIDI (1.0 / 2.0) messages can directly handle our inputs. This however
+will never happen, because plugins in those formats that can handle MIDI
+1.0 / 2.0 inputs still cannot understand how UAPMD maps parameters to
+NRPNs, etc. Therefore, we have to give translation layer in
+<code>remidy</code> layer.</p>
+<h3 id="uapmd-translation-layer">UAPMD translation layer</h3>
+<p>UAPMD translation layer handles plugin host specific features to
+generate UMP or MIDI-CI messages.</p>
+<pre><code>[user] - (plugin commands) -&gt; [AudioPluginHostPAL (- UMP encoder -&gt;) uapmd-app] - (UMP) -&gt; [UMP client]
+
+[user] &lt;- [AudioPluginHostPAL (&lt;- uapmd decoder -) uapmd-app] &lt;- (UMP) - [UMP client]</code></pre>
+<ul>
+<li>Plugin parameter changes are normalized and transferred as
+Assignable Controllers.</li>
+<li>Per-note controllers are normalized and transferred as Per-Note
+Assignable Controllers.</li>
+<li>Plugin parameter metadata list and per-note controller metadata are
+translated to MIDI-CI AllCtrlList and CtrlMapList PE messages.</li>
+<li>Plugin get/set state are translated to MIDI-CI StateList and State
+PE messages.</li>
+<li>Other messages are passed through.</li>
+</ul>
+<p>For more details, see <code>UapmdUmpMapper</code> and
+<code>UapmdMidiCISessions</code>.</p>
+<h3 id="remidy-midi-mapping-layer">Remidy MIDI mapping layer</h3>
+<p>After uapmd-app separated those uapmd intrinsics, remidy handles the
+UMP inputs along with its integrated MIDI mapping features that may need
+interaction between host (remidy itself) and the context plugin.</p>
+<p>It is done per plugin format. For example, VST3 translator has to
+handle these packets:</p>
+<ul>
+<li>channel pressure</li>
+<li>program change</li>
+<li>pitch bend</li>
+</ul>
+<p>They take channel to determine the destination.</p>
+<ul>
+<li>key pressure</li>
+</ul>
+<p>It takes channel and key.</p>
+<h3 id="no-support-for-format-specific-mappings-api">(no) support for
+format-specific mappings API</h3>
+<p>Here is another complication: VST3 provides MIDI mapping interaction
+on <code>IMidiMapping</code> and it requires MIDI 1.0 inputs, so we have
+to down-translate them first. There is also <code>IMidiMapping2</code>
+which does not require down-translation (since VST3.8.0).</p>
+<p>At this moment, we don't provide ways to access to these interfaces.
+It might have happened when CLAP had its draft MIDI mappings API, but
+it's gone. Note that having no public API access to them does not mean
+we do not simply support these interfaces - they are queried and used
+internally (because plugins might provide them with their own predefined
+mappings).</p>
+    </main>
+</div>
+</body>
+</html>

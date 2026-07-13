@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="parameter-api-design-requirements">Parameter API Design
+Requirements</h1>
+<p>Plugin parameter support is achieved through
+<code>remidy::PluginParameterSupport</code> class which is accessible
+via <code>parameters()</code>.</p>
+<h2 id="parameter-api-differences-between-formats">Parameter API
+Differences Between Formats</h2>
+<ul>
+<li>VST3 and CLAP: parameter values are stored as <code>double</code>.
+AU parameters are <code>float</code>. LV2 parameters are practically
+<code>float</code> (lilv Atom does not support <code>double</code>
+values).</li>
+<li>AU: nominally they have stable parameter ID integer, but an infamous
+fact around AudioUnit is that Apple Logic Pro and GarageBand fail to
+handle parameter stability by assuming "index" in the parameter list as
+stable. JUCE team and their plugin developers try hard to workaround
+this issue by introducing <code>versionHint</code>. We should not fail
+like Logic Pro and GarageBand and always identify parameters by ID, not
+index.</li>
+<li>LV2: there are multiple different ways to define "parameters" and we
+will have to support both...
+<ul>
+<li>Traditional approach: define <code>lv2:ControlPort</code>s within
+the <code>lv2:Plugin</code>. They have <code>lv2:index</code>,
+<code>lv2:name</code>, and <code>lv2:symbol</code>.</li>
+<li>Modern approach: define global <code>lv2:Parameter</code>s, and
+specify them as <code>patch:readable</code> or
+<code>patch:writable</code> within the <code>lv2:Plugin</code>. The
+actual parameters will be passed as <code>lv2:Atom</code>s. They have
+<code>rdfs:label</code>, <code>rdfs:range</code>, and
+<code>pg:group</code>. Note that there is no numeric ID.</li>
+<li>They both can have <code>lv2:default</code>,
+<code>lv2:minimum</code>, <code>lv2:maximum</code>,
+<code>lv2:portProperty</code>, and <code>unit:unit</code>.</li>
+</ul></li>
+</ul>
+<p>LV2 brings in the following design principles:</p>
+<ul>
+<li>There is no numeric stable parameter ID. Parameters ID by index is
+instant and cannot be used in persistable states.</li>
+<li>There may be read-only parameters and write-only parameters (if that
+makes sense).</li>
+<li>Retrieving parameter values may not work (they may be write-only, or
+we don't have parameter value store - even if we store any parameter
+changes there may be parameters without initial default values.)</li>
+</ul>
+<p>VST3 and CLAP brings in the following design principles:</p>
+<ul>
+<li>Since VST3 parameter access is achieved via
+<code>IEditController</code> API which involves GUI thread,
+<code>PluginParameterSupport</code> has a
+<code>bool accessRequiresMainThread()</code> property getter function.
+VST3 returns <code>true</code>.</li>
+<li>The same goes for CLAP where <code>count()</code> and
+<code>get_info()</code> in <code>clap_plugin_params</code> are marked as
+<code>[main-thread]</code>.</li>
+</ul>
+<h2 id="plain-vs-normalized">Plain vs. Normalized</h2>
+<p>In VST3 every parameter operation is expected to be within 0.0–1.0,
+with conversion to and from normalized values. AU, LV2, and CLAP expect
+plain values.</p>
+<p>The public API in <code>PluginParameterSupport</code> expects plain
+<code>double</code> values. They are explicitly named as such.</p>
+<p>UAPMD needs to convert the values betwee <code>double</code> and
+<code>uint32_t</code>.</p>
+<h3
+id="normalized-to-plain-conversion-is-not-always-available">Normalized-to-Plain
+conversion is not always available</h3>
+<p>Whereas VST3 IEditController provides
+<code>normalizedParamToPlain()</code>, it is not always implemented
+correctly. VST3SDK <code>EditController</code> implements this function
+as to just return the source value by default.</p>
+<p>Plugins like Dexed does not implement these functions while it
+converts parameters in 0.0..1.0 to the plain value when it is converted
+to string.</p>
+<h2 id="automatable">Automatable</h2>
+<p>We support only "automatable" parameters in some use cases. Namely,
+non-automatable parameters are not displayed on uapmd-app and not mapped
+to MIDI-CI AllCtrlList property.</p>
+<ul>
+<li>AU parameters can be
+<code>kAudioUnitParameterFlag_NonRealTime</code></li>
+<li>VST3 parameters can be <code>kCanAutomate</code></li>
+<li>CLAP parameters can be <code>CLAP_PARAM_IS_AUTOMATABLE</code></li>
+<li>LV2: still wondering, maybe "expensive" parameters had better be
+excluded...</li>
+</ul>
+<p>For example, Tracktion "Collective" contains a lot of NonRealTime
+parameters that I have no idea what they are for (they are unnamed).</p>
+<h2 id="sample-accurate-parameter-changes">Sample-accurate Parameter
+Changes</h2>
+<p>All VST3, AU, LV2, and CLAP supports sample-accurate parameter
+changes. Those <code>setParameter()</code> calls that come with non-zero
+<code>timestamp</code> are "enqueued" for the next audio processing.</p>
+<ul>
+<li>VST3: use <code>IParameterChanges</code></li>
+<li>AU: use <code>AudioUnitScheduleParameters</code></li>
+<li>LV2: use <code>Atom_Sequence</code> (unsupported for
+ControlPort-based parameters)</li>
+<li>CLAP: use event streams in <code>clap_process_t</code></li>
+</ul>
+<h2 id="per-note-controllers-parameters">Per-Note Controllers
+(parameters)</h2>
+<p>VST3, AU, and CLAP supports per-note parameter controllers.</p>
+<ul>
+<li>VST3: use <code>INoteExpressionController</code></li>
+<li>AU: use parameters with group, channel, or note scope? It is very
+unclear from the API documentation.</li>
+<li>LV2: not supported</li>
+<li>CLAP: use <code>clap_event_param_value_t</code> with
+<code>key</code>.</li>
+</ul>
+<p>It should be noted that per-note controllers are defined totally
+differently from normal parameters. VST3, AU, and MIDI 2.0 UMP define
+them as such. The only exception is CLAP, which defines parameters in
+unified way. We return the same list of per-note parameters as normal
+parameters.</p>
+<p>The way how VST3 and AU support per-note controllers (parameters) is
+different from CLAP also in that they may return different set of
+parameter definitions <em>for each channel</em> (also may differ from
+"global"). AU even goes further and they may return different set of
+parameter IDs <em>for each note</em>. This makes constructing static
+list of parameters at configuring connections almost impossible.</p>
+<h2 id="extraneous-cc-roundtrip-to-parameters">Extraneous CC roundtrip
+to parameters</h2>
+<p>One of the problem mapping from parameters to Assignable Controllers
+is that VST3 parameters are often mapped <em>from</em> MIDI CCs for each
+channel, due to fundamental VST3 design problem that does not support
+MIDI messages.</p>
+<p>If we map every single parameter to Assignable Controller, it feels
+extraneous to further map them again. But CC-to-parameter mappings
+happen at plugin side, while Assignable Controllers to parameter
+mappings happen at the host side. We cannot guess which parameter should
+map to which CC to send (while we can "guess" by parameter names).</p>
+<h2 id="dynamic-parameter-list-updates">Dynamic parameter list
+updates</h2>
+<p>Some plugins dynamically updates their parameter list (e.g. BYOD
+VST3/AUv2/CLAP, AUv3 Mela, etc.) and when they happen the plugin
+typically have to be "restarted" by the host (e.g.
+<code>IComponentHandler::restartComponent()</code> in VST3,
+<code>clap_host.request_restart()</code> in CLAP).</p>
+<p>The way how we <em>trigger</em> this component refresh should not be
+in the public API, but it is currently exposed as
+<code>PluginParameterSupport::refreshAllParameterMetadata()</code>. Each
+plugin format overrides it by triggering update events that are
+registered as in
+<code>PluginParameterSupport::parameterMetadataChangeEvent</code>
+members. It is exposed to the users (here its <code>notify()</code>
+should not also be exposed, likewise...).</p>
+<p>We support the entire parameter refresh in uapmd-app.</p>
+<p>LV2 partially supports this concept as <a
+href="https://lv2plug.in/ns/ext/dynmanifest">Dynamic Manifest</a>, but
+there does not seem any normative way to notify the manifest updates. It
+is also known to <a
+href="https://github.com/jatinchowdhury18/AnalogTapeModel/issues/283">not
+work well</a>.</p>
+    </main>
+</div>
+</body>
+</html>

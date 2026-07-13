@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="sequencer-engine">Sequencer Engine</h1>
+<p>UAPMD is essentially an audio engine just like the ones in a DAW. It
+handles multiple audio plugin tracks, where a track essentially contains
+an audio graph (either linear or complicated ones), and it is supposed
+to merge them once all the tracks are processed and apply master
+effects, which is also an audio graph.</p>
+<p>The audio engine has to work in two ways:</p>
+<ul>
+<li>live rendering: the audio engine processes audio in realtime manner.
+They have to be strictly on time and cannot either go ahead of time or
+go behind the deadline.</li>
+<li>static (offline) rendering: the audio engine processes audio in
+static manner. They can go ahead than realtime processing, and there is
+no deadline. They still have to process accordingly. In the ideal world,
+they render identical outputs for identical inputs (but they might
+not).</li>
+</ul>
+<h2 id="current-api-design-before-refactoring">Current API Design Before
+Refactoring</h2>
+<h3 id="realtimesequencer"><code>RealtimeSequencer</code></h3>
+<p>It was supposed to be a live-rendering version of the audio
+engine.</p>
+<p>It works like the only facade for the entire audio engine.</p>
+<h3 id="sequencerengine"><code>SequencerEngine</code></h3>
+<p>It was supposed to be a static audio engine that can process audio
+without time constraints.</p>
+<p>It is still used by uapmd-apply, but the console tool is not really
+functional for now.</p>
+<h3
+id="deviceiodispatcher-audioiodevice-and-midiiodevice"><code>DeviceIODispatcher</code>,
+<code>AudioIODevice</code>, and <code>MidiIODevice</code></h3>
+<p><code>DeviceIODispatcher</code> collects device I/O functionality
+(i.e. <code>AudioIODevice</code> and <code>MidiIODevice</code>), which
+is essential to the live rendering engine.</p>
+<p>Conceptually they can also exist as virtual static entities, but they
+are so far specific to <code>RealtimeSequencer</code>.</p>
+<h3 id="audioplugintrack"><code>AudioPluginTrack</code></h3>
+<p>A <code>SequencerEngine</code> holds a list of
+<code>AudioPluginTrack</code> instances. It currently exists for:</p>
+<ul>
+<li>a control point for bypassing (mute)</li>
+<li>a control point for freezing (not implemented)</li>
+<li>resolved to a UMP group (Function Block)</li>
+<li>(UMP) event I/O (enqueue / register output callback)</li>
+</ul>
+<h3 id="audioplugingraph"><code>AudioPluginGraph</code></h3>
+<p>An <code>AudioPluginTrack</code> contains an
+<code>AudioPluginGraph</code>.</p>
+<p>It is designed to be pure virtual and can be replaced by any audio
+graph implementation. Currently only a simple linear graph exists, but
+something like Tracktion Graph could be applied (IF that JUCE module is
+applicable within our normal library paradigm).</p>
+<p>There could be a master track which should also contain a plugin
+graph, but currently it does not exist.</p>
+<h3 id="audiopluginnode"><code>AudioPluginNode</code></h3>
+<p>An <code>AudioPluginGraph</code> holds a list of
+<code>AudioPluginNode</code>s.</p>
+<p>There is no abstraction on audio graph nodes. The inputs and outputs
+are represented as <code>DeviceIODispatcher</code> and
+<code>RealtimeSequencer</code> handles it. There is no other nodes such
+as mixer nodes or volume controller nodes. They could be part of audio
+graph implementation details. Our simple audio graph does not support
+it.</p>
+<p>This node also holds an audio plugin instance and UAPMD UMP I/O
+mappers.</p>
+<h3
+id="audiopluginhostingapi-and-audioplugininstanceapi"><code>AudioPluginHostingAPI</code>
+and <code>AudioPluginInstanceAPI</code></h3>
+<p>These classes abstacts away audio plugin hosting API. While UAPMD is
+primarily targeting Remidy API, we try to make rooms for other audio
+plugin hosting libraries.</p>
+<p>Note that We still have to resort to some types in remidy regardless
+of the plugin hosting API (such as <code>AudioProcessContext</code> for
+audio processing inputs).</p>
+<p>An <code>AudioPluginNode</code> contains one
+<code>AudioPluginInstanceAPI</code>, which is supposed to be
+instantiated by
+<code>AudioPluginHostingAPI::createPluginInstance()</code>. But
+currently it returns <code>AudioPluginNode</code>.</p>
+    </main>
+</div>
+</body>
+</html>

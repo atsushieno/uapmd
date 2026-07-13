@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h3
+id="midi-ci-get-and-set-device-state-property-as-the-common-binary-format">MIDI-CI
+Get and Set Device State Property as the common binary format</h3>
+<p>Defining our own binary data format ("defined by Remidy") is not a
+preferred option if there is already another standardized specification
+for that. And there is, MIDI-CI Get and Set Device State Property
+specification as part of MIDI 2.0 specification.</p>
+<p>It should be noted that both LV2 and CLAP provides the use cases
+where portability is not required. If portability comes without cost
+then we do not have to worry about use cases i.e. they could have been
+always portable. Implementing portable state is probably annoying e.g.
+always having to follow endianness-agnostic states is cumbersome.</p>
+    </main>
+</div>
+</body>
+</html>

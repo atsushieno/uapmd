@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="gui-and-threading">GUI and threading</h1>
+<h2 id="ui-threading-in-remidy">UI threading in remidy</h2>
+<p>All of those supported plugin formats deal with the UI thread (or
+"main" thread, which is <em>usually</em> equivalent), and some formats
+(namely VST3 and CLAP) require some plugin API calls happen on the UI
+thread. This is achieved in remidy by "dispatching" function calls to
+those plugin APIs to the UI thread.</p>
+<p>At the same time, remidy itself is (should be) UI-framework-agnostic,
+it has to be externally configurable. We provide the entry points to the
+event loop controller by <code>EventLoop</code> class. If you want to
+use certain UI framework, implement the functions and set it by
+<code>EventLoop::instance()</code>.</p>
+<h2 id="pluginuisupport-api">PluginUISupport API</h2>
+<p>Our GUI support is commonized in <code>PluginUISupport</code> API. It
+is basically designed after what CLAP GUI extension does.</p>
+<p>GUI extensibility on each plugin format differs each other:</p>
+<table>
+<thead>
+<tr class="header">
+<th>format</th>
+<th>exposed native handle</th>
+<th>exposing API</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>VST3</td>
+<td>parent</td>
+<td><code>void*</code>, <code>IPlugView::attached()</code></td>
+</tr>
+<tr class="even">
+<td>AU</td>
+<td>plugin UI</td>
+<td><code>NSView</code>, <code>AudioUnitCocoaViewInfo</code></td>
+</tr>
+<tr class="odd">
+<td>LV2</td>
+<td>plugin UI</td>
+<td><code>LV2UI_Widget</code>,
+<code>LV2UI_Descriptor.instantiate</code></td>
+</tr>
+<tr class="even">
+<td>CLAP</td>
+<td>parent</td>
+<td><code>clap_window_t*</code>,
+<code>clap_gui_plugin_t.set_parent()</code></td>
+</tr>
+</tbody>
+</table>
+<p>In current sources, the GUI support is implemented mostly by AI
+agents (Claude Code and Codex).</p>
+    </main>
+</div>
+</body>
+</html>

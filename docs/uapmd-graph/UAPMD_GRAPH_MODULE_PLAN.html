@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="uapmd-graph-module-plan-ai-slop">UAPMD Graph Module Plan (AI
+slop)</h1>
+<h2 id="status">Status</h2>
+<ul>
+<li>Implemented through Stage 7 for the current scope</li>
+<li>Schema direction documented in <a
+href="/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.html">source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md</a></li>
+<li><code>uapmd-graph</code> module owns the graph runtime, node
+interfaces, registry, and all built-in node implementations</li>
+<li><code>webaudio:GainNode</code> is fully integrated: created
+per-track by <code>SequencerEngine</code>, routed through both graph
+types, and controlled via the volume slider in uapmd-app</li>
+<li>Track/master fader persistence now uses top-level track JSON
+<code>volume</code> rather than depending on graph serialization</li>
+<li>Graph JSON now persists generic built-in node descriptors under
+<code>nodes[]</code> while retaining the existing <code>plugins[]</code>
+and DAG <code>connections[]</code> payloads</li>
+<li>The implicit per-track/master gain node
+(<code>builtin:track_gain</code>) is no longer serialized through graph
+<code>nodes[]</code>; <code>track.volume</code> is its only persisted
+source of truth</li>
+<li>Loading project graphs now recreates built-in runtime nodes from
+persisted descriptors for both simple and DAG graph providers</li>
+<li>DAG graph connections now serialize stable <code>node_id</code>
+endpoint identifiers, while the loader still accepts deprecated
+<code>plugin_index</code> fields for backward compatibility with older
+project files</li>
+<li>DAG runtime and editor now treat built-in nodes as addressable graph
+nodes by <code>node_id</code> instead of only as a post-graph special
+case</li>
+<li>UI and scripting surfaces now use generic graph-node terminology
+instead of treating all graph nodes as plugins</li>
+</ul>
+<h2 id="remaining-work">Remaining Work</h2>
+<ul>
+<li>Compatibility policy
+<ul>
+<li>keep the deprecated <code>plugin_index</code> reader fallback for
+backward compatibility with older project files</li>
+<li>consider retiring that reader path only when old-project
+compatibility is no longer required</li>
+</ul></li>
+<li>Built-in node expansion
+<ul>
+<li>implement additional built-in graph node kinds beyond
+<code>webaudio:GainNode</code></li>
+<li>planned next targets include channel utilities such as
+<code>webaudio:ChannelMergerNode</code> and
+<code>webaudio:ChannelSplitterNode</code></li>
+</ul></li>
+<li>Bus and layout semantics
+<ul>
+<li>refine built-in node input/output layout semantics so graph-authored
+utility nodes do not rely on coarse track-level assumptions</li>
+<li>make channel-routing behavior clearer for future
+mixer/remapper-style nodes</li>
+</ul></li>
+<li>Additional regression coverage if needed
+<ul>
+<li>broaden coverage around generic built-in nodes and future
+channel-utility nodes as they are implemented</li>
+</ul></li>
+</ul>
+<h2 id="goal">Goal</h2>
+<p>Create a dedicated <code>uapmd-graph</code> module that owns audio
+graph runtime concepts and built-in graph nodes such as
+<code>webaudio:GainNode</code>, while keeping:</p>
+<ul>
+<li><code>uapmd</code> focused on common types, MIDI, and plugin-hosting
+APIs;</li>
+<li><code>uapmd-data</code> focused on project/graph serialization;</li>
+<li><code>uapmd-engine</code> focused on sequencer behavior, plugin
+lifetime, function block mapping, and runtime policy.</li>
+</ul>
+<h2 id="motivation">Motivation</h2>
+<p>The current graph implementation is plugin-centric and currently
+lives under <code>uapmd</code>. That makes it awkward to add independent
+graph nodes such as gain or channel remapping nodes, because:</p>
+<ul>
+<li>every runtime node is assumed to wrap
+<code>AudioPluginInstanceAPI</code>;</li>
+<li>graph serialization is shaped around plugin lists and plugin
+indices;</li>
+<li>graph editor and engine integration assume graph nodes are
+plugins;</li>
+<li>graph functionality is becoming large enough to deserve its own
+module boundary.</li>
+</ul>
+<p>The <code>uapmd-graph</code> split is intended to make graph work
+tractable without moving more unrelated responsibilities into
+<code>uapmd-engine</code> or <code>uapmd-data</code>.</p>
+<h2 id="proposed-module-dependency-direction">Proposed Module Dependency
+Direction</h2>
+<pre class="text"><code>remidy
+  ^
+  |
+uapmd
+  ^
+  |
+uapmd-graph
+  ^       ^
+  |       |
+uapmd-data uapmd-engine</code></pre>
+<p>Meaning:</p>
+<ul>
+<li><code>uapmd-graph</code> depends on <code>uapmd</code></li>
+<li><code>uapmd-data</code> depends on <code>uapmd-graph</code></li>
+<li><code>uapmd-engine</code> depends on <code>uapmd-graph</code> and
+<code>uapmd-data</code></li>
+</ul>
+<h2 id="responsibilities-by-module">Responsibilities By Module</h2>
+<h3 id="uapmd"><code>uapmd</code></h3>
+<ul>
+<li>common types such as <code>AudioProcessContext</code></li>
+<li>plugin hosting APIs such as <code>AudioPluginInstanceAPI</code></li>
+<li>MIDI device / function block support</li>
+<li>no ownership of built-in graph node implementations</li>
+</ul>
+<h3 id="uapmd-graph"><code>uapmd-graph</code></h3>
+<ul>
+<li>graph runtime interfaces</li>
+<li>graph node runtime interfaces</li>
+<li>linear graph and full DAG graph implementations</li>
+<li>built-in graph node registry</li>
+<li>built-in node implementations such as
+<code>webaudio:GainNode</code></li>
+<li>graph descriptor types shared by runtime and serialization
+layers</li>
+</ul>
+<h3 id="uapmd-data"><code>uapmd-data</code></h3>
+<ul>
+<li>JSON/project file readers and writers</li>
+<li>conversion between persisted graph JSON and <code>uapmd-graph</code>
+descriptor types</li>
+<li>no ownership of built-in DSP behavior</li>
+</ul>
+<h3 id="uapmd-engine"><code>uapmd-engine</code></h3>
+<ul>
+<li>sequencer tracks and graph ownership at runtime</li>
+<li>plugin instance creation/destruction</li>
+<li>policy such as when default gain nodes are inserted</li>
+<li>MIDI-CI function block mappings</li>
+<li>plugin UMP routing into and out of plugin-backed graph nodes</li>
+</ul>
+<h2 id="important-design-constraint">Important Design Constraint</h2>
+<p><code>AudioGraph</code> is not completely independent from plugin
+routing, because the engine uses graph/plugin node lookup to:</p>
+<ul>
+<li>deliver incoming UMP to plugin-backed nodes;</li>
+<li>rewrite and dispatch outgoing UMP from plugin-backed nodes;</li>
+<li>connect plugin instances to MIDI-CI function block mappings by
+<code>instanceId</code>.</li>
+</ul>
+<p>However, this does not mean the graph module should remain inside
+<code>uapmd</code>. It means <code>uapmd-graph</code> must support
+plugin-backed nodes as one node category, while keeping built-in nodes
+independent from MIDI-CI concerns.</p>
+<h2 id="proposed-directory-layout">Proposed Directory Layout</h2>
+<pre class="text"><code>source/uapmd-graph/
+  CMakeLists.txt
+  include/uapmd-graph/uapmd-graph.hpp
+  include/uapmd-graph/detail/CommonGraphTypes.hpp
+  include/uapmd-graph/detail/AudioGraphNode.hpp
+  include/uapmd-graph/detail/AudioGraphPluginNode.hpp
+  include/uapmd-graph/detail/AudioGraph.hpp
+  include/uapmd-graph/detail/AudioFullDAGraph.hpp
+  include/uapmd-graph/detail/AudioGraphDescriptor.hpp
+  include/uapmd-graph/detail/AudioGraphRegistry.hpp
+  include/uapmd-graph/detail/AudioGraphBuiltInNodeFactory.hpp
+  include/uapmd-graph/detail/builtin/BuiltInNodeTypes.hpp
+  src/AudioGraph.cpp
+  src/AudioFullDAGraph.cpp
+  src/PluginGraphNode.cpp
+  src/BuiltInGraphNode.cpp
+  src/AudioGraphRegistry.cpp
+  src/builtin/GainNode.cpp
+  src/builtin/ChannelMergerNode.cpp
+  src/builtin/ChannelSplitterNode.cpp</code></pre>
+<p>As with other modules in this repository:</p>
+<ul>
+<li><code>uapmd-graph/uapmd-graph.hpp</code> is the stable top
+header;</li>
+<li><code>detail/*</code> headers are not stable API.</li>
+</ul>
+<h2 id="proposed-core-runtime-api">Proposed Core Runtime API</h2>
+<h3 id="audiographnode"><code>AudioGraphNode</code></h3>
+<p>Generic runtime node interface used by all graph implementations.</p>
+<p>Expected responsibilities:</p>
+<ul>
+<li>expose stable graph-local identity via <code>nodeId()</code></li>
+<li>expose semantic type such as <code>webaudio:GainNode</code> or
+<code>plugin:vst3</code></li>
+<li>expose display name</li>
+<li>support bypass control</li>
+<li>process audio</li>
+<li>report latency and tail</li>
+<li>expose bus configuration</li>
+<li>expose parameter update events</li>
+</ul>
+<p>Plugin-backed nodes and built-in nodes both implement this
+interface.</p>
+<h3 id="audiographpluginnode"><code>AudioGraphPluginNode</code></h3>
+<p>Optional plugin-specific interface for nodes backed by
+<code>AudioPluginInstanceAPI</code>.</p>
+<p>Expected responsibilities:</p>
+<ul>
+<li>expose <code>instanceId()</code></li>
+<li>expose <code>pluginInstance()</code></li>
+<li>accept incoming scheduled UMP events</li>
+<li>support note-off / stop-flush behavior used by the current plugin
+path</li>
+</ul>
+<p>Built-in nodes do not implement this interface.</p>
+<h3 id="audiograph"><code>AudioGraph</code></h3>
+<p>Generic graph runtime interface.</p>
+<p>Expected responsibilities:</p>
+<ul>
+<li>own generic <code>AudioGraphNode</code> objects</li>
+<li>provide node lookup by <code>nodeId</code></li>
+<li>provide plugin-node lookup by <code>instanceId</code></li>
+<li>support simple linear append/remove operations</li>
+<li>process track audio</li>
+<li>expose output bus count, latency, and tail queries</li>
+<li>allow engine-provided callbacks for plugin event routing</li>
+</ul>
+<h3 id="audiofulldagraph"><code>AudioFullDAGraph</code></h3>
+<p>Generic advanced graph topology interface extending
+<code>AudioGraph</code>.</p>
+<p>Expected responsibilities:</p>
+<ul>
+<li>expose full connection list</li>
+<li>connect/disconnect endpoints</li>
+<li>clear connections</li>
+<li>support graph input/output pseudo-nodes</li>
+</ul>
+<h2 id="proposed-descriptor-api">Proposed Descriptor API</h2>
+<p><code>uapmd-graph</code> should own schema-neutral C++ graph
+description types used by both runtime and serialization code.</p>
+<p>Expected descriptor families:</p>
+<ul>
+<li><code>AudioGraphDescriptor</code></li>
+<li><code>AudioGraphNodeDescriptor</code></li>
+<li><code>AudioGraphConnectionDescriptor</code></li>
+<li><code>AudioGraphEndpointDescriptor</code></li>
+<li>scalar parameter / option value types</li>
+</ul>
+<p>These descriptor types are intended to:</p>
+<ul>
+<li>remove plugin-index-based addressing;</li>
+<li>use stable <code>node_id</code> strings;</li>
+<li>represent plugin nodes and Web Audio-inspired built-in nodes in one
+structure;</li>
+<li>allow <code>uapmd-data</code> to serialize graphs without owning DSP
+semantics.</li>
+</ul>
+<h2 id="built-in-node-type-policy">Built-In Node Type Policy</h2>
+<p>Built-in node types should follow public semantics rather than
+UAPMD-specific naming.</p>
+<p>Examples:</p>
+<ul>
+<li><code>webaudio:GainNode</code></li>
+<li><code>webaudio:ChannelMergerNode</code></li>
+<li><code>webaudio:ChannelSplitterNode</code></li>
+</ul>
+<p>Initial implementation target:</p>
+<ul>
+<li><code>webaudio:GainNode</code></li>
+</ul>
+<p>Later candidates:</p>
+<ul>
+<li><code>webaudio:ChannelMergerNode</code></li>
+<li><code>webaudio:ChannelSplitterNode</code></li>
+</ul>
+<h2 id="gain-node-expectations">Gain Node Expectations</h2>
+<p>Initial <code>webaudio:GainNode</code> behavior:</p>
+<ul>
+<li>linear gain parameter</li>
+<li>recommended supported range in UAPMD: <code>0.0 .. 8.0</code></li>
+<li>default value: <code>1.0</code></li>
+<li>host UI may present a dB-oriented slider</li>
+<li>DSP should apply smoothing to avoid zipper noise</li>
+<li>zero latency</li>
+<li>zero tail</li>
+<li>event path is pass-through / no-op for MIDI-CI-specific
+behavior</li>
+</ul>
+<h2 id="engine-integration-policy">Engine Integration Policy</h2>
+<p><code>uapmd-engine</code> should keep ownership of:</p>
+<ul>
+<li>plugin instance lifetime</li>
+<li><code>instanceId</code> allocation</li>
+<li>default track graph policy</li>
+<li>MIDI-CI function block mappings</li>
+<li>plugin output dispatch</li>
+</ul>
+<p><code>uapmd-graph</code> should not own:</p>
+<ul>
+<li>plugin host catalog resolution</li>
+<li>project file IO</li>
+<li>function block manager policy</li>
+</ul>
+<h2 id="migration-strategy">Migration Strategy</h2>
+<p>Everything is done. They are left for history.</p>
+<h3 id="stage-1-create-module">Stage 1: Create Module</h3>
+<ul>
+<li>add <code>source/uapmd-graph</code></li>
+<li>add top header and <code>detail/</code> headers</li>
+<li>add static library target and wire it into the root build</li>
+</ul>
+<h3 id="stage-2-move-existing-graph-code">Stage 2: Move Existing Graph
+Code</h3>
+<ul>
+<li>move current graph headers and implementations from
+<code>uapmd/detail/node-graph/*</code> into
+<code>uapmd-graph</code></li>
+<li>keep behavior unchanged as much as possible</li>
+<li>update includes and link dependencies</li>
+</ul>
+<h3 id="stage-3-generalize-runtime-node-model">Stage 3: Generalize
+Runtime Node Model</h3>
+<ul>
+<li>replace plugin-only runtime node assumptions with generic
+<code>AudioGraphNode</code></li>
+<li>keep plugin-backed node implementation as one concrete node
+type</li>
+<li>preserve current engine behavior for plugin-only graphs</li>
+<li><strong>complete</strong>:
+<ul>
+<li><code>AudioGraphNode</code> and <code>AudioGraph</code> exist in
+<code>uapmd-graph</code></li>
+<li><code>AudioPluginNode</code> derives from
+<code>AudioGraphNode</code></li>
+<li><code>AudioPluginGraph</code> and
+<code>AudioPluginFullDAGraph</code> both derive from
+<code>AudioGraph</code></li>
+<li>both graph implementations expose generic node lookup by
+<code>nodeId</code></li>
+<li>both graph implementations process built-in nodes at the end of the
+audio chain</li>
+</ul></li>
+</ul>
+<h3 id="stage-4-add-descriptor-and-registry-apis">Stage 4: Add
+Descriptor And Registry APIs</h3>
+<ul>
+<li>add descriptor types under <code>uapmd-graph</code></li>
+<li>add built-in node registry and factory interfaces</li>
+<li><strong>complete</strong>:
+<ul>
+<li>graph descriptor structs exist in <code>uapmd-graph</code></li>
+<li>built-in node type constants exist under
+<code>builtin::kGainNodeType</code></li>
+<li><code>AudioGraphRegistry</code> with <code>createDefault()</code>
+registers all built-in factories</li>
+<li>both <code>AudioPluginGraph</code> and
+<code>AudioPluginFullDAGraph</code> use the registry to instantiate
+built-in nodes via <code>appendBuiltInNodeSimple</code></li>
+</ul></li>
+</ul>
+<h3 id="stage-5-implement-webaudiogainnode">Stage 5: Implement
+<code>webaudio:GainNode</code></h3>
+<ul>
+<li>add runtime built-in gain node implementation</li>
+<li>support parameter update path and smoothed DSP</li>
+<li><strong>complete</strong>:
+<ul>
+<li><code>webaudio:GainNode</code> runtime node
+(<code>builtin::GainNode</code>) exists in <code>uapmd-graph</code></li>
+<li>default registry registers the factory; node is created via
+<code>AudioGraphNodeDescriptor</code></li>
+<li>applies per-buffer linear gain ramp (<code>current_gain_</code> →
+<code>target_gain_</code>) to avoid zipper noise</li>
+<li>passes MIDI events through unchanged</li>
+<li><code>SequencerTrack::create</code> appends a terminal gain node
+(node id <code>builtin:track_gain</code>) to every new track's graph
+regardless of graph type</li>
+</ul></li>
+</ul>
+<h3 id="stage-6-update-engine-integration">Stage 6: Update Engine
+Integration</h3>
+<ul>
+<li>let tracks host both plugin-backed nodes and built-in nodes</li>
+<li>keep plugin instance bookkeeping separate from generic graph node
+identity</li>
+<li>maintain plugin routing via plugin-node lookup only</li>
+<li><strong>complete</strong>:
+<ul>
+<li><code>AudioPluginGraph</code> stores generic
+<code>AudioGraphNode</code> objects; plugin nodes are inserted before
+built-in nodes; built-in nodes process last in the serial chain</li>
+<li><code>AudioPluginFullDAGraph</code> stores built-in nodes in a
+dedicated <code>builtin_nodes</code> list separate from the DAG plugin
+nodes; they are applied in order after DAG output routing via
+<code>advanceToNextNode()</code> + <code>processAudio()</code>, matching
+serial-graph semantics</li>
+<li>migration between graph types
+(<code>AudioPluginGraph::migrate</code>) correctly transfers both plugin
+nodes and built-in nodes; <code>adoptNodesFromMigration</code> routes
+each to the appropriate list</li>
+<li><code>SequencerTrack::trackGain()</code> /
+<code>trackGain(double)</code> read and write the gain node found by
+<code>nodeId</code> in whichever graph is currently active</li>
+<li><code>SequencerEngine::processAudio</code> routes the final mix
+through the master track's graph unconditionally so the master
+<code>GainNode</code> always controls the output volume</li>
+<li>uapmd-app exposes a per-track volume slider (non-linear dB taper, 0
+dB at 70% position) and a master track volume slider, both wired to
+<code>SequencerTrack::trackGain</code></li>
+</ul></li>
+</ul>
+<h3 id="stage-7-update-serialization-layer">Stage 7: Update
+Serialization Layer</h3>
+<ul>
+<li>migrate <code>uapmd-data</code> graph serialization toward
+descriptor-based generic nodes and <code>node_id</code>-based
+connections</li>
+<li>retain compatibility handling for legacy graph formats as
+needed</li>
+</ul>
+    </main>
+</div>
+</body>
+</html>

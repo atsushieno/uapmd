@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="api-design-policy">API Design Policy</h1>
+<p>NOTE: we are still not at the stage where API stability matters.</p>
+<h2 id="api-compatibility">API compatibility</h2>
+<ul>
+<li>We will follow semantic versioning.
+<ul>
+<li>We will keep making breaking changes until version 1.0 release.</li>
+<li>At some stage we will start maintaining API stability on every minor
+release (during x in version 0.x).</li>
+</ul></li>
+<li>We might add preprocessing symbols like <code>REMIDY_API</code> at
+some stage.</li>
+</ul>
+<h2 id="abi-compatibility">ABI compatibility</h2>
+<ul>
+<li>Not sure how much we consider as C++ is not for maintaining ABI
+compatibility, but we may start adding C API for ABI compatibility and
+cross-language usability.</li>
+</ul>
+<h2 id="choice-of-languages">Choice of languages</h2>
+<ul>
+<li>We won't switch to Rust at least until there is Tier-1 support for
+Android and <a href="https://github.com/android/ndk/issues/1742">support
+in NDK</a>.</li>
+<li>No macOS-specific code there is not likely Swift adoption as its
+interop is still complicating.
+<ul>
+<li>We use Objective-C++ for now, but might switch to C++ using
+<code>choc::objc</code> for better coding experience (namely on
+CLion).</li>
+</ul></li>
+</ul>
+<h2 id="include-path-stability">Include path stability</h2>
+<p>There are frontend header files such as
+<code>remidy/remidy.hpp</code> and <code>uapmd/uapmd.hpp</code>, and
+only those file paths are stable. Path to an individual include file
+will not be stable.</p>
+<h2 id="third-party-library-types">Third party library types</h2>
+<ul>
+<li>No third party library types are part of stable API.</li>
+<li>Any third party library types exposed in the public API are not
+guaranteed as safe to use.</li>
+<li>For C++ Standard API:
+<ul>
+<li>We use <code>std::filesystem::path</code> for expressing file paths.
+<ul>
+<li>That does not necessarily mean we use it internally; they might be
+translated to third-party libraries in the implementation details.</li>
+</ul></li>
+</ul></li>
+</ul>
+    </main>
+</div>
+</body>
+</html>

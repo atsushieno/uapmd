@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="eventloop-integration-guide-for-linux-ai-slop">EventLoop
+Integration Guide for Linux (AI slop)</h1>
+<p>This documentation was entirely written by Claude Code.</p>
+<h2 id="overview">Overview</h2>
+<p>The <code>remidy::EventLoop</code> provides a framework-independent
+way to dispatch tasks on the GUI thread. On Linux, the default
+implementation now supports both X11 and Wayland, automatically
+detecting the display server at runtime.</p>
+<p><strong>Key Features:</strong></p>
+<ol type="1">
+<li><strong>EventLoopLinux</strong> (default) - Unified event loop
+supporting both X11 and Wayland
+<ul>
+<li>Auto-detects display server via <code>$WAYLAND_DISPLAY</code>
+environment variable</li>
+<li>Falls back to X11 if Wayland initialization fails</li>
+<li>No GTK dependency required</li>
+</ul></li>
+<li><strong>EventLoopLinuxFD</strong> - Bare file descriptor
+implementation for manual integration (legacy)</li>
+<li><strong>EventLoopChoc</strong> - GTK-based implementation via choc
+(fallback option)</li>
+</ol>
+<h2 id="default-implementations">Default Implementations</h2>
+<ul>
+<li><strong>Linux/Unix</strong>: <code>EventLoopLinux</code> - Unified
+X11 + Wayland support with auto-detection</li>
+<li><strong>macOS/Windows</strong>: <code>EventLoopChoc</code> - Uses
+choc message loop</li>
+<li><strong>All platforms</strong>: Alternative implementations
+available via <code>setEventLoop()</code></li>
+</ul>
+<h2 id="using-with-auto-detection-recommended">Using with Auto-Detection
+(Recommended)</h2>
+<p>The EventLoop automatically detects whether you're running on Wayland
+or X11:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-linux.hpp&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Initialize - automatically detects Wayland or X11</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Query which display server was detected</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinux<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>linuxLoop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">auto</span> type <span class="op">=</span> linuxLoop<span class="op">-&gt;</span>getDisplayServerType<span class="op">();</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>type <span class="op">==</span> remidy<span class="op">::</span>DisplayServerType<span class="op">::</span>Wayland<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="bu">std::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Running on Wayland</span><span class="sc">\n</span><span class="st">&quot;</span><span class="op">;</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span>type <span class="op">==</span> remidy<span class="op">::</span>DisplayServerType<span class="op">::</span>X11<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        <span class="bu">std::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Running on X11</span><span class="sc">\n</span><span class="st">&quot;</span><span class="op">;</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="co">// Run the event loop</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>remidy<span class="op">::</span>EventLoop<span class="op">::</span>start<span class="op">();</span></span></code></pre></div>
+<h2 id="using-with-external-event-loops-linux">Using with External Event
+Loops (Linux)</h2>
+<h3 id="getting-access-to-the-file-descriptor">Getting Access to the
+File Descriptor</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-linux.hpp&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Get the Linux implementation</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinux<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>linuxLoop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> fd <span class="op">=</span> linuxLoop<span class="op">-&gt;</span>getEventFileDescriptor<span class="op">();</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Monitor this FD in your event loop</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="integration-with-qt">Integration with Qt</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;QSocketNotifier&gt;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-linux.hpp&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Initialize remidy event loop on the Qt GUI thread</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinuxFD<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>linuxLoop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> fd <span class="op">=</span> linuxLoop<span class="op">-&gt;</span>getEventFileDescriptor<span class="op">();</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="ex">QSocketNotifier</span><span class="op">*</span> notifier <span class="op">=</span> <span class="kw">new</span> <span class="ex">QSocketNotifier</span><span class="op">(</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        fd<span class="op">,</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>        <span class="ex">QSocketNotifier::Read</span><span class="op">,</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>        <span class="ex">qApp</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">);</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    <span class="ex">QObject::connect</span><span class="op">(</span>notifier<span class="op">,</span> <span class="op">&amp;</span><span class="ex">QSocketNotifier::activated</span><span class="op">,</span> <span class="op">[</span>linuxLoop<span class="op">]()</span> <span class="op">{</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>        linuxLoop<span class="op">-&gt;</span>dispatchPendingEvents<span class="op">();</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    <span class="op">});</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">// Now any remidy::EventLoop::enqueueTaskOnMainThread() calls</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="co">// will be dispatched through Qt&#39;s event loop</span></span></code></pre></div>
+<h3 id="integration-with-custom-poll-loop">Integration with Custom
+poll() Loop</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;poll.h&gt;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-linux.hpp&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinuxFD<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> remidyFd <span class="op">=</span> linuxLoop <span class="op">?</span> linuxLoop<span class="op">-&gt;</span>getEventFileDescriptor<span class="op">()</span> <span class="op">:</span> <span class="op">-</span><span class="dv">1</span><span class="op">;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Your custom event loop</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>pollfd fds<span class="op">[</span><span class="dv">2</span><span class="op">];</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>fds<span class="op">[</span><span class="dv">0</span><span class="op">].</span>fd <span class="op">=</span> yourAppFd<span class="op">;</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>fds<span class="op">[</span><span class="dv">0</span><span class="op">].</span>events <span class="op">=</span> POLLIN<span class="op">;</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>fds<span class="op">[</span><span class="dv">1</span><span class="op">].</span>fd <span class="op">=</span> remidyFd<span class="op">;</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>fds<span class="op">[</span><span class="dv">1</span><span class="op">].</span>events <span class="op">=</span> POLLIN<span class="op">;</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="op">(</span>running<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> ret <span class="op">=</span> poll<span class="op">(</span>fds<span class="op">,</span> <span class="dv">2</span><span class="op">,</span> <span class="op">-</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>fds<span class="op">[</span><span class="dv">0</span><span class="op">].</span>revents <span class="op">&amp;</span> POLLIN<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Handle your app events</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>        handleAppEvents<span class="op">();</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>fds<span class="op">[</span><span class="dv">1</span><span class="op">].</span>revents <span class="op">&amp;</span> POLLIN<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Dispatch remidy events</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(</span>linuxLoop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>            linuxLoop<span class="op">-&gt;</span>dispatchPendingEvents<span class="op">();</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="integration-with-glibgio">Integration with GLib/GIO</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;glib.h&gt;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-linux.hpp&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>gboolean remidy_event_callback<span class="op">(</span>GIOChannel<span class="op">*</span> source<span class="op">,</span> GIOCondition condition<span class="op">,</span> gpointer data<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">static_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinuxFD<span class="op">*&gt;(</span>data<span class="op">);</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    linuxLoop<span class="op">-&gt;</span>dispatchPendingEvents<span class="op">();</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> TRUE<span class="op">;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Setup</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span><span class="op">*</span> linuxLoop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopLinuxFD<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>linuxLoop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> fd <span class="op">=</span> linuxLoop<span class="op">-&gt;</span>getEventFileDescriptor<span class="op">();</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    GIOChannel<span class="op">*</span> channel <span class="op">=</span> <span class="va">g_io_channel_unix_new</span><span class="op">(</span>fd<span class="op">);</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="va">g_io_add_watch</span><span class="op">(</span>channel<span class="op">,</span> G_IO_IN<span class="op">,</span> remidy_event_callback<span class="op">,</span> linuxLoop<span class="op">);</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>    <span class="va">g_io_channel_unref</span><span class="op">(</span>channel<span class="op">);</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a><span class="va">g_main_loop_run</span><span class="op">(</span>mainLoop<span class="op">);</span></span></code></pre></div>
+<h2 id="using-the-built-in-x11-event-loop-default-on-linux">Using the
+Built-in X11 Event Loop (Default on Linux)</h2>
+<p>The default implementation on Linux is X11-based and works out of the
+box:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Initialize on main thread (opens X11 display automatically)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Post some tasks from any thread</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>enqueueTaskOnMainThread<span class="op">([]()</span> <span class="op">{</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">std::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Task executed on main thread</span><span class="sc">\n</span><span class="st">&quot;</span><span class="op">;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">});</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Run the event loop (blocks until stop() is called)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// This processes both X11 events and remidy events</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>start<span class="op">();</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="using-with-an-existing-x11-display">Using with an Existing X11
+Display</h3>
+<p>If you already have an X11 display connection:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/priv/event-loop-x11.hpp&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    Display<span class="op">*</span> myDisplay <span class="op">=</span> XOpenDisplay<span class="op">(</span><span class="kw">nullptr</span><span class="op">);</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Get the X11 event loop and give it your display</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">auto</span><span class="op">*</span> x11Loop <span class="op">=</span> <span class="kw">dynamic_cast</span><span class="op">&lt;</span>remidy<span class="op">::</span>EventLoopX11<span class="op">*&gt;(</span>remidy<span class="op">::</span>getEventLoop<span class="op">());</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>x11Loop<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>        x11Loop<span class="op">-&gt;</span>setDisplay<span class="op">(</span>myDisplay<span class="op">);</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>start<span class="op">();</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="switching-to-gtk-based-implementation">Switching to GTK-based
+Implementation</h2>
+<p>If you need the GTK-based choc implementation on Linux:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&quot;remidy/remidy.hpp&quot;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="at">extern</span> remidy<span class="op">::</span>EventLoopChoc choc<span class="op">;</span> <span class="co">// Declared in EventLoop.cpp</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Switch to GTK-based implementation before initialization</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>setEventLoop<span class="op">(&amp;</span>choc<span class="op">);</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>initializeOnUIThread<span class="op">();</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    remidy<span class="op">::</span>EventLoop<span class="op">::</span>start<span class="op">();</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="thread-safety">Thread Safety</h2>
+<ul>
+<li><code>enqueueTaskOnMainThread()</code> is thread-safe and can be
+called from any thread</li>
+<li><code>dispatchPendingEvents()</code> should only be called from the
+main/GUI thread</li>
+<li><code>getEventFileDescriptor()</code> can be called from any thread
+after initialization</li>
+</ul>
+<h2 id="plugin-format-support">Plugin Format Support</h2>
+<h3 id="vst3">VST3</h3>
+<p>VST3 plugins automatically detect the display server type and use the
+appropriate platform type:</p>
+<ul>
+<li><strong>Wayland</strong>: Uses
+<code>kPlatformTypeWaylandSurfaceID</code> via <code>IWaylandHost</code>
+and <code>IWaylandFrame</code> interfaces</li>
+<li><strong>X11</strong>: Uses
+<code>kPlatformTypeX11EmbedWindowID</code> for window embedding</li>
+</ul>
+<p>The host provides <code>IWaylandHost::openWaylandConnection()</code>
+which returns the <code>wl_display*</code> from EventLoopLinux when
+running on Wayland.</p>
+<h3 id="lv2">LV2</h3>
+<p>LV2 plugins support native display server detection with the
+following priority:</p>
+<ul>
+<li><strong>Wayland</strong>: Uses <code>ui:WaylandSurfaceUI</code>
+(<code>http://lv2plug.in/ns/extensions/ui#WaylandSurfaceUI</code>)
+<ul>
+<li>Follows the de-facto standard established by falkTX's
+wayland-audio-plugin-test</li>
+<li>Provides <code>wl_display*</code> via
+<code>"urn:wayland:display"</code> feature</li>
+<li>Provides parent <code>wl_surface*</code> via
+<code>LV2_UI__parent</code> feature</li>
+<li>Plugin returns <code>wl_subsurface*</code> as the widget
+pointer</li>
+<li>Fallback to X11UI via XWayland if WaylandSurfaceUI not
+available</li>
+</ul></li>
+<li><strong>X11</strong>: Uses <code>LV2_UI__X11UI</code> for direct X11
+window embedding</li>
+</ul>
+<p>This implementation follows the community standard approach (see <a
+href="https://github.com/falkTX/wayland-audio-plugin-test">https://github.com/falkTX/wayland-audio-plugin-test</a>)
+to ensure compatibility with plugins that support native Wayland, while
+maintaining support for pure Wayland environments without
+X11/XWayland.</p>
+    </main>
+</div>
+</body>
+</html>

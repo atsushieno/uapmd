@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<p>DRAFT DRAFT DRAFT</p>
+<h1 id="presets-api">Presets API</h1>
+<p>Presets are not supported well in plugin hosting API in general. Most
+JUCE plugins return empty presets, and they work rather like program
+changes. LV2 supports presets fairly well, but they are unordered and
+come without stable numeric IDs.</p>
+<h2 id="preset-types">Preset types</h2>
+<p>We will have to deal with factory presets and user presets.</p>
+<ul>
+<li>Factory presets are read-only. They do not have to exist at
+all.</li>
+<li>User presets may or may not exist. They can be writable, but hosts
+do not have to offer the saving functionality.</li>
+</ul>
+<h2 id="preset-identification">Preset identification</h2>
+<p>In theory, a factory preset identity can be stable i.e. users can
+expect that the identity is backward-compatible and user music projects
+can leave the references to those factory presets.</p>
+<p>User preset identity cannot be assured as backward-compatible, so
+when a music project uses some presets they should be stored as states
+instead of references to the presets.</p>
+<h2 id="relation-to-presets-and-program-lists">Relation to presets and
+program lists</h2>
+<ul>
+<li>VST3 has distinct concepts on selecting a program. Their presets API
+works more like a state, while their program change with UnitInfo API
+works more like a parameter.</li>
+</ul>
+<h2 id="listing-presets">Listing presets</h2>
+<ul>
+<li>VST3 presets are stored at certain directories: <a
+href="https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Preset+Locations.html">https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Preset+Locations.html</a>
+<ul>
+<li>vst3_public_sdk has <code>vstpresetfile.h</code> API and
+implementation.</li>
+</ul></li>
+<li>CLAP is similar, using presets factory API: <a
+href="https://github.com/free-audio/clap/blob/main/include/clap/factory/preset-discovery.h">https://github.com/free-audio/clap/blob/main/include/clap/factory/preset-discovery.h</a></li>
+<li>AU presets can be acquired in different ways for factory and user:
+<a
+href="https://developer.apple.com/library/archive/technotes/tn2157/_index.html#//apple_ref/doc/uid/DTS40011953">https://developer.apple.com/library/archive/technotes/tn2157/_index.html#//apple_ref/doc/uid/DTS40011953</a>
+<ul>
+<li>factory presets are properties:
+<code>kAudioUnitProperty_FactoryPresets</code></li>
+<li>custom presets are loaded more like other plugin formats using files
+in certain directories</li>
+</ul></li>
+</ul>
+<h2 id="loading-presets">Loading presets</h2>
+<p>VST3, AU, LV2 presets can be loaded as states.</p>
+<p>The same principle goes for CLAP, but CLAP presets needs to be loaded
+using preset-load extension, because the factory API provides different
+identification for factory presets and user presets, and thus requires
+different arguments: <a
+href="https://github.com/free-audio/clap/blob/main/include/clap/ext/preset-load.h">https://github.com/free-audio/clap/blob/main/include/clap/ext/preset-load.h</a></p>
+<p>VST3 UnitInfo-based program changes are settable via parameters
+API.</p>
+<h2 id="things-to-improve">Things to improve</h2>
+<p>The ideal presets API should have:</p>
+<ul>
+<li>expose different characteristics for factory presets vs. user
+presets
+<ul>
+<li>factory presets can be identified by stable ID / cannot change
+later</li>
+<li>user presets can be dynamically created and saved / have to save and
+load full reproducible resources</li>
+</ul></li>
+</ul>
+    </main>
+</div>
+</body>
+</html>

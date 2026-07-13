@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<p>WIP WIP WIP</p>
+<h1 id="transport-control">Transport control</h1>
+<h2 id="abstract">Abstract</h2>
+<p>The sequencer is supposed to deal with multiple tracks, and each
+track contains multiple audio or MIDI(2) clips. They can be relocated,
+which brings in various complicated situation for MIDI clips:</p>
+<ul>
+<li>The clip can suddenly go out. It must stop any ongoing MIDI notes.
+Any continuous operations must terminate.</li>
+<li>It suddenly starts playing in the middle of the clip. It must
+enqueue all the control change values but ideally after collecting only
+the "latest" values.</li>
+<li>We cannot simply enqueue all the events in the clip because they can
+be moved.</li>
+</ul>
+<p>Audio clips can also bring in some complication:</p>
+<ul>
+<li>Not all the audio clips can be immediately playable. There should be
+prefetched from file stream. Moving the clip position can result in
+sudden transition to "must prefetch" state.</li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<p>There can be various operations that affect transport control:</p>
+<ul>
+<li>user moves a clip</li>
+<li>user inserts a clip</li>
+<li>user removes a clip</li>
+<li>user changes time-stretching / audio warping on a clip</li>
+<li>user removes a track</li>
+<li>user clones a track</li>
+<li>user pastes clip selections into a new location
+<ul>
+<li>onto different track</li>
+</ul></li>
+<li>user changes playback tempo</li>
+<li>user changes tempo on the master track</li>
+</ul>
+<h2 id="implementation">Implementation</h2>
+<p>We need a handful of distinct layers:</p>
+<ul>
+<li>audio/MIDI dispatcher: pretty much like
+<code>choc::audio::AudioMIDIBlockDispatcher</code> but we need support
+for UMP</li>
+<li>clip/track manager: organizes tracks and clips in each track, as
+current (as of v0.1.3) <code>player</code> API is designed. And it has
+to determine which clips are in progress</li>
+<li>transport controller: manages play/pause/stop state</li>
+</ul>
+<h2 id="achieving-realtime-safety">Achieving realtime safety</h2>
+<p><code>SequencerEngine::processAudio()</code> implements the
+processing of timeline tracks to retrieve audio and MIDI buffers, then
+to send to <code>AudioPluginGraph::processAudio()</code>.
+<code>AudioPluginGraph::processAudio()</code> is defined and designed to
+be realtime safe. <code>SequencerEngine::processAudio()</code> too, but
+audio data pump mechanism works so that it has the audio and event
+streams ready without non-RT-safe fetch operations, which are run on
+non-audio thread.</p>
+    </main>
+</div>
+</body>
+</html>
