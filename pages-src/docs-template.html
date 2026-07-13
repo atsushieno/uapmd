@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$if(title)$$title$ · $endif$UAPMD Documentation</title>
+    <link rel="stylesheet" href="$css_path$">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="$root_path$../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="$root_path$">Documentation</a>
+            <a class="nav-link" href="$root_path$../playground/">Playground</a>
+            <a class="nav-link" href="$root_path$../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+$body$
+    </main>
+</div>
+</body>
+</html>

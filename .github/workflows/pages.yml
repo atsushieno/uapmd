@@ -88,19 +88,19 @@ jobs:
     - name: checkout
       uses: actions/checkout@v6
 
-    - name: install doxygen
+    - name: install Pandoc
       run: |
         sudo apt-get update
-        sudo apt-get install -y doxygen
+        sudo apt-get install -y pandoc
 
-    - name: build project documentation html
-      run: doxygen Doxyfile.docs
+    - name: build project documentation site
+      run: bash scripts/build-project-docs.sh docs pages-src docs-site
 
     - name: upload project documentation
       uses: actions/upload-artifact@v6
       with:
         name: pages-project-docs
-        path: docs-site/html
+        path: docs-site
 
   deploy:
     name: deploy to gh-pages
