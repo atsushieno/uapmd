@@ -15,6 +15,7 @@ The intended published URLs are:
 - `/playground/` for the playground landing page
 - `/playground/latest/` for the current playable Emscripten build
 - `/playground/<tag>/` for archived playable Emscripten builds
+- `/docs/` for the current project documentation
 - `/api/` for the API references landing page
 - `/api/latest/` for the current Doxygen API reference set
 - `/api/<tag>/` for archived Doxygen API reference sets
@@ -22,6 +23,10 @@ The intended published URLs are:
 The GitHub Actions workflow at `.github/workflows/pages.yml` is responsible for
 building the Emscripten artifacts and publishing this site tree to the
 repository's `gh-pages` branch.
+
+The workflow runs automatically for pushes to `main` and for tags. Configure
+the repository's GitHub Pages source once to deploy from the `gh-pages` branch
+at the repository root.
 
 Only the landing/index pages come from `pages-src/`. The actual playable app
 published under `/playground/latest/` and `/playground/<tag>/` is copied from

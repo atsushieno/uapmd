@@ -1,6 +1,9 @@
 name: publish pages
 
 on:
+  push:
+    branches: [main]
+    tags: ['*']
   workflow_dispatch:
     inputs:
       version_tag:
@@ -78,9 +81,30 @@ jobs:
         name: pages-api-docs
         path: apidocs/html
 
+  build-project-docs:
+    name: build project documentation for pages
+    runs-on: ubuntu-24.04
+    steps:
+    - name: checkout
+      uses: actions/checkout@v6
+
+    - name: install doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen
+
+    - name: build project documentation html
+      run: doxygen Doxyfile.docs
+
+    - name: upload project documentation
+      uses: actions/upload-artifact@v6
+      with:
+        name: pages-project-docs
+        path: docs-site/html
+
   deploy:
     name: deploy to gh-pages
-    needs: [build-wasm, build-api-docs]
+    needs: [build-wasm, build-api-docs, build-project-docs]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -104,6 +128,12 @@ jobs:
         name: pages-api-docs
         path: pages-api-docs
 
+    - name: download project documentation
+      uses: actions/download-artifact@v7
+      with:
+        name: pages-project-docs
+        path: pages-project-docs
+
     - name: prepare gh-pages checkout
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,7 +148,7 @@ jobs:
 
     - name: update published site tree
       run: |
-        bash scripts/prepare-gh-pages-site.sh pages-src pages-wasm pages-api-docs publish "${VERSION_TAG}"
+        bash scripts/prepare-gh-pages-site.sh pages-src pages-wasm pages-api-docs pages-project-docs publish "${VERSION_TAG}"
 
     - name: commit and push
       env:

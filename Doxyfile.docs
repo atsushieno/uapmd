@@ -1,0 +1,13 @@
+# Project documentation configuration for GitHub Pages.
+# The API-reference configuration remains in Doxyfile so it can be versioned
+# independently from these living project guides.
+
+@INCLUDE = Doxyfile
+
+PROJECT_NAME = "UAPMD Documentation"
+PROJECT_NUMBER =
+OUTPUT_DIRECTORY = docs-site
+INPUT = docs
+IMAGE_PATH = docs/images
+USE_MDFILE_AS_MAINPAGE = docs/README.md
+GENERATE_LATEX = NO

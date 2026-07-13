@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 4 || $# -gt 5 ]]; then
+if [[ $# -lt 5 || $# -gt 6 ]]; then
     cat >&2 <<'HELP'
-Usage: prepare-gh-pages-site.sh <source-dir> <playground-artifacts-dir> <api-artifacts-dir> <target-dir> [version-tag]
+Usage: prepare-gh-pages-site.sh <source-dir> <playground-artifacts-dir> <api-artifacts-dir> <project-docs-artifacts-dir> <target-dir> [version-tag]
 HELP
     exit 1
 fi
@@ -11,8 +11,9 @@ fi
 SOURCE_DIR="$1"
 PLAYGROUND_ARTIFACTS_DIR="$2"
 API_ARTIFACTS_DIR="$3"
-TARGET_DIR="$4"
-VERSION_TAG="${5:-}"
+PROJECT_DOCS_ARTIFACTS_DIR="$4"
+TARGET_DIR="$5"
+VERSION_TAG="${6:-}"
 
 ROOT_INDEX="${SOURCE_DIR}/index.html"
 ROOT_STYLES="${SOURCE_DIR}/styles.css"
@@ -29,6 +30,11 @@ fi
 
 if [[ ! -d "${API_ARTIFACTS_DIR}" ]]; then
     echo "error: api artifacts directory does not exist: ${API_ARTIFACTS_DIR}" >&2
+    exit 1
+fi
+
+if [[ ! -d "${PROJECT_DOCS_ARTIFACTS_DIR}" ]]; then
+    echo "error: project documentation artifacts directory does not exist: ${PROJECT_DOCS_ARTIFACTS_DIR}" >&2
     exit 1
 fi
 
@@ -49,9 +55,20 @@ if [[ -z "${API_ARTIFACT_INDEX}" ]]; then
 fi
 API_ARTIFACT_ROOT="$(dirname "${API_ARTIFACT_INDEX}")"
 
+PROJECT_DOCS_ARTIFACT_INDEX="$(find "${PROJECT_DOCS_ARTIFACTS_DIR}" -path '*/html/index.html' | head -n 1)"
+if [[ -z "${PROJECT_DOCS_ARTIFACT_INDEX}" ]]; then
+    PROJECT_DOCS_ARTIFACT_INDEX="$(find "${PROJECT_DOCS_ARTIFACTS_DIR}" -type f -name 'index.html' | head -n 1)"
+fi
+if [[ -z "${PROJECT_DOCS_ARTIFACT_INDEX}" ]]; then
+    echo "error: missing project documentation index.html under ${PROJECT_DOCS_ARTIFACTS_DIR}" >&2
+    exit 1
+fi
+PROJECT_DOCS_ARTIFACT_ROOT="$(dirname "${PROJECT_DOCS_ARTIFACT_INDEX}")"
+
 mkdir -p "${TARGET_DIR}" \
     "${TARGET_DIR}/playground" \
-    "${TARGET_DIR}/api"
+    "${TARGET_DIR}/api" \
+    "${TARGET_DIR}/docs"
 
 copy_static_file() {
     local src="$1"
@@ -112,6 +129,7 @@ render_playground_index_page() {
         <a class="brand" href="../">uapmd web</a>
         <div class="nav-links">
             <a class="nav-link" href="./">Playground</a>
+            <a class="nav-link" href="../docs/">Documentation</a>
             <a class="nav-link" href="../api/">API references</a>
         </div>
     </nav>
@@ -184,6 +202,7 @@ render_api_index_page() {
         <a class="brand" href="../">uapmd web</a>
         <div class="nav-links">
             <a class="nav-link" href="../playground/">Playground</a>
+            <a class="nav-link" href="../docs/">Documentation</a>
             <a class="nav-link" href="./">API references</a>
         </div>
     </nav>
@@ -229,6 +248,8 @@ mkdir -p "${TARGET_DIR}/api"
 copy_tree "${PLAYGROUND_ARTIFACT_ROOT}" "${TARGET_DIR}/playground/latest"
 
 copy_tree "${API_ARTIFACT_ROOT}" "${TARGET_DIR}/api/latest"
+
+copy_tree "${PROJECT_DOCS_ARTIFACT_ROOT}" "${TARGET_DIR}/docs"
 
 if [[ -n "${VERSION_TAG}" ]]; then
     NORMALIZED_VERSION_TAG="$(normalize_version_tag "${VERSION_TAG}")"
