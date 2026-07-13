@@ -99,17 +99,12 @@ namespace uapmd {
             if (auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(node)) {
                 auto instanceId = pluginNode->instanceId();
 
-                pluginNode->drainQueueToPending();
-
                 uint8_t group = 0xFF;
                 if (group_resolver_)
                     group = group_resolver_(instanceId);
 
                 auto& eventIn = process.eventIn();
-                if (pluginNode->consumeStopFlushRequest())
-                    pluginNode->prepareStopFlush(eventIn, group);
-                else
-                    pluginNode->fillEventBufferForGroup(eventIn, group);
+                pluginNode->prepareEventInput(eventIn, group);
 
                 bool bypassed = pluginNode->bypassed();
                 if (!bypassed)
@@ -120,10 +115,6 @@ namespace uapmd {
                         process.advanceToNextNode();
                     continue;
                 }
-
-                // Keep the active-note bitmask in sync with what the plugin actually
-                // receives, so a stop flush can emit genuine note-offs later.
-                pluginNode->trackInputEvents(eventIn);
 
                 auto status = pluginNode->processAudio(process);
                 if (status != 0)

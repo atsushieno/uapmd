@@ -109,7 +109,14 @@ namespace uapmd {
         }
 
         int32_t processAudio(AudioProcessContext& process) override {
-            return instance_ ? instance_->processAudio(process) : 0;
+            if (!instance_)
+                return 0;
+            // Keep the active-note bitmask in sync with what the plugin actually
+            // receives, so a stop flush can emit genuine note-offs later. Doing this
+            // here (rather than in each graph implementation) keeps the event-delivery
+            // contract graph-agnostic.
+            trackInputEvents(process.eventIn());
+            return instance_->processAudio(process);
         }
 
         uint32_t latencyInSamples() const override {
@@ -178,7 +185,21 @@ namespace uapmd {
             stop_flush_requested_.store(true, std::memory_order_release);
         }
 
-        // Internal methods for AudioPluginGraph to use (called from RT thread)
+        // Internal methods for graph implementations to use (called from RT thread)
+
+        // Single graph-agnostic entry point for per-cycle event preparation: drains the
+        // cross-thread queue, then fills eventIn with either the stop flush (when one
+        // was requested via requestStopFlush()) or the pending events for `group`.
+        // Every graph implementation must call this exactly once per node per cycle so
+        // the stop-flush contract cannot be missed.
+        size_t prepareEventInput(EventSequence& eventIn, uint8_t group) {
+            drainQueueToPending();
+            if (consumeStopFlushRequest()) {
+                prepareStopFlush(eventIn, group);
+                return eventIn.position();
+            }
+            return fillEventBufferForGroup(eventIn, group);
+        }
 
         void drainQueueToPending() {
             umppi::Ump u128;
