@@ -28,6 +28,7 @@
 #include <umppi/umppi.hpp>
 #include <remidy/detail/event-loop.hpp>
 #include "uapmd/uapmd.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #ifdef UAPMD_HAS_ARA
 #include <uapmd-ara/uapmd-ara.hpp>
@@ -2874,32 +2875,33 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 }
 
 void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
-    // Master-track plugins own AppModel-level device state, so remove them through
-    // the normal AppModel path before delegating to the engine's project loader.
-    if (auto* mt = sequencer_.engine()->masterTrack()) {
-        auto ids = mt->orderedInstanceIds();
-        for (int32_t instanceId : ids)
-            removePluginInstance(instanceId);
+    // Validate before replacing the current project: removePluginInstance() is
+    // destructive, while TimelineFacade::loadProject() otherwise performs this
+    // validation internally before touching the existing timeline.
+    if (!UapmdProjectDataReader::read(projectFile)) {
+        callback({false, "Failed to parse project file"});
+        return;
     }
 
-    // Announce all current plugin instances as removed before the engine discards them.
-    // This lets UI subscribers (instanceDetails windows, plugin UI windows, etc.) clean up
-    // while the engine objects are still alive.
-    {
-        // Regular track plugins (pluginHost() may be null in RemoteEngineProxy mode).
-        if (auto* host = sequencer_.engine()->pluginHost()) {
-            for (int32_t instanceId : host->instanceIds()) {
-                if (auto* instance = host->getInstance(instanceId)) {
-                    std::lock_guard lock(dirtyStateMutex_);
-                    if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
-                        instance->removeDirtyStateListener(it->second);
-                        plugin_dirty_listener_ids_.erase(it);
-                    }
-                    dirty_plugins_.erase(instanceId);
-                }
-                for (auto& cb : instanceRemoved)
-                    cb(instanceId);
-            }
+    // Explicitly tear down every existing instance before replacing the timeline.
+    // This destroys each plugin UI while its ContainerWindow is still alive, then
+    // emits instanceRemoved so UI subscribers may safely release that container.
+    std::unordered_set<int32_t> removedInstanceIds;
+    if (auto* mt = sequencer_.engine()->masterTrack()) {
+        auto ids = mt->orderedInstanceIds();
+        for (int32_t instanceId : ids) {
+            if (removedInstanceIds.insert(instanceId).second)
+                removePluginInstance(instanceId);
+        }
+    }
+
+    // Snapshot before removing, since removePluginInstance() erases host entries.
+    // pluginHost() may be null in RemoteEngineProxy mode.
+    if (auto* host = sequencer_.engine()->pluginHost()) {
+        auto ids = host->instanceIds();
+        for (int32_t instanceId : ids) {
+            if (removedInstanceIds.insert(instanceId).second)
+                removePluginInstance(instanceId);
         }
     }
 
