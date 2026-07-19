@@ -345,6 +345,15 @@ namespace uapmd {
             std::atomic_store_explicit(
                 &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
         }
+        void notifyTrackAudioContentChanged(uapmd_track_index_t trackIndex) {
+            auto extensions = std::atomic_load_explicit(
+                &track_audio_processor_extensions_, std::memory_order_acquire);
+            if (!extensions)
+                return;
+            for (auto* extension : *extensions)
+                if (extension)
+                    extension->audioContentChanged(*this, trackIndex);
+        }
         void setTrackOutputHandler(TrackOutputHandler handler) override {
             track_output_handler_ = std::move(handler);
         }
@@ -1804,6 +1813,7 @@ namespace uapmd {
             return;
         }
         instance->setParameterValue(index, value);
+        notifyTrackAudioContentChanged(findTrackIndexForInstance(instanceId));
         remidy::Logger::global()->logInfo(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
     }
 

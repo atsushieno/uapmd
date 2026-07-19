@@ -28,6 +28,10 @@ public:
         uapmd_track_index_t trackIndex,
         SequencerTrack& track,
         AudioProcessContext& context) = 0;
+
+    // Called from a non-audio thread after a change that can alter a track's
+    // rendered output, such as a plugin parameter write.
+    virtual void audioContentChanged(SequencerEngine&, uapmd_track_index_t) {}
 };
 
 } // namespace uapmd

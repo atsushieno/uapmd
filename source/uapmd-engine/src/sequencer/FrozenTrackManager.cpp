@@ -59,13 +59,24 @@ void FrozenTrackAudioProcessorExtension::processAudio(
     manager_.processAudio(engine, trackIndex, track, context);
 }
 
+void FrozenTrackAudioProcessorExtension::audioContentChanged(
+    SequencerEngine&, uapmd_track_index_t trackIndex) {
+    manager_.audioContentChanged(trackIndex);
+}
+
 FrozenTrackManager::FrozenTrackManager(TimelineFacade& timeline)
     : timeline_(timeline)
     , project_serialization_extension_(std::make_unique<FrozenTrackManagerProjectSerializationExtension>(*this))
     , audio_processor_extension_(std::make_unique<FrozenTrackAudioProcessorExtension>(*this)) {
+    project_document_event_listener_token_ =
+        timeline_.projectDocumentEvents().addProjectDocumentEventListener(*this);
 }
 
-FrozenTrackManager::~FrozenTrackManager() = default;
+FrozenTrackManager::~FrozenTrackManager() {
+    if (project_document_event_listener_token_ != 0)
+        timeline_.projectDocumentEvents().removeProjectDocumentEventListener(
+            project_document_event_listener_token_);
+}
 
 FrozenTrackManagerProjectSerializationExtension& FrozenTrackManager::projectSerializationExtension() {
     return *project_serialization_extension_;
@@ -88,6 +99,12 @@ void FrozenTrackManager::processAudio(
     SequencerEngine&, uapmd_track_index_t, SequencerTrack&, AudioProcessContext&) {
 }
 
+void FrozenTrackManager::audioContentChanged(int32_t trackIndex) {
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (!referenceId.empty())
+        invalidateTrack(referenceId);
+}
+
 int FrozenTrackManager::autoFreezeMinutes() const {
     std::lock_guard lock(mutex_);
     return auto_freeze_minutes_;
@@ -99,6 +116,11 @@ bool FrozenTrackManager::setAutoFreezeMinutes(int minutes) {
     if (auto_freeze_minutes_ == clamped)
         return false;
     auto_freeze_minutes_ = clamped;
+    for (const auto& [referenceId, policy] : policies_by_track_reference_) {
+        if (policy != FreezePolicy::Auto)
+            continue;
+        runtime_by_track_reference_[referenceId].state = RuntimeState::Waiting;
+    }
     return true;
 }
 
@@ -121,21 +143,131 @@ bool FrozenTrackManager::setFreezePolicyForTrack(int32_t trackIndex, FreezePolic
     std::lock_guard lock(mutex_);
     const auto existing = policies_by_track_reference_.find(referenceId);
     if (policy == FreezePolicy::Off) {
-        if (existing == policies_by_track_reference_.end())
-            return false;
-        policies_by_track_reference_.erase(existing);
-        return true;
+        const bool hadPolicy = existing != policies_by_track_reference_.end();
+        if (hadPolicy)
+            policies_by_track_reference_.erase(existing);
+        const auto runtimeIt = runtime_by_track_reference_.find(referenceId);
+        if (runtimeIt == runtime_by_track_reference_.end())
+            return hadPolicy;
+        const bool changed = runtimeIt->second.state != RuntimeState::Live;
+        if (hadPolicy || changed)
+            ++runtimeIt->second.invalidation_generation;
+        runtimeIt->second.state = RuntimeState::Live;
+        return hadPolicy || changed;
     }
     if (existing != policies_by_track_reference_.end() && existing->second == policy)
         return false;
     policies_by_track_reference_[referenceId] = policy;
+    auto& runtime = runtime_by_track_reference_[referenceId];
+    runtime.state = stateForPolicy(policy);
+    ++runtime.invalidation_generation;
     return true;
 }
 
 bool FrozenTrackManager::unfreezeTrack(int32_t trackIndex) {
-    if (freezePolicyForTrack(trackIndex) != FreezePolicy::On)
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (referenceId.empty())
         return false;
-    return setFreezePolicyForTrack(trackIndex, FreezePolicy::Off);
+
+    std::lock_guard lock(mutex_);
+    const auto policy = policies_by_track_reference_.contains(referenceId)
+        ? policies_by_track_reference_.at(referenceId)
+        : FreezePolicy::Off;
+    if (policy == FreezePolicy::On)
+        policies_by_track_reference_.erase(referenceId);
+    auto& runtime = runtime_by_track_reference_[referenceId];
+    const bool changed = policy == FreezePolicy::On || runtime.state != RuntimeState::Live;
+    runtime.state = RuntimeState::Live;
+    ++runtime.invalidation_generation;
+    return changed;
+}
+
+FrozenTrackManager::RuntimeState FrozenTrackManager::runtimeStateForTrack(int32_t trackIndex) const {
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (referenceId.empty())
+        return RuntimeState::Live;
+
+    std::lock_guard lock(mutex_);
+    if (auto it = runtime_by_track_reference_.find(referenceId); it != runtime_by_track_reference_.end())
+        return it->second.state;
+    return RuntimeState::Live;
+}
+
+uint64_t FrozenTrackManager::invalidationGenerationForTrack(int32_t trackIndex) const {
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (referenceId.empty())
+        return 0;
+
+    std::lock_guard lock(mutex_);
+    if (auto it = runtime_by_track_reference_.find(referenceId); it != runtime_by_track_reference_.end())
+        return it->second.invalidation_generation;
+    return 1;
+}
+
+void FrozenTrackManager::projectLoaded(const ProjectDocumentEvent&) {
+    std::lock_guard lock(mutex_);
+    runtime_by_track_reference_.clear();
+    for (const auto& [referenceId, policy] : policies_by_track_reference_)
+        runtime_by_track_reference_[referenceId].state = stateForPolicy(policy);
+}
+
+void FrozenTrackManager::projectClosing(const ProjectDocumentEvent&) {
+    std::lock_guard lock(mutex_);
+    runtime_by_track_reference_.clear();
+}
+
+void FrozenTrackManager::trackAdded(const ProjectDocumentEvent& event) {
+    if (!event.trackId())
+        return;
+    std::lock_guard lock(mutex_);
+    runtime_by_track_reference_[*event.trackId()].state = RuntimeState::Live;
+}
+
+void FrozenTrackManager::trackRemoved(const ProjectDocumentEvent& event) {
+    if (!event.trackId())
+        return;
+    std::lock_guard lock(mutex_);
+    policies_by_track_reference_.erase(*event.trackId());
+    runtime_by_track_reference_.erase(*event.trackId());
+}
+
+void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
+    if (event.trackId())
+        invalidateTrack(*event.trackId());
+    else
+        invalidateAllTracks();
+}
+
+void FrozenTrackManager::clipAdded(const ProjectDocumentEvent& event) {
+    trackChanged(event);
+}
+
+void FrozenTrackManager::clipRemoved(const ProjectDocumentEvent& event) {
+    trackChanged(event);
+}
+
+void FrozenTrackManager::clipChanged(const ProjectDocumentEvent& event) {
+    trackChanged(event);
+}
+
+void FrozenTrackManager::audioSourceAdded(const ProjectDocumentEvent&) {
+    invalidateAllTracks();
+}
+
+void FrozenTrackManager::audioSourceRemoved(const ProjectDocumentEvent&) {
+    invalidateAllTracks();
+}
+
+void FrozenTrackManager::audioSourceChanged(const ProjectDocumentEvent&) {
+    invalidateAllTracks();
+}
+
+void FrozenTrackManager::pluginGraphChanged(const ProjectDocumentEvent& event) {
+    trackChanged(event);
+}
+
+void FrozenTrackManager::masterTrackChanged(const ProjectDocumentEvent&) {
+    invalidateAllTracks();
 }
 
 bool FrozenTrackManager::saveProjectExtensionData(ProjectSerializationWriteContext& context, std::string& error) {
@@ -167,6 +299,7 @@ bool FrozenTrackManager::loadProjectExtensionData(ProjectSerializationReadContex
         std::lock_guard lock(mutex_);
         auto_freeze_minutes_ = kDefaultAutoFreezeMinutes;
         policies_by_track_reference_.clear();
+        runtime_by_track_reference_.clear();
         error.clear();
         return true;
     }
@@ -210,7 +343,45 @@ bool FrozenTrackManager::loadProjectExtensionData(ProjectSerializationReadContex
     std::lock_guard lock(mutex_);
     auto_freeze_minutes_ = autoFreezeMinutes;
     policies_by_track_reference_ = std::move(policies);
+    runtime_by_track_reference_.clear();
+    for (const auto& [referenceId, policy] : policies_by_track_reference_)
+        runtime_by_track_reference_[referenceId].state = stateForPolicy(policy);
     return true;
+}
+
+void FrozenTrackManager::invalidateTrack(std::string_view trackReferenceId) {
+    if (trackReferenceId.empty())
+        return;
+    std::lock_guard lock(mutex_);
+    const std::string referenceId(trackReferenceId);
+    const auto policyIt = policies_by_track_reference_.find(referenceId);
+    const auto policy = policyIt != policies_by_track_reference_.end()
+        ? policyIt->second
+        : FreezePolicy::Off;
+    auto& runtime = runtime_by_track_reference_[referenceId];
+    ++runtime.invalidation_generation;
+    runtime.state = stateForPolicy(policy);
+}
+
+void FrozenTrackManager::invalidateAllTracks() {
+    std::lock_guard lock(mutex_);
+    for (auto& [referenceId, runtime] : runtime_by_track_reference_) {
+        const auto policy = policies_by_track_reference_.contains(referenceId)
+            ? policies_by_track_reference_.at(referenceId)
+            : FreezePolicy::Off;
+        ++runtime.invalidation_generation;
+        runtime.state = stateForPolicy(policy);
+    }
+    for (const auto& [referenceId, policy] : policies_by_track_reference_) {
+        if (runtime_by_track_reference_.contains(referenceId))
+            continue;
+        auto& runtime = runtime_by_track_reference_[referenceId];
+        runtime.state = stateForPolicy(policy);
+    }
+}
+
+FrozenTrackManager::RuntimeState FrozenTrackManager::stateForPolicy(FreezePolicy policy) const {
+    return policy == FreezePolicy::Off ? RuntimeState::Live : RuntimeState::Waiting;
 }
 
 std::string FrozenTrackManager::trackReferenceIdForIndex(int32_t trackIndex) const {

@@ -135,6 +135,8 @@ public:
     virtual void processAudio(
         SequencerEngine&, uapmd_track_index_t, SequencerTrack&,
         AudioProcessContext&) = 0;
+    virtual void audioContentChanged(
+        SequencerEngine&, uapmd_track_index_t) {}
 };
 
 virtual void addTrackAudioProcessorExtension(
@@ -146,8 +148,11 @@ virtual void removeTrackAudioProcessorExtension(
 The engine invokes extensions immediately before `track.graph().processAudio`.
 Both methods receive the owning `SequencerEngine`, so an extension can make a
 practical per-track decision using engine state rather than only the
-audio-process context. This is the only engine change currently required for
-the first implementation.
+audio-process context. The extension also receives the non-realtime
+`audioContentChanged()` notification for output-affecting parameter writes, so
+it can invalidate a cached result without coupling that behavior to a specific
+extension. These are the only engine changes currently required for the first
+implementation.
 
 The current project-wide offline renderer is not the implementation mechanism:
 it owns transport state and writes a complete project WAV. Track freezing needs
@@ -270,7 +275,10 @@ best-effort and must never make saving fail.
 - [x] Implement the project serialization extension and register it.
 - [x] Implement the Auto Freeze Minutes Settings control and manifest field.
 - [x] Implement `FrozenTrackManager` policy ownership and track controls.
-- [ ] Implement invalidation tracking and operation queues.
+- [x] Implement project-document-event invalidation and per-track generation
+  tracking.
+- [x] Implement plugin parameter invalidation.
+- [ ] Implement plugin state invalidation and operation queues.
 - [ ] Implement per-track offline rendering.
 - [x] Add the optional pre-graph audio-processor extension seam in the engine.
 - [ ] Implement cached-audio substitution through that seam.
