@@ -194,6 +194,7 @@ target_sources(uapmd-engine PRIVATE
         src/devices/LibreMidiIODevice.cpp
         src/devices/MidiIODevice.cpp
         src/sequencer/LatencyCompensationManager.cpp
+        src/sequencer/FrozenTrackManager.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp

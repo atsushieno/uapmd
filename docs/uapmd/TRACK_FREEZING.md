@@ -1,8 +1,10 @@
-# Track Freezing
+# Track Freezing (AI slop)
 
 ## Status
 
-Design in progress. No track-freezing implementation has landed yet.
+Design and implementation in progress. The policy, project-extension, and
+pre-graph extension foundations have landed; rendering and cache playback have
+not yet been implemented.
 
 This document records the intended behavior and implementation decisions for
 uapmd-app. Update the progress checklist as work is completed, and update the
@@ -90,9 +92,11 @@ generation is still current.
 
 `FrozenTrackManager` owns all track-freezing behavior: policy/runtime state,
 cache lookup and maintenance, invalidation, rendering jobs, and the playback
-substitution decision. Its project manifest is implemented by sources local to
-uapmd-app and uses `ProjectSerializationExtension`; no core project data class
-is extended.
+substitution decision. Its two separately owned, public extensions are
+`FrozenTrackManagerProjectSerializationExtension` and
+`FrozenTrackAudioProcessorExtension`. Callers can unregister and re-register
+either concrete extension with its respective non-owning registry; no core
+project data class is extended.
 
 The engine remains independent of track freezing. If `FrozenTrackManager` is
 not created, disabled, or has no frozen output for a track, engine processing
@@ -107,13 +111,13 @@ prevents contradictory requests such as edit -> freeze -> edit -> unfreeze
 from restoring an obsolete render.
 
 The realtime engine needs one narrow optional connection point before it
-invokes a track graph's `processAudio()`. It should let an audio-processor
-extension handle a track's output context and return `true`; the engine then
-skips the ordinary graph call for that block. `FrozenTrackManager` is the only
-initial consumer: for a valid `Frozen` track, it writes cached audio into the
-output context and reports that it handled the block. Returning `false` keeps
-the existing graph call unchanged. Normal gain, routing, latency compensation,
-master processing, and final mixing continue unchanged.
+invokes a track graph's `processAudio()`. It maintains an ordered list of
+audio-processor extensions. For each track block, it asks each extension if it
+should process the block; the first one that returns `true` processes it and
+stops the iteration. If none opt in, the existing graph call is unchanged.
+`FrozenTrackManager` is the only initial consumer: for a valid `Frozen` track,
+it writes cached audio into the output context. Normal gain, routing, latency
+compensation, master processing, and final mixing continue unchanged.
 
 The existing `TrackOutputHandler` is not suitable: it is called after the
 track graph has already processed, so it cannot reduce plugin work. It is also
@@ -123,24 +127,27 @@ be separate from that output-routing hook.
 Recommended engine API shape:
 
 ```cpp
-using TrackAudioProcessorExtension = std::function<bool(
-    SequencerEngine& engine,
-    uapmd_track_index_t trackIndex,
-    SequencerTrack& track,
-    AudioProcessContext& context)>;
+class TrackAudioProcessorExtension {
+public:
+    virtual bool shouldProcessAudio(
+        SequencerEngine&, uapmd_track_index_t, SequencerTrack&,
+        AudioProcessContext&) = 0;
+    virtual void processAudio(
+        SequencerEngine&, uapmd_track_index_t, SequencerTrack&,
+        AudioProcessContext&) = 0;
+};
 
-virtual void setTrackAudioProcessorExtension(
-    TrackAudioProcessorExtension extension) = 0;
+virtual void addTrackAudioProcessorExtension(
+    TrackAudioProcessorExtension&) = 0;
+virtual void removeTrackAudioProcessorExtension(
+    TrackAudioProcessorExtension&) = 0;
 ```
 
-The engine invokes this optional extension immediately before
-`track.graph().processAudio(context)`. It supplies the owning
-`SequencerEngine`, so an extension can make a practical per-track decision
-using engine state rather than only the audio-process context. A `true` result
-means that the extension has filled or cleared the output context and the graph
-is skipped. The setter accepts an empty extension to restore the exact existing
-path. This is the only engine change currently required for the first
-implementation.
+The engine invokes extensions immediately before `track.graph().processAudio`.
+Both methods receive the owning `SequencerEngine`, so an extension can make a
+practical per-track decision using engine state rather than only the
+audio-process context. This is the only engine change currently required for
+the first implementation.
 
 The current project-wide offline renderer is not the implementation mechanism:
 it owns transport state and writes a complete project WAV. Track freezing needs
@@ -156,11 +163,45 @@ consider is a narrowly-scoped helper for creating an isolated renderable track
 instance; it must not make freezing state part of `SequencerTrack` or a graph
 implementation.
 
+### Deferred advanced design: playback-priority rendering
+
+When a track becomes eligible for freezing while playback is already running,
+we may prioritize rendering from the current render position rather than
+starting by writing the beginning of the timeline. The intended result is to
+make a frozen result available near the playhead first, then render the earlier
+portion and retain both timeline-indexed regions as one logical cache entry.
+
+This cannot simply begin processing at the current position. Stateful
+instruments and effects depend on preceding MIDI, automation, sidechain input,
+and effect/plugin state. Directly rendering from the playhead can therefore
+produce audio that differs from normal playback. A correct implementation must
+silently pre-roll the isolated renderer from a valid checkpoint (initially the
+project start) before publishing audio at the prioritized position. Future
+checkpoint support could reduce that work, but is not required initially.
+
+Published results should be represented as timeline-indexed ranges, rather
+than a physically concatenated render. A possible order is `[current, end)`
+first, followed by `[start, current)`. If playback jumps backward into an
+uncovered range, the simple correct behavior is to cancel current work and
+restart from the earlier position. Preserving and scheduling existing fragments
+is a later optimization. A forward jump may reuse an already-published range;
+otherwise the track remains live until its range is ready.
+
+This requires a discrete transport-discontinuity notification, not a listener
+for every advancing audio-block playhead. `jumpPlayback()` already represents
+an explicit seek and advances the transport generation; an eventual observer
+should report the old and new render positions plus that generation, then
+enqueue manager work asynchronously. It must not perform cache or render work
+in the notification path.
+
+This design is deferred. We will decide whether to implement it after the
+isolated per-track renderer and basic cache playback are working.
+
 ## Project data and local cache
 
 Freeze policy and settings are project data, but rendered audio is not.
 
-Use a `ProjectSerializationExtension` owned by uapmd-app (rather than changing
+Use `FrozenTrackManagerProjectSerializationExtension` (rather than changing
 the core project data classes). Its versioned manifest stores:
 
 - the project auto-freeze setting;
@@ -197,9 +238,10 @@ feature can be retried after cache capacity becomes available.
 
 - Rename **Device Settings** to **Settings**.
 - Add the auto-freeze slider and cache controls to that window.
-- Prepend the `Off` / `Auto` / `On` control to each regular track's **Add
-  Plugin** control. This order makes automatic freezing the natural
-  intermediate choice rather than making it easy to disable accidentally.
+- Prepend a single cycling `Off` → `Auto` → `On` toggle to each regular
+  track's **Add Plugin** control. It displays only the active mode, making
+  automatic freezing the natural intermediate choice rather than making it
+  easy to disable accidentally.
 - When runtime state is `Frozen`, cover the timeline track with an interactive
   **Click to unfreeze** overlay. It represents runtime state, not the policy.
 - While rendering or transitioning, show a non-interactive progress/status
@@ -225,12 +267,12 @@ best-effort and must never make saving fail.
 - [x] Decide that rendered audio is app-local cache data, not project data.
 - [x] Decide asynchronous, generation-aware per-track operation queues.
 - [ ] Define the stable project/track cache identity and cache directory.
-- [ ] Implement the project serialization extension and register it.
-- [ ] Implement persistent Settings controls and their manifest fields.
-- [ ] Implement `FrozenTrackManager`, invalidation tracking, and operation
-  queues.
+- [x] Implement the project serialization extension and register it.
+- [x] Implement the Auto Freeze Minutes Settings control and manifest field.
+- [x] Implement `FrozenTrackManager` policy ownership and track controls.
+- [ ] Implement invalidation tracking and operation queues.
 - [ ] Implement per-track offline rendering.
-- [ ] Add the optional pre-graph audio-processor extension seam in the engine.
+- [x] Add the optional pre-graph audio-processor extension seam in the engine.
 - [ ] Implement cached-audio substitution through that seam.
 - [ ] Implement cache index, cache-size setting, cache-validity policy, and
   asynchronous eviction/fallback warning.

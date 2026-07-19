@@ -117,6 +117,8 @@ public:
         const std::filesystem::path& graphDir,
         const std::string& scopeLabel,
         std::string& error) = 0;
+    // The timeline does not own registered extensions. Callers must unregister an
+    // extension before destroying it.
     virtual void addProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
     virtual void removeProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
     virtual bool saveProjectExtensionData(

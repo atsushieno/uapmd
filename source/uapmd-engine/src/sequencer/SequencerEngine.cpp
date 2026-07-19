@@ -166,6 +166,9 @@ namespace uapmd {
 
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
+        using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
+        std::shared_ptr<const TrackAudioProcessorExtensions> track_audio_processor_extensions_{
+            std::make_shared<const TrackAudioProcessorExtensions>()};
         TrackOutputHandler track_output_handler_{};
 
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
@@ -241,6 +244,7 @@ namespace uapmd {
 
         // Timeline facade (owns timeline tracks, clips, project loading)
         std::unique_ptr<TimelineFacade> timeline_;
+        std::unique_ptr<FrozenTrackManager> frozen_track_manager_;
 
     public:
         explicit SequencerEngineImpl(
@@ -250,6 +254,7 @@ namespace uapmd {
         ~SequencerEngineImpl() override;
 
         AudioPluginHostingAPI* pluginHost() override;
+        FrozenTrackManager& frozenTrackManager() override { return *frozen_track_manager_; }
 
         SequenceProcessContext& data() override { return sequence; }
 
@@ -316,6 +321,29 @@ namespace uapmd {
 
         void setExternalPump(bool enabled) override {
             external_pump_.store(enabled, std::memory_order_release);
+        }
+        void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) override {
+            auto current = std::atomic_load_explicit(
+                &track_audio_processor_extensions_, std::memory_order_acquire);
+            if (current && std::find(current->begin(), current->end(), &extension) != current->end())
+                return;
+            auto updated = std::make_shared<TrackAudioProcessorExtensions>(
+                current ? *current : TrackAudioProcessorExtensions{});
+            updated->push_back(&extension);
+            std::shared_ptr<const TrackAudioProcessorExtensions> published = std::move(updated);
+            std::atomic_store_explicit(
+                &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
+        }
+        void removeTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) override {
+            auto current = std::atomic_load_explicit(
+                &track_audio_processor_extensions_, std::memory_order_acquire);
+            if (!current)
+                return;
+            auto updated = std::make_shared<TrackAudioProcessorExtensions>(*current);
+            std::erase(*updated, &extension);
+            std::shared_ptr<const TrackAudioProcessorExtensions> published = std::move(updated);
+            std::atomic_store_explicit(
+                &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
         }
         void setTrackOutputHandler(TrackOutputHandler handler) override {
             track_output_handler_ = std::move(handler);
@@ -423,6 +451,9 @@ namespace uapmd {
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         timeline_ = TimelineFacade::create(*this);
+        frozen_track_manager_ = std::make_unique<FrozenTrackManager>(*timeline_);
+        timeline_->addProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
+        addTrackAudioProcessorExtension(frozen_track_manager_->audioProcessorExtension());
         master_track_ = SequencerTrack::create(
             timeline_->audioGraphProviderRegistry(),
             umpBufferSizeInInts,
@@ -484,6 +515,11 @@ namespace uapmd {
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
+        if (frozen_track_manager_) {
+            removeTrackAudioProcessorExtension(frozen_track_manager_->audioProcessorExtension());
+            timeline_->removeProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
+            frozen_track_manager_.reset();
+        }
         if (latency_compensation_manager_)
             latency_compensation_manager_->clearPluginTimingListeners();
         // Detach output mappers while plugin instances are still alive. This is a separate
@@ -916,9 +952,29 @@ namespace uapmd {
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
             auto& tp = *sequence.tracks[i];
-            if (!tracks_[i]->bypassed())
+            bool processedByExtension = false;
+            auto extensions = std::atomic_load_explicit(
+                &track_audio_processor_extensions_, std::memory_order_acquire);
+            if (extensions) {
+                for (auto* extension : *extensions) {
+                    if (!extension || !extension->shouldProcessAudio(
+                            *this,
+                            static_cast<uapmd_track_index_t>(i),
+                            *tracks_[i],
+                            tp))
+                        continue;
+                    extension->processAudio(
+                        *this,
+                        static_cast<uapmd_track_index_t>(i),
+                        *tracks_[i],
+                        tp);
+                    processedByExtension = true;
+                    break;
+                }
+            }
+            if (!processedByExtension && !tracks_[i]->bypassed())
                 tracks_[i]->graph().processAudio(tp);
-            else
+            else if (!processedByExtension)
                 tp.clearAudioOutputs();
             tp.eventIn().position(0); // reset
 

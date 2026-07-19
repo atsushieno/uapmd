@@ -422,7 +422,7 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
-            if (ImGui::Button("Device Settings")) {
+            if (ImGui::Button("Settings")) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
             ImGui::SameLine();
@@ -736,10 +736,18 @@ void MainWindow::renderDeviceSettingsWindow() {
 
     const std::string windowId = "DeviceSettings";
     setNextChildWindowSize(windowId, ImVec2(400.0f, 360.0f));
-    if (ImGui::Begin("Device Settings", &showDeviceSettingsWindow_)) {
+    if (ImGui::Begin("Settings", &showDeviceSettingsWindow_)) {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
+        ImGui::Separator();
+        auto& appModel = uapmd::AppModel::instance();
+        auto& frozenTrackManager = appModel.sequencer().engine()->frozenTrackManager();
+        int autoFreezeMinutes = frozenTrackManager.autoFreezeMinutes();
+        if (ImGui::SliderInt("Auto Freeze Minutes", &autoFreezeMinutes, 1, 20)) {
+            if (frozenTrackManager.setAutoFreezeMinutes(autoFreezeMinutes))
+                appModel.markProjectDirty();
+        }
     }
     ImGui::End();
 }

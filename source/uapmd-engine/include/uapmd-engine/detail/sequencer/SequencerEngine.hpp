@@ -6,14 +6,14 @@
 #include <uapmd/uapmd.hpp>
 #include <uapmd-data/detail/project/LatencyCompensationTypes.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
+#include "TrackAudioProcessorExtension.hpp"
 #include "LatencyCompensationManager.hpp"
 #include "TimelineFacade.hpp"
 
 namespace uapmd {
-    inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
-    typedef int32_t uapmd_track_index_t;
-
     class AudioPluginHostingAPI;
+    class SequencerEngine;
+    class FrozenTrackManager;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
@@ -29,6 +29,7 @@ namespace uapmd {
         virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
+        virtual FrozenTrackManager& frozenTrackManager() = 0;
         virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
         // FIXME: we should probably remove this at some stage
@@ -106,6 +107,10 @@ namespace uapmd {
         // concurrently.  On all non-Emscripten platforms this remains false and
         // processAudio() continues to call pumpAudio() inline as before.
         virtual void setExternalPump(bool enabled) = 0;
+        // The engine does not own registered extensions. Callers must unregister an
+        // extension before destroying it.
+        virtual void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
+        virtual void removeTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
         using TrackOutputHandler = std::function<bool(uapmd_track_index_t, SequencerTrack&, AudioProcessContext&)>;
         virtual void setTrackOutputHandler(TrackOutputHandler handler) = 0;
 

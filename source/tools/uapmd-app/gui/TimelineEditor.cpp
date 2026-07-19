@@ -785,7 +785,8 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
     const float masterPluginWidth = ImGui::CalcTextSize(masterPluginLabel.c_str()).x + framePadX * 2.0f;
     const float trackPluginWidth = ImGui::CalcTextSize(trackPluginLabel.c_str()).x + framePadX * 2.0f;
     const float masterRow2W = pad + masterPluginWidth + pad;
-    const float trackRow2W = pad + trackPluginWidth + gap + iconBtnW + pad;
+    const float freezePolicyWidth = ImGui::CalcTextSize("Auto").x + framePadX * 2.0f;
+    const float trackRow2W = pad + freezePolicyWidth + 2.0f * gap + trackPluginWidth + gap + iconBtnW + pad;
     const float legendWidth = std::max({row1W, masterRow2W, trackRow2W});
 
     return SequenceEditor::RenderContext{
@@ -1393,15 +1394,53 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::PopStyleColor();
     }
 
-    // Row 2: Plugin context button + Delete on the right
+    // Row 2: Freeze policy + Plugin context button + Delete on the right
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
     float deleteButtonWidth = 0.0f;
     if (track && trackIndex != uapmd::kMasterTrackIndex)
         deleteButtonWidth = ImGui::CalcTextSize(icons::DeleteTrack).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    const float pluginButtonWidth = deleteButtonWidth > 0.0f
-        ? std::max(0.0f, buttonWidth - deleteButtonWidth - ImGui::GetStyle().ItemSpacing.x)
-        : buttonWidth;
+    const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float freezePolicyButtonWidth = ImGui::CalcTextSize("Auto").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float freezePolicyWidth = track && trackIndex != uapmd::kMasterTrackIndex
+        ? freezePolicyButtonWidth
+        : 0.0f;
+    const float pluginButtonWidth = std::max(
+        0.0f,
+        buttonWidth - freezePolicyWidth - deleteButtonWidth -
+            (freezePolicyWidth > 0.0f ? itemSpacing : 0.0f) -
+            (deleteButtonWidth > 0.0f ? itemSpacing : 0.0f));
+
+    if (track && trackIndex != uapmd::kMasterTrackIndex) {
+        auto& appModel = uapmd::AppModel::instance();
+        auto& frozenTrackManager = appModel.sequencer().engine()->frozenTrackManager();
+        const auto currentPolicy = frozenTrackManager.freezePolicyForTrack(trackIndex);
+        const char* policyLabel = "Off";
+        const char* policyTooltip = "Track freezing: Off (click for Auto)";
+        uapmd::FrozenTrackManager::FreezePolicy nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::Auto;
+        switch (currentPolicy) {
+            case uapmd::FrozenTrackManager::FreezePolicy::Auto:
+                policyLabel = "Auto";
+                policyTooltip = "Track freezing: Auto (click for On)";
+                nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::On;
+                break;
+            case uapmd::FrozenTrackManager::FreezePolicy::On:
+                policyLabel = "On";
+                policyTooltip = "Track freezing: On (click for Off)";
+                nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::Off;
+                break;
+            case uapmd::FrozenTrackManager::FreezePolicy::Off:
+            default:
+                break;
+        };
+        if (contextActionButton(
+                std::format("{}##LegFreeze{}", policyLabel, trackIndex).c_str(),
+            ImVec2(freezePolicyButtonWidth, 0.0f),
+                policyTooltip) &&
+            frozenTrackManager.setFreezePolicyForTrack(trackIndex, nextPolicy))
+            appModel.markProjectDirty();
+        ImGui::SameLine();
+    }
     if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
     if (deleteButtonWidth > 0.0f) {
