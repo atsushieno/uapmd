@@ -293,13 +293,20 @@ namespace uapmd {
                             const sourcePath = path.replace(new RegExp("^/+"), "");
                             for (const [assetPath, blobUrl] of Object.entries(blobUrls)) {
                                 const normalized = assetPath.replace(new RegExp("^/+"), "");
+                                const relative = this.relativePath(sourcePath, normalized);
                                 const variants = [
                                     normalized,
                                     '/' + normalized,
-                                    this.relativePath(sourcePath, normalized),
+                                    relative,
+                                    // Sibling references are commonly written without a "./"
+                                    // prefix (e.g. <script src="cbor.min.js">), which relative()
+                                    // always adds; also match the bare basename as a fallback.
+                                    relative.replace(new RegExp("^\\./"), ""),
+                                    normalized.split('/').pop(),
                                 ];
                                 for (const variant of variants)
-                                    text = text.split(variant).join(blobUrl);
+                                    if (variant)
+                                        text = text.split(variant).join(blobUrl);
                             }
                             return text;
                         },
