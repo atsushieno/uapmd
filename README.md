@@ -1,7 +1,7 @@
 # UAPMD: next-gen, cross-platform, multi-format, liberally licensed audio plugin host engine with fully equipped virtual MIDI 2.0 devices provider
 
+![UAPMD v0.5.2 example screenshot](docs/images/uapmd-app-v0.5.2-sshot.png)
 ![UAPMD v0.4 example screenshot](docs/images/uapmd-app-v0.4-sshot.png)
-![UAPMD v0.1 example screenshot](docs/images/uapmd-app-v0.1-sshot.png)
 
 UAPMD (Ubiquitous Audio Plugin MIDI Device) is a cross-platform, multi-track audio plugin host sequencer that exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
