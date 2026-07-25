@@ -21,7 +21,7 @@ namespace uapmd {
     // pthread.  Requires SharedArrayBuffer (COOP/COEP headers on the server).
     //
     //  host_seq   — incremented by AudioWorklet after copying inputs to audio_input
-    //  engine_seq — incremented by engine pthread after copying outputs to master_output
+    //  engine_seq — incremented by the device callback thread after copying outputs to master_output
     //
     // Both counters are even when idle and odd while a frame is in flight,
     // but the simpler "host writes N, engine writes N back" approach is used here:
@@ -60,16 +60,13 @@ namespace uapmd {
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
     //
-    // Owns one pthread:
-    //   engine_thread_ — spins on host_seq, calls pumpAudio() + processAudio(),
-    //                    then copies output
-    //
-    // Lifecycle: constructed by WebAudioWorkletIODevice::setEngine(), started by
-    // start(), stopped by stop().
+    // Owns one pthread that waits for Web Audio quanta and invokes the device's
+    // normal audio callbacks. This keeps SequencerEngine::processAudio() (and its
+    // inline pumpAudio() call) identical to every other audio device.
 
     class WebAudioEngineThread {
     public:
-        explicit WebAudioEngineThread(SequencerEngine* engine,
+        explicit WebAudioEngineThread(std::function<uapmd_status_t(AudioProcessContext&)> callback,
                                       WebAudioSAB* sab,
                                       uint32_t sampleRate,
                                       uint32_t bufferSize);
@@ -81,7 +78,7 @@ namespace uapmd {
         uint32_t bufferSize() const { return buffer_size_; }
 
     private:
-        SequencerEngine* engine_;
+        std::function<uapmd_status_t(AudioProcessContext&)> callback_;
         WebAudioSAB*      sab_;
         uint32_t         sample_rate_;
         uint32_t         buffer_size_;
@@ -90,9 +87,7 @@ namespace uapmd {
         std::thread       engine_thread_;
 
         MasterContext     engine_master_ctx_;
-        MasterContext     pump_master_ctx_;
         AudioProcessContext engine_ctx_;  // engine output render context
-        AudioProcessContext pump_ctx_;    // timeline/source pump context
 
         void engineLoop();
     };
@@ -103,9 +98,6 @@ namespace uapmd {
     public:
         WebAudioWorkletIODevice(uint32_t sampleRate, uint32_t bufferSize);
         ~WebAudioWorkletIODevice() override;
-
-        // Called by RealtimeSequencer after configure() to inject the engine.
-        void setEngine(SequencerEngine* engine) override;
 
         void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext&)>&& cb) override {
             callbacks_.emplace_back(std::move(cb));
@@ -136,9 +128,6 @@ namespace uapmd {
 
         WebAudioSAB                            sab_{};
         std::unique_ptr<WebAudioEngineThread> engine_thread_{};
-        // Atomic flag set after engine_thread_ is fully started; read by the
-        // AudioWorklet thread (different thread) to determine which path to take.
-        std::atomic<WebAudioEngineThread*>    engine_thread_ready_{nullptr};
 
         EMSCRIPTEN_WEBAUDIO_T           audio_ctx_{0};
         bool                            worklet_loaded_{false};

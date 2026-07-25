@@ -5,7 +5,6 @@
 #include <vector>
 
 namespace uapmd {
-    class SequencerEngine;
 
     enum AudioIODirections {
         UAPMD_AUDIO_DIRECTION_INPUT = 1,
@@ -52,9 +51,6 @@ namespace uapmd {
         virtual std::vector<uint32_t> getNativeSampleRates() = 0;
 
         virtual void clearOutputBuffers() {}
-        // Optional hook so RealtimeSequencer can pass the engine to devices that
-        // need it (e.g. WebAudioWorkletIODevice).  Default no-op.
-        virtual void setEngine(SequencerEngine*) {}
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;
