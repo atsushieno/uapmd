@@ -75,6 +75,7 @@ namespace uapmd {
         uint32_t inputChannels() override { return input_channels_; }
         uint32_t outputChannels() override { return output_channels_; }
         std::vector<uint32_t> getNativeSampleRates() override;
+        void clearOutputBuffers() override;
 
         uapmd_status_t start() override;
         uapmd_status_t stop() override;

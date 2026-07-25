@@ -113,12 +113,19 @@ namespace uapmd {
     WebAudioWorkletIODevice::WebAudioWorkletIODevice(uint32_t sampleRate, uint32_t bufferSize)
         : sample_rate_(sampleRate)
         , buffer_size_(bufferSize)
+        , preferred_callback_frames_(bufferSize)
     {
     }
 
     WebAudioWorkletIODevice::~WebAudioWorkletIODevice() {
         stop();
         if (audio_ctx_)     emscripten_destroy_audio_context(audio_ctx_);
+    }
+
+    void WebAudioWorkletIODevice::clearOutputBuffers() {
+        std::memset(sab_.master_output, 0, sizeof(sab_.master_output));
+        std::memset(sab_.track_output, 0, sizeof(sab_.track_output));
+        sab_.track_count.store(0, std::memory_order_release);
     }
 
     // ── EM_JS helpers for the custom AudioWorklet processor ──────────────────

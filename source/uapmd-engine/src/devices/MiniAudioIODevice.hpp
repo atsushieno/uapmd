@@ -38,6 +38,7 @@ namespace uapmd {
         std::vector<const float *> dataOutPtrs{};
         uint32_t input_channels{0};
         uint32_t output_channels{0};
+        uint32_t preferred_callback_frames_{0};
         MiniAudioIODeviceManager* manager_{nullptr};
 
     public:
@@ -50,6 +51,10 @@ namespace uapmd {
         void clearAudioCallbacks() override {
             callbacks.clear();
         }
+        void setPreferredCallbackSize(uint32_t framesPerCallback) override {
+            preferred_callback_frames_ = framesPerCallback;
+        }
+        uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
         double sampleRate() override;
         uint32_t inputChannels() override;

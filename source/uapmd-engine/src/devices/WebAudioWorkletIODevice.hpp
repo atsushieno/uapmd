@@ -103,11 +103,16 @@ namespace uapmd {
             callbacks_.emplace_back(std::move(cb));
         }
         void clearAudioCallbacks() override { callbacks_.clear(); }
+        void setPreferredCallbackSize(uint32_t framesPerCallback) override {
+            preferred_callback_frames_ = framesPerCallback;
+        }
+        uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
 
         double   sampleRate()    override { return sample_rate_; }
         uint32_t inputChannels()  override { return 0; }
         uint32_t outputChannels() override { return kWebAudioChannels; }
         std::vector<uint32_t> getNativeSampleRates() override { return {sample_rate_}; }
+        void clearOutputBuffers() override;
 
         uapmd_status_t start()   override;
         uapmd_status_t stop()    override;
@@ -118,6 +123,7 @@ namespace uapmd {
     private:
         uint32_t sample_rate_;
         uint32_t buffer_size_;
+        uint32_t preferred_callback_frames_;
         bool     is_playing_{false};
 
         std::vector<std::function<uapmd_status_t(AudioProcessContext&)>> callbacks_;

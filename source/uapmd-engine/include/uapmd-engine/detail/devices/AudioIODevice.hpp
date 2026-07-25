@@ -35,12 +35,8 @@ namespace uapmd {
         virtual void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) = 0;
         virtual void clearAudioCallbacks() = 0;
 
-        virtual void setPreferredCallbackSize(uint32_t framesPerCallback) {
-            (void) framesPerCallback;
-        }
-        virtual uint32_t preferredCallbackSize() const {
-            return 0;
-        }
+        virtual void setPreferredCallbackSize(uint32_t framesPerCallback) = 0;
+        virtual uint32_t preferredCallbackSize() const = 0;
 
         virtual double sampleRate() = 0;
         virtual uint32_t inputChannels() = 0;
@@ -48,7 +44,7 @@ namespace uapmd {
 
         virtual std::vector<uint32_t> getNativeSampleRates() = 0;
 
-        virtual void clearOutputBuffers() {}
+        virtual void clearOutputBuffers() = 0;
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;
