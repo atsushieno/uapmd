@@ -95,6 +95,7 @@ int runMainLoop(int argc, char** argv) {
         bool scanOnly = false;
         bool forceRescan = false;
         bool fullVerification = false;
+        bool noConfirmOnQuit = false;
     };
     CommandLineOptions cliOptions{};
     int mcpPort = -1;
@@ -112,6 +113,10 @@ int runMainLoop(int argc, char** argv) {
         }
         if (arg == "--full") {
             cliOptions.fullVerification = true;
+            continue;
+        }
+        if (arg == "--no-confirm-on-quit") {
+            cliOptions.noConfirmOnQuit = true;
             continue;
         }
         if (arg == "--mcp-server") {
@@ -285,6 +290,7 @@ int runMainLoop(int argc, char** argv) {
     if (positional.size() > 2) defaults.apiName = positional[2];
     if (positional.size() > 3) defaults.deviceName = positional[3];
     defaults.mcpServerPort = mcpPort;
+    defaults.noConfirmOnQuit = cliOptions.noConfirmOnQuit;
 
     // Create main window controller
     uapmd::gui::MainWindow mainWindow(defaults);

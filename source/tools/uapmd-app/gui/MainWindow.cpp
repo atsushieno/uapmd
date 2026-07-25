@@ -61,6 +61,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     baseStyle_ = ImGui::GetStyle();
     captureFontScales();
     applyUiScale(uiScale_);
+    noConfirmOnQuit_ = defaults.noConfirmOnQuit;
 
     // Apply defaults from command line arguments
     // TODO: If needed, implement default plugin selection through pluginList_
@@ -684,7 +685,7 @@ void MainWindow::render(void* window) {
 }
 
 bool MainWindow::requestClose() {
-    if (!uapmd::AppModel::instance().isProjectDirty()) {
+    if (noConfirmOnQuit_ || !uapmd::AppModel::instance().isProjectDirty()) {
         isOpen_ = false;
         return true;
     }
