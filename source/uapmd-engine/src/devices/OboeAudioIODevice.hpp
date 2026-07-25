@@ -72,7 +72,6 @@ namespace uapmd {
         uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
 
         double sampleRate() override { return sample_rate_; }
-        uint32_t channels() override { return output_channels_; }
         uint32_t inputChannels() override { return input_channels_; }
         uint32_t outputChannels() override { return output_channels_; }
         std::vector<uint32_t> getNativeSampleRates() override;

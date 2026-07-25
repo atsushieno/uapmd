@@ -42,11 +42,9 @@ namespace uapmd {
             return 0;
         }
 
-        // FIXME: they should differ at input and output
         virtual double sampleRate() = 0;
-        virtual uint32_t channels() = 0;
-        virtual uint32_t inputChannels() { return channels(); }
-        virtual uint32_t outputChannels() { return channels(); }
+        virtual uint32_t inputChannels() = 0;
+        virtual uint32_t outputChannels() = 0;
 
         virtual std::vector<uint32_t> getNativeSampleRates() = 0;
 

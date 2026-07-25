@@ -52,7 +52,6 @@ namespace uapmd {
         }
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
         double sampleRate() override;
-        uint32_t channels() override;
         uint32_t inputChannels() override;
         uint32_t outputChannels() override;
         std::vector<uint32_t> getNativeSampleRates() override;

@@ -105,9 +105,8 @@ namespace uapmd {
         void clearAudioCallbacks() override { callbacks_.clear(); }
 
         double   sampleRate()    override { return sample_rate_; }
-        uint32_t channels()      override { return kWebAudioChannels; }
-        uint32_t outputChannels() override { return kWebAudioChannels; }
         uint32_t inputChannels()  override { return 0; }
+        uint32_t outputChannels() override { return kWebAudioChannels; }
         std::vector<uint32_t> getNativeSampleRates() override { return {sample_rate_}; }
 
         uapmd_status_t start()   override;
