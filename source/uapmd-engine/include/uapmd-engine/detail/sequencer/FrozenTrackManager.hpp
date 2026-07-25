@@ -1,15 +1,20 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <filesystem>
+#include <memory>
 #include <mutex>
 #include <optional>
-#include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include <uapmd-data/uapmd-data.hpp>
 
+#include "OfflineRenderer.hpp"
 #include "TrackAudioProcessorExtension.hpp"
 
 namespace uapmd {
@@ -22,35 +27,28 @@ class FrozenTrackManager final : public ProjectDocumentEventListener {
 public:
     enum class FreezePolicy : uint8_t {
         Off,
-        Auto,
         On,
     };
 
     enum class RuntimeState : uint8_t {
         Live,
-        Waiting,
         Rendering,
         Frozen,
-        Unfreezing,
-        Invalid,
         Error,
-        CachingUnavailable,
     };
 
-    explicit FrozenTrackManager(TimelineFacade& timeline);
+    FrozenTrackManager(SequencerEngine& engine, TimelineFacade& timeline);
     ~FrozenTrackManager();
 
     FrozenTrackManagerProjectSerializationExtension& projectSerializationExtension();
     FrozenTrackAudioProcessorExtension& audioProcessorExtension();
-
-    int autoFreezeMinutes() const;
-    bool setAutoFreezeMinutes(int minutes);
 
     FreezePolicy freezePolicyForTrack(int32_t trackIndex) const;
     bool setFreezePolicyForTrack(int32_t trackIndex, FreezePolicy policy);
     bool unfreezeTrack(int32_t trackIndex);
     RuntimeState runtimeStateForTrack(int32_t trackIndex) const;
     uint64_t invalidationGenerationForTrack(int32_t trackIndex) const;
+    std::string errorMessageForTrack(int32_t trackIndex) const;
 
 private:
     friend class FrozenTrackAudioProcessorExtension;
@@ -58,7 +56,41 @@ private:
 
     static constexpr std::string_view kExtensionId{"org.uapmd.app.track-freezing"};
     static constexpr std::string_view kManifestPath{"track-freezing.ini"};
-    static constexpr int kDefaultAutoFreezeMinutes = 5;
+
+    struct CachedAudio {
+        int64_t start_sample{0};
+        std::vector<uint32_t> bus_channel_counts;
+        std::vector<std::vector<float>> channels;
+    };
+
+    struct PlaybackState {
+        std::atomic<FreezePolicy> policy{FreezePolicy::Off};
+        std::atomic<RuntimeState> runtime_state{RuntimeState::Live};
+        std::atomic<const CachedAudio*> cached_audio{nullptr};
+    };
+
+    struct PlaybackSnapshot {
+        std::vector<PlaybackState*> tracks;
+    };
+
+    struct TrackRuntime {
+        RuntimeState state{RuntimeState::Live};
+        uint64_t invalidation_generation{1};
+        std::string error_message;
+    };
+
+    struct RenderOperation {
+        std::string track_reference_id;
+        uint64_t generation{0};
+        std::filesystem::path directory;
+        std::filesystem::path project_file;
+        int32_t sample_rate{48000};
+        int64_t end_sample{0};
+    };
+
+    struct AsyncLifetime {
+        std::atomic<FrozenTrackManager*> owner{nullptr};
+    };
 
     std::string_view extensionId() const;
     bool saveProjectExtensionData(ProjectSerializationWriteContext& context, std::string& error);
@@ -87,24 +119,49 @@ private:
     void audioSourceChanged(const ProjectDocumentEvent& event) override;
     void pluginGraphChanged(const ProjectDocumentEvent& event) override;
     void masterTrackChanged(const ProjectDocumentEvent& event) override;
+
     std::string trackReferenceIdForIndex(int32_t trackIndex) const;
+    int32_t trackIndexForReferenceId(std::string_view trackReferenceId) const;
     void invalidateTrack(std::string_view trackReferenceId);
     void invalidateAllTracks();
-    RuntimeState stateForPolicy(FreezePolicy policy) const;
-    static std::string policyName(FreezePolicy policy);
-    static std::optional<FreezePolicy> parsePolicy(std::string_view value);
+    void beginRender(std::string trackReferenceId);
+    void isolatedProjectSaved(
+        const std::shared_ptr<RenderOperation>& operation,
+        bool success,
+        std::string error);
+    void isolatedProjectLoaded(
+        const std::shared_ptr<RenderOperation>& operation,
+        std::shared_ptr<SequencerEngine> isolatedEngine,
+        bool success,
+        std::string error);
+    void finishRender(
+        const std::shared_ptr<RenderOperation>& operation,
+        OfflineTrackRenderResult result);
+    void failRender(
+        const std::shared_ptr<RenderOperation>& operation,
+        std::string error);
+    bool operationIsCurrent(const RenderOperation& operation) const;
+    void updatePlaybackState(std::string_view trackReferenceId);
+    void publishPlaybackSnapshot();
+    void clearAllPlaybackCaches();
+    static void removeTemporarySnapshot(const std::filesystem::path& directory);
 
+    SequencerEngine& engine_;
     TimelineFacade& timeline_;
     mutable std::mutex mutex_;
-    int auto_freeze_minutes_{kDefaultAutoFreezeMinutes};
     std::unordered_map<std::string, FreezePolicy> policies_by_track_reference_;
-    struct TrackRuntime {
-        RuntimeState state{RuntimeState::Live};
-        uint64_t invalidation_generation{1};
-    };
     std::unordered_map<std::string, TrackRuntime> runtime_by_track_reference_;
+    std::unordered_map<std::string, std::unique_ptr<PlaybackState>>
+        playback_states_by_track_reference_;
+    std::vector<std::unique_ptr<PlaybackSnapshot>> playback_snapshots_;
+    std::atomic<const PlaybackSnapshot*> active_playback_snapshot_{nullptr};
+    std::vector<std::unique_ptr<CachedAudio>> retained_cached_audio_;
+    std::vector<std::thread> render_threads_;
+    std::atomic<bool> stopping_{false};
+    std::shared_ptr<AsyncLifetime> async_lifetime_;
     ProjectDocumentEventListenerToken project_document_event_listener_token_{0};
-    std::unique_ptr<FrozenTrackManagerProjectSerializationExtension> project_serialization_extension_;
+    std::unique_ptr<FrozenTrackManagerProjectSerializationExtension>
+        project_serialization_extension_;
     std::unique_ptr<FrozenTrackAudioProcessorExtension> audio_processor_extension_;
 };
 

@@ -107,6 +107,8 @@ namespace uapmd {
 
         void reconfigureOutputAlignmentBuffers();
         void resetOutputAlignmentBuffers();
+        void resetTrackOutputAlignment(
+            uapmd_track_index_t trackIndex) override;
         void applyLatencyCompensationTimingUpdate(bool isPlaybackActive);
         void setPlaybackPosition(int64_t samples, bool isPlaybackActive);
         void startPlayback();

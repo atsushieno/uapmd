@@ -785,7 +785,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
     const float masterPluginWidth = ImGui::CalcTextSize(masterPluginLabel.c_str()).x + framePadX * 2.0f;
     const float trackPluginWidth = ImGui::CalcTextSize(trackPluginLabel.c_str()).x + framePadX * 2.0f;
     const float masterRow2W = pad + masterPluginWidth + pad;
-    const float freezePolicyWidth = ImGui::CalcTextSize("Auto").x + framePadX * 2.0f;
+    const float freezePolicyWidth = ImGui::CalcTextSize("Off").x + framePadX * 2.0f;
     const float trackRow2W = pad + freezePolicyWidth + 2.0f * gap + trackPluginWidth + gap + iconBtnW + pad;
     const float legendWidth = std::max({row1W, masterRow2W, trackRow2W});
 
@@ -1394,14 +1394,14 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::PopStyleColor();
     }
 
-    // Row 2: Freeze policy + Plugin context button + Delete on the right
+    // Row 2: Freeze switch + Plugin context button + Delete on the right
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
     float deleteButtonWidth = 0.0f;
     if (track && trackIndex != uapmd::kMasterTrackIndex)
         deleteButtonWidth = ImGui::CalcTextSize(icons::DeleteTrack).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float freezePolicyButtonWidth = ImGui::CalcTextSize("Auto").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float freezePolicyButtonWidth = ImGui::CalcTextSize("Off").x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float freezePolicyWidth = track && trackIndex != uapmd::kMasterTrackIndex
         ? freezePolicyButtonWidth
         : 0.0f;
@@ -1415,28 +1415,34 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         auto& appModel = uapmd::AppModel::instance();
         auto& frozenTrackManager = appModel.sequencer().engine()->frozenTrackManager();
         const auto currentPolicy = frozenTrackManager.freezePolicyForTrack(trackIndex);
-        const char* policyLabel = "Off";
-        const char* policyTooltip = "Track freezing: Off (click for Auto)";
-        uapmd::FrozenTrackManager::FreezePolicy nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::Auto;
-        switch (currentPolicy) {
-            case uapmd::FrozenTrackManager::FreezePolicy::Auto:
-                policyLabel = "Auto";
-                policyTooltip = "Track freezing: Auto (click for On)";
-                nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::On;
-                break;
-            case uapmd::FrozenTrackManager::FreezePolicy::On:
-                policyLabel = "On";
-                policyTooltip = "Track freezing: On (click for Off)";
-                nextPolicy = uapmd::FrozenTrackManager::FreezePolicy::Off;
-                break;
-            case uapmd::FrozenTrackManager::FreezePolicy::Off:
-            default:
-                break;
-        };
+        const auto runtimeState =
+            frozenTrackManager.runtimeStateForTrack(trackIndex);
+        const char* policyLabel =
+            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
+            ? "On"
+            : "Off";
+        std::string policyTooltip =
+            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
+            ? "Track freezing: On (click to unfreeze)"
+            : "Track freezing: Off (click to render and freeze)";
+        if (runtimeState ==
+            uapmd::FrozenTrackManager::RuntimeState::Rendering)
+            policyTooltip = "Track freezing: rendering (click to cancel)";
+        else if (runtimeState ==
+                 uapmd::FrozenTrackManager::RuntimeState::Error) {
+            policyTooltip = frozenTrackManager.errorMessageForTrack(trackIndex);
+            if (policyTooltip.empty())
+                policyTooltip = "Track freezing failed";
+            policyTooltip += " (click to turn off)";
+        }
+        const auto nextPolicy =
+            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
+            ? uapmd::FrozenTrackManager::FreezePolicy::Off
+            : uapmd::FrozenTrackManager::FreezePolicy::On;
         if (contextActionButton(
                 std::format("{}##LegFreeze{}", policyLabel, trackIndex).c_str(),
             ImVec2(freezePolicyButtonWidth, 0.0f),
-                policyTooltip) &&
+                policyTooltip.c_str()) &&
             frozenTrackManager.setFreezePolicyForTrack(trackIndex, nextPolicy))
             appModel.markProjectDirty();
         ImGui::SameLine();

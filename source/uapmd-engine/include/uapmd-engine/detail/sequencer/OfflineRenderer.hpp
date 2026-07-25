@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace uapmd {
 
@@ -51,6 +52,25 @@ struct OfflineRenderResult {
     bool success{false};
     bool canceled{false};
     double renderedSeconds{0.0};
+    std::string errorMessage;
+};
+
+struct OfflineTrackRenderSettings {
+    int32_t trackIndex{0};
+    int64_t startSample{0};
+    int64_t endSample{0};
+    int32_t sampleRate{48000};
+    uint32_t bufferSize{1024};
+    uint32_t umpBufferSize{65536};
+    uint64_t maximumBytes{512ULL * 1024ULL * 1024ULL};
+};
+
+struct OfflineTrackRenderResult {
+    bool success{false};
+    bool canceled{false};
+    int64_t startSample{0};
+    std::vector<uint32_t> busChannelCounts;
+    std::vector<std::vector<float>> channels;
     std::string errorMessage;
 };
 

@@ -87,6 +87,9 @@ public:
     struct ProjectSaveOptions {
         std::vector<int32_t> excludedTrackIndexes;
         std::vector<ClipMarker> masterTrackMarkers;
+        // Internal snapshots (for example track-freeze renders) must not look like
+        // a user project save to document observers.
+        bool emitDocumentEvent{true};
     };
     using ProjectSaveCallback = std::function<void(ProjectResult)>;
     using ProjectLoadCallback = std::function<void(ProjectResult)>;

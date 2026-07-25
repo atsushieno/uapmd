@@ -740,14 +740,6 @@ void MainWindow::renderDeviceSettingsWindow() {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
-        ImGui::Separator();
-        auto& appModel = uapmd::AppModel::instance();
-        auto& frozenTrackManager = appModel.sequencer().engine()->frozenTrackManager();
-        int autoFreezeMinutes = frozenTrackManager.autoFreezeMinutes();
-        if (ImGui::SliderInt("Auto Freeze Minutes", &autoFreezeMinutes, 1, 20)) {
-            if (frozenTrackManager.setAutoFreezeMinutes(autoFreezeMinutes))
-                appModel.markProjectDirty();
-        }
     }
     ImGui::End();
 }

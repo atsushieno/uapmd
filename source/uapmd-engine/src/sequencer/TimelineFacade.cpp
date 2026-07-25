@@ -43,6 +43,7 @@ namespace uapmd {
             std::vector<PendingProjectPluginState> pending_states;
             std::vector<PendingProjectGraphSave> pending_graphs;
             size_t next_pending_state{0};
+            bool emit_document_event{true};
             TimelineFacade::ProjectSaveCallback callback;
         };
     } // namespace
@@ -678,6 +679,7 @@ namespace uapmd {
             ProjectSaveCallback callback) override {
             auto operation = std::make_shared<PendingProjectSaveContext>();
             operation->project_file = projectFile;
+            operation->emit_document_event = options.emitDocumentEvent;
             operation->callback = std::move(callback);
 
             auto complete = [operation](ProjectResult result) mutable {
@@ -869,10 +871,12 @@ namespace uapmd {
                         complete(ProjectResult{false, std::move(extensionError)});
                         return;
                     }
-                    ProjectDocumentEvent savedEvent(ProjectDocumentEventKind::ProjectSaved, "project-saved");
-                    savedEvent.setProjectId(operation->project_file.string())
-                        .setDetail("source.file", operation->project_file.string());
-                    emitProjectDocumentEvent(std::move(savedEvent));
+                    if (operation->emit_document_event) {
+                        ProjectDocumentEvent savedEvent(ProjectDocumentEventKind::ProjectSaved, "project-saved");
+                        savedEvent.setProjectId(operation->project_file.string())
+                            .setDetail("source.file", operation->project_file.string());
+                        emitProjectDocumentEvent(std::move(savedEvent));
+                    }
                     complete(ProjectResult{true, {}});
                     return;
                 }

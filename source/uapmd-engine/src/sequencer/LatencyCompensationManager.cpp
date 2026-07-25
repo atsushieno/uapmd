@@ -402,6 +402,15 @@ namespace uapmd {
             delayLine.reset();
     }
 
+    void LatencyCompensationManagerImpl::resetTrackOutputAlignment(
+        uapmd_track_index_t trackIndex) {
+        if (trackIndex < 0 ||
+            static_cast<size_t>(trackIndex) >=
+                output_alignment_delay_lines_.size())
+            return;
+        output_alignment_delay_lines_[static_cast<size_t>(trackIndex)].reset();
+    }
+
     void LatencyCompensationManagerImpl::applyLatencyCompensationTimingUpdate(bool isPlaybackActive) {
         reconfigureOutputAlignmentBuffers();
         resetOutputAlignmentBuffers();

@@ -8,6 +8,7 @@
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "TrackAudioProcessorExtension.hpp"
 #include "LatencyCompensationManager.hpp"
+#include "OfflineRenderer.hpp"
 #include "TimelineFacade.hpp"
 
 namespace uapmd {
@@ -87,6 +88,11 @@ namespace uapmd {
         // stopped (typically right after the audio engine has been turned off), so that
         // a later engine restart does not resume stale audio or replay stale events.
         virtual void resetProcessingState() = 0;
+        // Clears one track's host-side buffers. When resetPlugins is true, also
+        // cycles its plugin processing state; call that form from the main thread.
+        virtual void resetTrackProcessingState(
+            uapmd_track_index_t trackIndex,
+            bool resetPlugins) = 0;
 
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
@@ -110,6 +116,11 @@ namespace uapmd {
         // outputs, and runs the master track. In single-threaded builds this is called
         // after pumpAudio().
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
+        // Mutates processing state and is only valid on an isolated engine that
+        // is not connected to a realtime audio device.
+        virtual OfflineTrackRenderResult renderOfflineTrack(
+            const OfflineTrackRenderSettings& settings,
+            const OfflineRenderCallbacks& callbacks = {}) = 0;
 
         // Playback control (accessed by RealtimeSequencer)
         virtual bool isPlaybackActive() const = 0;
@@ -137,7 +148,11 @@ namespace uapmd {
         // Timeline clip management and project loading
         virtual TimelineFacade& timeline() = 0;
 
-        static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
+        static std::unique_ptr<SequencerEngine> create(
+            int32_t sampleRate,
+            size_t audioBufferSizeInFrames,
+            size_t umpBufferSizeInInts,
+            bool enableTrackFreezing = true);
     };
 
 }

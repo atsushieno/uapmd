@@ -37,5 +37,7 @@ namespace uapmd {
         virtual void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) = 0;
         virtual RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const = 0;
         virtual void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) = 0;
+        virtual void resetTrackOutputAlignment(
+            uapmd_track_index_t trackIndex) = 0;
     };
 }
