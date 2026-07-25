@@ -46,6 +46,7 @@ struct GuiDefaults {
     std::string apiName;
     std::string deviceName;
     int mcpServerPort = -1;  // < 0 means do not auto-start MCP server
+    bool noConfirmOnQuit = false;
 };
 
 class MainWindow {
@@ -54,6 +55,7 @@ class MainWindow {
         bool closeRequestHandled_ = false;
         bool closeAfterProjectSave_ = false;
         bool showUnsavedProjectDialog_ = false;
+        bool noConfirmOnQuit_ = false;
 
         // Device settings
         bool showDeviceSettingsWindow_ = false;
