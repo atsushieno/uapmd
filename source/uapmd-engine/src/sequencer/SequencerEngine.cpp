@@ -160,17 +160,11 @@ namespace uapmd {
         std::mutex instance_map_mutex_;
 
 
-        // When true, processAudio() skips the inline pumpAudio() call because a
-        // dedicated pump pthread (WebAudioEngineThread) is driving it independently.
-        std::atomic<bool> external_pump_{false};
-
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
         using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
         std::shared_ptr<const TrackAudioProcessorExtensions> track_audio_processor_extensions_{
             std::make_shared<const TrackAudioProcessorExtensions>()};
-        TrackOutputHandler track_output_handler_{};
-
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
         // Starts inactive so that no plugin code runs before the user explicitly enables the
         // audio engine (important on Emscripten where AudioWorklet fires immediately after
@@ -319,9 +313,6 @@ namespace uapmd {
             audio_preprocess_callback_ = std::move(callback);
         }
 
-        void setExternalPump(bool enabled) override {
-            external_pump_.store(enabled, std::memory_order_release);
-        }
         void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) override {
             auto current = std::atomic_load_explicit(
                 &track_audio_processor_extensions_, std::memory_order_acquire);
@@ -353,9 +344,6 @@ namespace uapmd {
             for (auto* extension : *extensions)
                 if (extension)
                     extension->audioContentChanged(*this, trackIndex);
-        }
-        void setTrackOutputHandler(TrackOutputHandler handler) override {
-            track_output_handler_ = std::move(handler);
         }
 
         void pumpAudio(AudioProcessContext& process) override;
@@ -909,10 +897,7 @@ namespace uapmd {
         const bool isLatencyDrainActive = latency_drain_active_.load(std::memory_order_acquire);
 
         // Run the pump (timeline advance + device-audio fanout + clip filling).
-        // In single-threaded operation this is called here; in the Emscripten multi-threaded
-        // path pumpAudio() will be driven independently from the main pthread.
-        if (!external_pump_.load(std::memory_order_acquire))
-            pumpAudio(process);
+        pumpAudio(process);
 
         // Sync MasterContext with the actual playback position *after* the pump.
         // This must live here, not in pumpAudio(), so that when the pump eventually runs
@@ -1037,9 +1022,6 @@ namespace uapmd {
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
             ctx->eventIn().position(0); // clean up *in* events here.
-
-            if (track_output_handler_ && track_output_handler_(static_cast<int32_t>(t), *tracks_[t], *ctx))
-                continue;
 
             for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex) {
                 const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(t), busIndex);

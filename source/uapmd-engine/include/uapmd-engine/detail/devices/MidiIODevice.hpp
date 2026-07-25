@@ -10,7 +10,7 @@ namespace uapmd {
 
     protected:
         MidiIODevice() = default;
-        virtual ~MidiIODevice() = default;
+        ~MidiIODevice() override = default;
 
     public:
         static MidiIODevice* instance(std::string driverName = "");

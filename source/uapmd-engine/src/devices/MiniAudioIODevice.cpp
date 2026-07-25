@@ -393,10 +393,6 @@ double uapmd::MiniAudioIODevice::sampleRate() {
     return engine.pDevice->sampleRate;
 }
 
-uint32_t uapmd::MiniAudioIODevice::channels() {
-    return output_channels;
-}
-
 uint32_t uapmd::MiniAudioIODevice::inputChannels() {
     return input_channels;
 }

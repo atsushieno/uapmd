@@ -11,10 +11,10 @@ namespace uapmd {
         virtual ~DeviceIODispatcher() = default;
 
         virtual uapmd_status_t configure(size_t umpBufferSizeInBytes,
-                                         AudioIODevice* audio = nullptr,
-                                         MidiIODevice* midiIn = nullptr,
-                                         MidiIODevice* midiOut = nullptr,
-                                         uint32_t preferredCallbackFrames = 0) = 0;
+                                         AudioIODevice* audio,
+                                         MidiIODevice* midiIn,
+                                         MidiIODevice* midiOut,
+                                         uint32_t preferredCallbackFrames) = 0;
 
         virtual AudioIODevice* audio() = 0;
         virtual MidiIODevice* midiIn() = 0;

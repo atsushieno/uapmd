@@ -34,21 +34,18 @@ namespace uapmd {
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
 
-    WebAudioEngineThread::WebAudioEngineThread(SequencerEngine* engine,
+    WebAudioEngineThread::WebAudioEngineThread(std::function<uapmd_status_t(AudioProcessContext&)> callback,
                                                WebAudioSAB* sab,
                                                uint32_t sampleRate,
                                                uint32_t bufferSize)
-        : engine_(engine)
+        : callback_(std::move(callback))
         , sab_(sab)
         , sample_rate_(sampleRate)
         , buffer_size_(bufferSize)
         , engine_ctx_(engine_master_ctx_, bufferSize * 4)
-        , pump_ctx_(pump_master_ctx_, bufferSize * 4)
     {
         engine_ctx_.configureMainBus(0, kWebAudioChannels, bufferSize);
         engine_ctx_.frameCount(static_cast<int32_t>(bufferSize));
-        pump_ctx_.configureMainBus(0, kWebAudioChannels, bufferSize);
-        pump_ctx_.frameCount(static_cast<int32_t>(bufferSize));
     }
 
     WebAudioEngineThread::~WebAudioEngineThread() {
@@ -60,40 +57,6 @@ namespace uapmd {
             return;
         running_.store(true, std::memory_order_release);
         g_active_web_audio_sab.store(sab_, std::memory_order_release);
-        engine_->setExternalPump(true);
-        engine_->setTrackOutputHandler([this](uapmd_track_index_t trackIndex,
-                                              SequencerTrack& track,
-                                              AudioProcessContext& ctx) {
-            if (!sab_ || trackIndex < 0 || static_cast<uint32_t>(trackIndex) >= kWebAudioMaxTracks)
-                return false;
-            bool workletHosted = false;
-            for (const auto& [instanceId, node] : track.graph().plugins()) {
-                (void) instanceId;
-                if (node && node->instance() && node->instance()->formatName() == "WebCLAP") {
-                    workletHosted = true;
-                    break;
-                }
-            }
-            if (!workletHosted || ctx.audioOutBusCount() == 0)
-                return false;
-
-            for (uint32_t ch = 0; ch < kWebAudioChannels; ++ch) {
-                float* dst = sab_->track_output
-                    + (static_cast<size_t>(trackIndex) * kWebAudioChannels + ch) * buffer_size_;
-                if (!dst)
-                    continue;
-                if (ch < static_cast<uint32_t>(ctx.outputChannelCount(0))) {
-                    const float* src = ctx.getFloatOutBuffer(0, ch);
-                    if (src)
-                        std::memcpy(dst, src, buffer_size_ * sizeof(float));
-                    else
-                        std::memset(dst, 0, buffer_size_ * sizeof(float));
-                } else {
-                    std::memset(dst, 0, buffer_size_ * sizeof(float));
-                }
-            }
-            return true;
-        });
         engine_thread_ = std::thread([this]{ engineLoop(); });
     }
 
@@ -102,8 +65,6 @@ namespace uapmd {
             return;
         running_.store(false, std::memory_order_release);
         if (engine_thread_.joinable()) engine_thread_.join();
-        engine_->setTrackOutputHandler({});
-        engine_->setExternalPump(false);
         auto* expected = sab_;
         g_active_web_audio_sab.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
     }
@@ -125,8 +86,7 @@ namespace uapmd {
                                 kWebAudioChannels *
                                 buffer_size_ *
                                 sizeof(float));
-                engine_->pumpAudio(pump_ctx_);
-                engine_->processAudio(engine_ctx_);
+                callback_(engine_ctx_);
             } catch (const std::exception& e) {
                 std::cerr << "[WebAudio] engineLoop processAudio exception: " << e.what() << std::endl;
             } catch (...) {
@@ -144,10 +104,6 @@ namespace uapmd {
                     std::memset(dst, 0, buffer_size_ * sizeof(float));
             }
 
-            sab_->track_count.store(static_cast<uint32_t>(std::min<size_t>(engine_->tracks().size(),
-                                                                           kWebAudioMaxTracks)),
-                                    std::memory_order_release);
-
             sab_->engine_seq.store(seq, std::memory_order_release);
         }
     }
@@ -157,6 +113,7 @@ namespace uapmd {
     WebAudioWorkletIODevice::WebAudioWorkletIODevice(uint32_t sampleRate, uint32_t bufferSize)
         : sample_rate_(sampleRate)
         , buffer_size_(bufferSize)
+        , preferred_callback_frames_(bufferSize)
     {
     }
 
@@ -165,18 +122,10 @@ namespace uapmd {
         if (audio_ctx_)     emscripten_destroy_audio_context(audio_ctx_);
     }
 
-    void WebAudioWorkletIODevice::setEngine(SequencerEngine* engine) {
-        if (!engine) {
-            engine_thread_ready_.store(nullptr, std::memory_order_release);
-            engine_thread_.reset();
-            return;
-        }
-        engine_thread_ = std::make_unique<WebAudioEngineThread>(
-            engine, &sab_, sample_rate_, buffer_size_);
-        if (is_playing_) {
-            engine_thread_->start();
-            engine_thread_ready_.store(engine_thread_.get(), std::memory_order_release);
-        }
+    void WebAudioWorkletIODevice::clearOutputBuffers() {
+        std::memset(sab_.master_output, 0, sizeof(sab_.master_output));
+        std::memset(sab_.track_output, 0, sizeof(sab_.track_output));
+        sab_.track_count.store(0, std::memory_order_release);
     }
 
     // ── EM_JS helpers for the custom AudioWorklet processor ──────────────────
@@ -293,13 +242,20 @@ namespace uapmd {
                             const sourcePath = path.replace(new RegExp("^/+"), "");
                             for (const [assetPath, blobUrl] of Object.entries(blobUrls)) {
                                 const normalized = assetPath.replace(new RegExp("^/+"), "");
+                                const relative = this.relativePath(sourcePath, normalized);
                                 const variants = [
                                     normalized,
                                     '/' + normalized,
-                                    this.relativePath(sourcePath, normalized),
+                                    relative,
+                                    // Sibling references are commonly written without a "./"
+                                    // prefix (e.g. <script src="cbor.min.js">), which relative()
+                                    // always adds; also match the bare basename as a fallback.
+                                    relative.replace(new RegExp("^\\./"), ""),
+                                    normalized.split('/').pop(),
                                 ];
                                 for (const variant of variants)
-                                    text = text.split(variant).join(blobUrl);
+                                    if (variant)
+                                        text = text.split(variant).join(blobUrl);
                             }
                             return text;
                         },
@@ -888,10 +844,15 @@ namespace uapmd {
         is_playing_ = true;
         sab_.engine_active.store(1, std::memory_order_release);
 
-        if (engine_thread_) {
-            engine_thread_->start();
-            engine_thread_ready_.store(engine_thread_.get(), std::memory_order_release);
-        }
+        engine_thread_ = std::make_unique<WebAudioEngineThread>(
+            [this](AudioProcessContext& context) {
+                for (auto& callback : callbacks_)
+                    if (auto status = callback(context); status != 0)
+                        return status;
+                return static_cast<uapmd_status_t>(0);
+            },
+            &sab_, sample_rate_, buffer_size_);
+        engine_thread_->start();
 
         if (!audio_ctx_) {
             EmscriptenWebAudioCreateAttributes attrs{
@@ -928,9 +889,10 @@ namespace uapmd {
             return 0;
         is_playing_ = false;
         sab_.engine_active.store(0, std::memory_order_release);
-        engine_thread_ready_.store(nullptr, std::memory_order_release);
-        if (engine_thread_)
+        if (engine_thread_) {
             engine_thread_->stop();
+            engine_thread_.reset();
+        }
         return 0;
     }
 

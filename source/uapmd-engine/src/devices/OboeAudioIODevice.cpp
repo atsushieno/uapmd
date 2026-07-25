@@ -57,6 +57,13 @@ namespace uapmd {
         return { requested_sample_rate_, 48000 };
     }
 
+    void OboeAudioIODevice::clearOutputBuffers() {
+        data.clearAudioOutputs();
+        stabilized_buffer_.clear();
+        stabilized_render_scratch_.clear();
+        stabilized_buffered_frames_ = 0;
+    }
+
     bool OboeAudioIODevice::useAutoBufferSize() {
         return auto_buffer_size_;
     }
