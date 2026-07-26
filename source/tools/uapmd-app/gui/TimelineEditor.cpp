@@ -805,6 +805,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .addClipAtPosition = [this](int32_t trackIndex, const std::string& filepath, double positionSeconds) {
             addClipToTrackAtPosition(trackIndex, filepath, positionSeconds);
         },
+        .addEmptyAudioClip = [this](int32_t trackIndex, double positionSeconds) {
+            addEmptyAudioClipToTrack(trackIndex, positionSeconds);
+        },
         .addAudioClip = [this](int32_t trackIndex, double positionSeconds) {
             addAudioClipToTrack(trackIndex, positionSeconds);
         },
@@ -877,6 +880,9 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
         },
         .addBlankMidiClipAtPosition = [this](int32_t trackIndex, double positionSeconds) {
             addBlankMidi2ClipToTrackAtPosition(trackIndex, positionSeconds);
+        },
+        .addEmptyAudioClip = [this](int32_t trackIndex, double positionSeconds) {
+            addEmptyAudioClipToTrack(trackIndex, positionSeconds);
         },
         .addAudioClip = [this](int32_t trackIndex, double positionSeconds) {
             addAudioClipToTrack(trackIndex, positionSeconds);
@@ -1503,7 +1509,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             addBlankMidi2ClipToTrack(trackIndex);
         if (!isMasterTrack) {
             ImGui::Separator();
-            if (contextActionMenuItem("Add Audio Clip from File..."))
+            if (contextActionMenuItem("Add Empty Audio Clip"))
+                addEmptyAudioClipToTrack(trackIndex);
+            if (contextActionMenuItem("Create Audio Clip From File..."))
                 addAudioClipToTrack(trackIndex);
         }
         ImGui::Separator();
@@ -2898,6 +2906,11 @@ void TimelineEditor::addEmptyAudioClipInRange(int32_t trackIndex, double startSe
         platformError("Add Clip Failed", result.error);
     else
         refreshSequenceEditorForTrack(trackIndex);
+}
+
+void TimelineEditor::addEmptyAudioClipToTrack(int32_t trackIndex, double positionSeconds) {
+    constexpr double kDefaultDurationSeconds = 1.0;
+    addEmptyAudioClipInRange(trackIndex, positionSeconds, positionSeconds + kDefaultDurationSeconds);
 }
 
 void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeconds) {

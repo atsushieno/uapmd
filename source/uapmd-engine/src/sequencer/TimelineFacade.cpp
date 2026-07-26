@@ -1519,16 +1519,34 @@ namespace uapmd {
                                     sampleRate_);
                         }
                     } else {
-                        auto reader = createAudioFileReaderFromPath(resolvedPath.string());
-                        if (!reader) {
-                            earlyError = std::format("Failed to open audio clip {}", resolvedPath.string());
-                            break;
+                        std::unique_ptr<AudioFileReader> reader;
+                        std::string filepath;
+                        if (resolvedPath.empty()) {
+                            const int64_t durationSamples = std::max<int64_t>(
+                                1,
+                                clip->durationSamples() > 0
+                                    ? clip->durationSamples()
+                                    : static_cast<int64_t>(sampleRate_));
+                            const uint32_t channelCount = std::max<uint32_t>(
+                                1,
+                                timeline_tracks_[static_cast<size_t>(trackIndex)]->channelCount());
+                            reader = std::make_unique<SilentAudioFileReader>(
+                                static_cast<uint64_t>(durationSamples),
+                                channelCount,
+                                static_cast<uint32_t>(sampleRate_));
+                        } else {
+                            reader = createAudioFileReaderFromPath(resolvedPath.string());
+                            if (!reader) {
+                                earlyError = std::format("Failed to open audio clip {}", resolvedPath.string());
+                                break;
+                            }
+                            filepath = resolvedPath.string();
                         }
                         auto loadResult = addAudioClipToTrack(
                             *timeline_tracks_[static_cast<size_t>(trackIndex)],
                             position,
                             std::move(reader),
-                            resolvedPath.string(),
+                            filepath,
                             clip->markers(),
                             clip->audioWarps());
                         if (!loadResult.success) {

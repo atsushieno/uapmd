@@ -187,6 +187,8 @@ namespace uapmd {
             auto type_view = clipObj["clip_type"].getString();
             clip->clipType(std::string(type_view));
         }
+        if (clipObj.hasObjectMember("duration_samples"))
+            clip->durationSamples(clipObj["duration_samples"].getWithDefault<int64_t>(0));
 
         // Parse MIDI-specific metadata
         if (clipObj.hasObjectMember("tick_resolution")) {

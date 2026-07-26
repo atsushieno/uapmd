@@ -15,6 +15,7 @@ namespace uapmd {
         bool nrpn_to_parameter_mapping_{false};
         std::vector<ClipMarker> markers_{};
         std::vector<AudioWarpPoint> audio_warps_{};
+        int64_t duration_samples_{0};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -41,6 +42,9 @@ namespace uapmd {
 
         std::vector<AudioWarpPoint> audioWarps() override { return audio_warps_; }
         void audioWarps(std::vector<AudioWarpPoint> values) override { audio_warps_ = std::move(values); }
+
+        int64_t durationSamples() override { return duration_samples_; }
+        void durationSamples(int64_t samples) override { duration_samples_ = samples; }
 
     };
 

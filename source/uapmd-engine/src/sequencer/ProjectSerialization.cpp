@@ -314,6 +314,7 @@ namespace uapmd::sequencer_detail {
         projectClip->tickResolution(clip.tickResolution);
         projectClip->markers(clip.markers);
         projectClip->audioWarps(clip.audioWarps);
+        projectClip->durationSamples(clip.durationSamples);
 
         std::filesystem::path clipPath = clip.filepath;
         if (clip.clipType == ClipType::Midi) {
@@ -345,37 +346,34 @@ namespace uapmd::sequencer_detail {
             }
         } else {
             if (clip.needsFileSave) {
-                if (clipPath.empty()) {
-                    error = std::format("{} has no source audio to save", clipContextLabel);
-                    return false;
+                if (!clipPath.empty()) {
+                    auto sourcePath = std::filesystem::absolute(clipPath);
+                    if (!std::filesystem::exists(sourcePath)) {
+                        error = std::format("{} is missing its audio file", clipContextLabel);
+                        return false;
+                    }
+
+                    std::error_code dirEc;
+                    std::filesystem::create_directories(clipDir, dirEc);
+                    if (dirEc) {
+                        error = std::format("Failed to create clip directory: {}", dirEc.message());
+                        return false;
+                    }
+
+                    auto originalName = sourcePath.filename().string();
+                    if (originalName.empty())
+                        originalName = std::format("clip{}_audio.wav", clip.clipId);
+                    auto destPath = clipDir / std::format("{}{}", audioCopyNamePrefix, originalName);
+
+                    std::error_code copyEc;
+                    std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
+                    if (copyEc) {
+                        error = std::format("Failed to store audio clip {}: {}", clip.clipId, copyEc.message());
+                        return false;
+                    }
+
+                    clipPath = destPath;
                 }
-
-                auto sourcePath = std::filesystem::absolute(clipPath);
-                if (!std::filesystem::exists(sourcePath)) {
-                    error = std::format("{} is missing its audio file", clipContextLabel);
-                    return false;
-                }
-
-                std::error_code dirEc;
-                std::filesystem::create_directories(clipDir, dirEc);
-                if (dirEc) {
-                    error = std::format("Failed to create clip directory: {}", dirEc.message());
-                    return false;
-                }
-
-                auto originalName = sourcePath.filename().string();
-                if (originalName.empty())
-                    originalName = std::format("clip{}_audio.wav", clip.clipId);
-                auto destPath = clipDir / std::format("{}{}", audioCopyNamePrefix, originalName);
-
-                std::error_code copyEc;
-                std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
-                if (copyEc) {
-                    error = std::format("Failed to store audio clip {}: {}", clip.clipId, copyEc.message());
-                    return false;
-                }
-
-                clipPath = destPath;
             } else if (!clipPath.empty()) {
                 clipPath = std::filesystem::absolute(clipPath);
             }

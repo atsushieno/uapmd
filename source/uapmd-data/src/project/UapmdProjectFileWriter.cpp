@@ -119,6 +119,9 @@ namespace uapmd {
         if (!clipType.empty())
             obj.addMember("clip_type", clipType);
 
+        if (clip->durationSamples() > 0)
+            obj.addMember("duration_samples", clip->durationSamples());
+
         auto markers = clip->markers();
         if (!markers.empty()) {
             auto markersArray = choc::value::createEmptyArray();

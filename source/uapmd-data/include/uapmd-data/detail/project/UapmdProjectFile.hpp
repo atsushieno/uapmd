@@ -61,6 +61,9 @@ namespace uapmd {
         virtual void markers(std::vector<ClipMarker> values) = 0;
         virtual std::vector<AudioWarpPoint> audioWarps() = 0;
         virtual void audioWarps(std::vector<AudioWarpPoint> values) = 0;
+        // Used to restore fileless audio clips, such as an empty audio clip.
+        virtual int64_t durationSamples() = 0;
+        virtual void durationSamples(int64_t samples) = 0;
 
         static std::unique_ptr<UapmdProjectClipData> create();
     };

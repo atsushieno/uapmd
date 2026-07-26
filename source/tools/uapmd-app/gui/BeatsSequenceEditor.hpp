@@ -42,6 +42,7 @@ public:
     struct RenderContext {
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, double positionSeconds)> addBlankMidiClipAtPosition;
+        std::function<void(int32_t trackIndex, double positionSeconds)> addEmptyAudioClip;
         std::function<void(int32_t trackIndex, double positionSeconds)> addAudioClip;
         std::function<void(int32_t trackIndex, double positionSeconds)> addSmfClip;
         std::function<void(int32_t trackIndex)> addSmf2Clip;

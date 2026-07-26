@@ -658,7 +658,12 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                                 context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
-                        if (contextActionMenuItem("Add Audio Clip from File Here...")) {
+                        if (contextActionMenuItem("Add Empty Audio Clip Here")) {
+                            if (context.addEmptyAudioClip)
+                                context.addEmptyAudioClip(trackIndex, trackState.requestedAddPosition);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if (contextActionMenuItem("Create Audio Clip From File Here...")) {
                             if (context.addAudioClip)
                                 context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
@@ -688,7 +693,11 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                 }
                 if (!isMasterTrack) {
                     ImGui::Separator();
-                    if (contextActionMenuItem("Add Audio Clip from File...")) {
+                    if (contextActionMenuItem("Add Empty Audio Clip")) {
+                        if (context.addEmptyAudioClip) context.addEmptyAudioClip(trackIndex, trackState.requestedAddPosition);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (contextActionMenuItem("Create Audio Clip From File...")) {
                         if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                         ImGui::CloseCurrentPopup();
                     }
