@@ -93,6 +93,11 @@ The application must visibly label a track as `Busy` for the entire freeze
 operation, including state capture, audio rendering, state restoration, and
 buffer cleanup.
 
+While audio rendering is in progress, the timeline minimap shows a dedicated
+freeze-progress strip. It does not reuse or alter the stopped transport
+position. The progress disappears when rendering completes, is canceled, or
+fails.
+
 Project edits are not prohibited merely because a track is `Frozen`. Every
 track-aware operation that makes the project dirty revokes that track's
 session-local cache while preserving its `On` policy. A fresh render starts

@@ -47,6 +47,8 @@ public:
     bool setFreezePolicyForTrack(int32_t trackIndex, FreezePolicy policy);
     bool unfreezeTrack(int32_t trackIndex);
     RuntimeState runtimeStateForTrack(int32_t trackIndex) const;
+    std::optional<OfflineRenderProgress> renderProgressForTrack(
+        int32_t trackIndex) const;
     uint64_t invalidationGenerationForTrack(int32_t trackIndex) const;
     std::string errorMessageForTrack(int32_t trackIndex) const;
     bool isTrackBusy(int32_t trackIndex) const;
@@ -92,6 +94,7 @@ private:
         std::string track_reference_id;
         uint64_t generation{0};
         OfflineTrackRenderSettings settings;
+        OfflineRenderProgress progress;
     };
 
     struct AsyncLifetime {

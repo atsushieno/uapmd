@@ -380,7 +380,7 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "get_track_freeze_state",
-            "Get the requested freeze policy and runtime state for a track.",
+            "Get the requested freeze policy, runtime state, and active render progress for a track.",
             R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
         },
         {
@@ -687,6 +687,19 @@ static choc::value::Value serializeTrackFreezeState(int32_t trackIndex)
     }
     result.setMember(
         "error", manager.errorMessageForTrack(trackIndex));
+    const auto progress = manager.renderProgressForTrack(trackIndex);
+    result.setMember(
+        "renderProgress", progress ? progress->progress : 0.0);
+    result.setMember(
+        "renderedSeconds", progress ? progress->renderedSeconds : 0.0);
+    result.setMember(
+        "totalSeconds", progress ? progress->totalSeconds : 0.0);
+    result.setMember(
+        "renderedFrames",
+        choc::value::createInt64(progress ? progress->renderedFrames : 0));
+    result.setMember(
+        "totalFrames",
+        choc::value::createInt64(progress ? progress->totalFrames : 0));
     return result;
 }
 

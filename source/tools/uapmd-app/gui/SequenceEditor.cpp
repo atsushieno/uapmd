@@ -337,11 +337,27 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
                                 static_cast<double>(clip.timelineStart),
                                 static_cast<double>(clip.timelineEnd)});
 
+    std::optional<NavigatorRenderProgress> freezeProgress;
+    auto& frozenTrackManager =
+        appModel.sequencer().engine()->frozenTrackManager();
+    for (const auto trackIndex : sortedTracks)
+        if (const auto progress =
+                frozenTrackManager.renderProgressForTrack(trackIndex)) {
+            freezeProgress = NavigatorRenderProgress{
+                .trackNumber = trackIndex + 1,
+                .progress = progress->progress,
+                .renderedSeconds = progress->renderedSeconds,
+                .totalSeconds = progress->totalSeconds,
+            };
+            break;
+        }
+
     renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom,
                             context.uiScale, barStartScreenX,
                             bounds.hasContent ? bounds.durationSeconds : 0.0,
                             playheadSeconds, unified_.lastVisibleWidthPixels,
-                            overview, static_cast<int>(sortedTracks.size()));
+                            overview, static_cast<int>(sortedTracks.size()),
+                            freezeProgress);
 }
 
 void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {

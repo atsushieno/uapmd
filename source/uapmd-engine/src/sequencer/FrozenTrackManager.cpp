@@ -373,6 +373,18 @@ FrozenTrackManager::runtimeStateForTrack(int32_t trackIndex) const {
     return RuntimeState::Live;
 }
 
+std::optional<OfflineRenderProgress>
+FrozenTrackManager::renderProgressForTrack(int32_t trackIndex) const {
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (referenceId.empty())
+        return std::nullopt;
+    std::lock_guard lock(mutex_);
+    if (!active_render_ ||
+        active_render_->track_reference_id != referenceId)
+        return std::nullopt;
+    return active_render_->progress;
+}
+
 uint64_t FrozenTrackManager::invalidationGenerationForTrack(
     int32_t trackIndex) const {
     const auto referenceId = trackReferenceIdForIndex(trackIndex);
@@ -888,6 +900,11 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     }
     operation->settings.endSample =
         bounds.lastSample + tailSamples + latencySamples;
+    operation->progress.totalFrames =
+        operation->settings.endSample - operation->settings.startSample;
+    operation->progress.totalSeconds =
+        static_cast<double>(operation->progress.totalFrames) /
+        static_cast<double>(operation->settings.sampleRate);
 
     std::string error;
     if (!engine_.beginOfflineTrackRender(operation->settings, error)) {
@@ -944,6 +961,11 @@ void FrozenTrackManager::renderNextChunk(
     constexpr uint32_t kBlocksPerEventLoopTurn = 8;
     auto step =
         engine_.renderOfflineTrackStep(kBlocksPerEventLoopTurn);
+    {
+        std::lock_guard lock(mutex_);
+        if (active_render_ == operation)
+            operation->progress = step.progress;
+    }
     if (step.state == OfflineTrackRenderStepState::InProgress) {
         enqueueRenderStep(operation);
         return;

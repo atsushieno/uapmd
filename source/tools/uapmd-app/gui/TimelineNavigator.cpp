@@ -12,7 +12,8 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
                              float uiScale, float barStartScreenX,
                              double contentFrames, double playheadFrame,
                              float visibleWidthPixels,
-                             const std::vector<NavigatorClip>& clips, int rowCount) {
+                             const std::vector<NavigatorClip>& clips, int rowCount,
+                             const std::optional<NavigatorRenderProgress>& renderProgress) {
     const float rowHeight = kNavigatorHeightPt * uiScale;
     const ImGuiStyle& style = ImGui::GetStyle();
     ImGuiIO& io = ImGui::GetIO();
@@ -98,6 +99,29 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
             const float px = barMin.x + static_cast<float>(playheadFrame / domain) * barWidth;
             drawList->AddLine(ImVec2(px, barMin.y), ImVec2(px, barMax.y),
                               IM_COL32(255, 230, 0, 255), std::max(1.0f, uiScale));
+        }
+
+        if (renderProgress) {
+            const float progressHeight = std::max(3.0f, 3.0f * uiScale);
+            const float progressTop = barMax.y - progressHeight;
+            const float progressWidth =
+                static_cast<float>(std::clamp(renderProgress->progress, 0.0, 1.0)) *
+                barWidth;
+            drawList->AddRectFilled(
+                ImVec2(barMin.x, progressTop),
+                barMax,
+                IM_COL32(35, 74, 92, 230));
+            drawList->AddRectFilled(
+                ImVec2(barMin.x, progressTop),
+                ImVec2(barMin.x + progressWidth, barMax.y),
+                IM_COL32(90, 210, 255, 255));
+            if (hovered)
+                ImGui::SetTooltip(
+                    "Freezing track %d: %.0f%% (%.2fs / %.2fs)",
+                    renderProgress->trackNumber,
+                    renderProgress->progress * 100.0,
+                    renderProgress->renderedSeconds,
+                    renderProgress->totalSeconds);
         }
 
         // Only one ImGui item can be active at a time, so function-local state is safe even

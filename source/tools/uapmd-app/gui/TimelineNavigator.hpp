@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace ImTimeline {
@@ -15,6 +17,13 @@ struct NavigatorClip {
     int row{0};
     double start{0.0};
     double end{0.0};
+};
+
+struct NavigatorRenderProgress {
+    int32_t trackNumber{0};
+    double progress{0.0};
+    double renderedSeconds{0.0};
+    double totalSeconds{0.0};
 };
 
 // ImTimeline's HorizontalNodeView used to truncate GetScale() to s32 before use, so any scale
@@ -56,6 +65,7 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
                              float uiScale, float barStartScreenX,
                              double contentFrames, double playheadFrame,
                              float visibleWidthPixels,
-                             const std::vector<NavigatorClip>& clips, int rowCount);
+                             const std::vector<NavigatorClip>& clips, int rowCount,
+                             const std::optional<NavigatorRenderProgress>& renderProgress);
 
 } // namespace uapmd::gui
