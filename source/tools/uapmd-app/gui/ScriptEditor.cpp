@@ -29,6 +29,20 @@ ScriptEditor::ScriptEditor()
     // Initialize buffer with a large size for the text editor
     scriptBuffer_.resize(65536, '\0');
 
+    if (auto data = ResEmbed::get ("uapmd-api.js", "AppJsLib"))
+    {
+        std::string src (reinterpret_cast<const char*> (data.data()), data.size());
+        try {
+            jsRuntime_.context().evaluateExpression (src);
+        } catch (const std::exception& e) {
+            errorMessage_ = std::string ("Failed to initialize scripting API: ") + e.what();
+        }
+    }
+    else
+    {
+        errorMessage_ = "Embedded AppJsLib/uapmd-api.js was not found";
+    }
+
     // Register built-in script presets from embedded resources.
     // New preset .js files under scripts/ are embedded automatically unless
     // they are reserved bridge library modules listed under AppJsLib.
@@ -67,8 +81,10 @@ void ScriptEditor::render()
     {
         // Calculate available height for the text editor, leaving space for buttons and error messages
         float buttonHeight = ImGui::GetFrameHeightWithSpacing() * 2;  // Space for buttons
-        float errorHeight = errorMessage_.empty() ? 0.0f : ImGui::GetFrameHeightWithSpacing() * 3;  // Space for error message
-        float availableHeight = ImGui::GetContentRegionAvail().y - buttonHeight - errorHeight;
+        float messageHeight = 0.0f;
+        if (! errorMessage_.empty() || ! resultMessage_.empty())
+            messageHeight = ImGui::GetFrameHeightWithSpacing() * 8;
+        float availableHeight = ImGui::GetContentRegionAvail().y - buttonHeight - messageHeight;
 
         // Render the text editor with constrained height using ImGui's built-in multiline input
         ImGui::InputTextMultiline("##ScriptEditor", scriptBuffer_.data(), scriptBuffer_.size(),
@@ -97,6 +113,7 @@ void ScriptEditor::render()
                     std::memcpy (scriptBuffer_.data(), preset.content.c_str(), len);
                     scriptBuffer_[len] = '\0';
                     errorMessage_.clear();
+                    resultMessage_.clear();
                 }
             }
             ImGui::EndPopup();
@@ -131,6 +148,19 @@ void ScriptEditor::render()
             ImGui::TextColored (ImVec4 (1.0f, 0.3f, 0.3f, 1.0f), "Error:");
             ImGui::TextWrapped ("%s", errorMessage_.c_str());
         }
+        else if (! resultMessage_.empty())
+        {
+            ImGui::Separator();
+            ImGui::Text ("Result:");
+            ImGui::BeginChild ("##ScriptResult", ImVec2 (0, ImGui::GetFrameHeightWithSpacing() * 6), true);
+            ImGui::InputTextMultiline (
+                "##ScriptResultText",
+                resultMessage_.data(),
+                resultMessage_.size() + 1,
+                ImVec2 (-FLT_MIN, -FLT_MIN),
+                ImGuiInputTextFlags_ReadOnly);
+            ImGui::EndChild();
+        }
     }
 
     ImGui::End();
@@ -139,6 +169,7 @@ void ScriptEditor::render()
 void ScriptEditor::executeScript()
 {
     errorMessage_.clear();
+    resultMessage_.clear();
 
     try
     {
@@ -212,13 +243,9 @@ void ScriptEditor::executeScript()
             }
 
             if (lastResult.isVoid())
-            {
-                std::cout << "[JS] Module executed successfully" << std::endl;
-            }
+                resultMessage_ = "Module executed successfully";
             else
-            {
-                std::cout << "[JS] Module result: " << choc::json::toString (lastResult, true) << std::endl;
-            }
+                resultMessage_ = choc::json::toString (lastResult, true);
         }
         else
         {
@@ -226,13 +253,9 @@ void ScriptEditor::executeScript()
             auto result = jsContext.evaluateExpression (scriptText);
 
             if (result.isVoid())
-            {
-                std::cout << "[JS] Script executed successfully (no return value)" << std::endl;
-            }
+                resultMessage_ = "Script executed successfully";
             else
-            {
-                std::cout << "[JS] Result: " << choc::json::toString (result, true) << std::endl;
-            }
+                resultMessage_ = choc::json::toString (result, true);
         }
     }
     catch (const std::exception& e)

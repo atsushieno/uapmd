@@ -63,6 +63,7 @@ void UapmdJSRuntime::registerConsoleFunctions()
         std::cout << "[JS] " << output << std::endl;
         return choc::value::Value();
     });
+    jsContext_.evaluateExpression ("globalThis.console = globalThis.console || {}; globalThis.console.log = log;");
 }
 
 void UapmdJSRuntime::registerProjectAPI()

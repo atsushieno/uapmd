@@ -21,6 +21,7 @@ class ScriptEditor {
     std::vector<char> scriptBuffer_;
     bool isOpen_ = false;
     std::string errorMessage_;
+    std::string resultMessage_;
     uapmd::UapmdJSRuntime jsRuntime_;
     std::vector<ScriptPreset> presets_;
     std::vector<ScriptFileEntry> fileHistory_;
