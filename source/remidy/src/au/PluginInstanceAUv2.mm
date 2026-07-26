@@ -145,7 +145,11 @@ OSStatus remidy::PluginInstanceAUv2::audioInputRenderCallback(
         UInt32 inNumberFrames,
         AudioBufferList *ioData
 ) {
+    if (inBusNumber >= auDataIns.size())
+        return kAudioUnitErr_InvalidElement;
     auto auDataIn = auDataIns[inBusNumber];
+    if (!auDataIn)
+        return kAudioUnitErr_InvalidElement;
     for (uint32_t ch = 0; ch < auDataIn->mNumberBuffers; ch++)
         ioData->mBuffers[ch] = auDataIn->mBuffers[ch];
     ioData->mNumberBuffers = auDataIn->mNumberBuffers;
@@ -221,7 +225,7 @@ OSStatus remidy::PluginInstanceAUv2::midiOutputCallback(const AudioTimeStamp *ti
 
 remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& configuration) {
     OSStatus result;
-    UInt32 size; // unused field for AudioUnitGetProperty
+    UInt32 size = 0;
 
     result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
     if (result) {
@@ -255,10 +259,12 @@ remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& c
     if (!audio_buses->audioInputBuses().empty()) {
         audio_render_callback.inputProc = audioInputRenderCallback;
         audio_render_callback.inputProcRefCon = this;
-        result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &audio_render_callback, sizeof(audio_render_callback));
-        if (result) {
-            logger()->logError("%s: PluginInstanceAUv2::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
+        for (int32_t i = 0, n = static_cast<int32_t>(audio_buses->audioInputBuses().size()); i < n; ++i) {
+            result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, i, &audio_render_callback, sizeof(audio_render_callback));
+            if (result) {
+                logger()->logError("%s: PluginInstanceAUv2::configure failed to set kAudioUnitProperty_SetRenderCallback on bus %d: OSStatus %d", name.c_str(), i, result);
+                return StatusCode::FAILED_TO_CONFIGURE;
+            }
         }
     }
 
@@ -274,18 +280,17 @@ remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& c
         }
     }
 
+    size = sizeof(process_replacing);
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
 
     for (int32_t i = 0, n = audio_buses->audioInputBuses().size(); i < n; i++) {
-        // FIXME: get precise channel count
-        int numChannels = 2;
+        auto numChannels = std::max<uint32_t>(1, audio_buses->audioInputBuses()[i]->channelLayout().channels());
         auto b = (AudioBufferList*) calloc(1, sizeof(AudioBufferList) + sizeof(::AudioBuffer) * (numChannels - 1));
         b->mNumberBuffers = numChannels;
         auDataIns.emplace_back(b);
     }
     for (int32_t i = 0, n = audio_buses->audioOutputBuses().size(); i < n; i++) {
-        // FIXME: get precise channel count
-        int numChannels = 2;
+        auto numChannels = std::max<uint32_t>(1, audio_buses->audioOutputBuses()[i]->channelLayout().channels());
         auto b = (AudioBufferList*) calloc(1, sizeof(AudioBufferList) + sizeof(::AudioBuffer) * (numChannels - 1));
         b->mNumberBuffers = numChannels;
         auDataOuts.emplace_back(b);
@@ -370,14 +375,17 @@ remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &proc
     bool useDouble = audio_content_type == AudioContentType::Float64;
     UInt32 sampleSize = useDouble ? sizeof(double) : sizeof(float);
     uint32_t channelBufSize = process.frameCount() * sampleSize;
-    // FIXME: we still don't initialize non-main buses, so only deal with the main bus so far.
-    //for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
-    if (!auDataIns.empty()) {
-        size_t bus = 0;
+    for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
+        if (bus >= static_cast<size_t>(process.audioInBusCount()))
+            continue;
         auto auDataIn = auDataIns[bus];
+        if (!auDataIn)
+            continue;
         auto numChannels = process.inputChannelCount(bus);
-        auDataIn->mNumberBuffers = numChannels;
+        auDataIn->mNumberBuffers = std::min<uint32_t>(static_cast<uint32_t>(numChannels), auDataIn->mNumberBuffers);
         for (int32_t ch = 0; ch < numChannels; ch++) {
+            if (ch >= static_cast<int32_t>(auDataIn->mNumberBuffers))
+                break;
             auDataIn->mBuffers[ch].mNumberChannels = 1;
             auDataIn->mBuffers[ch].mData = useDouble ? (void*) process.getDoubleInBuffer(bus, ch) :
                                            process.getFloatInBuffer(bus, ch);
@@ -411,53 +419,60 @@ remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &proc
         host_transport_info.currentBeat = 0.0;
     }
 
-    // FIXME: we still don't initialize non-main buses, so only deal with the main bus so far.
-    //for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
-    if (!auDataOuts.empty()) {
-        size_t bus = 0;
+    for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++) {
+        if (bus >= static_cast<size_t>(process.audioOutBusCount()))
+            continue;
         auto auDataOut = auDataOuts[bus];
+        if (!auDataOut)
+            continue;
         auto numChannels = process.outputChannelCount(bus);
-        auDataOut->mNumberBuffers = numChannels;
+        auDataOut->mNumberBuffers = std::min<uint32_t>(static_cast<uint32_t>(numChannels), auDataOut->mNumberBuffers);
         for (int32_t ch = 0; ch < numChannels; ch++) {
+            if (ch >= static_cast<int32_t>(auDataOut->mNumberBuffers))
+                break;
             auDataOut->mBuffers[ch].mNumberChannels = 1;
             auDataOut->mBuffers[ch].mData = useDouble ?
                                             (void*) process.getDoubleOutBuffer(bus, ch) :
                                             process.getFloatOutBuffer(bus, ch);
             auDataOut->mBuffers[ch].mDataByteSize = channelBufSize;
         }
+    }
 
-        if (audio_buses->hasEventInputs())
-            ump_input_dispatcher.process(process);
+    if (audio_buses->hasEventInputs())
+        ump_input_dispatcher.process(process);
 
-        // Clear output buffer before processing
-        midi_output_count = 0;
+    // Clear output buffer before processing
+    midi_output_count = 0;
 
+    for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++) {
+        if (bus >= static_cast<size_t>(process.audioOutBusCount()) || !auDataOuts[bus])
+            continue;
         AudioUnitRenderActionFlags flags = 0;
-        auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
+        auto status = AudioUnitRender(instance, &flags, &process_timestamp, static_cast<UInt32>(bus), process.frameCount(), auDataOuts[bus]);
         if (status != noErr) {
-            logger()->logError("%s: failed to process audio PluginInstanceAUv2::process(). Status: %d", name.c_str(), status);
+            logger()->logError("%s: failed to process audio PluginInstanceAUv2::process() bus %zu. Status: %d", name.c_str(), bus, status);
             return StatusCode::FAILED_TO_PROCESS;
         }
+    }
 
-        // Advance timestamp for next process() call - audio is flowing even when transport is stopped
-        process_timestamp.mSampleTime += process.frameCount();
+    // Advance timestamp for next process() call - audio is flowing even when transport is stopped
+    process_timestamp.mSampleTime += process.frameCount();
 
-        // Copy MIDI output events from temporary buffer to process context
-        if (midi_output_count > 0) {
-            auto& eventOut = process.eventOut();
-            auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
-            size_t umpPosition = eventOut.position() / sizeof(uint32_t);
-            size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
+    // Copy MIDI output events from temporary buffer to process context
+    if (midi_output_count > 0) {
+        auto& eventOut = process.eventOut();
+        auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
+        size_t umpPosition = eventOut.position() / sizeof(uint32_t);
+        size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
-            size_t copyCount = std::min(midi_output_count, umpCapacity - umpPosition);
-            if (copyCount > 0) {
-                std::memcpy(&umpBuffer[umpPosition], midi_output_buffer.data(), copyCount * sizeof(uint32_t));
-                eventOut.position((umpPosition + copyCount) * sizeof(uint32_t));
-            }
-
-            // Clear temporary buffer
-            midi_output_count = 0;
+        size_t copyCount = std::min(midi_output_count, umpCapacity - umpPosition);
+        if (copyCount > 0) {
+            std::memcpy(&umpBuffer[umpPosition], midi_output_buffer.data(), copyCount * sizeof(uint32_t));
+            eventOut.position((umpPosition + copyCount) * sizeof(uint32_t));
         }
+
+        // Clear temporary buffer
+        midi_output_count = 0;
     }
 
     return StatusCode::OK;

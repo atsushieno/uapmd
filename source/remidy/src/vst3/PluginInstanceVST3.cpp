@@ -447,7 +447,6 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     process_context.projectTimeSamples = masterContext.playbackPositionSamples();
     process_context.continousTimeSamples = masterContext.playbackPositionSamples();
     process_context.sampleRate = masterContext.sampleRate();
-    processData.symbolicSampleSize = process.masterContext().audioDataType() == AudioContentType::Float64 ? kSample64 : kSample32;
 
     // Update state flags
     uint32_t state = ProcessContext::kTempoValid | ProcessContext::kTimeSigValid;

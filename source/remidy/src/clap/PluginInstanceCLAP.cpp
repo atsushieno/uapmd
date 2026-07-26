@@ -206,6 +206,7 @@ namespace remidy {
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
         is_offline_ = configuration.offlineMode;
+        use_double_precision_ = useDouble;
         sample_rate_ = configuration.sampleRate;
 
         // If host requests 64-bit, verify every port supports it; disable the plugin if not.
@@ -374,7 +375,7 @@ namespace remidy {
             transport.tsig_denom = static_cast<uint16_t>(masterContext.timeSignatureDenominator());
         }
 
-        const bool useDouble = src.masterContext().audioDataType() == AudioContentType::Float64;
+        const bool useDouble = use_double_precision_;
         const size_t numFrames = static_cast<size_t>(src.frameCount());
 
         auto zeroInputFallback = [&](size_t bus, size_t channel) -> std::pair<float*, double*> {

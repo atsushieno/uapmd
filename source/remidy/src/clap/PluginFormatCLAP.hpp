@@ -308,6 +308,7 @@ namespace remidy {
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
+        bool use_double_precision_{false};
         double sample_rate_{48000.0};
         uint32_t buffer_size_{4096};
         bool activated_{false};
