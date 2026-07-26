@@ -398,8 +398,16 @@ bool uapmd::AppModel::connectTrackGraph(
         return false;
     }
 
-    if (dag->connect(connection) != 0) {
-        error = "Failed to connect graph endpoints";
+    const auto connectResult = dag->connect(connection);
+    if (connectResult != 0) {
+        if (connectResult == -1)
+            error = "Invalid graph endpoint direction";
+        else if (connectResult == -2)
+            error = "Graph endpoint does not exist";
+        else if (connectResult == -3)
+            error = "Graph connection would create a cycle";
+        else
+            error = "Failed to connect graph endpoints";
         return false;
     }
     markTrackDirty(trackIndex);

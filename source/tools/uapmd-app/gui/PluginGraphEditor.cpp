@@ -57,9 +57,12 @@ int allocateStableId(std::unordered_map<int64_t, int>& ids, int64_t key, int& ne
     return it->second;
 }
 
-int64_t hashCombine(int64_t seed, std::string_view text) {
-    const auto hashed = static_cast<int64_t>(std::hash<std::string_view>{}(text));
-    return seed ^ (hashed + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+uint64_t hashCombine(uint64_t seed, uint64_t value) {
+    return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+}
+
+uint64_t hashCombine(uint64_t seed, std::string_view text) {
+    return hashCombine(seed, static_cast<uint64_t>(std::hash<std::string_view>{}(text)));
 }
 
 } // namespace
@@ -157,25 +160,26 @@ int64_t PluginGraphEditor::nodeKeyForTrackEndpoint(
     AudioPluginGraphEndpointType type,
     const std::string& nodeId
 ) const {
-    const int64_t trackKey = static_cast<int64_t>(trackIndex == kMasterEditorTrack ? 1000000 : trackIndex + 1);
-    const int64_t typeKey = type == AudioPluginGraphEndpointType::GraphInput ? 1 :
+    const uint64_t trackKey = static_cast<uint64_t>(trackIndex == kMasterEditorTrack ? 1000000 : trackIndex + 1);
+    const uint64_t typeKey = type == AudioPluginGraphEndpointType::GraphInput ? 1 :
         type == AudioPluginGraphEndpointType::GraphOutput ? 2 : 3;
-    int64_t seed = (trackKey << 40) | (typeKey << 32);
-    return hashCombine(seed, nodeId);
+    uint64_t seed = (trackKey << 40) | (typeKey << 32);
+    return static_cast<int64_t>(hashCombine(seed, nodeId));
 }
 
 int64_t PluginGraphEditor::pinKeyForDescriptor(const PinDescriptor& descriptor) const {
-    const int64_t nodeKey = nodeKeyForTrackEndpoint(descriptor.track_index,
-                                                    descriptor.endpoint.type,
-                                                    endpointNodeId(descriptor.endpoint));
-    const int64_t busTypeKey = descriptor.bus_type == AudioPluginGraphBusType::Audio ? 1 : 2;
-    const int64_t dirKey = descriptor.is_input ? 1 : 2;
-    return (nodeKey << 8) ^ (busTypeKey << 5) ^ (dirKey << 3) ^ static_cast<int64_t>(descriptor.endpoint.bus_index + 1);
+    uint64_t seed = static_cast<uint64_t>(nodeKeyForTrackEndpoint(descriptor.track_index,
+                                                                  descriptor.endpoint.type,
+                                                                  endpointNodeId(descriptor.endpoint)));
+    seed = hashCombine(seed, descriptor.bus_type == AudioPluginGraphBusType::Audio ? 1u : 2u);
+    seed = hashCombine(seed, descriptor.is_input ? 1u : 2u);
+    seed = hashCombine(seed, static_cast<uint64_t>(descriptor.endpoint.bus_index + 1));
+    return static_cast<int64_t>(seed);
 }
 
 int64_t PluginGraphEditor::linkKey(int32_t trackIndex, int64_t connectionId) const {
-    return (static_cast<int64_t>(trackIndex == kMasterEditorTrack ? 1000000 : trackIndex + 1) << 40) |
-        (connectionId & 0xFFFFFFFFFFLL);
+    const uint64_t trackKey = static_cast<uint64_t>(trackIndex == kMasterEditorTrack ? 1000000 : trackIndex + 1);
+    return static_cast<int64_t>((trackKey << 40) | (static_cast<uint64_t>(connectionId) & 0xFFFFFFFFFFULL));
 }
 
 std::string PluginGraphEditor::windowId(int32_t trackIndex) const {
@@ -237,6 +241,10 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
             destroyWindow(window.track_index);
             return;
         }
+    }
+    if (!window.status_message.empty()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", window.status_message.c_str());
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Return this track to the simple linear graph.");
@@ -484,12 +492,17 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
             if (source.is_input && !target.is_input)
                 std::swap(source, target);
             if (!source.is_input && target.is_input && source.bus_type == target.bus_type) {
-                fullGraph->connect(AudioPluginGraphConnection{
-                    .id = 0,
-                    .bus_type = source.bus_type,
-                    .source = source.endpoint,
-                    .target = target.endpoint,
-                });
+                std::string error;
+                const bool connected = AppModel::instance().connectTrackGraph(
+                    window.track_index,
+                    AudioPluginGraphConnection{
+                        .id = 0,
+                        .bus_type = source.bus_type,
+                        .source = source.endpoint,
+                        .target = target.endpoint,
+                    },
+                    error);
+                window.status_message = connected ? std::string{} : error;
             }
         }
     }
@@ -498,7 +511,11 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     if (ImNodes::IsLinkHovered(&hoveredLinkId) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto it = links.find(hoveredLinkId);
         if (it != links.end()) {
-            fullGraph->disconnect(it->second);
+            std::string error;
+            if (!AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
+                window.status_message = error;
+            else
+                window.status_message.clear();
             ImNodes::ClearLinkSelection(hoveredLinkId);
         }
     }
@@ -506,8 +523,13 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     int destroyedLinkId = 0;
     if (ImNodes::IsLinkDestroyed(&destroyedLinkId)) {
         auto it = links.find(destroyedLinkId);
-        if (it != links.end())
-            fullGraph->disconnect(it->second);
+        if (it != links.end()) {
+            std::string error;
+            if (!AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
+                window.status_message = error;
+            else
+                window.status_message.clear();
+        }
     }
 
     ImNodes::EditorContextSet(nullptr);

@@ -43,6 +43,7 @@ private:
         ImNodesContext* context{nullptr};
         ImNodesEditorContext* editor{nullptr};
         bool request_focus{false};
+        std::string status_message{};
         std::unordered_set<int64_t> initialized_node_keys{};
         std::unordered_map<int64_t, int> node_ids{};
         std::unordered_map<int64_t, int> pin_ids{};

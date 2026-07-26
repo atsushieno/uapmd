@@ -230,9 +230,11 @@ namespace uapmd {
         }
 
         std::string endpointNodeId(const AudioPluginGraphEndpoint& endpoint) {
+            if (endpoint.type != AudioPluginGraphEndpointType::Plugin)
+                return {};
             if (!endpoint.node_id.empty())
                 return endpoint.node_id;
-            if (endpoint.type != AudioPluginGraphEndpointType::Plugin || endpoint.instance_id < 0)
+            if (endpoint.instance_id < 0)
                 return {};
             return defaultNodeIdForInstance(endpoint.instance_id);
         }
@@ -931,7 +933,7 @@ namespace uapmd {
             return -1;
         if (!endpointExists(*access, connection.source, connection.bus_type) ||
             !endpointExists(*access, connection.target, connection.bus_type))
-            return -1;
+            return -2;
         if (connection.source.type == AudioPluginGraphEndpointType::GraphOutput ||
             connection.target.type == AudioPluginGraphEndpointType::GraphInput)
             return -1;
@@ -945,7 +947,7 @@ namespace uapmd {
         if (access->has_cycle) {
             access->connections.pop_back();
             rebuildCompiledState(*access);
-            return -1;
+            return -3;
         }
         return 0;
     }
@@ -1084,7 +1086,6 @@ namespace uapmd {
                 accumulateAudioBus(runtime.process, true, connection.target.bus_index,
                                    sourceRuntimeIt->second->process, false, connection.source.bus_index);
             }
-
             uint8_t group = 0xFF;
             if (pluginImpl && pluginNode) {
                 group = resolveGroup(pluginNode->instanceId());
@@ -1157,7 +1158,6 @@ namespace uapmd {
             accumulateAudioBus(process, false, connection.target.bus_index,
                                sourceRuntimeIt->second->process, false, connection.source.bus_index);
         }
-
         if (state.custom_topology && event_output_callback_) {
             for (const auto& connection : state.output_event_links) {
                 if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
