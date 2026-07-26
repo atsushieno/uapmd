@@ -17,6 +17,7 @@ namespace uapmd {
     class AudioPluginHostingAPI;
     class SequencerEngine;
     class FrozenTrackManager;
+    class TailProcessManager;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
@@ -33,6 +34,7 @@ namespace uapmd {
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
         virtual FrozenTrackManager& frozenTrackManager() = 0;
+        virtual TailProcessManager& tailProcessManager() = 0;
         virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
         // FIXME: we should probably remove this at some stage
@@ -85,7 +87,7 @@ namespace uapmd {
         virtual void setOutputMuted(bool muted) = 0;
 
         // Clear all intermediate processing buffers: pump ring slots, track/mix/master
-        // contexts, output alignment delay lines, latency drain state, spectra, and
+        // contexts, output alignment delay lines, tail process state, spectra, and
         // queued plugin-node events. Must only be called while the audio callback is
         // stopped (typically right after the audio engine has been turned off), so that
         // a later engine restart does not resume stale audio or replay stale events.
@@ -148,17 +150,6 @@ namespace uapmd {
         virtual void stopPlayback() = 0;
         virtual void pausePlayback() = 0;
         virtual void resumePlayback() = 0;
-        // Transport becomes quiet after Stop or Pause has allowed every
-        // declared plugin tail to drain and the mixed output has remained
-        // silent. Listener callbacks run off the audio thread.
-        using TransportQuietListenerId = uint64_t;
-        using TransportQuietListener = std::function<void()>;
-        virtual bool isTransportQuiet() const = 0;
-        virtual TransportQuietListenerId addTransportQuietListener(
-            TransportQuietListener listener) = 0;
-        virtual void removeTransportQuietListener(
-            TransportQuietListenerId listenerId) = 0;
-
         // Audio analysis
         // FIXME: they should be replaced by direct access to current audio buffers.
         virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;

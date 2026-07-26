@@ -7,6 +7,7 @@
 #include "detail/devices/MidiIODevice.hpp"
 #include "detail/devices/DeviceIODispatcher.hpp"
 #include "detail/sequencer/OfflineRenderer.hpp"
+#include "detail/sequencer/TailProcessManager.hpp"
 #include "detail/sequencer/TrackAudioProcessorExtension.hpp"
 #include "detail/sequencer/FrozenTrackManager.hpp"
 #include "detail/sequencer/SequencerTrack.hpp"

@@ -14,6 +14,7 @@
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
 #include "LatencyCompensationManagerImpl.hpp"
+#include "TailProcessManagerImpl.hpp"
 #include "TrackRoutingManager.hpp"
 #include "readerwriterqueue.h"
 
@@ -133,19 +134,7 @@ namespace uapmd {
         std::atomic<bool> is_playback_active_{false};
         std::atomic<int64_t> playback_position_samples_{0};
         std::atomic<int64_t> render_playback_position_samples_{0};
-        std::atomic<bool> latency_drain_active_{false};
-        std::atomic<int64_t> latency_drain_remaining_samples_{0};
-        std::atomic<bool> transport_quiet_pending_{false};
         std::atomic<uint64_t> transport_generation_{0};
-        std::atomic<bool> transport_quiet_{true};
-        std::atomic<int64_t> transport_quiet_silence_frames_{0};
-        std::atomic<uint64_t> transport_quiet_event_sequence_{0};
-        std::atomic<bool> transport_quiet_dispatch_stopping_{false};
-        std::thread transport_quiet_dispatch_thread_;
-        std::mutex transport_quiet_listener_mutex_;
-        TransportQuietListenerId next_transport_quiet_listener_id_{1};
-        std::unordered_map<TransportQuietListenerId, TransportQuietListener>
-            transport_quiet_listeners_;
 
         // Audio preprocessing callback (for app-level source nodes)
         AudioPreprocessCallback audio_preprocess_callback_;
@@ -172,10 +161,6 @@ namespace uapmd {
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
         std::atomic<bool> track_freeze_render_active_{false};
-        // Once a stopped transport has entered track freezing, device output
-        // stays hard-silent until an explicit Play/Resume. This is independent
-        // of plugin tails and latency-drain state.
-        std::atomic<bool> silence_stopped_output_after_track_freeze_{false};
         bool executing_track_freeze_render_step_{false};
         struct OfflineTrackRenderSession {
             OfflineTrackRenderSettings settings;
@@ -260,6 +245,7 @@ namespace uapmd {
         std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
         std::unique_ptr<TrackRoutingManager> track_routing_manager_{};
         std::unique_ptr<LatencyCompensationManagerImpl> latency_compensation_manager_{};
+        std::unique_ptr<TailProcessManagerImpl> tail_process_manager_{};
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
@@ -279,6 +265,7 @@ namespace uapmd {
 
         AudioPluginHostingAPI* pluginHost() override;
         FrozenTrackManager& frozenTrackManager() override { return *frozen_track_manager_; }
+        TailProcessManager& tailProcessManager() override { return *tail_process_manager_; }
 
         SequenceProcessContext& data() override { return sequence; }
 
@@ -395,11 +382,6 @@ namespace uapmd {
 
         // Playback control
         bool isPlaybackActive() const override;
-        bool isTransportQuiet() const override;
-        TransportQuietListenerId addTransportQuietListener(
-            TransportQuietListener listener) override;
-        void removeTransportQuietListener(
-            TransportQuietListenerId listenerId) override;
         void playbackPosition(int64_t samples) override;
         int64_t playbackPosition() const override;
         int64_t renderPlaybackPosition() const override;
@@ -476,16 +458,12 @@ namespace uapmd {
             uint32_t outputBusIndex) const;
         uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         void reconfigureMasterTrackInputBuses();
-        void updateLatencyDrainState(int32_t frameCount);
         void reconfigureMixBusContext();
         void reconfigureOutputAlignmentBuffers();
         void resetOutputAlignmentBuffers();
         void clearTrackProcessingState(
             uapmd_track_index_t trackIndex,
             bool resetPlugins);
-        void signalTransportQuiet();
-        void updateTransportQuietState(float outputPeak, int32_t frameCount);
-        void dispatchTransportQuietEvents();
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(
@@ -510,6 +488,12 @@ namespace uapmd {
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         timeline_ = TimelineFacade::create(*this);
+        tail_process_manager_ = std::make_unique<TailProcessManagerImpl>(
+            audio_buffer_size_in_frames,
+            this->sampleRate,
+            is_playback_active_,
+            playback_position_samples_,
+            render_playback_position_samples_);
         frozen_track_manager_ = std::make_unique<FrozenTrackManager>(*this, *timeline_);
         timeline_->addProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
         addTrackAudioProcessorExtension(frozen_track_manager_->audioProcessorExtension());
@@ -536,9 +520,6 @@ namespace uapmd {
             is_playback_active_,
             playback_position_samples_,
             render_playback_position_samples_,
-            latency_drain_active_,
-            latency_drain_remaining_samples_,
-            transport_quiet_pending_,
             [this](const std::function<void()>& mutation) {
                 StructureMutationGuard mutationGuard(*this);
                 mutation();
@@ -547,6 +528,7 @@ namespace uapmd {
                 return getPluginInstance(instanceId);
             },
             [this]() {
+                tail_process_manager_->cancelTailProcessing();
                 requestAllNotesOff();
                 transport_generation_.fetch_add(1, std::memory_order_release);
             });
@@ -571,8 +553,6 @@ namespace uapmd {
             timeline_->processTracksAudio(process, pump_sequence_);
         };
         reconfigureOutputAlignmentBuffers();
-        transport_quiet_dispatch_thread_ =
-            std::thread([this] { dispatchTransportQuietEvents(); });
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
@@ -581,15 +561,9 @@ namespace uapmd {
             timeline_->removeProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
             frozen_track_manager_.reset();
         }
-        transport_quiet_dispatch_stopping_.store(
-            true, std::memory_order_release);
-        transport_quiet_event_sequence_.fetch_add(
-            1, std::memory_order_release);
-        transport_quiet_event_sequence_.notify_one();
-        if (transport_quiet_dispatch_thread_.joinable())
-            transport_quiet_dispatch_thread_.join();
         if (latency_compensation_manager_)
             latency_compensation_manager_->clearPluginTimingListeners();
+        tail_process_manager_.reset();
         // Detach output mappers while plugin instances are still alive. This is a separate
         // step from clearAllDevices() because AppModel::DeviceState holds shared_ptrs to
         // UapmdFunctionBlock that may outlive the engine — detaching now ensures those
@@ -603,6 +577,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::applyLatencyCompensationTimingUpdateLocked() {
+        tail_process_manager_->cancelTailProcessing();
         requestAllNotesOff();
         transport_generation_.fetch_add(1, std::memory_order_release);
         if (track_routing_manager_)
@@ -835,11 +810,8 @@ namespace uapmd {
 
         resetOutputAlignmentBuffers();
 
-        // Reset any leftover tail-drain state so a restart does not continue a drain.
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        transport_quiet_pending_.store(false, std::memory_order_release);
-        transport_quiet_silence_frames_.store(0, std::memory_order_release);
+        // Reset any leftover tail processing so a restart does not continue a drain.
+        tail_process_manager_->cancelTailProcessing();
 
         // Drop events that were queued for plugins but never delivered; replaying them
         // on restart would trigger stale notes and parameter changes.
@@ -911,11 +883,6 @@ namespace uapmd {
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
         if (latency_compensation_manager_)
             latency_compensation_manager_->setPlaybackPosition(samples, true);
-    }
-
-    void SequencerEngineImpl::updateLatencyDrainState(int32_t frameCount) {
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->updateLatencyDrainState(frameCount);
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
@@ -1014,7 +981,8 @@ namespace uapmd {
 
         auto& data = sequence;
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
-        const bool isLatencyDrainActive = latency_drain_active_.load(std::memory_order_acquire);
+        const bool isTailDrainActive =
+            tail_process_manager_->tailDrainActive();
 
         // Run the pump (timeline advance + device-audio fanout + clip filling).
         pumpAudio(process);
@@ -1025,7 +993,7 @@ namespace uapmd {
         {
             auto& masterContext = data.masterContext();
             masterContext.playbackPositionSamples(render_playback_position_samples_.load(std::memory_order_acquire));
-            masterContext.isPlaying(isPlaybackActive || isLatencyDrainActive);
+            masterContext.isPlaying(isPlaybackActive || isTailDrainActive);
             masterContext.sampleRate(sampleRate);
         }
 
@@ -1269,8 +1237,7 @@ namespace uapmd {
         // Muted drain: silence the device output *after* the spectrum was computed so
         // the shutdown sequence can still observe how much tail audio remains.
         const bool silenceStoppedFreezeOutput =
-            silence_stopped_output_after_track_freeze_.load(
-                std::memory_order_acquire) &&
+            tail_process_manager_->shouldSilenceStoppedOutput() &&
             !isPlaybackActive;
         if ((output_muted_.load(std::memory_order_acquire) ||
              silenceStoppedFreezeOutput) &&
@@ -1284,8 +1251,8 @@ namespace uapmd {
             if (!prerollActive)
                 playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
         }
-        updateLatencyDrainState(process.frameCount());
-        updateTransportQuietState(outputPeak, process.frameCount());
+        tail_process_manager_->processAudio(
+            outputPeak, process.frameCount());
 
         // Check for missed audio processing deadline
         auto endTime = std::chrono::steady_clock::now();
@@ -1410,8 +1377,7 @@ namespace uapmd {
                 true, std::memory_order_seq_cst);
             while (in_process_audio_.load(std::memory_order_seq_cst))
                 std::this_thread::yield();
-            silence_stopped_output_after_track_freeze_.store(
-                true, std::memory_order_release);
+            tail_process_manager_->holdStoppedOutputSilent();
 
             auto* track = tracks_[static_cast<size_t>(settings.trackIndex)].get();
             for (const auto instanceId : track->orderedInstanceIds()) {
@@ -1970,96 +1936,8 @@ namespace uapmd {
         return is_playback_active_.load(std::memory_order_acquire);
     }
 
-    bool SequencerEngineImpl::isTransportQuiet() const {
-        return transport_quiet_.load(std::memory_order_acquire);
-    }
-
-    SequencerEngine::TransportQuietListenerId
-    SequencerEngineImpl::addTransportQuietListener(
-        TransportQuietListener listener) {
-        if (!listener)
-            return 0;
-        std::lock_guard lock(transport_quiet_listener_mutex_);
-        const auto listenerId = next_transport_quiet_listener_id_++;
-        transport_quiet_listeners_.emplace(
-            listenerId, std::move(listener));
-        return listenerId;
-    }
-
-    void SequencerEngineImpl::removeTransportQuietListener(
-        TransportQuietListenerId listenerId) {
-        std::lock_guard lock(transport_quiet_listener_mutex_);
-        transport_quiet_listeners_.erase(listenerId);
-    }
-
-    void SequencerEngineImpl::signalTransportQuiet() {
-        transport_quiet_.store(true, std::memory_order_release);
-        transport_quiet_event_sequence_.fetch_add(
-            1, std::memory_order_release);
-        transport_quiet_event_sequence_.notify_one();
-    }
-
-    void SequencerEngineImpl::updateTransportQuietState(
-        float outputPeak,
-        int32_t frameCount) {
-        if (is_playback_active_.load(std::memory_order_acquire) ||
-            !transport_quiet_pending_.load(std::memory_order_acquire) ||
-            latency_drain_active_.load(std::memory_order_acquire)) {
-            transport_quiet_silence_frames_.store(
-                0, std::memory_order_release);
-            return;
-        }
-
-        // Match the offline renderer's default -80 dB silence threshold, and
-        // require a continuous 250 ms quiet window so a zero crossing or an
-        // inter-note gap cannot end the transport tail.
-        constexpr float kSilenceThreshold = 0.0001f;
-        if (!std::isfinite(outputPeak) ||
-            outputPeak > kSilenceThreshold) {
-            transport_quiet_silence_frames_.store(
-                0, std::memory_order_release);
-            return;
-        }
-
-        const auto silenceFrames =
-            transport_quiet_silence_frames_.fetch_add(
-                frameCount, std::memory_order_acq_rel) +
-            frameCount;
-        const auto requiredSilenceFrames =
-            std::max<int64_t>(1, sampleRate / 4);
-        if (silenceFrames < requiredSilenceFrames ||
-            !transport_quiet_pending_.exchange(
-                false, std::memory_order_acq_rel))
-            return;
-
-        signalTransportQuiet();
-    }
-
-    void SequencerEngineImpl::dispatchTransportQuietEvents() {
-        uint64_t observedSequence = 0;
-        while (true) {
-            transport_quiet_event_sequence_.wait(
-                observedSequence, std::memory_order_acquire);
-            if (transport_quiet_dispatch_stopping_.load(
-                    std::memory_order_acquire))
-                return;
-            observedSequence = transport_quiet_event_sequence_.load(
-                std::memory_order_acquire);
-
-            std::vector<TransportQuietListener> listeners;
-            {
-                std::lock_guard lock(transport_quiet_listener_mutex_);
-                listeners.reserve(transport_quiet_listeners_.size());
-                for (const auto& [_, listener] :
-                     transport_quiet_listeners_)
-                    listeners.push_back(listener);
-            }
-            for (const auto& listener : listeners)
-                listener();
-        }
-    }
-
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
+        tail_process_manager_->cancelTailProcessing();
         if (latency_compensation_manager_)
             latency_compensation_manager_->setPlaybackPosition(
                 samples,
@@ -2111,23 +1989,16 @@ namespace uapmd {
         if (frozen_track_manager_->requestPlaybackAfterBusyTrackRestored(
                 [this] { startPlayback(); }))
             return;
-        transport_quiet_.store(false, std::memory_order_release);
-        transport_quiet_silence_frames_.store(
-            0, std::memory_order_release);
+        tail_process_manager_->transportStarted();
         frozen_track_manager_->transportPlaybackStarted();
         if (latency_compensation_manager_)
             latency_compensation_manager_->startPlayback();
         is_playback_active_.store(true, std::memory_order_release);
         timeline_->state().isPlaying = true;
-        silence_stopped_output_after_track_freeze_.store(
-            false, std::memory_order_release);
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        transport_quiet_.store(false, std::memory_order_release);
-        transport_quiet_silence_frames_.store(
-            0, std::memory_order_release);
         // Establish the final public Stop position before tail draining. The
         // later transport-quiet event may start a deferred render, whose
         // snapshot must never restore the pre-Stop position or playing state.
@@ -2136,18 +2007,23 @@ namespace uapmd {
         timeline_->state().playheadPosition.legacy_beats = 0.0;
         if (latency_compensation_manager_)
             latency_compensation_manager_->stopPlayback();
+        tail_process_manager_->beginStoppedTransport(
+            latency_compensation_manager_
+                ? latency_compensation_manager_->stopDrainInSamples()
+                : 0);
         requestAllNotesOff();
         frozen_track_manager_->transportPlaybackStopped();
     }
 
     void uapmd::SequencerEngineImpl::pausePlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        transport_quiet_.store(false, std::memory_order_release);
-        transport_quiet_silence_frames_.store(
-            0, std::memory_order_release);
         timeline_->state().isPlaying = false;
         if (latency_compensation_manager_)
             latency_compensation_manager_->pausePlayback();
+        tail_process_manager_->beginStoppedTransport(
+            latency_compensation_manager_
+                ? latency_compensation_manager_->stopDrainInSamples()
+                : 0);
         requestAllNotesOff();
         frozen_track_manager_->transportPlaybackStopped();
     }
@@ -2156,16 +2032,12 @@ namespace uapmd {
         if (frozen_track_manager_->requestPlaybackAfterBusyTrackRestored(
                 [this] { resumePlayback(); }))
             return;
-        transport_quiet_.store(false, std::memory_order_release);
-        transport_quiet_silence_frames_.store(
-            0, std::memory_order_release);
+        tail_process_manager_->transportStarted();
         frozen_track_manager_->transportPlaybackStarted();
         if (latency_compensation_manager_)
             latency_compensation_manager_->resumePlayback();
         is_playback_active_.store(true, std::memory_order_release);
         timeline_->state().isPlaying = true;
-        silence_stopped_output_after_track_freeze_.store(
-            false, std::memory_order_release);
     }
 
     // Audio analysis

@@ -95,7 +95,7 @@ FrozenTrackManager::FrozenTrackManager(
     async_lifetime_->owner.store(this, std::memory_order_release);
     const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
     transport_quiet_listener_token_ =
-        engine_.addTransportQuietListener([weakLifetime] {
+        engine_.tailProcessManager().addTransportQuietListener([weakLifetime] {
             remidy::EventLoop::enqueueTaskOnMainThread([weakLifetime] {
                 const auto lifetime = weakLifetime.lock();
                 auto* owner = lifetime
@@ -114,7 +114,7 @@ FrozenTrackManager::~FrozenTrackManager() {
     stopping_.store(true, std::memory_order_release);
     async_lifetime_->owner.store(nullptr, std::memory_order_release);
     if (transport_quiet_listener_token_ != 0)
-        engine_.removeTransportQuietListener(
+        engine_.tailProcessManager().removeTransportQuietListener(
             transport_quiet_listener_token_);
     active_playback_snapshot_.store(nullptr, std::memory_order_release);
     if (project_document_event_listener_token_ != 0)
@@ -268,7 +268,7 @@ bool FrozenTrackManager::setFreezePolicyForTrack(
         } else {
             policies_by_track_reference_[referenceId] = FreezePolicy::On;
             if (playback_active_.load(std::memory_order_acquire) ||
-                !engine_.isTransportQuiet()) {
+                !engine_.tailProcessManager().isTransportQuiet()) {
                 runtime.render_deferred_until_transport_quiet = true;
                 runtime.state = RuntimeState::Live;
             } else {
@@ -343,7 +343,7 @@ void FrozenTrackManager::transportPlaybackStopped() {
 void FrozenTrackManager::transportBecameQuiet() {
     if (stopping_.load(std::memory_order_acquire) ||
         playback_active_.load(std::memory_order_acquire) ||
-        !engine_.isTransportQuiet())
+        !engine_.tailProcessManager().isTransportQuiet())
         return;
     std::vector<std::string> deferred;
     {
@@ -673,7 +673,7 @@ void FrozenTrackManager::invalidateTrack(
     if (trackReferenceId.empty())
         return;
     if (playback_active_.load(std::memory_order_acquire) ||
-        !engine_.isTransportQuiet()) {
+        !engine_.tailProcessManager().isTransportQuiet()) {
         std::lock_guard lock(mutex_);
         const std::string referenceId(trackReferenceId);
         auto& runtime = runtime_by_track_reference_[referenceId];
@@ -792,7 +792,7 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     if (stopping_.load(std::memory_order_acquire))
         return;
     if (playback_active_.load(std::memory_order_acquire) ||
-        !engine_.isTransportQuiet()) {
+        !engine_.tailProcessManager().isTransportQuiet()) {
         std::lock_guard lock(mutex_);
         auto runtime =
             runtime_by_track_reference_.find(trackReferenceId);

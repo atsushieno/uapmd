@@ -36,9 +36,6 @@ namespace uapmd {
         std::atomic<bool>& isPlaybackActive,
         std::atomic<int64_t>& playbackPositionSamples,
         std::atomic<int64_t>& renderPlaybackPositionSamples,
-        std::atomic<bool>& latencyDrainActive,
-        std::atomic<int64_t>& latencyDrainRemainingSamples,
-        std::atomic<bool>& transportQuietPending,
         std::function<void(const std::function<void()>&)> runMutation,
         std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
         std::function<void()> prepareForTimingChange)
@@ -49,9 +46,6 @@ namespace uapmd {
         , is_playback_active_(isPlaybackActive)
         , playback_position_samples_(playbackPositionSamples)
         , render_playback_position_samples_(renderPlaybackPositionSamples)
-        , latency_drain_active_(latencyDrainActive)
-        , latency_drain_remaining_samples_(latencyDrainRemainingSamples)
-        , transport_quiet_pending_(transportQuietPending)
         , run_mutation_(std::move(runMutation))
         , resolve_plugin_instance_(std::move(resolvePluginInstance))
         , prepare_for_timing_change_(std::move(prepareForTimingChange)) {
@@ -203,6 +197,8 @@ namespace uapmd {
     }
 
     void LatencyCompensationManagerImpl::applyStateChange() {
+        if (prepare_for_timing_change_)
+            prepare_for_timing_change_();
         if (track_routing_manager_)
             track_routing_manager_->rebuildRoutingCaches();
         reconfigureOutputAlignmentBuffers();
@@ -360,12 +356,6 @@ namespace uapmd {
         return ((samples + quantum - 1) / quantum) * quantum;
     }
 
-    void LatencyCompensationManagerImpl::clearDrainState() {
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        transport_quiet_pending_.store(false, std::memory_order_release);
-    }
-
     uint32_t LatencyCompensationManagerImpl::maxRenderLeadInSamples() const {
         return std::max(
             track_routing_manager_ ? track_routing_manager_->maxTrackRenderLeadInSamples() : 0,
@@ -377,7 +367,6 @@ namespace uapmd {
     }
 
     void LatencyCompensationManagerImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
-        clearDrainState();
         playback_position_samples_.store(samples, std::memory_order_release);
         render_playback_position_samples_.store(
             samples - alignToQuantum(static_cast<int64_t>(maxRenderLeadInSamples())),
@@ -421,7 +410,6 @@ namespace uapmd {
             return;
         }
 
-        clearDrainState();
         render_playback_position_samples_.store(audiblePosition, std::memory_order_release);
     }
 
@@ -432,7 +420,6 @@ namespace uapmd {
             return;
         }
 
-        clearDrainState();
         playback_position_samples_.store(samples, std::memory_order_release);
         render_playback_position_samples_.store(samples, std::memory_order_release);
         resetOutputAlignmentBuffers();
@@ -446,57 +433,15 @@ namespace uapmd {
     void LatencyCompensationManagerImpl::stopPlayback() {
         resetOutputAlignmentBuffers();
         playback_position_samples_.store(0, std::memory_order_release);
-        transport_quiet_pending_.store(true, std::memory_order_release);
-        const auto tailSamples = maxStopDrainInSamples();
-        if (tailSamples > 0) {
-            latency_drain_active_.store(true, std::memory_order_release);
-            latency_drain_remaining_samples_.store(alignToQuantum(tailSamples), std::memory_order_release);
-            return;
-        }
-
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        render_playback_position_samples_.store(0, std::memory_order_release);
     }
 
     void LatencyCompensationManagerImpl::pausePlayback() {
         resetOutputAlignmentBuffers();
-        transport_quiet_pending_.store(true, std::memory_order_release);
-        const auto tailSamples = maxStopDrainInSamples();
-        if (tailSamples > 0) {
-            latency_drain_active_.store(true, std::memory_order_release);
-            latency_drain_remaining_samples_.store(
-                alignToQuantum(tailSamples), std::memory_order_release);
-            return;
-        }
-
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        render_playback_position_samples_.store(
-            playback_position_samples_.load(std::memory_order_acquire),
-            std::memory_order_release);
     }
 
     void LatencyCompensationManagerImpl::resumePlayback() {
         resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(playback_position_samples_.load(std::memory_order_acquire));
-    }
-
-    void LatencyCompensationManagerImpl::updateLatencyDrainState(int32_t frameCount) {
-        if (!latency_drain_active_.load(std::memory_order_acquire))
-            return;
-
-        const auto remaining =
-            latency_drain_remaining_samples_.fetch_sub(frameCount, std::memory_order_acq_rel) - frameCount;
-        render_playback_position_samples_.fetch_add(frameCount, std::memory_order_release);
-        if (remaining > 0)
-            return;
-
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        render_playback_position_samples_.store(
-            playback_position_samples_.load(std::memory_order_acquire),
-            std::memory_order_release);
     }
 
     void LatencyCompensationManagerImpl::applyOutputAlignment(
@@ -550,8 +495,8 @@ namespace uapmd {
                 (startWritePosition + static_cast<size_t>(trackFrameCount)) % delayLine.capacity_frames;
     }
 
-    bool LatencyCompensationManagerImpl::latencyDrainActive() const {
-        return latency_drain_active_.load(std::memory_order_acquire);
+    int64_t LatencyCompensationManagerImpl::stopDrainInSamples() const {
+        return maxStopDrainInSamples();
     }
 
     int64_t LatencyCompensationManagerImpl::playbackPosition() const {

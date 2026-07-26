@@ -43,9 +43,6 @@ namespace uapmd {
         std::atomic<bool>& is_playback_active_;
         std::atomic<int64_t>& playback_position_samples_;
         std::atomic<int64_t>& render_playback_position_samples_;
-        std::atomic<bool>& latency_drain_active_;
-        std::atomic<int64_t>& latency_drain_remaining_samples_;
-        std::atomic<bool>& transport_quiet_pending_;
         std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_{};
         std::function<void(const std::function<void()>&)> run_mutation_{};
         std::function<AudioPluginInstanceAPI*(int32_t)> resolve_plugin_instance_{};
@@ -60,7 +57,6 @@ namespace uapmd {
         std::shared_ptr<std::atomic<bool>> callbacks_alive_{std::make_shared<std::atomic<bool>>(true)};
 
         int64_t alignToQuantum(int64_t samples) const;
-        void clearDrainState();
         uint32_t maxRenderLeadInSamples() const;
         int64_t maxStopDrainInSamples() const;
         void schedulePrerollFromAudiblePosition(int64_t samples);
@@ -77,9 +73,6 @@ namespace uapmd {
             std::atomic<bool>& isPlaybackActive,
             std::atomic<int64_t>& playbackPositionSamples,
             std::atomic<int64_t>& renderPlaybackPositionSamples,
-            std::atomic<bool>& latencyDrainActive,
-            std::atomic<int64_t>& latencyDrainRemainingSamples,
-            std::atomic<bool>& transportQuietPending,
             std::function<void(const std::function<void()>&)> runMutation,
             std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
             std::function<void()> prepareForTimingChange);
@@ -115,13 +108,12 @@ namespace uapmd {
         void stopPlayback();
         void pausePlayback();
         void resumePlayback();
-        void updateLatencyDrainState(int32_t frameCount);
         void applyOutputAlignment(
             uapmd_track_index_t trackIndex,
             AudioProcessContext& ctx,
             int32_t trackFrameCount);
 
-        bool latencyDrainActive() const;
+        int64_t stopDrainInSamples() const;
         int64_t playbackPosition() const;
         int64_t renderPlaybackPosition() const;
     };

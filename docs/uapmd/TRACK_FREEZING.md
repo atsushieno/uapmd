@@ -43,15 +43,20 @@ Track freezing is never performed while realtime playback is active.
 - Stop and Pause use the same tail-drain path and differ only in their final
   position: Stop targets the beginning, while Pause retains its current
   position.
-- The engine raises a transport-quiet event only after all track and master
-  declared tails have drained and the mixed output has remained below -80 dB
-  for 250 ms. The silence observation is required because instruments may
-  report a zero tail while note-release audio is still audible. The realtime
-  thread publishes that transition without locking or allocation; listeners
-  run off the realtime thread.
-- The freezer registers for the transport-quiet event. Stopping or pausing
-  marks a render as pending but does not start it; the event starts pending
-  renders only if playback has not subsequently started or resumed.
+- `TailProcessManager` owns the stopped-transport drain and quiet-detection
+  state. `SequencerEngine` tells it when transport starts or stops, supplies
+  the drain length calculated by `LatencyCompensationManager`, and advances it
+  from audio processing. The two managers do not depend on each other.
+- `TailProcessManager` raises a transport-quiet event only after all track and
+  master declared tails have drained and the mixed output has remained below
+  -80 dB for 250 ms. The silence observation is required because instruments
+  may report a zero tail while note-release audio is still audible. The
+  realtime thread publishes that transition without locking or allocation;
+  listeners run off the realtime thread.
+- The freezer registers directly with `TailProcessManager` for the
+  transport-quiet event. Stopping or pausing marks a render as pending but
+  does not start it; the event starts pending renders only if playback has not
+  subsequently started or resumed.
 - A render session defensively normalizes its saved public transport state to
   stopped. Restoring that state cannot set `isPlaying`; an explicit pending
   Play or Resume request is the only operation allowed to do so afterward.
