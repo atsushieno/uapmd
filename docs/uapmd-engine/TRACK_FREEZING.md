@@ -1,4 +1,4 @@
-# Track Freezing
+# Track Freezing (AI slop)
 
 ## Status
 
