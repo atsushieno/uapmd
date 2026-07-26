@@ -42,6 +42,8 @@ Unless otherwise noted, "I" points to @atsushieno.
 - The way how our audio graph implementation ensures realtime safety is totally AI-driven. Human gave direction on where it must ensure RT safety and how we ensure abstraction.
 - The audio pump system is designed and implemented by AI (with various directional fixes by human).
 - The latency compensation mechanism is designed and implemented by AI (with various directional fixes by human).
+- Track freezing functionality implementation is AI slop, with a bunch of design decisions and changes by human.
+- Tail length handling and silence handler is AI slop, based on the idea of its entire existence by human.
 
 ## uapmd-app
 
