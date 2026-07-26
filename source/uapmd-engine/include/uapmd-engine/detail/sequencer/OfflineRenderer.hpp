@@ -74,6 +74,18 @@ struct OfflineTrackRenderResult {
     std::string errorMessage;
 };
 
+enum class OfflineTrackRenderStepState {
+    InProgress,
+    Complete,
+    Error,
+};
+
+struct OfflineTrackRenderStepResult {
+    OfflineTrackRenderStepState state{OfflineTrackRenderStepState::Error};
+    OfflineRenderProgress progress;
+    std::string errorMessage;
+};
+
 OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
                                          const OfflineRenderSettings& settings,
                                          const OfflineRenderCallbacks& callbacks = {});

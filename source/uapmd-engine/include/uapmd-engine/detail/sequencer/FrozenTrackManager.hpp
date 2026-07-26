@@ -2,13 +2,13 @@
 
 #include <atomic>
 #include <cstdint>
-#include <filesystem>
+#include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +49,14 @@ public:
     RuntimeState runtimeStateForTrack(int32_t trackIndex) const;
     uint64_t invalidationGenerationForTrack(int32_t trackIndex) const;
     std::string errorMessageForTrack(int32_t trackIndex) const;
+    bool isTrackBusy(int32_t trackIndex) const;
+    bool isInstanceBusy(int32_t instanceId) const;
+    bool hasBusyTrack() const;
+    void projectTrackBecameDirty(int32_t trackIndex);
+    bool requestPlaybackAfterBusyTrackRestored(
+        std::function<void()> startPlayback);
+    void transportPlaybackStarted();
+    void transportPlaybackStopped();
 
 private:
     friend class FrozenTrackAudioProcessorExtension;
@@ -76,16 +84,14 @@ private:
     struct TrackRuntime {
         RuntimeState state{RuntimeState::Live};
         uint64_t invalidation_generation{1};
+        bool render_deferred_until_transport_quiet{false};
         std::string error_message;
     };
 
     struct RenderOperation {
         std::string track_reference_id;
         uint64_t generation{0};
-        std::filesystem::path directory;
-        std::filesystem::path project_file;
-        int32_t sample_rate{48000};
-        int64_t end_sample{0};
+        OfflineTrackRenderSettings settings;
     };
 
     struct AsyncLifetime {
@@ -124,16 +130,14 @@ private:
     int32_t trackIndexForReferenceId(std::string_view trackReferenceId) const;
     void invalidateTrack(std::string_view trackReferenceId);
     void invalidateAllTracks();
+    void transportBecameQuiet();
     void beginRender(std::string trackReferenceId);
-    void isolatedProjectSaved(
-        const std::shared_ptr<RenderOperation>& operation,
-        bool success,
-        std::string error);
-    void isolatedProjectLoaded(
-        const std::shared_ptr<RenderOperation>& operation,
-        std::shared_ptr<SequencerEngine> isolatedEngine,
-        bool success,
-        std::string error);
+    void prepareRender(std::string trackReferenceId);
+    void enqueueRenderStep(const std::shared_ptr<RenderOperation>& operation);
+    void renderNextChunk(const std::shared_ptr<RenderOperation>& operation);
+    void completeRenderOperation(
+        const std::shared_ptr<RenderOperation>& operation);
+    void startNextQueuedRender();
     void finishRender(
         const std::shared_ptr<RenderOperation>& operation,
         OfflineTrackRenderResult result);
@@ -144,7 +148,6 @@ private:
     void updatePlaybackState(std::string_view trackReferenceId);
     void publishPlaybackSnapshot();
     void clearAllPlaybackCaches();
-    static void removeTemporarySnapshot(const std::filesystem::path& directory);
 
     SequencerEngine& engine_;
     TimelineFacade& timeline_;
@@ -156,9 +159,13 @@ private:
     std::vector<std::unique_ptr<PlaybackSnapshot>> playback_snapshots_;
     std::atomic<const PlaybackSnapshot*> active_playback_snapshot_{nullptr};
     std::vector<std::unique_ptr<CachedAudio>> retained_cached_audio_;
-    std::vector<std::thread> render_threads_;
+    std::shared_ptr<RenderOperation> active_render_;
+    std::deque<std::string> queued_renders_;
+    std::function<void()> pending_playback_start_;
     std::atomic<bool> stopping_{false};
+    std::atomic<bool> playback_active_{false};
     std::shared_ptr<AsyncLifetime> async_lifetime_;
+    uint64_t transport_quiet_listener_token_{0};
     ProjectDocumentEventListenerToken project_document_event_listener_token_{0};
     std::unique_ptr<FrozenTrackManagerProjectSerializationExtension>
         project_serialization_extension_;

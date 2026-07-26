@@ -379,6 +379,16 @@ static choc::value::Value buildToolDefinitions()
             R"j({"type":"object","properties":{}})j"
         },
         {
+            "get_track_freeze_state",
+            "Get the requested freeze policy and runtime state for a track.",
+            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
+        },
+        {
+            "set_track_freeze_policy",
+            "Set a track freeze policy. The policy remains editable during playback, while rendering is deferred until playback has stopped or paused and its output tail is quiet.",
+            R"j({"type":"object","required":["trackIndex","policy"],"properties":{"trackIndex":{"type":"integer"},"policy":{"type":"string","description":"off or on"}}})j"
+        },
+        {
             "create_track",
             "Create a new empty sequencer track. Returns the new trackIndex.",
             R"j({"type":"object","properties":{}})j"
@@ -643,6 +653,70 @@ static choc::value::Value toolCreateTrack(const choc::value::Value&)
     auto result = choc::value::createObject ("");
     result.setMember ("trackIndex", trackIndex);
     return result;
+}
+
+static choc::value::Value serializeTrackFreezeState(int32_t trackIndex)
+{
+    auto* engine = AppModel::instance().sequencer().engine();
+    if (!engine || trackIndex < 0 ||
+        static_cast<size_t>(trackIndex) >= engine->tracks().size())
+        throw std::invalid_argument("trackIndex is invalid");
+
+    auto& manager = engine->frozenTrackManager();
+    auto result = choc::value::createObject("");
+    result.setMember("trackIndex", trackIndex);
+    result.setMember(
+        "policy",
+        manager.freezePolicyForTrack(trackIndex) ==
+                uapmd::FrozenTrackManager::FreezePolicy::On
+            ? "on"
+            : "off");
+    switch (manager.runtimeStateForTrack(trackIndex)) {
+        case uapmd::FrozenTrackManager::RuntimeState::Live:
+            result.setMember("runtimeState", "live");
+            break;
+        case uapmd::FrozenTrackManager::RuntimeState::Rendering:
+            result.setMember("runtimeState", "rendering");
+            break;
+        case uapmd::FrozenTrackManager::RuntimeState::Frozen:
+            result.setMember("runtimeState", "frozen");
+            break;
+        case uapmd::FrozenTrackManager::RuntimeState::Error:
+            result.setMember("runtimeState", "error");
+            break;
+    }
+    result.setMember(
+        "error", manager.errorMessageForTrack(trackIndex));
+    return result;
+}
+
+static choc::value::Value toolGetTrackFreezeState(
+    const choc::value::Value& args)
+{
+    return serializeTrackFreezeState(getIntArg(args, "trackIndex", -1));
+}
+
+static choc::value::Value toolSetTrackFreezePolicy(
+    const choc::value::Value& args)
+{
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto policyText = getStringArg(args, "policy");
+    uapmd::FrozenTrackManager::FreezePolicy policy;
+    if (policyText == "on")
+        policy = uapmd::FrozenTrackManager::FreezePolicy::On;
+    else if (policyText == "off")
+        policy = uapmd::FrozenTrackManager::FreezePolicy::Off;
+    else
+        throw std::invalid_argument("policy must be off or on");
+
+    auto* engine = AppModel::instance().sequencer().engine();
+    if (!engine || trackIndex < 0 ||
+        static_cast<size_t>(trackIndex) >= engine->tracks().size())
+        throw std::invalid_argument("trackIndex is invalid");
+    if (engine->frozenTrackManager().setFreezePolicyForTrack(
+            trackIndex, policy))
+        AppModel::instance().markProjectDirty();
+    return serializeTrackFreezeState(trackIndex);
 }
 
 static choc::value::Value toolSaveProject(const choc::value::Value& args)
@@ -1444,6 +1518,8 @@ struct McpServer::Impl {
 
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
+            else if (toolName == "get_track_freeze_state") toolResult = toolGetTrackFreezeState (args);
+            else if (toolName == "set_track_freeze_policy") toolResult = toolSetTrackFreezePolicy (args);
             else if (toolName == "create_track")        toolResult = toolCreateTrack (args);
             else if (toolName == "save_project")        toolResult = toolSaveProject (args);
             else if (toolName == "load_project")        toolResult = toolLoadProject (args);

@@ -5,6 +5,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <thread>
 #include <unordered_map>
@@ -689,6 +690,12 @@ namespace uapmd {
                 callback(std::move(result));
             };
 
+            if (engine_.frozenTrackManager().hasBusyTrack()) {
+                complete(ProjectResult{
+                    false,
+                    "Unfreeze the busy track before saving the project"});
+                return;
+            }
             if (projectFile.empty()) {
                 complete(ProjectResult{false, "Project path is empty"});
                 return;
@@ -1202,6 +1209,12 @@ namespace uapmd {
         }
 
         void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {
+            if (engine_.frozenTrackManager().hasBusyTrack()) {
+                callback({
+                    false,
+                    "Unfreeze the busy track before loading a project"});
+                return;
+            }
             if (projectFile.empty()) {
                 callback({false, "Project path is empty"});
                 return;
@@ -1742,42 +1755,72 @@ namespace uapmd {
             return snapshot;
         }
 
+        ContentBounds calculateTrackContentBounds(int32_t trackIndex) const override {
+            ContentBounds bounds;
+            if (trackIndex < 0 ||
+                static_cast<size_t>(trackIndex) >= timeline_tracks_.size())
+                return bounds;
+
+            const double sr = std::max(1.0, static_cast<double>(sampleRate_));
+            const auto& trackPtr =
+                timeline_tracks_[static_cast<size_t>(trackIndex)];
+            if (!trackPtr)
+                return bounds;
+
+            const auto snapshot = trackPtr->clipManager().getSnapshotRT();
+            if (!snapshot)
+                return bounds;
+
+            for (const auto& clip : snapshot->clips) {
+                const auto absolute =
+                    clip.getAbsolutePosition(snapshot->clipReferenceMap);
+                const int64_t startSample = absolute.samples;
+                const int64_t durationSamples =
+                    std::max<int64_t>(0, clip.durationSamples);
+                const int64_t endSample =
+                    startSample > 0 &&
+                        durationSamples >
+                            std::numeric_limits<int64_t>::max() - startSample
+                    ? std::numeric_limits<int64_t>::max()
+                    : startSample + durationSamples;
+
+                if (!bounds.hasContent || startSample < bounds.firstSample) {
+                    bounds.firstSample = startSample;
+                    bounds.firstSeconds = static_cast<double>(startSample) / sr;
+                }
+                if (!bounds.hasContent || endSample > bounds.lastSample) {
+                    bounds.lastSample = endSample;
+                    bounds.lastSeconds = static_cast<double>(endSample) / sr;
+                }
+                bounds.hasContent = true;
+            }
+            return bounds;
+        }
+
         ContentBounds calculateContentBounds() const override {
             ContentBounds bounds;
             const double sr = std::max(1.0, static_cast<double>(sampleRate_));
-            bool initialized = false;
-
-            for (const auto& trackPtr : timeline_tracks_) {
-                if (!trackPtr)
+            for (size_t trackIndex = 0;
+                 trackIndex < timeline_tracks_.size();
+                 ++trackIndex) {
+                const auto trackBounds =
+                    calculateTrackContentBounds(
+                        static_cast<int32_t>(trackIndex));
+                if (!trackBounds.hasContent)
                     continue;
-
-                auto clips = trackPtr->clipManager().getAllClips();
-                if (clips.empty())
-                    continue;
-
-                for (const auto& clip : clips) {
-                    auto absolute = clip.position;
-                    const int64_t startSample = absolute.samples;
-                    const int64_t endSample = startSample + std::max<int64_t>(0, clip.durationSamples);
-
-                    if (!initialized || startSample < bounds.firstSample) {
-                        bounds.firstSample = startSample;
-                        bounds.firstSeconds = static_cast<double>(startSample) / sr;
-                    }
-                    if (!initialized || endSample > bounds.lastSample) {
-                        bounds.lastSample = endSample;
-                        bounds.lastSeconds = static_cast<double>(endSample) / sr;
-                    }
-                    initialized = true;
-                }
+                if (!bounds.hasContent ||
+                    trackBounds.firstSample < bounds.firstSample)
+                    bounds.firstSample = trackBounds.firstSample;
+                if (!bounds.hasContent ||
+                    trackBounds.lastSample > bounds.lastSample)
+                    bounds.lastSample = trackBounds.lastSample;
+                bounds.hasContent = true;
             }
-
-            bounds.hasContent = initialized;
-            if (!initialized) {
-                bounds.firstSample = 0;
-                bounds.lastSample = 0;
-                bounds.firstSeconds = 0.0;
-                bounds.lastSeconds = 0.0;
+            if (bounds.hasContent) {
+                bounds.firstSeconds =
+                    static_cast<double>(bounds.firstSample) / sr;
+                bounds.lastSeconds =
+                    static_cast<double>(bounds.lastSample) / sr;
             }
             return bounds;
         }
@@ -1942,6 +1985,7 @@ namespace uapmd {
                 }
             };
 
+            const bool offlineRenderPlaying = engine_.offlineRendering();
             timeline_.isPlaying = engine_.isPlaybackActive();
             const auto audiblePlayheadSamples = engine_.playbackPosition();
             const auto renderPlayheadRaw = engine_.renderPlaybackPosition();
@@ -1958,8 +2002,15 @@ namespace uapmd {
 
             // Sync to MasterContext
             TimelineState renderTransport = timeline_;
+            // Offline source nodes need the same private running transport as
+            // the plugins they feed. Keep the shared application timeline
+            // stopped, but allow audio sources and MIDI clips to produce the
+            // content being frozen.
+            renderTransport.isPlaying =
+                timeline_.isPlaying || offlineRenderPlaying;
             renderTransport.playheadPosition.samples = wrapToLoopRange(
-                (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
+                (timeline_.isPlaying || offlineRenderPlaying ||
+                 renderPlayheadRaw != audiblePlayheadSamples) ?
                     renderPlayheadRaw : audiblePlayheadSamples
             );
             updateTransportMetaForPlayhead(renderTransport);
@@ -1973,7 +2024,11 @@ namespace uapmd {
 
             auto& masterCtx = process.masterContext();
             masterCtx.playbackPositionSamples(renderTransport.playheadPosition.samples);
-            masterCtx.isPlaying(timeline_.isPlaying);
+            // Offline render transport is private processing state. Plugins
+            // must see a running transport to render correctly, but the shared
+            // application timeline must remain stopped.
+            masterCtx.isPlaying(
+                timeline_.isPlaying || offlineRenderPlaying);
             uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / renderTransport.tempo);
             masterCtx.tempo(tempoMicros);
             masterCtx.timeSignatureNumerator(renderTransport.timeSignatureNumerator);
@@ -2011,7 +2066,8 @@ namespace uapmd {
                 TimelinePosition renderPosition{};
                 const auto trackOffset = trackRenderOffsetInSamples(static_cast<int32_t>(i));
                 const auto renderBaseSample =
-                    (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
+                    (timeline_.isPlaying || offlineRenderPlaying ||
+                     renderPlayheadRaw != audiblePlayheadSamples) ?
                         renderPlayheadRaw :
                         audiblePlayheadSamples;
                 int64_t renderStartSample =

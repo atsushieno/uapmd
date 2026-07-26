@@ -168,6 +168,7 @@ public:
     };
 
     virtual ContentBounds calculateContentBounds() const = 0;
+    virtual ContentBounds calculateTrackContentBounds(int32_t trackIndex) const = 0;
 
     // Preview note data for a MIDI clip. Returns empty optional if track/clip not found or not MIDI.
     struct MidiNotePreview {

@@ -224,6 +224,45 @@ protected:
     }
 };
 
+TEST_F(
+    SequencerEngineOutputTest,
+    FreezePolicyCanChangeDuringPlaybackWithoutStartingRender) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+
+    engine->startPlayback();
+    auto& manager = engine->frozenTrackManager();
+    EXPECT_TRUE(manager.setFreezePolicyForTrack(
+        trackIndex, uapmd::FrozenTrackManager::FreezePolicy::On));
+    EXPECT_EQ(
+        manager.freezePolicyForTrack(trackIndex),
+        uapmd::FrozenTrackManager::FreezePolicy::On);
+    EXPECT_EQ(
+        manager.runtimeStateForTrack(trackIndex),
+        uapmd::FrozenTrackManager::RuntimeState::Live);
+
+    EXPECT_TRUE(manager.setFreezePolicyForTrack(
+        trackIndex, uapmd::FrozenTrackManager::FreezePolicy::Off));
+    EXPECT_EQ(
+        manager.freezePolicyForTrack(trackIndex),
+        uapmd::FrozenTrackManager::FreezePolicy::Off);
+    EXPECT_EQ(
+        manager.runtimeStateForTrack(trackIndex),
+        uapmd::FrozenTrackManager::RuntimeState::Live);
+
+    EXPECT_TRUE(manager.setFreezePolicyForTrack(
+        trackIndex, uapmd::FrozenTrackManager::FreezePolicy::On));
+    EXPECT_EQ(
+        manager.runtimeStateForTrack(trackIndex),
+        uapmd::FrozenTrackManager::RuntimeState::Live);
+    engine->stopPlayback();
+    EXPECT_EQ(
+        manager.runtimeStateForTrack(trackIndex),
+        uapmd::FrozenTrackManager::RuntimeState::Rendering);
+}
+
 TEST_F(SequencerEngineOutputTest, OfflineRenderProducesAudibleSamples) {
     constexpr int32_t sampleRate = 48000;
     constexpr uint32_t bufferSize = 256;

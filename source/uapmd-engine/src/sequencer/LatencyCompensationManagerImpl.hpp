@@ -45,7 +45,7 @@ namespace uapmd {
         std::atomic<int64_t>& render_playback_position_samples_;
         std::atomic<bool>& latency_drain_active_;
         std::atomic<int64_t>& latency_drain_remaining_samples_;
-        std::atomic<bool>& reset_to_start_after_latency_drain_;
+        std::atomic<bool>& transport_quiet_pending_;
         std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_{};
         std::function<void(const std::function<void()>&)> run_mutation_{};
         std::function<AudioPluginInstanceAPI*(int32_t)> resolve_plugin_instance_{};
@@ -79,7 +79,7 @@ namespace uapmd {
             std::atomic<int64_t>& renderPlaybackPositionSamples,
             std::atomic<bool>& latencyDrainActive,
             std::atomic<int64_t>& latencyDrainRemainingSamples,
-            std::atomic<bool>& resetToStartAfterLatencyDrain,
+            std::atomic<bool>& transportQuietPending,
             std::function<void(const std::function<void()>&)> runMutation,
             std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
             std::function<void()> prepareForTimingChange);

@@ -317,6 +317,15 @@ void InstanceDetails::render(const RenderContext& context) {
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
+                const bool trackBusy =
+                    sequencer.engine()->frozenTrackManager()
+                        .isInstanceBusy(instanceId);
+                if (trackBusy) {
+                    ImGui::TextUnformatted(
+                        "Busy: unfreeze the track before using this instance.");
+                    ImGui::Separator();
+                    ImGui::BeginDisabled();
+                }
                 // Parameter metadata refresh is now handled by event listener
                 if (context.buildTrackInstance) {
                     if (auto trackInstance = context.buildTrackInstance(instanceId)) {
@@ -374,10 +383,11 @@ void InstanceDetails::render(const RenderContext& context) {
 
                 ImGui::Separator();
 
-                if (detailsState.parameterList.getParameters().empty()) {
+                if (!trackBusy &&
+                    detailsState.parameterList.getParameters().empty()) {
                     refreshParameters(instanceId, detailsState);
                 }
-                if (detailsState.presets.empty()) {
+                if (!trackBusy && detailsState.presets.empty()) {
                     refreshPresets(instanceId, detailsState);
                 }
 
@@ -491,6 +501,8 @@ void InstanceDetails::render(const RenderContext& context) {
                     renderParameterControls(instanceId, detailsState);
                 }
                 ImGui::EndChild();
+                if (trackBusy)
+                    ImGui::EndDisabled();
             }
         }
         ImGui::End();

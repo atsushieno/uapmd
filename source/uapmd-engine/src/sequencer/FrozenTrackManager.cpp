@@ -1,9 +1,8 @@
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstring>
-#include <format>
 #include <functional>
+#include <limits>
 #include <string_view>
 #include <vector>
 
@@ -87,12 +86,25 @@ FrozenTrackManager::FrozenTrackManager(
     TimelineFacade& timeline)
     : engine_(engine)
     , timeline_(timeline)
+    , playback_active_(engine.isPlaybackActive())
     , async_lifetime_(std::make_shared<AsyncLifetime>())
     , project_serialization_extension_(
           std::make_unique<FrozenTrackManagerProjectSerializationExtension>(*this))
     , audio_processor_extension_(
           std::make_unique<FrozenTrackAudioProcessorExtension>(*this)) {
     async_lifetime_->owner.store(this, std::memory_order_release);
+    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
+    transport_quiet_listener_token_ =
+        engine_.addTransportQuietListener([weakLifetime] {
+            remidy::EventLoop::enqueueTaskOnMainThread([weakLifetime] {
+                const auto lifetime = weakLifetime.lock();
+                auto* owner = lifetime
+                    ? lifetime->owner.load(std::memory_order_acquire)
+                    : nullptr;
+                if (owner)
+                    owner->transportBecameQuiet();
+            });
+        });
     project_document_event_listener_token_ =
         timeline_.projectDocumentEvents().addProjectDocumentEventListener(*this);
     publishPlaybackSnapshot();
@@ -101,19 +113,16 @@ FrozenTrackManager::FrozenTrackManager(
 FrozenTrackManager::~FrozenTrackManager() {
     stopping_.store(true, std::memory_order_release);
     async_lifetime_->owner.store(nullptr, std::memory_order_release);
+    if (transport_quiet_listener_token_ != 0)
+        engine_.removeTransportQuietListener(
+            transport_quiet_listener_token_);
     active_playback_snapshot_.store(nullptr, std::memory_order_release);
     if (project_document_event_listener_token_ != 0)
         timeline_.projectDocumentEvents().removeProjectDocumentEventListener(
             project_document_event_listener_token_);
 
-    std::vector<std::thread> threads;
-    {
-        std::lock_guard lock(mutex_);
-        threads = std::move(render_threads_);
-    }
-    for (auto& thread : threads)
-        if (thread.joinable())
-            thread.join();
+    if (active_render_)
+        engine_.finishOfflineTrackRender(true);
 }
 
 FrozenTrackManagerProjectSerializationExtension&
@@ -244,31 +253,56 @@ bool FrozenTrackManager::setFreezePolicyForTrack(
 
         if (policy == FreezePolicy::Off) {
             policies_by_track_reference_.erase(referenceId);
+            runtime.render_deferred_until_transport_quiet = false;
             resetLiveGraph = runtime.state == RuntimeState::Frozen;
-            if (!resetLiveGraph) {
+            const bool activeRender =
+                active_render_ &&
+                active_render_->track_reference_id == referenceId;
+            if (!resetLiveGraph &&
+                (!activeRender ||
+                 runtime.state != RuntimeState::Rendering)) {
                 runtime.state = RuntimeState::Live;
                 playbackState->cached_audio.store(
                     nullptr, std::memory_order_release);
             }
         } else {
             policies_by_track_reference_[referenceId] = FreezePolicy::On;
-            runtime.state = RuntimeState::Rendering;
-            startRender = true;
+            if (playback_active_.load(std::memory_order_acquire) ||
+                !engine_.isTransportQuiet()) {
+                runtime.render_deferred_until_transport_quiet = true;
+                runtime.state = RuntimeState::Live;
+            } else {
+                runtime.render_deferred_until_transport_quiet = false;
+                runtime.state = RuntimeState::Rendering;
+                startRender = true;
+            }
         }
     }
     if (resetLiveGraph) {
         // Keep serving the immutable cache while the main-thread reset clears
-        // suspended plugin DSP and host alignment buffers.
-        engine_.resetTrackProcessingState(trackIndex, true);
-        std::lock_guard lock(mutex_);
-        auto runtime = runtime_by_track_reference_.find(referenceId);
-        if (runtime != runtime_by_track_reference_.end() &&
-            runtime->second.invalidation_generation ==
-                transitionGeneration) {
-            runtime->second.state = RuntimeState::Live;
-            auto& state = playback_states_by_track_reference_[referenceId];
-            state->cached_audio.store(nullptr, std::memory_order_release);
-        }
+        // suspended plugin DSP and host alignment buffers. Publish the live
+        // state before audio processing is admitted again.
+        engine_.resetTrackProcessingState(
+            trackIndex,
+            true,
+            [this, &referenceId, transitionGeneration] {
+                std::lock_guard lock(mutex_);
+                auto runtime =
+                    runtime_by_track_reference_.find(referenceId);
+                if (runtime == runtime_by_track_reference_.end() ||
+                    runtime->second.invalidation_generation !=
+                        transitionGeneration)
+                    return;
+                runtime->second.state = RuntimeState::Live;
+                auto& state =
+                    playback_states_by_track_reference_[referenceId];
+                state->cached_audio.store(
+                    nullptr, std::memory_order_release);
+                state->policy.store(
+                    FreezePolicy::Off, std::memory_order_release);
+                state->runtime_state.store(
+                    RuntimeState::Live, std::memory_order_release);
+            });
     }
     updatePlaybackState(referenceId);
     if (startRender)
@@ -278,6 +312,53 @@ bool FrozenTrackManager::setFreezePolicyForTrack(
 
 bool FrozenTrackManager::unfreezeTrack(int32_t trackIndex) {
     return setFreezePolicyForTrack(trackIndex, FreezePolicy::Off);
+}
+
+void FrozenTrackManager::transportPlaybackStarted() {
+    playback_active_.store(true, std::memory_order_release);
+    std::lock_guard lock(mutex_);
+    for (auto& [referenceId, runtime] :
+         runtime_by_track_reference_) {
+        if (runtime.state != RuntimeState::Rendering ||
+            !policies_by_track_reference_.contains(referenceId))
+            continue;
+        ++runtime.invalidation_generation;
+        runtime.state = RuntimeState::Live;
+        runtime.render_deferred_until_transport_quiet = true;
+        auto& state = playback_states_by_track_reference_[referenceId];
+        if (!state)
+            state = std::make_unique<PlaybackState>();
+        state->policy.store(
+            FreezePolicy::On, std::memory_order_release);
+        state->runtime_state.store(
+            RuntimeState::Live, std::memory_order_release);
+        state->cached_audio.store(nullptr, std::memory_order_release);
+    }
+}
+
+void FrozenTrackManager::transportPlaybackStopped() {
+    playback_active_.store(false, std::memory_order_release);
+}
+
+void FrozenTrackManager::transportBecameQuiet() {
+    if (stopping_.load(std::memory_order_acquire) ||
+        playback_active_.load(std::memory_order_acquire) ||
+        !engine_.isTransportQuiet())
+        return;
+    std::vector<std::string> deferred;
+    {
+        std::lock_guard lock(mutex_);
+        for (auto& [referenceId, runtime] :
+             runtime_by_track_reference_) {
+            if (!runtime.render_deferred_until_transport_quiet ||
+                !policies_by_track_reference_.contains(referenceId))
+                continue;
+            runtime.render_deferred_until_transport_quiet = false;
+            deferred.push_back(referenceId);
+        }
+    }
+    for (const auto& referenceId : deferred)
+        invalidateTrack(referenceId);
 }
 
 FrozenTrackManager::RuntimeState
@@ -315,6 +396,68 @@ std::string FrozenTrackManager::errorMessageForTrack(int32_t trackIndex) const {
     return {};
 }
 
+bool FrozenTrackManager::isTrackBusy(int32_t trackIndex) const {
+    return runtimeStateForTrack(trackIndex) == RuntimeState::Rendering;
+}
+
+bool FrozenTrackManager::isInstanceBusy(int32_t instanceId) const {
+    const auto trackIndex = engine_.findTrackIndexForInstance(instanceId);
+    return trackIndex >= 0 && isTrackBusy(trackIndex);
+}
+
+bool FrozenTrackManager::hasBusyTrack() const {
+    std::lock_guard lock(mutex_);
+    return std::ranges::any_of(
+        runtime_by_track_reference_,
+        [](const auto& entry) {
+            return entry.second.state == RuntimeState::Rendering;
+        });
+}
+
+void FrozenTrackManager::projectTrackBecameDirty(int32_t trackIndex) {
+    if (trackIndex == kMasterTrackIndex) {
+        invalidateAllTracks();
+        return;
+    }
+    audioContentChanged(trackIndex);
+}
+
+bool FrozenTrackManager::requestPlaybackAfterBusyTrackRestored(
+    std::function<void()> startPlayback) {
+    std::lock_guard lock(mutex_);
+    bool hasActiveRender = false;
+    for (auto& [referenceId, runtime] : runtime_by_track_reference_) {
+        if (runtime.state != RuntimeState::Rendering ||
+            !policies_by_track_reference_.contains(referenceId))
+            continue;
+        ++runtime.invalidation_generation;
+        runtime.render_deferred_until_transport_quiet = true;
+        if (active_render_ &&
+            active_render_->track_reference_id == referenceId) {
+            hasActiveRender = true;
+            continue;
+        }
+        runtime.state = RuntimeState::Live;
+        auto& state = playback_states_by_track_reference_[referenceId];
+        if (!state)
+            state = std::make_unique<PlaybackState>();
+        state->policy.store(FreezePolicy::On, std::memory_order_release);
+        state->runtime_state.store(
+            RuntimeState::Live, std::memory_order_release);
+        state->cached_audio.store(nullptr, std::memory_order_release);
+    }
+    queued_renders_.clear();
+    if (!hasActiveRender)
+        return false;
+
+    // Playback was explicitly requested while the existing instances were in
+    // use by the renderer. Keep the request only until cancellation restores
+    // those instances; a successful freeze completion never creates this
+    // callback on its own.
+    pending_playback_start_ = std::move(startPlayback);
+    return true;
+}
+
 void FrozenTrackManager::projectLoaded(const ProjectDocumentEvent&) {
     clearAllPlaybackCaches();
 }
@@ -339,8 +482,16 @@ void FrozenTrackManager::trackAdded(const ProjectDocumentEvent& event) {
         return;
     {
         std::lock_guard lock(mutex_);
+        policies_by_track_reference_.erase(*event.trackId());
         runtime_by_track_reference_[*event.trackId()].state =
             RuntimeState::Live;
+        auto& state = playback_states_by_track_reference_[*event.trackId()];
+        if (!state)
+            state = std::make_unique<PlaybackState>();
+        state->policy.store(FreezePolicy::Off, std::memory_order_release);
+        state->runtime_state.store(
+            RuntimeState::Live, std::memory_order_release);
+        state->cached_audio.store(nullptr, std::memory_order_release);
     }
     publishPlaybackSnapshot();
 }
@@ -363,47 +514,42 @@ void FrozenTrackManager::trackRemoved(const ProjectDocumentEvent& event) {
                 nullptr, std::memory_order_release);
         }
     }
+    // PlaybackState objects are intentionally retained for the manager's
+    // lifetime. Older realtime snapshots may still contain their addresses.
     publishPlaybackSnapshot();
 }
 
 void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
-    if (event.trackId())
-        invalidateTrack(*event.trackId());
-    else
-        invalidateAllTracks();
+    (void) event;
 }
 
 void FrozenTrackManager::clipAdded(const ProjectDocumentEvent& event) {
-    trackChanged(event);
+    (void) event;
 }
 
 void FrozenTrackManager::clipRemoved(const ProjectDocumentEvent& event) {
-    trackChanged(event);
+    (void) event;
 }
 
 void FrozenTrackManager::clipChanged(const ProjectDocumentEvent& event) {
-    trackChanged(event);
+    (void) event;
 }
 
 void FrozenTrackManager::audioSourceAdded(const ProjectDocumentEvent&) {
-    invalidateAllTracks();
 }
 
 void FrozenTrackManager::audioSourceRemoved(const ProjectDocumentEvent&) {
-    invalidateAllTracks();
 }
 
 void FrozenTrackManager::audioSourceChanged(const ProjectDocumentEvent&) {
-    invalidateAllTracks();
 }
 
 void FrozenTrackManager::pluginGraphChanged(
     const ProjectDocumentEvent& event) {
-    trackChanged(event);
+    (void) event;
 }
 
 void FrozenTrackManager::masterTrackChanged(const ProjectDocumentEvent&) {
-    invalidateAllTracks();
 }
 
 bool FrozenTrackManager::saveProjectExtensionData(
@@ -514,6 +660,32 @@ void FrozenTrackManager::invalidateTrack(
     std::string_view trackReferenceId) {
     if (trackReferenceId.empty())
         return;
+    if (playback_active_.load(std::memory_order_acquire) ||
+        !engine_.isTransportQuiet()) {
+        std::lock_guard lock(mutex_);
+        const std::string referenceId(trackReferenceId);
+        auto& runtime = runtime_by_track_reference_[referenceId];
+        ++runtime.invalidation_generation;
+        runtime.error_message.clear();
+        if (!policies_by_track_reference_.contains(referenceId))
+            return;
+        runtime.render_deferred_until_transport_quiet = true;
+        if (runtime.state == RuntimeState::Rendering) {
+            runtime.state = RuntimeState::Live;
+            auto& state =
+                playback_states_by_track_reference_[referenceId];
+            if (!state)
+                state = std::make_unique<PlaybackState>();
+            state->policy.store(
+                FreezePolicy::On, std::memory_order_release);
+            state->runtime_state.store(
+                RuntimeState::Live, std::memory_order_release);
+            state->cached_audio.store(
+                nullptr, std::memory_order_release);
+        }
+        return;
+    }
+
     bool rerender = false;
     bool resetLiveGraph = false;
     uint64_t transitionGeneration = 0;
@@ -539,24 +711,39 @@ void FrozenTrackManager::invalidateTrack(
     if (resetLiveGraph) {
         const auto trackIndex =
             trackIndexForReferenceId(trackReferenceId);
-        if (trackIndex >= 0)
-            engine_.resetTrackProcessingState(trackIndex, true);
-        std::lock_guard lock(mutex_);
-        auto runtime = runtime_by_track_reference_.find(
-            std::string(trackReferenceId));
-        if (runtime != runtime_by_track_reference_.end() &&
-            runtime->second.invalidation_generation ==
-                transitionGeneration) {
-            rerender = policies_by_track_reference_.contains(
-                std::string(trackReferenceId));
+        const auto transition = [this,
+                                 referenceId =
+                                     std::string(trackReferenceId),
+                                 transitionGeneration,
+                                 &rerender] {
+            std::lock_guard lock(mutex_);
+            auto runtime =
+                runtime_by_track_reference_.find(referenceId);
+            if (runtime == runtime_by_track_reference_.end() ||
+                runtime->second.invalidation_generation !=
+                    transitionGeneration) {
+                rerender = false;
+                return;
+            }
+            rerender =
+                policies_by_track_reference_.contains(referenceId);
             runtime->second.state =
                 rerender ? RuntimeState::Rendering : RuntimeState::Live;
-            auto& state = playback_states_by_track_reference_[
-                std::string(trackReferenceId)];
-            state->cached_audio.store(nullptr, std::memory_order_release);
-        } else {
-            rerender = false;
-        }
+            auto& state =
+                playback_states_by_track_reference_[referenceId];
+            state->cached_audio.store(
+                nullptr, std::memory_order_release);
+            state->policy.store(
+                rerender ? FreezePolicy::On : FreezePolicy::Off,
+                std::memory_order_release);
+            state->runtime_state.store(
+                runtime->second.state, std::memory_order_release);
+        };
+        if (trackIndex >= 0)
+            engine_.resetTrackProcessingState(
+                trackIndex, true, transition);
+        else
+            transition();
     }
     updatePlaybackState(trackReferenceId);
     if (rerender)
@@ -577,16 +764,76 @@ void FrozenTrackManager::invalidateAllTracks() {
 }
 
 void FrozenTrackManager::beginRender(std::string trackReferenceId) {
+    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
+    remidy::EventLoop::enqueueTaskOnMainThread(
+        [weakLifetime, trackReferenceId = std::move(trackReferenceId)]() mutable {
+            const auto lifetime = weakLifetime.lock();
+            auto* owner = lifetime
+                ? lifetime->owner.load(std::memory_order_acquire)
+                : nullptr;
+            if (owner)
+                owner->prepareRender(std::move(trackReferenceId));
+        });
+}
+
+void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     if (stopping_.load(std::memory_order_acquire))
         return;
+    if (playback_active_.load(std::memory_order_acquire) ||
+        !engine_.isTransportQuiet()) {
+        std::lock_guard lock(mutex_);
+        auto runtime =
+            runtime_by_track_reference_.find(trackReferenceId);
+        if (runtime == runtime_by_track_reference_.end() ||
+            !policies_by_track_reference_.contains(trackReferenceId))
+            return;
+        runtime->second.state = RuntimeState::Live;
+        runtime->second.render_deferred_until_transport_quiet = true;
+        auto& state =
+            playback_states_by_track_reference_[trackReferenceId];
+        if (!state)
+            state = std::make_unique<PlaybackState>();
+        state->policy.store(
+            FreezePolicy::On, std::memory_order_release);
+        state->runtime_state.store(
+            RuntimeState::Live, std::memory_order_release);
+        state->cached_audio.store(nullptr, std::memory_order_release);
+        return;
+    }
+
+    bool queued = false;
+    {
+        std::lock_guard lock(mutex_);
+        if (active_render_) {
+            if (std::ranges::find(
+                    queued_renders_, trackReferenceId) ==
+                queued_renders_.end())
+                queued_renders_.push_back(trackReferenceId);
+            auto& runtime =
+                runtime_by_track_reference_[trackReferenceId];
+            runtime.state = RuntimeState::Live;
+            queued = true;
+        }
+    }
+    if (queued) {
+        updatePlaybackState(trackReferenceId);
+        return;
+    }
+
     const auto trackIndex = trackIndexForReferenceId(trackReferenceId);
     if (trackIndex < 0)
         return;
 
     auto operation = std::make_shared<RenderOperation>();
     operation->track_reference_id = std::move(trackReferenceId);
-    operation->sample_rate =
+    operation->settings.trackIndex = trackIndex;
+    operation->settings.startSample = 0;
+    operation->settings.sampleRate =
         std::max(1, timeline_.state().sample_rate);
+    operation->settings.bufferSize = kRenderBufferSize;
+    operation->settings.umpBufferSize =
+        static_cast<uint32_t>(engine_.umpBufferSizeInBytes());
+    operation->settings.maximumBytes = kMaximumFrozenTrackBytes;
     {
         std::lock_guard lock(mutex_);
         auto runtime =
@@ -605,179 +852,153 @@ void FrozenTrackManager::beginRender(std::string trackReferenceId) {
         return;
     }
 
-    const auto bounds = timeline_.calculateContentBounds();
+    const auto bounds = timeline_.calculateTrackContentBounds(trackIndex);
     if (!bounds.hasContent || bounds.lastSample <= 0) {
         failRender(operation, "The track has no renderable timeline content.");
         return;
     }
     auto* track =
         engine_.tracks()[static_cast<size_t>(trackIndex)];
-    const auto tailSamples = track
-        ? static_cast<int64_t>(std::ceil(
-              std::max(0.0, track->tailLengthInSeconds()) *
-              operation->sample_rate))
+    const auto tailSeconds =
+        track ? std::max(0.0, track->tailLengthInSeconds()) : 0.0;
+    if (!std::isfinite(tailSeconds)) {
+        failRender(
+            operation,
+            "Tracks with an infinite plugin tail cannot be frozen.");
+        return;
+    }
+    const auto tailSampleCount = std::ceil(
+        static_cast<long double>(tailSeconds) *
+        static_cast<long double>(operation->settings.sampleRate));
+    if (tailSampleCount >
+        static_cast<long double>(std::numeric_limits<int64_t>::max())) {
+        failRender(operation, "The track tail is too long to render.");
+        return;
+    }
+    const auto tailSamples = static_cast<int64_t>(tailSampleCount);
+    const auto latencySamples = track
+        ? static_cast<int64_t>(track->latencyInSamples())
         : 0;
-    const auto latencySamples =
-        track ? static_cast<int64_t>(track->latencyInSamples()) : 0;
-    operation->end_sample =
+    const auto availableAfterContent =
+        std::numeric_limits<int64_t>::max() - bounds.lastSample;
+    if (latencySamples > availableAfterContent ||
+        tailSamples > availableAfterContent - latencySamples) {
+        failRender(operation, "The track render range is too long.");
+        return;
+    }
+    operation->settings.endSample =
         bounds.lastSample + tailSamples + latencySamples;
 
-    std::error_code tempError;
-    const auto uniqueId =
-        std::chrono::steady_clock::now().time_since_epoch().count();
-    operation->directory =
-        std::filesystem::temp_directory_path(tempError) /
-        "uapmd-track-freezing" /
-        std::format(
-            "{:016x}-{}",
-            std::hash<std::string>{}(operation->track_reference_id),
-            uniqueId);
-    if (tempError) {
-        failRender(operation, tempError.message());
-        return;
-    }
-    std::filesystem::create_directories(operation->directory, tempError);
-    if (tempError) {
-        failRender(operation, tempError.message());
-        return;
-    }
-    operation->project_file = operation->directory / "snapshot.uapmd";
-
-    TimelineFacade::ProjectSaveOptions options;
-    const auto trackCount = engine_.tracks().size();
-    for (size_t index = 0; index < trackCount; ++index)
-        if (static_cast<int32_t>(index) != trackIndex)
-            options.excludedTrackIndexes.push_back(
-                static_cast<int32_t>(index));
-    options.emitDocumentEvent = false;
-
-    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
-    timeline_.saveProject(
-        operation->project_file,
-        std::move(options),
-        [weakLifetime, operation](TimelineFacade::ProjectResult result) mutable {
-            const auto lifetime = weakLifetime.lock();
-            auto* owner = lifetime
-                ? lifetime->owner.load(std::memory_order_acquire)
-                : nullptr;
-            if (!owner) {
-                FrozenTrackManager::removeTemporarySnapshot(
-                    operation->directory);
-                return;
-            }
-            owner->isolatedProjectSaved(
-                operation, result.success, std::move(result.error));
-        });
-}
-
-void FrozenTrackManager::isolatedProjectSaved(
-    const std::shared_ptr<RenderOperation>& operation,
-    bool success,
-    std::string error) {
-    if (!success) {
+    std::string error;
+    if (!engine_.beginOfflineTrackRender(operation->settings, error)) {
         failRender(operation, std::move(error));
-        removeTemporarySnapshot(operation->directory);
+        startNextQueuedRender();
         return;
     }
-    if (!operationIsCurrent(*operation)) {
-        removeTemporarySnapshot(operation->directory);
-        return;
-    }
-
-    auto isolatedEngine = std::shared_ptr<SequencerEngine>(
-        SequencerEngine::create(
-            operation->sample_rate,
-            kRenderBufferSize,
-            engine_.umpBufferSizeInBytes(),
-            false)
-            .release());
-    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
-    isolatedEngine->timeline().loadProject(
-        operation->project_file,
-        [weakLifetime, operation, isolatedEngine](
-            TimelineFacade::ProjectResult loadResult) mutable {
-            const auto lifetime = weakLifetime.lock();
-            auto* owner = lifetime
-                ? lifetime->owner.load(std::memory_order_acquire)
-                : nullptr;
-            if (!owner) {
-                isolatedEngine.reset();
-                FrozenTrackManager::removeTemporarySnapshot(
-                    operation->directory);
-                return;
-            }
-            owner->isolatedProjectLoaded(
-                operation,
-                std::move(isolatedEngine),
-                loadResult.success,
-                std::move(loadResult.error));
-        });
-}
-
-void FrozenTrackManager::isolatedProjectLoaded(
-    const std::shared_ptr<RenderOperation>& operation,
-    std::shared_ptr<SequencerEngine> isolatedEngine,
-    bool success,
-    std::string error) {
-    if (!success) {
-        failRender(operation, std::move(error));
-        isolatedEngine.reset();
-        removeTemporarySnapshot(operation->directory);
-        return;
-    }
-    if (!operationIsCurrent(*operation) || isolatedEngine->tracks().empty()) {
-        if (isolatedEngine->tracks().empty() &&
-            operationIsCurrent(*operation))
-            failRender(operation, "The isolated track snapshot is empty.");
-        isolatedEngine.reset();
-        removeTemporarySnapshot(operation->directory);
-        return;
-    }
-
-    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
-    std::thread renderThread(
-        [weakLifetime, operation, isolatedEngine = std::move(isolatedEngine)]()
-            mutable {
-            OfflineTrackRenderSettings settings;
-            settings.trackIndex = 0;
-            settings.startSample = 0;
-            settings.endSample = operation->end_sample;
-            settings.sampleRate = operation->sample_rate;
-            settings.bufferSize = kRenderBufferSize;
-            settings.umpBufferSize =
-                static_cast<uint32_t>(isolatedEngine->umpBufferSizeInBytes());
-            settings.maximumBytes = kMaximumFrozenTrackBytes;
-
-            OfflineRenderCallbacks callbacks;
-            callbacks.shouldCancel = [weakLifetime, operation] {
-                const auto lifetime = weakLifetime.lock();
-                auto* owner = lifetime
-                    ? lifetime->owner.load(std::memory_order_acquire)
-                    : nullptr;
-                return !owner || !owner->operationIsCurrent(*operation);
-            };
-            auto renderResult =
-                isolatedEngine->renderOfflineTrack(settings, callbacks);
-            remidy::EventLoop::enqueueTaskOnMainThread(
-                [weakLifetime,
-                 operation,
-                 isolatedEngine = std::move(isolatedEngine),
-                 renderResult = std::move(renderResult)]() mutable {
-                    // Plugin formats may require destruction on the main thread.
-                    isolatedEngine.reset();
-                    const auto lifetime = weakLifetime.lock();
-                    auto* owner = lifetime
-                        ? lifetime->owner.load(std::memory_order_acquire)
-                        : nullptr;
-                    if (owner)
-                        owner->finishRender(
-                            operation, std::move(renderResult));
-                    removeTemporarySnapshot(operation->directory);
-                });
-        });
     {
         std::lock_guard lock(mutex_);
-        render_threads_.push_back(std::move(renderThread));
+        active_render_ = operation;
+        auto& runtime =
+            runtime_by_track_reference_[operation->track_reference_id];
+        runtime.state = RuntimeState::Rendering;
+    }
+    updatePlaybackState(operation->track_reference_id);
+    enqueueRenderStep(operation);
+}
+
+void FrozenTrackManager::enqueueRenderStep(
+    const std::shared_ptr<RenderOperation>& operation) {
+    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
+    remidy::EventLoop::enqueueTaskOnMainThread(
+        [weakLifetime, operation] {
+            const auto lifetime = weakLifetime.lock();
+            auto* owner = lifetime
+                ? lifetime->owner.load(std::memory_order_acquire)
+                : nullptr;
+            if (owner)
+                owner->renderNextChunk(operation);
+        });
+}
+
+void FrozenTrackManager::renderNextChunk(
+    const std::shared_ptr<RenderOperation>& operation) {
+    if (!operationIsCurrent(*operation)) {
+        engine_.finishOfflineTrackRender(
+            true,
+            [this, &operation](OfflineTrackRenderResult&) {
+                {
+                    std::lock_guard lock(mutex_);
+                    auto runtime = runtime_by_track_reference_.find(
+                        operation->track_reference_id);
+                    if (runtime != runtime_by_track_reference_.end()) {
+                        runtime->second.state = RuntimeState::Live;
+                        runtime->second.error_message.clear();
+                    }
+                }
+                updatePlaybackState(operation->track_reference_id);
+            });
+        completeRenderOperation(operation);
+        return;
+    }
+
+    constexpr uint32_t kBlocksPerEventLoopTurn = 8;
+    auto step =
+        engine_.renderOfflineTrackStep(kBlocksPerEventLoopTurn);
+    if (step.state == OfflineTrackRenderStepState::InProgress) {
+        enqueueRenderStep(operation);
+        return;
+    }
+
+    if (step.state == OfflineTrackRenderStepState::Error) {
+        engine_.finishOfflineTrackRender(
+            false,
+            [this, &operation, &step](OfflineTrackRenderResult& result) {
+                if (result.errorMessage.empty())
+                    result.errorMessage = std::move(step.errorMessage);
+                failRender(operation, std::move(result.errorMessage));
+            });
+    } else {
+        engine_.finishOfflineTrackRender(
+            false,
+            [this, &operation](OfflineTrackRenderResult& result) {
+                finishRender(operation, std::move(result));
+            });
+    }
+    completeRenderOperation(operation);
+}
+
+void FrozenTrackManager::completeRenderOperation(
+    const std::shared_ptr<RenderOperation>& operation) {
+    std::function<void()> startPlayback;
+    {
+        std::lock_guard lock(mutex_);
+        if (active_render_ == operation)
+            active_render_.reset();
+        startPlayback = std::move(pending_playback_start_);
+    }
+    if (startPlayback) {
+        // The operation was invalidated by an explicit Play/Resume request.
+        // Its state has been restored and its output was not published.
+        startPlayback();
+        return;
+    }
+    startNextQueuedRender();
+}
+
+void FrozenTrackManager::startNextQueuedRender() {
+    while (true) {
+        std::string referenceId;
+        {
+            std::lock_guard lock(mutex_);
+            if (active_render_ || queued_renders_.empty())
+                return;
+            referenceId = std::move(queued_renders_.front());
+            queued_renders_.pop_front();
+            if (!policies_by_track_reference_.contains(referenceId))
+                continue;
+        }
+        beginRender(std::move(referenceId));
+        return;
     }
 }
 
@@ -795,27 +1016,46 @@ void FrozenTrackManager::finishRender(
     cachedAudio->bus_channel_counts = std::move(result.busChannelCounts);
     cachedAudio->channels = std::move(result.channels);
 
-    std::lock_guard lock(mutex_);
-    auto runtime =
-        runtime_by_track_reference_.find(operation->track_reference_id);
-    if (runtime == runtime_by_track_reference_.end() ||
-        runtime->second.invalidation_generation != operation->generation ||
-        !policies_by_track_reference_.contains(
-            operation->track_reference_id))
+    const auto trackIndex =
+        trackIndexForReferenceId(operation->track_reference_id);
+    if (trackIndex < 0)
         return;
 
-    auto& playbackState =
-        playback_states_by_track_reference_[operation->track_reference_id];
-    if (!playbackState)
-        playbackState = std::make_unique<PlaybackState>();
-    const auto* published = cachedAudio.get();
-    retained_cached_audio_.push_back(std::move(cachedAudio));
-    playbackState->cached_audio.store(published, std::memory_order_release);
-    runtime->second.state = RuntimeState::Frozen;
-    runtime->second.error_message.clear();
-    playbackState->policy.store(FreezePolicy::On, std::memory_order_release);
-    playbackState->runtime_state.store(
-        RuntimeState::Frozen, std::memory_order_release);
+    // Clear live graph buffers and publish the immutable cache as one audio-
+    // excluded transition. Otherwise a callback can refill an alignment or
+    // pump buffer between the clear and the state change.
+    engine_.resetTrackProcessingState(
+        trackIndex,
+        false,
+        [this, &operation, &cachedAudio] {
+            std::lock_guard lock(mutex_);
+            if (playback_active_.load(std::memory_order_acquire))
+                return;
+            auto runtime = runtime_by_track_reference_.find(
+                operation->track_reference_id);
+            if (runtime == runtime_by_track_reference_.end() ||
+                runtime->second.invalidation_generation !=
+                    operation->generation ||
+                !policies_by_track_reference_.contains(
+                    operation->track_reference_id))
+                return;
+
+            auto& playbackState =
+                playback_states_by_track_reference_[
+                    operation->track_reference_id];
+            if (!playbackState)
+                playbackState = std::make_unique<PlaybackState>();
+            const auto* published = cachedAudio.get();
+            retained_cached_audio_.push_back(std::move(cachedAudio));
+            playbackState->cached_audio.store(
+                published, std::memory_order_release);
+            runtime->second.state = RuntimeState::Frozen;
+            runtime->second.error_message.clear();
+            playbackState->policy.store(
+                FreezePolicy::On, std::memory_order_release);
+            playbackState->runtime_state.store(
+                RuntimeState::Frozen, std::memory_order_release);
+        });
 }
 
 void FrozenTrackManager::failRender(
@@ -845,6 +1085,8 @@ void FrozenTrackManager::failRender(
 bool FrozenTrackManager::operationIsCurrent(
     const RenderOperation& operation) const {
     if (stopping_.load(std::memory_order_acquire))
+        return false;
+    if (playback_active_.load(std::memory_order_acquire))
         return false;
     std::lock_guard lock(mutex_);
     const auto runtime =
@@ -909,14 +1151,6 @@ void FrozenTrackManager::clearAllPlaybackCaches() {
         }
     }
     publishPlaybackSnapshot();
-}
-
-void FrozenTrackManager::removeTemporarySnapshot(
-    const std::filesystem::path& directory) {
-    if (directory.empty())
-        return;
-    std::error_code error;
-    std::filesystem::remove_all(directory, error);
 }
 
 } // namespace uapmd

@@ -800,19 +800,46 @@ void uapmd::AppModel::markProjectDirty() {
 }
 
 void uapmd::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
-    std::lock_guard lock(dirtyStateMutex_);
+    {
+        std::lock_guard lock(dirtyStateMutex_);
+        if (dirty)
+            dirty_tracks_.insert(trackIndex);
+        else
+            dirty_tracks_.erase(trackIndex);
+    }
+    // This notification is deliberately emitted for every dirtying mutation,
+    // not only the clean-to-dirty transition. A frozen cache represents one
+    // exact project state and must be revoked again after every later edit.
     if (dirty)
-        dirty_tracks_.insert(trackIndex);
-    else
-        dirty_tracks_.erase(trackIndex);
+        sequencer_.engine()->frozenTrackManager()
+            .projectTrackBecameDirty(trackIndex);
 }
 
 void uapmd::AppModel::markPluginDirty(int32_t instanceId, bool dirty) {
-    std::lock_guard lock(dirtyStateMutex_);
-    if (dirty)
-        dirty_plugins_.insert(instanceId);
-    else
-        dirty_plugins_.erase(instanceId);
+    {
+        std::lock_guard lock(dirtyStateMutex_);
+        if (dirty)
+            dirty_plugins_.insert(instanceId);
+        else
+            dirty_plugins_.erase(instanceId);
+    }
+    if (!dirty)
+        return;
+    // Plugin dirty callbacks are not guaranteed to originate on the main
+    // thread. Freeze invalidation can restore processing state, so marshal it
+    // to the event loop rather than doing that work on an audio/plugin thread.
+    remidy::EventLoop::enqueueTaskOnMainThread([this, instanceId] {
+        auto& manager = sequencer_.engine()->frozenTrackManager();
+        // Plugin state restoration is part of Busy cleanup and may itself emit
+        // a dirty notification. User plugin interaction is unavailable while
+        // Busy, so do not create an endless cancel/re-render loop.
+        if (manager.isInstanceBusy(instanceId))
+            return;
+        const auto trackIndex =
+            sequencer_.engine()->findTrackIndexForInstance(instanceId);
+        if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
+            manager.projectTrackBecameDirty(trackIndex);
+    });
 }
 
 void uapmd::AppModel::clearProjectDirtyState() {
@@ -877,7 +904,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         std::optional<PluginInstanceConfig> configOverride{config};
         result = registerPluginInstanceInternal(instanceId, configOverride);
         if (result.error.empty())
-            markProjectDirty();
+            markTrackDirty(trackIndex);
         resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
 
         if (completionCallback) {
@@ -1021,8 +1048,11 @@ void uapmd::AppModel::clearDeviceEntries() {
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
+    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
+        return;
+    const auto trackIndex =
+        sequencer_.engine()->findTrackIndexForInstance(instanceId);
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
-    markProjectDirty();
 
 #ifdef UAPMD_HAS_ARA
     if (araSupport_)
@@ -1064,6 +1094,10 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     }
 
     sequencer_.engine()->removePluginInstance(instanceId);
+    if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
+        markTrackDirty(trackIndex);
+    else
+        markProjectDirty();
     sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Notify all registered callbacks
@@ -1233,6 +1267,8 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
 }
 
 void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
+    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
+        return;
     // Trigger callbacks - MainWindow will handle preparing window and calling showPluginUI()
     for (auto& cb : uiShowRequested) {
         cb(instanceId);
@@ -1240,11 +1276,15 @@ void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
 }
 
 void uapmd::AppModel::requestShowInstanceDetails(int32_t instanceId) {
+    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
+        return;
     for (auto& cb : instanceDetailsShowRequested)
         cb(instanceId);
 }
 
 void uapmd::AppModel::requestShowTrackGraph(int32_t trackIndex) {
+    if (sequencer_.engine()->frozenTrackManager().isTrackBusy(trackIndex))
+        return;
     for (auto& cb : trackGraphShowRequested)
         cb(trackIndex);
 }
@@ -1252,6 +1292,14 @@ void uapmd::AppModel::requestShowTrackGraph(int32_t trackIndex) {
 void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
     UIStateResult result;
     result.instanceId = instanceId;
+
+    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId)) {
+        result.success = false;
+        result.error = "Track is busy freezing";
+        for (auto& cb : uiShown)
+            cb(result);
+        return;
+    }
 
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
@@ -1332,12 +1380,17 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
     }
 }
 
+bool uapmd::TransportController::isPlaying() const {
+    return sequencer_ && sequencer_->engine()->isPlaybackActive();
+}
+
 void uapmd::TransportController::play() {
     if (!appModel_->isAudioEngineEnabled())
         return;
     sequencer_->engine()->startPlayback();
-    appModel_->timeline().isPlaying = true;
-    isPlaying_ = true;
+    const bool started = sequencer_->engine()->isPlaybackActive();
+    appModel_->timeline().isPlaying = started;
+    isPlaying_ = started;
     isPaused_ = false;
 }
 
@@ -1360,7 +1413,8 @@ void uapmd::TransportController::resume() {
     if (!appModel_->isAudioEngineEnabled())
         return;
     sequencer_->engine()->resumePlayback();
-    appModel_->timeline().isPlaying = true;
+    appModel_->timeline().isPlaying =
+        sequencer_->engine()->isPlaybackActive();
     isPaused_ = false;
 }
 

@@ -21,6 +21,53 @@ Each regular timeline track has an `Off` / `On` switch:
 The master track is not freezeable. Tracks with live device input are rejected
 because their output cannot be reproduced from project data.
 
+## Transport restriction
+
+Track freezing is never performed while realtime playback is active.
+
+- The user may change the `Off` / `On` switch at any time.
+- Switching to `On` during playback records the policy immediately, but its
+  render is deferred until playback stops or pauses and every track has passed
+  its declared tail length.
+- Switching to `Off` during playback immediately cancels a deferred or active
+  render and restores live processing.
+- A render may start only while playback is inactive.
+- Starting or resuming playback invalidates and cancels any render in progress.
+  Its output is discarded, the existing plugin instances are restored, and the
+  explicitly requested transport operation begins as soon as restoration is
+  complete. The `On` policy remains pending and freezing restarts from the
+  beginning after playback stops or pauses.
+- A completed render may not be published after playback has started.
+- Freeze completion by itself never starts or resumes playback. Only a pending,
+  explicit user transport request may do so after canceling a render.
+- Stop and Pause use the same tail-drain path and differ only in their final
+  position: Stop targets the beginning, while Pause retains its current
+  position.
+- The engine raises a transport-quiet event only after all track and master
+  declared tails have drained and the mixed output has remained below -80 dB
+  for 250 ms. The silence observation is required because instruments may
+  report a zero tail while note-release audio is still audible. The realtime
+  thread publishes that transition without locking or allocation; listeners
+  run off the realtime thread.
+- The freezer registers for the transport-quiet event. Stopping or pausing
+  marks a render as pending but does not start it; the event starts pending
+  renders only if playback has not subsequently started or resumed.
+- A render session defensively normalizes its saved public transport state to
+  stopped. Restoring that state cannot set `isPlaying`; an explicit pending
+  Play or Resume request is the only operation allowed to do so afterward.
+- The renderer's running transport is private plugin-processing state. It must
+  not set the application's timeline or transport `isPlaying` state.
+- That private running state also applies to timeline audio and MIDI source
+  nodes. They must produce the same events and samples as realtime playback
+  without changing the stopped public timeline.
+- Invalidation that occurs during playback is remembered. The existing frozen
+  result remains active for the rest of that playback unless the user switches
+  it `Off`; otherwise it is revoked and rendered again after stop or pause.
+
+This is an engine-level execution invariant, not a restriction on editing the
+requested policy. All callers, project loading, edit invalidation, and
+asynchronous render completion must obey it.
+
 The switch is project data, keyed by the track's persistent reference ID.
 Rendered audio is session-local derived data and is never stored in the project.
 An `On` track is rendered again after project load.
@@ -32,7 +79,7 @@ The manager reports four runtime states independently of the switch:
 | State | Meaning |
 | --- | --- |
 | `Live` | The normal track graph is processing. |
-| `Rendering` | An isolated render is in progress; the live graph remains active. |
+| `Rendering` | The track is `Busy` while its existing plugin instances are being rendered. |
 | `Frozen` | Immutable rendered audio is published to realtime playback. |
 | `Error` | Rendering failed; the live graph remains active. |
 
@@ -40,20 +87,57 @@ An output-affecting edit increments the track's generation, revokes the
 published audio, and starts a new render if the switch is still `On`. A render
 may publish only when its generation is still current.
 
+## Editing and Busy track access
+
+The application must visibly label a track as `Busy` for the entire freeze
+operation, including state capture, audio rendering, state restoration, and
+buffer cleanup.
+
+Project edits are not prohibited merely because a track is `Frozen`. Every
+track-aware operation that makes the project dirty revokes that track's
+session-local cache while preserving its `On` policy. A fresh render starts
+after the edit when transport is stopped, or is deferred until playback stops.
+
+Dirty notification is part of the mutation contract and is emitted for every
+edit, even when the project was already dirty. Clip, graph, routing, parameter,
+preset, and plugin-state mutations must identify their affected track. A
+mutation received while rendering invalidates the current generation; its
+partial result cannot be published, and rendering restarts from the edited
+state after existing-instance restoration.
+
+Realtime UMP delivery to a `Busy` track remains prohibited. Operations that
+cannot safely participate in the dirty mutation contract, including opening a
+GUI backed by the plugin instance currently used by the renderer, also remain
+unavailable until restoration completes. Read-only operations remain available.
+
+The application and all other tracks remain responsive and usable. Rendering
+is divided into bounded tasks on the main event loop so that the `Busy` label,
+unfreeze cancellation, and unrelated work continue to be serviced between
+render chunks. A freeze operation must never block the application event loop
+for the duration of the track.
+
+Switching freezing `Off` requests cancellation. The track remains `Busy` and
+unavailable until cancellation has restored the existing plugin instances and
+cleared all render state. It becomes editable again only after returning to
+`Live`.
+
 ## Isolation
 
-The renderer must never borrow the realtime engine's transport, processing
-contexts, plugin instances, latency buffers, or pump rings.
+The initial implementation must not create another plugin instance for
+freezing. Some plugins and their underlying systems do not support a second
+instance reliably, so a second `SequencerEngine` loaded from a project snapshot
+is prohibited even if it avoids sharing mutable DSP state.
 
-For the initial implementation, a freeze request serializes only the selected
-track into a temporary project snapshot. The snapshot is loaded into a second
-`SequencerEngine` with track freezing disabled. That isolated engine owns the
-plugin instances and all mutable DSP and transport state used by the offline
-render. The temporary project is removed after completion.
+Freezing must use the selected track's existing plugin instances. It must not
+construct a plugin scanner, perform plugin discovery, reload or rebuild the
+plugin catalog, or instantiate the track's plugins again.
 
-This is intentionally more expensive than a future in-memory track-cloning API,
-but it reuses the established project/plugin-state loading path and establishes
-the required isolation boundary.
+Because the existing instances are reused, the render must be exclusive of
+realtime playback and must explicitly control all mutable engine state involved
+in the operation. In particular, the implementation must preserve or reset the
+transport, plugin processing state, processing contexts, latency buffers, pump
+rings, queued events, and remaining audio before the track can return to normal
+playback. No partially rendered or residual audio may become observable.
 
 ## Realtime substitution contract
 
@@ -77,6 +161,15 @@ Before a frozen track returns to live processing, its suspended plugin
 processing state and host-side track buffers are reset while the audio callback
 is excluded from that track transition. This prevents old delay lines, effect
 tails, queued events, or pump buffers from resuming after unfreeze.
+
+When a freeze is pending, Stop and Pause still let the normal realtime path
+emit the complete plugin tail. Rendering begins only after the transport-quiet
+event, so render exclusion never suspends a tail and freeze completion cannot
+release it later. Before render exclusion is released, all track, pump, mix,
+master, alignment, event, and device-output state is cleared. Device output
+remains hard-silent after freezing begins until an explicit Play or Resume
+request. Freeze completion must never expose buffered, rendered, or remaining
+audio to the audio device.
 
 ## Memory policy
 
@@ -104,9 +197,10 @@ cross-session validation are deferred.
 - [x] Manual `Off` / `On` track control.
 - [x] Generation-based invalidation.
 - [x] Plugin parameter invalidation notification.
-- [x] Isolated project snapshot and render-engine construction.
+- [ ] Existing-instance render path with no additional plugin instantiation.
 - [x] Session-local immutable PCM publication.
 - [x] Realtime cached-audio substitution.
+- [x] Engine-level prohibition on freezing during playback.
 - [ ] Validate freeze/unfreeze during playback.
 - [ ] Validate pause, resume, stop, restart, and seek.
 - [ ] Validate edit-during-render and repeated toggle races.

@@ -41,7 +41,7 @@ namespace uapmd {
         explicit TransportController(AppModel* appModel, RealtimeSequencer* sequencer);
 
         // State getters
-        bool isPlaying() const { return isPlaying_; }
+        bool isPlaying() const;
         bool isPaused() const { return isPaused_; }
         bool isRecording() const { return isRecording_; }
         float volume() const { return volume_; }

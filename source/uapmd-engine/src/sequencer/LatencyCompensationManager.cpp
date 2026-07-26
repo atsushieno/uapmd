@@ -38,7 +38,7 @@ namespace uapmd {
         std::atomic<int64_t>& renderPlaybackPositionSamples,
         std::atomic<bool>& latencyDrainActive,
         std::atomic<int64_t>& latencyDrainRemainingSamples,
-        std::atomic<bool>& resetToStartAfterLatencyDrain,
+        std::atomic<bool>& transportQuietPending,
         std::function<void(const std::function<void()>&)> runMutation,
         std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
         std::function<void()> prepareForTimingChange)
@@ -51,7 +51,7 @@ namespace uapmd {
         , render_playback_position_samples_(renderPlaybackPositionSamples)
         , latency_drain_active_(latencyDrainActive)
         , latency_drain_remaining_samples_(latencyDrainRemainingSamples)
-        , reset_to_start_after_latency_drain_(resetToStartAfterLatencyDrain)
+        , transport_quiet_pending_(transportQuietPending)
         , run_mutation_(std::move(runMutation))
         , resolve_plugin_instance_(std::move(resolvePluginInstance))
         , prepare_for_timing_change_(std::move(prepareForTimingChange)) {
@@ -363,7 +363,7 @@ namespace uapmd {
     void LatencyCompensationManagerImpl::clearDrainState() {
         latency_drain_active_.store(false, std::memory_order_release);
         latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+        transport_quiet_pending_.store(false, std::memory_order_release);
     }
 
     uint32_t LatencyCompensationManagerImpl::maxRenderLeadInSamples() const {
@@ -445,25 +445,36 @@ namespace uapmd {
 
     void LatencyCompensationManagerImpl::stopPlayback() {
         resetOutputAlignmentBuffers();
+        playback_position_samples_.store(0, std::memory_order_release);
+        transport_quiet_pending_.store(true, std::memory_order_release);
         const auto tailSamples = maxStopDrainInSamples();
         if (tailSamples > 0) {
             latency_drain_active_.store(true, std::memory_order_release);
             latency_drain_remaining_samples_.store(alignToQuantum(tailSamples), std::memory_order_release);
-            reset_to_start_after_latency_drain_.store(true, std::memory_order_release);
             return;
         }
 
-        playback_position_samples_.store(0, std::memory_order_release);
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
         render_playback_position_samples_.store(0, std::memory_order_release);
-        clearDrainState();
     }
 
     void LatencyCompensationManagerImpl::pausePlayback() {
-        clearDrainState();
+        resetOutputAlignmentBuffers();
+        transport_quiet_pending_.store(true, std::memory_order_release);
+        const auto tailSamples = maxStopDrainInSamples();
+        if (tailSamples > 0) {
+            latency_drain_active_.store(true, std::memory_order_release);
+            latency_drain_remaining_samples_.store(
+                alignToQuantum(tailSamples), std::memory_order_release);
+            return;
+        }
+
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
         render_playback_position_samples_.store(
             playback_position_samples_.load(std::memory_order_acquire),
             std::memory_order_release);
-        resetOutputAlignmentBuffers();
     }
 
     void LatencyCompensationManagerImpl::resumePlayback() {
@@ -483,10 +494,9 @@ namespace uapmd {
 
         latency_drain_active_.store(false, std::memory_order_release);
         latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        if (reset_to_start_after_latency_drain_.exchange(false, std::memory_order_acq_rel)) {
-            playback_position_samples_.store(0, std::memory_order_release);
-            render_playback_position_samples_.store(0, std::memory_order_release);
-        }
+        render_playback_position_samples_.store(
+            playback_position_samples_.load(std::memory_order_acquire),
+            std::memory_order_release);
     }
 
     void LatencyCompensationManagerImpl::applyOutputAlignment(

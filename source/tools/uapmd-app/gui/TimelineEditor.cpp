@@ -785,7 +785,13 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
     const float masterPluginWidth = ImGui::CalcTextSize(masterPluginLabel.c_str()).x + framePadX * 2.0f;
     const float trackPluginWidth = ImGui::CalcTextSize(trackPluginLabel.c_str()).x + framePadX * 2.0f;
     const float masterRow2W = pad + masterPluginWidth + pad;
-    const float freezePolicyWidth = ImGui::CalcTextSize("Off").x + framePadX * 2.0f;
+    const auto freezeBusyLabel = std::format("{} Busy", icons::Freeze);
+    const auto freezeOffLabel = std::format("{} Off", icons::Freeze);
+    const float freezePolicyWidth =
+        std::max(
+            ImGui::CalcTextSize(freezeBusyLabel.c_str()).x,
+            ImGui::CalcTextSize(freezeOffLabel.c_str()).x) +
+        framePadX * 2.0f;
     const float trackRow2W = pad + freezePolicyWidth + 2.0f * gap + trackPluginWidth + gap + iconBtnW + pad;
     const float legendWidth = std::max({row1W, masterRow2W, trackRow2W});
 
@@ -1345,16 +1351,26 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, legendArea.Min.y + pad));
     ImGui::PushID(trackIndex);
 
+    auto& frozenTrackManager =
+        sequencer.engine()->frozenTrackManager();
+    const bool trackBusy =
+        trackIndex != uapmd::kMasterTrackIndex &&
+        frozenTrackManager.isTrackBusy(trackIndex);
+
     // Row 1: Clips + Graph + Gain Slider + [Bypass]
     if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
+    if (trackBusy)
+        ImGui::BeginDisabled();
     if (renderIconButtonWithTooltip(std::format("{}##LegGraph{}", icons::Graph, trackIndex).c_str(), "Show track graph")) {
         if (pluginGraphEditor_.isVisible(trackIndex))
             pluginGraphEditor_.hideTrack(trackIndex);
         else
             pluginGraphEditor_.showTrack(trackIndex);
     }
+    if (trackBusy)
+        ImGui::EndDisabled();
     if (track) {
         ImGui::SameLine();
         const float iconButtonWidth = std::max({
@@ -1372,8 +1388,10 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 &sliderPos,
                 0.0f, 1.0f,
                 sliderPos <= 0.0f ? "Mute" : "",
-                ImGuiSliderFlags_NoInput))
+                ImGuiSliderFlags_NoInput)) {
             track->trackGain(sliderDbToLinearGain(sliderPosToDb(sliderPos)));
+            uapmd::AppModel::instance().markTrackDirty(trackIndex);
+        }
         if (ImGui::IsItemHovered()) {
             const double linearGain = track->trackGain();
             if (linearGain <= 0.0)
@@ -1388,12 +1406,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
         if (contextActionButton(std::format("{}##LegByp{}", toggleIcon, trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                bypassed ? "Track bypassed (click to enable)" : "Bypass track"))
+                bypassed ? "Track bypassed (click to enable)" : "Bypass track")) {
             track->bypassed(!bypassed);
+            uapmd::AppModel::instance().markTrackDirty(trackIndex);
+        }
         if (bypassed)
             ImGui::PopStyleColor();
     }
-
     // Row 2: Freeze switch + Plugin context button + Delete on the right
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
@@ -1401,7 +1420,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     if (track && trackIndex != uapmd::kMasterTrackIndex)
         deleteButtonWidth = ImGui::CalcTextSize(icons::DeleteTrack).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float freezePolicyButtonWidth = ImGui::CalcTextSize("Off").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const auto freezeBusyLabel = std::format("{} Busy", icons::Freeze);
+    const auto freezeOffLabel = std::format("{} Off", icons::Freeze);
+    const float freezePolicyButtonWidth =
+        std::max(
+            ImGui::CalcTextSize(freezeBusyLabel.c_str()).x,
+            ImGui::CalcTextSize(freezeOffLabel.c_str()).x) +
+        ImGui::GetStyle().FramePadding.x * 2.0f;
     const float freezePolicyWidth = track && trackIndex != uapmd::kMasterTrackIndex
         ? freezePolicyButtonWidth
         : 0.0f;
@@ -1413,14 +1438,18 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
     if (track && trackIndex != uapmd::kMasterTrackIndex) {
         auto& appModel = uapmd::AppModel::instance();
-        auto& frozenTrackManager = appModel.sequencer().engine()->frozenTrackManager();
         const auto currentPolicy = frozenTrackManager.freezePolicyForTrack(trackIndex);
         const auto runtimeState =
             frozenTrackManager.runtimeStateForTrack(trackIndex);
         const char* policyLabel =
-            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
+            runtimeState ==
+                uapmd::FrozenTrackManager::RuntimeState::Rendering
+            ? "Busy"
+            : currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
             ? "On"
             : "Off";
+        const auto freezePolicyLabel =
+            std::format("{} {}", icons::Freeze, policyLabel);
         std::string policyTooltip =
             currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
             ? "Track freezing: On (click to unfreeze)"
@@ -1436,17 +1465,21 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             policyTooltip += " (click to turn off)";
         }
         const auto nextPolicy =
-            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
+            runtimeState ==
+                    uapmd::FrozenTrackManager::RuntimeState::Rendering ||
+                currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
             ? uapmd::FrozenTrackManager::FreezePolicy::Off
             : uapmd::FrozenTrackManager::FreezePolicy::On;
         if (contextActionButton(
-                std::format("{}##LegFreeze{}", policyLabel, trackIndex).c_str(),
+                std::format("{}##LegFreeze{}", freezePolicyLabel, trackIndex).c_str(),
             ImVec2(freezePolicyButtonWidth, 0.0f),
                 policyTooltip.c_str()) &&
             frozenTrackManager.setFreezePolicyForTrack(trackIndex, nextPolicy))
             appModel.markProjectDirty();
         ImGui::SameLine();
     }
+    if (trackBusy)
+        ImGui::BeginDisabled();
     if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
     if (deleteButtonWidth > 0.0f) {
@@ -1455,6 +1488,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 "Delete track"))
             deleteTrack(trackIndex);
     }
+    if (trackBusy)
+        ImGui::EndDisabled();
 
     // Clips popup
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
@@ -1486,6 +1521,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
     // Plugin popup
     if (ImGui::BeginPopup(popupId.c_str())) {
+        if (trackBusy)
+            ImGui::BeginDisabled();
         if (track) {
             for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
                 int32_t instanceId = validInstances[static_cast<size_t>(i)];
@@ -1549,6 +1586,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             showPluginSelectorWindow_ = true;
             ImGui::CloseCurrentPopup();
         }
+        if (trackBusy)
+            ImGui::EndDisabled();
         ImGui::EndPopup();
     }
 
@@ -2095,7 +2134,10 @@ void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
+    const bool changed = tracks[trackIndex]->clipManager().clipCount() > 0;
     tracks[trackIndex]->clipManager().clearAll();
+    if (changed)
+        appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
@@ -2134,6 +2176,7 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
         return;
     }
+    appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
@@ -2146,7 +2189,8 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    tracks[trackIndex]->clipManager().setClipName(clipId, name);
+    if (tracks[trackIndex]->clipManager().setClipName(clipId, name))
+        appModel.markTrackDirty(trackIndex);
     refreshSequenceEditorForTrack(trackIndex);
 }
 
@@ -2193,6 +2237,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
 
         tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
         tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
+        appModel.markTrackDirty(trackIndex);
         refreshSequenceEditorForTrack(trackIndex);
     };
 
@@ -2232,10 +2277,11 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         return;
 
     double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-    tracks[trackIndex]->clipManager().setClipAnchor(
+    if (tracks[trackIndex]->clipManager().setClipAnchor(
         clipId,
         uapmd::TimeReference::fromContainerStart({}, seconds),
-        static_cast<int32_t>(sr));
+        static_cast<int32_t>(sr)))
+        appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();

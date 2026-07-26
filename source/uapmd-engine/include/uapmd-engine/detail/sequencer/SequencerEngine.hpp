@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -90,9 +92,12 @@ namespace uapmd {
         virtual void resetProcessingState() = 0;
         // Clears one track's host-side buffers. When resetPlugins is true, also
         // cycles its plugin processing state; call that form from the main thread.
+        // transition runs synchronously while the audio callback is excluded from
+        // the track state change.
         virtual void resetTrackProcessingState(
             uapmd_track_index_t trackIndex,
-            bool resetPlugins) = 0;
+            bool resetPlugins,
+            const std::function<void()>& transition = {}) = 0;
 
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
@@ -116,8 +121,19 @@ namespace uapmd {
         // outputs, and runs the master track. In single-threaded builds this is called
         // after pumpAudio().
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
-        // Mutates processing state and is only valid on an isolated engine that
-        // is not connected to a realtime audio device.
+        // Existing-instance track rendering. begin excludes the realtime audio
+        // callback; step performs bounded work on the calling thread; finish
+        // restores plugin/transport state and invokes transition before audio
+        // processing is admitted again.
+        virtual bool beginOfflineTrackRender(
+            const OfflineTrackRenderSettings& settings,
+            std::string& error) = 0;
+        virtual OfflineTrackRenderStepResult renderOfflineTrackStep(
+            uint32_t maximumBlocks) = 0;
+        virtual OfflineTrackRenderResult finishOfflineTrackRender(
+            bool canceled,
+            const std::function<void(OfflineTrackRenderResult&)>& transition = {}) = 0;
+        // Synchronous convenience wrapper, primarily for non-interactive tools.
         virtual OfflineTrackRenderResult renderOfflineTrack(
             const OfflineTrackRenderSettings& settings,
             const OfflineRenderCallbacks& callbacks = {}) = 0;
@@ -132,6 +148,16 @@ namespace uapmd {
         virtual void stopPlayback() = 0;
         virtual void pausePlayback() = 0;
         virtual void resumePlayback() = 0;
+        // Transport becomes quiet after Stop or Pause has allowed every
+        // declared plugin tail to drain and the mixed output has remained
+        // silent. Listener callbacks run off the audio thread.
+        using TransportQuietListenerId = uint64_t;
+        using TransportQuietListener = std::function<void()>;
+        virtual bool isTransportQuiet() const = 0;
+        virtual TransportQuietListenerId addTransportQuietListener(
+            TransportQuietListener listener) = 0;
+        virtual void removeTransportQuietListener(
+            TransportQuietListenerId listenerId) = 0;
 
         // Audio analysis
         // FIXME: they should be replaced by direct access to current audio buffers.
@@ -151,8 +177,7 @@ namespace uapmd {
         static std::unique_ptr<SequencerEngine> create(
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
-            size_t umpBufferSizeInInts,
-            bool enableTrackFreezing = true);
+            size_t umpBufferSizeInInts);
     };
 
 }
