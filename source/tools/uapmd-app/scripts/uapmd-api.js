@@ -229,8 +229,10 @@ globalThis.uapmd = {
         consumeParameterMetadataRefresh: (instanceId) => __remidy_sequencer_consumeParameterMetadataRefresh(instanceId),
 
         // Audio analysis
-        getInputSpectrum: (numBars) => __remidy_sequencer_getInputSpectrum(numBars),
-        getOutputSpectrum: (numBars) => __remidy_sequencer_getOutputSpectrum(numBars),
+        getInputTimeDomainData: (numSamples = 256) => __remidy_sequencer_getInputTimeDomainData(numSamples),
+        getOutputTimeDomainData: (numSamples = 256) => __remidy_sequencer_getOutputTimeDomainData(numSamples),
+        getInputFrequencyData: (numBins = 128) => __remidy_sequencer_getInputFrequencyData(numBins),
+        getOutputFrequencyData: (numBins = 128) => __remidy_sequencer_getOutputFrequencyData(numBins),
 
         // Audio device settings
         getSampleRate: () => __remidy_sequencer_getSampleRate(),

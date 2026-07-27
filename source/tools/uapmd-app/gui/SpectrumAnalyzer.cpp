@@ -1,5 +1,6 @@
 #include "SpectrumAnalyzer.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace uapmd::gui {
 
@@ -34,11 +35,22 @@ void SpectrumAnalyzer::ensureSpectrumSize() {
     if (static_cast<int>(spectrum_.size()) != numBars_) {
         spectrum_.resize(numBars_, 0.0f);
     }
+    if (static_cast<int>(time_domain_.size()) != kTimeDomainSamples)
+        time_domain_.resize(kTimeDomainSamples, 0.0f);
 }
 
 void SpectrumAnalyzer::updateSpectrum() {
-    if (dataProvider_)
-        dataProvider_(spectrum_.data(), numBars_);
+    if (!dataProvider_)
+        return;
+    dataProvider_(time_domain_.data(), kTimeDomainSamples);
+    for (int bar = 0; bar < numBars_; ++bar) {
+        const auto firstSample = bar * kTimeDomainSamples / numBars_;
+        const auto endSample = (bar + 1) * kTimeDomainSamples / numBars_;
+        float sum = 0.0f;
+        for (int sample = firstSample; sample < endSample; ++sample)
+            sum += std::abs(time_domain_[sample]);
+        spectrum_[bar] = sum / static_cast<float>(std::max(endSample - firstSample, 1));
+    }
 }
 
 }

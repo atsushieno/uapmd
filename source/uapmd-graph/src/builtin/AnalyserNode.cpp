@@ -136,7 +136,10 @@ namespace uapmd::builtin {
             int32_t processAudio(AudioProcessContext& process) override {
                 process.copyInputsToOutputs();
                 copyEvents(process.eventOut(), process.eventIn());
-                analyseOutput(process);
+                if (process.masterContext().audioDataType() == remidy::AudioContentType::Float64)
+                    analyse<double>(process, false);
+                else
+                    analyse<float>(process, false);
                 return 0;
             }
             uint32_t latencyInSamples() const override { return 0; }
@@ -147,7 +150,6 @@ namespace uapmd::builtin {
 
             uint32_t frequencyBinCount() const override { return kFrequencyBinCount; }
             void getFloatFrequencyData(float* values, uint32_t valueCount) const override { copyFrequencyData(values, valueCount, true); }
-            void getMagnitudeData(float* values, uint32_t valueCount) const override { copyFrequencyData(values, valueCount, false); }
             void getFloatTimeDomainData(float* values, uint32_t valueCount) const override {
                 if (!values)
                     return;
@@ -157,18 +159,6 @@ namespace uapmd::builtin {
                     const auto sourceIndex = (writePosition + sourceOffset) % kFftSize;
                     values[i] = published_time_history_[sourceIndex].load(std::memory_order_relaxed);
                 }
-            }
-            void analyseInput(AudioProcessContext& process) override {
-                if (process.masterContext().audioDataType() == remidy::AudioContentType::Float64)
-                    analyse<double>(process, true);
-                else
-                    analyse<float>(process, true);
-            }
-            void analyseOutput(AudioProcessContext& process) override {
-                if (process.masterContext().audioDataType() == remidy::AudioContentType::Float64)
-                    analyse<double>(process, false);
-                else
-                    analyse<float>(process, false);
             }
             void reset() override {
                 time_history_.fill(0.0f);

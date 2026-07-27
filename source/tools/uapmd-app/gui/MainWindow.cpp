@@ -68,10 +68,12 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     // Set up spectrum analyzer data providers
     inputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        uapmd::AppModel::instance().sequencer().engine()->getInputSpectrum(data, dataSize);
+        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->inputAnalyser())
+            analyser->getFloatTimeDomainData(data, static_cast<uint32_t>(dataSize));
     });
     outputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        uapmd::AppModel::instance().sequencer().engine()->getOutputSpectrum(data, dataSize);
+        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->outputAnalyser())
+            analyser->getFloatTimeDomainData(data, static_cast<uint32_t>(dataSize));
     });
 
     refreshDeviceList();

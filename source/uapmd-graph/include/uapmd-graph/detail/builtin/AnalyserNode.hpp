@@ -13,9 +13,6 @@ namespace uapmd::builtin {
         virtual uint32_t frequencyBinCount() const = 0;
         virtual void getFloatFrequencyData(float* values, uint32_t valueCount) const = 0;
         virtual void getFloatTimeDomainData(float* values, uint32_t valueCount) const = 0;
-        virtual void getMagnitudeData(float* values, uint32_t valueCount) const = 0;
-        virtual void analyseInput(AudioProcessContext& process) = 0;
-        virtual void analyseOutput(AudioProcessContext& process) = 0;
         virtual void reset() = 0;
     };
 

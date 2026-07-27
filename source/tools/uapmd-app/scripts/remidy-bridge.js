@@ -346,14 +346,24 @@ export const sequencer = {
     },
 
     // Audio Analysis
-    getInputSpectrum: function(numBars) {
-        if (numBars === undefined) numBars = 32;
-        return __remidy_sequencer_getInputSpectrum(numBars);
+    getInputTimeDomainData: function(numSamples) {
+        if (numSamples === undefined) numSamples = 256;
+        return __remidy_sequencer_getInputTimeDomainData(numSamples);
     },
 
-    getOutputSpectrum: function(numBars) {
-        if (numBars === undefined) numBars = 32;
-        return __remidy_sequencer_getOutputSpectrum(numBars);
+    getOutputTimeDomainData: function(numSamples) {
+        if (numSamples === undefined) numSamples = 256;
+        return __remidy_sequencer_getOutputTimeDomainData(numSamples);
+    },
+
+    getInputFrequencyData: function(numBins) {
+        if (numBins === undefined) numBins = 128;
+        return __remidy_sequencer_getInputFrequencyData(numBins);
+    },
+
+    getOutputFrequencyData: function(numBins) {
+        if (numBins === undefined) numBins = 128;
+        return __remidy_sequencer_getOutputFrequencyData(numBins);
     },
 
     // Audio Device/Settings

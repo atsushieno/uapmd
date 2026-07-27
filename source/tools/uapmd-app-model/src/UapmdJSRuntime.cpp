@@ -794,39 +794,69 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
 void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_getInputSpectrum", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_sequencer_getInputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto numBars = args.get<int32_t> (0, 32);
         if (numBars <= 0 || numBars > 256)
             numBars = 32;
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        std::vector<float> spectrum (static_cast<size_t>(numBars));
-        sequencer.engine()->getInputSpectrum (spectrum.data(), numBars);
+        std::vector<float> values (static_cast<size_t>(numBars));
+        if (auto* analyser = sequencer.engine()->inputAnalyser())
+            analyser->getFloatTimeDomainData(values.data(), static_cast<uint32_t>(numBars));
 
         auto arr = choc::value::createEmptyArray();
-        for (auto value : spectrum)
+        for (auto value : values)
         {
             arr.addArrayElement (choc::value::createFloat32 (value));
         }
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getOutputSpectrum", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_sequencer_getOutputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto numBars = args.get<int32_t> (0, 32);
         if (numBars <= 0 || numBars > 256)
             numBars = 32;
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        std::vector<float> spectrum (static_cast<size_t>(numBars));
-        sequencer.engine()->getOutputSpectrum (spectrum.data(), numBars);
+        std::vector<float> values (static_cast<size_t>(numBars));
+        if (auto* analyser = sequencer.engine()->outputAnalyser())
+            analyser->getFloatTimeDomainData(values.data(), static_cast<uint32_t>(numBars));
 
         auto arr = choc::value::createEmptyArray();
-        for (auto value : spectrum)
+        for (auto value : values)
         {
             arr.addArrayElement (choc::value::createFloat32 (value));
         }
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getInputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto binCount = args.get<int32_t> (0, 128);
+        if (binCount <= 0 || binCount > 2048)
+            binCount = 128;
+        std::vector<float> values (static_cast<size_t>(binCount));
+        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->inputAnalyser())
+            analyser->getFloatFrequencyData(values.data(), static_cast<uint32_t>(binCount));
+        auto arr = choc::value::createEmptyArray();
+        for (auto value : values)
+            arr.addArrayElement(choc::value::createFloat32(value));
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getOutputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto binCount = args.get<int32_t> (0, 128);
+        if (binCount <= 0 || binCount > 2048)
+            binCount = 128;
+        std::vector<float> values (static_cast<size_t>(binCount));
+        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->outputAnalyser())
+            analyser->getFloatFrequencyData(values.data(), static_cast<uint32_t>(binCount));
+        auto arr = choc::value::createEmptyArray();
+        for (auto value : values)
+            arr.addArrayElement(choc::value::createFloat32(value));
         return arr;
     });
 }

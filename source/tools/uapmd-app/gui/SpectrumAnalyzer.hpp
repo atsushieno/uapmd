@@ -8,11 +8,13 @@ namespace uapmd::gui {
     class SpectrumAnalyzer {
     public:
         static constexpr int kDefaultBars = 32;
+        static constexpr int kTimeDomainSamples = 256;
         using DataProvider = std::function<void(float* data, int dataSize)>;
 
     private:
         int numBars_;
         std::vector<float> spectrum_;
+        std::vector<float> time_domain_;
         ImVec2 size_;
         DataProvider dataProvider_;
 

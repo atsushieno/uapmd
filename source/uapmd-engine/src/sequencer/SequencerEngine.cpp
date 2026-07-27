@@ -140,9 +140,9 @@ namespace uapmd {
         AudioPreprocessCallback audio_preprocess_callback_;
 
         // These are ordinary graph nodes, kept at the device boundaries for the
-        // engine's legacy input/output meter API.
+        // engine's input/output analysis APIs.
         std::unique_ptr<builtin::AnalyserNode> input_analyser_;
-        std::unique_ptr<builtin::AnalyserNode> output_analyser_;
+        builtin::AnalyserNode* output_analyser_{nullptr}; // owned by master_track_ graph
 
         // UMP output processing
         std::vector<uapmd_ump_t> plugin_output_scratch_;
@@ -388,8 +388,6 @@ namespace uapmd {
         // Audio analysis
         builtin::AnalyserNode* inputAnalyser() override;
         builtin::AnalyserNode* outputAnalyser() override;
-        void getInputSpectrum(float* outSpectrum, int numBars) const override;
-        void getOutputSpectrum(float* outSpectrum, int numBars) const override;
 
         // Plugin instance queries
         AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) override;
@@ -484,7 +482,6 @@ namespace uapmd {
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         input_analyser_ = builtin::createAnalyserNode({.node_id = "engine-input-analyser"});
-        output_analyser_ = builtin::createAnalyserNode({.node_id = "engine-output-analyser"});
         timeline_ = TimelineFacade::create(*this);
         tail_process_manager_ = std::make_unique<TailProcessManagerImpl>(
             audio_buffer_size_in_frames,
@@ -499,6 +496,15 @@ namespace uapmd {
             timeline_->audioGraphProviderRegistry(),
             umpBufferSizeInInts,
             "");
+        if (master_track_) {
+            AudioGraphNodeDescriptor outputAnalyserDescriptor;
+            outputAnalyserDescriptor.node_id = "engine-output-analyser";
+            outputAnalyserDescriptor.node_type = std::string(builtin::kAnalyserNodeType);
+            outputAnalyserDescriptor.display_name = "Output Analyser";
+            if (master_track_->graph().appendBuiltInNodeSimple(outputAnalyserDescriptor) == 0)
+                output_analyser_ = dynamic_cast<builtin::AnalyserNode*>(
+                    master_track_->graph().getNode(outputAnalyserDescriptor.node_id));
+        }
         master_track_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
         mix_bus_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
         if (master_track_context_) {
@@ -976,6 +982,14 @@ namespace uapmd {
             return 0;
         }
 
+        // The input analyser is an ordinary pass-through node at the device
+        // boundary. Its copied output is not part of the main mix; the normal
+        // track routing below owns that output, so discard this tap's buffer.
+        if (input_analyser_) {
+            input_analyser_->processAudio(process);
+            process.clearAudioOutputs();
+        }
+
         auto& data = sequence;
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
         const bool isTailDrainActive =
@@ -1166,11 +1180,6 @@ namespace uapmd {
         // The analyser nodes retain a lock-free snapshot for the UI and for any
         // other non-audio-thread consumers.
         float outputPeak = 0.0f;
-        if (input_analyser_)
-            input_analyser_->analyseInput(process);
-        if (output_analyser_)
-            output_analyser_->analyseOutput(process);
-
         if (process.audioOutBusCount() > 0)
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ++ch) {
                 const auto* buffer = process.getFloatOutBuffer(0, ch);
@@ -1986,47 +1995,12 @@ namespace uapmd {
         timeline_->state().isPlaying = true;
     }
 
-    // Audio analysis
-    namespace {
-        void copyLegacySpectrum(
-            const builtin::AnalyserNode* analyser,
-            float* outSpectrum,
-            int numBars) {
-            if (!analyser || !outSpectrum || numBars <= 0)
-                return;
-
-            constexpr uint32_t kTimeDomainSampleCount = 256;
-            std::array<float, kTimeDomainSampleCount> timeDomainData{};
-            analyser->getFloatTimeDomainData(timeDomainData.data(), timeDomainData.size());
-
-            // Preserve the compact meter's original meaning: it displays mean
-            // absolute amplitude over consecutive time-domain slices. Frequency
-            // consumers should call AnalyserNode::getFloatFrequencyData().
-            for (int bar = 0; bar < numBars; ++bar) {
-                const auto firstSample = static_cast<uint32_t>(bar) * kTimeDomainSampleCount / numBars;
-                const auto endSample = static_cast<uint32_t>(bar + 1) * kTimeDomainSampleCount / numBars;
-                float sum = 0.0f;
-                for (uint32_t sample = firstSample; sample < endSample; ++sample)
-                    sum += std::abs(timeDomainData[sample]);
-                outSpectrum[bar] = sum / static_cast<float>(std::max(endSample - firstSample, 1u));
-            }
-        }
-    }
-
     builtin::AnalyserNode* SequencerEngineImpl::inputAnalyser() {
         return input_analyser_.get();
     }
 
     builtin::AnalyserNode* SequencerEngineImpl::outputAnalyser() {
-        return output_analyser_.get();
-    }
-
-    void SequencerEngineImpl::getInputSpectrum(float* outSpectrum, int numBars) const {
-        copyLegacySpectrum(input_analyser_.get(), outSpectrum, numBars);
-    }
-
-    void SequencerEngineImpl::getOutputSpectrum(float* outSpectrum, int numBars) const {
-        copyLegacySpectrum(output_analyser_.get(), outSpectrum, numBars);
+        return output_analyser_;
     }
 
     // Track routing configuration

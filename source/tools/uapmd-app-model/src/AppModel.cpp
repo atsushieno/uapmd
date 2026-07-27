@@ -728,16 +728,19 @@ void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
             constexpr int kPollIntervalMs = 100;
             constexpr int kMaxDrainMs = 8000;
             constexpr double kSilenceThreshold = 0.005;
-            constexpr int kSpectrumBars = 32;
-            float spectrum[kSpectrumBars];
+            constexpr int kTimeDomainSamples = 256;
+            float timeDomain[kTimeDomainSamples];
             for (int waited = 0; waited < kMaxDrainMs; waited += kPollIntervalMs) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
                 if (audioShutdownCancel_.load(std::memory_order_acquire))
                     break;
-                sequencer_.engine()->getOutputSpectrum(spectrum, kSpectrumBars);
+                auto* analyser = sequencer_.engine()->outputAnalyser();
+                if (!analyser)
+                    break;
+                analyser->getFloatTimeDomainData(timeDomain, kTimeDomainSamples);
                 double sum = 0.0;
-                for (float v : spectrum)
-                    sum += v;
+                for (float v : timeDomain)
+                    sum += std::abs(v);
                 if (sum < kSilenceThreshold)
                     break;
             }

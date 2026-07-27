@@ -151,11 +151,10 @@ namespace uapmd {
         virtual void pausePlayback() = 0;
         virtual void resumePlayback() = 0;
         // Audio analysis. The analyser nodes can also be reused directly in an
-        // AudioPluginGraph; these accessors preserve the legacy engine-facing API.
+        // AudioPluginGraph. Consumers select time- or frequency-domain data from
+        // the node instead of using engine-specific analysis adapters.
         virtual builtin::AnalyserNode* inputAnalyser() = 0;
         virtual builtin::AnalyserNode* outputAnalyser() = 0;
-        virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;
-        virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;
