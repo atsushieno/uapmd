@@ -15,9 +15,9 @@ namespace uapmd {
 
 namespace {
 
-class MiniaudioFileReaderAdapter : public AudioFileReader {
+class MiniAudioFileReaderAdapter : public AudioFileReader {
 public:
-    explicit MiniaudioFileReaderAdapter(const std::string& filepath) {
+    explicit MiniAudioFileReaderAdapter(const std::string& filepath) {
         ma_decoder_config config = ma_decoder_config_init(ma_format_f32, 0, 0);
         ma_result initResult = MA_ERROR;
 #if defined(__EMSCRIPTEN__)
@@ -57,7 +57,7 @@ public:
         ensureScratchCapacity();
     }
 
-    ~MiniaudioFileReaderAdapter() override {
+    ~MiniAudioFileReaderAdapter() override {
         ma_decoder_uninit(&decoder_);
     }
 
@@ -190,7 +190,7 @@ private:
 
 std::unique_ptr<AudioFileReader> createAudioFileReaderFromPath(const std::string& filepath) {
     try {
-        return std::make_unique<MiniaudioFileReaderAdapter>(filepath);
+        return std::make_unique<MiniAudioFileReaderAdapter>(filepath);
     } catch (const std::exception&) {
         return nullptr;
     }

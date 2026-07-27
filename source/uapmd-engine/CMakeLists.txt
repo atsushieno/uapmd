@@ -210,12 +210,12 @@ target_sources(uapmd-engine PRIVATE
 if(EMSCRIPTEN)
     target_sources(uapmd-engine PRIVATE
             src/devices/WebAudioWorkletIODevice.cpp
-            src/devices/MiniaudioImpl.cpp
+            src/devices/MiniAudioImpl.cpp
     )
 elseif(ANDROID)
     target_sources(uapmd-engine PRIVATE
             src/devices/OboeAudioIODevice.cpp
-            src/devices/MiniaudioImpl.cpp
+            src/devices/MiniAudioImpl.cpp
     )
 else()
     target_sources(uapmd-engine PRIVATE
