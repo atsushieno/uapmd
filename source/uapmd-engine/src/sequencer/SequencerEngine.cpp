@@ -139,16 +139,10 @@ namespace uapmd {
         // Audio preprocessing callback (for app-level source nodes)
         AudioPreprocessCallback audio_preprocess_callback_;
 
-        // Audio analysis
-        static constexpr int kSpectrumBars = 32;
-        // RT-thread local buffers (no lock needed)
-        float rt_input_spectrum_[kSpectrumBars] = {};
-        float rt_output_spectrum_[kSpectrumBars] = {};
-        // Shared buffers for non-RT readers (lock-free using atomic flag)
-        float shared_input_spectrum_[kSpectrumBars] = {};
-        float shared_output_spectrum_[kSpectrumBars] = {};
-        // Lock-free flag: true = reader owns, false = writer can write
-        mutable std::atomic<bool> spectrum_reading_{false};
+        // These are ordinary graph nodes, kept at the device boundaries for the
+        // engine's legacy input/output meter API.
+        std::unique_ptr<builtin::AnalyserNode> input_analyser_;
+        std::unique_ptr<builtin::AnalyserNode> output_analyser_;
 
         // UMP output processing
         std::vector<uapmd_ump_t> plugin_output_scratch_;
@@ -392,6 +386,8 @@ namespace uapmd {
         void resumePlayback() override;
 
         // Audio analysis
+        builtin::AnalyserNode* inputAnalyser() override;
+        builtin::AnalyserNode* outputAnalyser() override;
         void getInputSpectrum(float* outSpectrum, int numBars) const override;
         void getOutputSpectrum(float* outSpectrum, int numBars) const override;
 
@@ -487,6 +483,8 @@ namespace uapmd {
         ump_buffer_size_in_ints(umpBufferSizeInInts),
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
+        input_analyser_ = builtin::createAnalyserNode({.node_id = "engine-input-analyser"});
+        output_analyser_ = builtin::createAnalyserNode({.node_id = "engine-output-analyser"});
         timeline_ = TimelineFacade::create(*this);
         tail_process_manager_ = std::make_unique<TailProcessManagerImpl>(
             audio_buffer_size_in_frames,
@@ -826,11 +824,10 @@ namespace uapmd {
             clearTrackEvents(track.get());
         clearTrackEvents(master_track_.get());
 
-        // Clear spectrum visualization buffers.
-        std::fill(std::begin(rt_input_spectrum_), std::end(rt_input_spectrum_), 0.0f);
-        std::fill(std::begin(rt_output_spectrum_), std::end(rt_output_spectrum_), 0.0f);
-        std::fill(std::begin(shared_input_spectrum_), std::end(shared_input_spectrum_), 0.0f);
-        std::fill(std::begin(shared_output_spectrum_), std::end(shared_output_spectrum_), 0.0f);
+        if (input_analyser_)
+            input_analyser_->reset();
+        if (output_analyser_)
+            output_analyser_->reset();
     }
 
     void SequencerEngineImpl::clearTrackProcessingState(
@@ -1166,73 +1163,22 @@ namespace uapmd {
             }
         }
 
-        // Calculate spectrum for visualization (simple magnitude binning)
+        // The analyser nodes retain a lock-free snapshot for the UI and for any
+        // other non-audio-thread consumers.
         float outputPeak = 0.0f;
-        // RT-safe: write to local buffers without locking
-        {
-            // Calculate input spectrum from device input
-            for (int bar = 0; bar < kSpectrumBars; ++bar) {
-                float sum = 0.0f;
-                int sampleCount = 0;
+        if (input_analyser_)
+            input_analyser_->analyseInput(process);
+        if (output_analyser_)
+            output_analyser_->analyseOutput(process);
 
-                if (process.audioInBusCount() > 0) {
-                    int samplesPerBar = process.frameCount() / kSpectrumBars;
-                    int startSample = bar * samplesPerBar;
-                    int endSample = bar == kSpectrumBars - 1
-                        ? process.frameCount()
-                        : std::min(
-                              static_cast<int>(process.frameCount()),
-                              (bar + 1) * samplesPerBar);
-
-                    for (uint32_t ch = 0; ch < process.inputChannelCount(0); ++ch) {
-                        const float* buffer = process.getFloatInBuffer(0, ch);
-                        for (int i = startSample; i < endSample; ++i) {
-                            sum += std::abs(buffer[i]);
-                            sampleCount++;
-                        }
-                    }
-                }
-
-                rt_input_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
+        if (process.audioOutBusCount() > 0)
+            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ++ch) {
+                const auto* buffer = process.getFloatOutBuffer(0, ch);
+                if (!buffer)
+                    continue;
+                for (uint32_t frame = 0; frame < process.frameCount(); ++frame)
+                    outputPeak = std::max(outputPeak, std::abs(buffer[frame]));
             }
-
-            // Calculate output spectrum from main output
-            for (int bar = 0; bar < kSpectrumBars; ++bar) {
-                float sum = 0.0f;
-                int sampleCount = 0;
-
-                if (process.audioOutBusCount() > 0) {
-                    int samplesPerBar = process.frameCount() / kSpectrumBars;
-                    int startSample = bar * samplesPerBar;
-                    int endSample = bar == kSpectrumBars - 1
-                        ? process.frameCount()
-                        : std::min(
-                              static_cast<int>(process.frameCount()),
-                              (bar + 1) * samplesPerBar);
-
-                    for (uint32_t ch = 0; ch < process.outputChannelCount(0); ++ch) {
-                        const float* buffer = process.getFloatOutBuffer(0, ch);
-                        for (int i = startSample; i < endSample; ++i) {
-                            const auto magnitude = std::abs(buffer[i]);
-                            sum += magnitude;
-                            outputPeak = std::max(outputPeak, magnitude);
-                            sampleCount++;
-                        }
-                    }
-                }
-
-                rt_output_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
-            }
-
-            // Try to copy to shared buffers (skip if reader is active - RT-safe, lock-free)
-            bool expected = false;
-            if (spectrum_reading_.compare_exchange_strong(expected, false, std::memory_order_acquire)) {
-                // No reader active, safe to write
-                std::copy(rt_input_spectrum_, rt_input_spectrum_ + kSpectrumBars, shared_input_spectrum_);
-                std::copy(rt_output_spectrum_, rt_output_spectrum_ + kSpectrumBars, shared_output_spectrum_);
-                // No need to release the flag - we keep it at false for next write
-            }
-        }
 
         // Muted drain: silence the device output *after* the spectrum was computed so
         // the shutdown sequence can still observe how much tail audio remains.
@@ -2041,28 +1987,46 @@ namespace uapmd {
     }
 
     // Audio analysis
-    void SequencerEngineImpl::getInputSpectrum(float* outSpectrum, int numBars) const {
-        // Set reading flag to prevent RT thread from writing
-        spectrum_reading_.store(true, std::memory_order_release);
+    namespace {
+        void copyLegacySpectrum(
+            const builtin::AnalyserNode* analyser,
+            float* outSpectrum,
+            int numBars) {
+            if (!analyser || !outSpectrum || numBars <= 0)
+                return;
 
-        for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-            outSpectrum[i] = shared_input_spectrum_[i];
+            constexpr uint32_t kTimeDomainSampleCount = 256;
+            std::array<float, kTimeDomainSampleCount> timeDomainData{};
+            analyser->getFloatTimeDomainData(timeDomainData.data(), timeDomainData.size());
+
+            // Preserve the compact meter's original meaning: it displays mean
+            // absolute amplitude over consecutive time-domain slices. Frequency
+            // consumers should call AnalyserNode::getFloatFrequencyData().
+            for (int bar = 0; bar < numBars; ++bar) {
+                const auto firstSample = static_cast<uint32_t>(bar) * kTimeDomainSampleCount / numBars;
+                const auto endSample = static_cast<uint32_t>(bar + 1) * kTimeDomainSampleCount / numBars;
+                float sum = 0.0f;
+                for (uint32_t sample = firstSample; sample < endSample; ++sample)
+                    sum += std::abs(timeDomainData[sample]);
+                outSpectrum[bar] = sum / static_cast<float>(std::max(endSample - firstSample, 1u));
+            }
         }
+    }
 
-        // Release the reading flag
-        spectrum_reading_.store(false, std::memory_order_release);
+    builtin::AnalyserNode* SequencerEngineImpl::inputAnalyser() {
+        return input_analyser_.get();
+    }
+
+    builtin::AnalyserNode* SequencerEngineImpl::outputAnalyser() {
+        return output_analyser_.get();
+    }
+
+    void SequencerEngineImpl::getInputSpectrum(float* outSpectrum, int numBars) const {
+        copyLegacySpectrum(input_analyser_.get(), outSpectrum, numBars);
     }
 
     void SequencerEngineImpl::getOutputSpectrum(float* outSpectrum, int numBars) const {
-        // Set reading flag to prevent RT thread from writing
-        spectrum_reading_.store(true, std::memory_order_release);
-
-        for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-            outSpectrum[i] = shared_output_spectrum_[i];
-        }
-
-        // Release the reading flag
-        spectrum_reading_.store(false, std::memory_order_release);
+        copyLegacySpectrum(output_analyser_.get(), outSpectrum, numBars);
     }
 
     // Track routing configuration

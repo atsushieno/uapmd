@@ -1,5 +1,6 @@
 #include "uapmd-graph/detail/node-graph/AudioGraphRegistry.hpp"
 #include "uapmd-graph/detail/builtin/GainNode.hpp"
+#include "uapmd-graph/detail/builtin/AnalyserNode.hpp"
 #include "uapmd-graph/detail/builtin/ChannelMergerNode.hpp"
 #include "uapmd-graph/detail/builtin/ChannelSplitterNode.hpp"
 
@@ -31,6 +32,7 @@ namespace uapmd {
     std::unique_ptr<AudioGraphRegistry> AudioGraphRegistry::createDefault() {
         auto registry = std::make_unique<AudioGraphRegistryImpl>();
         registry->registerBuiltInFactory(builtin::createGainNodeFactory());
+        registry->registerBuiltInFactory(builtin::createAnalyserNodeFactory());
         registry->registerBuiltInFactory(builtin::createChannelMergerNodeFactory());
         registry->registerBuiltInFactory(builtin::createChannelSplitterNodeFactory());
         return registry;

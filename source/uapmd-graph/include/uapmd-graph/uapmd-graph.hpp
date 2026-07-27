@@ -13,5 +13,6 @@
 #include "detail/node-graph/AudioPluginFullDAGraph.hpp"
 #include "detail/builtin/BuiltInNodeTypes.hpp"
 #include "detail/builtin/GainNode.hpp"
+#include "detail/builtin/AnalyserNode.hpp"
 #include "detail/builtin/ChannelMergerNode.hpp"
 #include "detail/builtin/ChannelSplitterNode.hpp"

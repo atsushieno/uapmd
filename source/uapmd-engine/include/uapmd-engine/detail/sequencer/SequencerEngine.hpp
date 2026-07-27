@@ -150,8 +150,10 @@ namespace uapmd {
         virtual void stopPlayback() = 0;
         virtual void pausePlayback() = 0;
         virtual void resumePlayback() = 0;
-        // Audio analysis
-        // FIXME: they should be replaced by direct access to current audio buffers.
+        // Audio analysis. The analyser nodes can also be reused directly in an
+        // AudioPluginGraph; these accessors preserve the legacy engine-facing API.
+        virtual builtin::AnalyserNode* inputAnalyser() = 0;
+        virtual builtin::AnalyserNode* outputAnalyser() = 0;
         virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;
         virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
