@@ -155,7 +155,8 @@ void remidy::PluginInstanceVST3::refreshMidiMappings() {
         // Query for all standard MIDI 1.0 CC numbers (0-127) plus special controllers
         std::vector<CtrlNumber> controllersToQuery = {
             ControllerNumbers::kAfterTouch,
-            ControllerNumbers::kPitchBend
+            ControllerNumbers::kPitchBend,
+            ControllerNumbers::kCtrlProgramChange
         };
         // Add standard CC 0-127
         for (CtrlNumber cc = 0; cc < 128; cc++) {

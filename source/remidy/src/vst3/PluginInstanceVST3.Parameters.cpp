@@ -1,6 +1,6 @@
 
+#include <algorithm>
 #include <iostream>
-#include <future>
 #include <memory>
 #include <optional>
 
@@ -23,6 +23,7 @@ void remidy::PluginInstanceVST3::ParameterSupport::clearParameterList() {
     param_id_to_index.clear();
     program_change_parameter_id = static_cast<ParamID>(-1);
     program_change_parameter_index = -1;
+    program_change_step_count = 0;
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::populateParameterList() {
@@ -85,6 +86,7 @@ void remidy::PluginInstanceVST3::ParameterSupport::populateParameterList() {
         if (info.flags & ParameterInfo::kIsProgramChange) {
             program_change_parameter_id = info.id;
             program_change_parameter_index = static_cast<int32_t>(i);
+            program_change_step_count = info.stepCount;
         }
     }
 }
@@ -297,47 +299,18 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::buildUnitPath(UnitID u
 void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint4_t group, remidy::uint4_t channel,
                                                                     remidy::uint7_t flags, remidy::uint7_t program,
                                                                     remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
-    // Program selection in UnitInfo and State loading must happen on the main thread, in non-RT manner.
-    EventLoop::enqueueTaskOnMainThread([&] {
-        auto unitInfo = owner->unit_info;
-        auto states = owner->_states;
+    // VST3 Program Change is a parameter update. setUnitProgramData() consumes a
+    // caller-provided stream and is not a Program Change mechanism.
+    (void) group;
+    (void) channel;
+    (void) flags;
+    (void) bankMSB;
+    (void) bankLSB;
+    if (program_change_parameter_index < 0)
+        return;
 
-        if (unitInfo == nullptr)
-            return; // the plugin does not provide program list.
-
-        int32_t bank = (bankMSB << 7) + bankLSB;
-
-        ProgramListInfo pl;
-        if (int32_t programListCount = unitInfo->getProgramListCount(); bank > programListCount) {
-            Logger::global()->logError("bank index goes beyond programList count: %d > %d", bank, programListCount);
-            return;
-        }
-        auto result = unitInfo->getProgramListInfo(bank, pl);
-        if (result != kResultOk) {
-            Logger::global()->logError("Could not retrieve program list: result code: %d, bank: %d, program: %d", result, bank, program);
-            return;
-        }
-
-        IBStream *stream;
-        result = unitInfo->setUnitProgramData(pl.id, program, stream);
-        if (result != kResultOk) {
-            Logger::global()->logError("Failed to set unit program data: result code: %d, bank: %d, program: %d", result, bank, program);
-            return;
-        }
-
-        int64_t size;
-        stream->seek(0, IBStream::kIBSeekEnd, &size);
-        std::vector<uint8_t> buf(size);
-        int32_t read;
-        stream->read(buf.data(), size, &read);
-        auto loadPromise = std::make_shared<std::promise<void>>();
-        auto loadFuture = loadPromise->get_future();
-        states->loadState(std::move(buf), remidy::PluginStateSupport::StateContextType::Preset, true, nullptr,
-                          [loadPromise](std::string error, void* callbackContext) {
-                              loadPromise->set_value();
-                          });
-        loadFuture.get();
-    });
+    const auto plainProgram = static_cast<double>(std::min<int32_t>(program, program_change_step_count));
+    enqueueParameterRT(static_cast<uint32_t>(program_change_parameter_index), plainProgram, 0);
 }
 
 std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {
