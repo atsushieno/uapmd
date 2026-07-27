@@ -8,7 +8,9 @@
 #include <string_view>
 
 namespace remidy {
-    using PluginDirtyStateChangeEvent = ParameterEventBase<void, bool>;
+    // A backend may report that plugin state changed, but the backend never owns
+    // document dirty state. Hosts decide how to record this notification.
+    using PluginStateChangeEvent = ParameterEventBase<void>;
     struct PluginTimingInfoChange {
         bool latency_changed{false};
         bool tail_changed{false};
@@ -29,17 +31,14 @@ namespace remidy {
 
     class PluginInstance {
         PluginCatalogEntry* entry;
-        std::atomic<bool> dirty_{false};
-        PluginDirtyStateChangeEvent dirty_state_change_event_{};
+        PluginStateChangeEvent plugin_state_change_event_{};
         PluginTimingInfoChangeEvent timing_info_change_event_{};
 
     protected:
         explicit PluginInstance(PluginCatalogEntry* entry) : entry(entry) {}
 
-        void setDirtyState(bool dirty) {
-            const bool previous = dirty_.exchange(dirty, std::memory_order_acq_rel);
-            if (previous != dirty)
-                dirty_state_change_event_.notify(dirty);
+        void notifyPluginStateChanged() {
+            plugin_state_change_event_.notify();
         }
 
         void notifyTimingInfoChanged(PluginTimingInfoChange change) {
@@ -62,10 +61,7 @@ namespace remidy {
 
         PluginCatalogEntry* info() { return entry; }
 
-        bool dirty() const { return dirty_.load(std::memory_order_acquire); }
-        void markDirty() { setDirtyState(true); }
-        void clearDirty() { setDirtyState(false); }
-        PluginDirtyStateChangeEvent& dirtyStateChangeEvent() { return dirty_state_change_event_; }
+        PluginStateChangeEvent& pluginStateChangeEvent() { return plugin_state_change_event_; }
         PluginTimingInfoChangeEvent& timingInfoChangeEvent() { return timing_info_change_event_; }
 
         virtual PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) {

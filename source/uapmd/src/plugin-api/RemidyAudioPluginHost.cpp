@@ -1,5 +1,6 @@
 
 #include "RemidyAudioPluginHost.hpp"
+#include <atomic>
 #include <functional>
 #include <ranges>
 #if ANDROID
@@ -93,11 +94,20 @@ namespace uapmd {
         };
 
         bool bypassed_{true};
+        std::atomic<bool> dirty_{false};
+        remidy::ParameterEventBase<void, bool> dirty_state_change_event_{};
+        remidy::EventListenerId plugin_state_change_listener_id_{0};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
 #ifdef UAPMD_HAS_ARA
         AraHandleExtensionAdapter ara_handle_extension{*this};
 #endif
+
+        void markDirty() {
+            const bool wasDirty = dirty_.exchange(true, std::memory_order_acq_rel);
+            if (!wasDirty)
+                dirty_state_change_event_.notify(true);
+        }
         AapUiHostDetailsExtensionAdapter aap_ui_host_details_extension{*this};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
@@ -116,8 +126,14 @@ namespace uapmd {
         explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance)
           : instancing(instancing), instance(instance) {
             bypassed_ = false;
+            if (instance)
+                plugin_state_change_listener_id_ = instance->pluginStateChangeEvent().addListener([this] {
+                    markDirty();
+                });
         }
         ~RemidyAudioPluginInstance() override {
+            if (instance && plugin_state_change_listener_id_ != 0)
+                instance->pluginStateChangeEvent().removeListener(plugin_state_change_listener_id_);
             bypassed_ = true;
             if (ui_support) {
                 if (uiVisible)
@@ -271,7 +287,7 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->presets()->loadPreset(presetIndex);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            instance->markDirty();
+            markDirty();
         }
 
         void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
@@ -281,7 +297,7 @@ namespace uapmd {
                 if (error.empty())
                     notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
                 if (error.empty())
-                    instance->markDirty();
+                    markDirty();
                 if (completed)
                     completed(std::move(error), callbackContext);
             });
@@ -331,7 +347,7 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setParameter(index, value);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            instance->markDirty();
+            markDirty();
         }
 
         void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -347,7 +363,7 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setPerNoteController({.note = note }, index, value);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            instance->markDirty();
+            markDirty();
         }
 
         void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -461,23 +477,21 @@ namespace uapmd {
         }
 
         bool dirty() const override {
-            return instance && instance->dirty();
+            return dirty_.load(std::memory_order_acquire);
         }
 
         void clearDirty() override {
-            if (instance)
-                instance->clearDirty();
+            const bool wasDirty = dirty_.exchange(false, std::memory_order_acq_rel);
+            if (wasDirty)
+                dirty_state_change_event_.notify(false);
         }
 
         remidy::EventListenerId addDirtyStateListener(std::function<void(bool)> listener) override {
-            if (!instance)
-                return 0;
-            return instance->dirtyStateChangeEvent().addListener(std::move(listener));
+            return dirty_state_change_event_.addListener(std::move(listener));
         }
 
         void removeDirtyStateListener(remidy::EventListenerId listenerId) override {
-            if (instance)
-                instance->dirtyStateChangeEvent().removeListener(listenerId);
+            dirty_state_change_event_.removeListener(listenerId);
         }
 
         remidy::EventListenerId addTimingInfoChangeListener(

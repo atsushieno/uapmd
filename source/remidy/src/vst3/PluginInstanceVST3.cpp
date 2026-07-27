@@ -107,7 +107,8 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         handleRestartComponent(flags);
     });
     component_handler->setDirtyStateHandler([this](bool dirty) {
-        setDirtyState(dirty);
+        if (dirty)
+            notifyPluginStateChanged();
     });
 
     // Leave the component inactive until startProcessing() explicitly activates it.
