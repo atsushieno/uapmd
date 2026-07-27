@@ -12,6 +12,7 @@ target_include_directories(uapmd-plugin-hosting PRIVATE
         ../remidy/include
         include
         ${choc_SOURCE_DIR}
+        ${concurrentqueue_SOURCE_DIR}
 )
 if(UAPMD_ENABLE_CPPLOCATE)
     target_include_directories(uapmd-plugin-hosting PRIVATE
