@@ -1,4 +1,4 @@
-# UAPMD Project File Format Documentation
+# UAPMD Project File Format Documentation (AI slop)
 
 ## Overview
 

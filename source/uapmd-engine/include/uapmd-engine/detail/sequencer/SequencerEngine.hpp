@@ -19,6 +19,11 @@ namespace uapmd {
     class FrozenTrackManager;
     class TailProcessManager;
 
+    struct MidiPortTrackConnection {
+        std::string portId;
+        ProjectObjectId trackId;
+    };
+
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher, which fires `processAudio()` in its audio I/O callback.
@@ -31,6 +36,21 @@ namespace uapmd {
         virtual ~SequencerEngine() = default;
 
         virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
+
+        // Each platform endpoint has an independent route. The persisted track
+        // key is TimelineTrack::referenceId(), never its mutable vector index.
+        virtual bool connectPlatformMidiInputToTrack(
+            std::string portId, ProjectObjectId trackId) = 0;
+        virtual void disconnectPlatformMidiInputFromTrack(
+            std::string_view portId, std::string_view trackId) = 0;
+        virtual std::vector<MidiPortTrackConnection> platformMidiInputConnections() const = 0;
+        virtual void clearPlatformMidiInputRoute() = 0;
+        virtual bool connectPlatformMidiOutputToTrack(
+            std::string portId, ProjectObjectId trackId) = 0;
+        virtual void disconnectPlatformMidiOutputFromTrack(
+            std::string_view portId, std::string_view trackId) = 0;
+        virtual std::vector<MidiPortTrackConnection> platformMidiOutputConnections() const = 0;
+        virtual void clearPlatformMidiOutputRoute() = 0;
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
         virtual FrozenTrackManager& frozenTrackManager() = 0;

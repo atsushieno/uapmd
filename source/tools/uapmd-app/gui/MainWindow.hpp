@@ -60,6 +60,8 @@ class MainWindow {
         // Device settings
         bool showDeviceSettingsWindow_ = false;
         AudioDeviceSettings audioDeviceSettings_;
+        std::string midi_input_port_id_;
+        std::string midi_output_port_id_;
 
 #ifdef UAPMD_HAS_MCP_SERVER
         std::unique_ptr<McpServer> mcpServer_;
@@ -141,6 +143,7 @@ class MainWindow {
         void refreshDeviceList();
         void applyDeviceSettings();
         void handleAudioDeviceChange();
+        void renderPlatformMidiConnections();
 
         // Track UI
         void renderAudioGraphEditorWindow();

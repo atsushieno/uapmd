@@ -183,6 +183,8 @@ namespace uapmd {
         ~AppModel() override;
 
         RealtimeSequencer& sequencer() { return sequencer_; }
+        std::vector<MidiPortInfo> getMidiInputPorts() const;
+        std::vector<MidiPortInfo> getMidiOutputPorts() const;
         remidy_tooling::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }
         const remidy_tooling::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
         TransportController& transport() { return *transportController_; }

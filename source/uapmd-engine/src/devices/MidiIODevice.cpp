@@ -6,8 +6,11 @@
 #include <array>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <memory>
 #include <optional>
+#include <ranges>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -92,6 +95,105 @@ std::optional<libremidi::API> pick_default_api(const std::vector<libremidi::API>
     return apis.front();
 }
 
+template <typename Port>
+std::string portId(const Port& port) {
+    // This is libremidi's port identity: it is API-local and opaque, but does
+    // not depend on display metadata that may change when an endpoint opens.
+    return std::format("{}:{}", static_cast<int>(port.api), port.port);
+}
+
+template <typename Port>
+std::string displayName(const Port& port) {
+    if (!port.display_name.empty())
+        return port.display_name;
+    if (!port.port_name.empty())
+        return port.port_name;
+    if (!port.device_name.empty())
+        return port.device_name;
+    return "Unnamed MIDI port";
+}
+
+template <typename Port>
+bool isExcluded(const Port& port, const std::vector<std::string>& excluded) {
+    return std::ranges::find(excluded, portId(port)) != excluded.end();
+}
+
+libremidi::observer makeObserver() {
+    libremidi::observer_configuration configuration;
+    configuration.track_hardware = true;
+    configuration.track_virtual = true;
+    configuration.track_network = true;
+    configuration.track_any = true;
+    return libremidi::observer(configuration);
+}
+
+class LibreMidiInputPort final : public uapmd::MidiIOFeature {
+    std::vector<uapmd::ump_receiver_t> receivers_;
+    std::vector<void*> receiver_user_data_;
+    std::unique_ptr<libremidi::midi_in> midi_in_;
+
+    void inputCallback(libremidi::ump&& message) {
+        const auto sizeInBytes = umppi::Ump(message.data[0]).getSizeInBytes();
+        for (size_t i = 0; i < receivers_.size(); ++i)
+            receivers_[i](receiver_user_data_[i], const_cast<uint32_t*>(message.data), sizeInBytes, message.timestamp);
+    }
+
+public:
+    explicit LibreMidiInputPort(const libremidi::input_port& port) {
+        libremidi::ump_input_configuration configuration;
+        configuration.on_message = [this](libremidi::ump&& message) { inputCallback(std::move(message)); };
+        configuration.ignore_sysex = false;
+        midi_in_ = std::make_unique<libremidi::midi_in>(configuration, port.api);
+        if (auto error = midi_in_->open_port(port); error.is_set())
+            throw std::runtime_error("Failed to open MIDI input port");
+    }
+
+    ~LibreMidiInputPort() override {
+        if (midi_in_)
+            midi_in_->close_port();
+    }
+
+    void addInputHandler(uapmd::ump_receiver_t receiver, void* userData) override {
+        receivers_.push_back(receiver);
+        receiver_user_data_.push_back(userData);
+    }
+
+    void removeInputHandler(uapmd::ump_receiver_t receiver) override {
+        const auto position = std::find(receivers_.begin(), receivers_.end(), receiver);
+        if (position == receivers_.end())
+            return;
+        const auto index = static_cast<size_t>(position - receivers_.begin());
+        receivers_.erase(position);
+        receiver_user_data_.erase(receiver_user_data_.begin() + static_cast<std::ptrdiff_t>(index));
+    }
+
+    void send(uapmd_ump_t*, size_t, uapmd_timestamp_t) override {}
+};
+
+class LibreMidiOutputPort final : public uapmd::MidiIOFeature {
+    std::unique_ptr<libremidi::midi_out> midi_out_;
+
+public:
+    explicit LibreMidiOutputPort(const libremidi::output_port& port) {
+        midi_out_ = std::make_unique<libremidi::midi_out>(libremidi::output_configuration{}, port.api);
+        if (auto error = midi_out_->open_port(port); error.is_set())
+            throw std::runtime_error("Failed to open MIDI output port");
+    }
+
+    ~LibreMidiOutputPort() override {
+        if (midi_out_)
+            midi_out_->close_port();
+    }
+
+    void addInputHandler(uapmd::ump_receiver_t, void*) override {}
+    void removeInputHandler(uapmd::ump_receiver_t) override {}
+
+    void send(uapmd_ump_t* messages, size_t sizeInBytes, uapmd_timestamp_t) override {
+        if (midi_out_ && messages && sizeInBytes > 0)
+            midi_out_->send_ump(reinterpret_cast<const uint32_t*>(messages), sizeInBytes / sizeof(uint32_t));
+    }
+};
+
 } // namespace
 
 std::optional<libremidi::API> uapmd::resolveLibreMidiUmpApi(const std::string& apiName) {
@@ -153,4 +255,38 @@ std::shared_ptr<uapmd::MidiIODevice> uapmd::createLibreMidiIODevice(std::string 
                                                std::move(manufacturer),
                                                std::move(version),
                                                sysExDelayInMicroseconds);
+}
+
+std::vector<uapmd::MidiPortInfo> uapmd::getMidiInputPorts(const std::vector<std::string>& excludedPortIds) {
+    auto observer = makeObserver();
+    std::vector<MidiPortInfo> result;
+    for (const auto& port : observer.get_input_ports())
+        if (!isExcluded(port, excludedPortIds))
+            result.push_back({portId(port), displayName(port)});
+    return result;
+}
+
+std::vector<uapmd::MidiPortInfo> uapmd::getMidiOutputPorts(const std::vector<std::string>& excludedPortIds) {
+    auto observer = makeObserver();
+    std::vector<MidiPortInfo> result;
+    for (const auto& port : observer.get_output_ports())
+        if (!isExcluded(port, excludedPortIds))
+            result.push_back({portId(port), displayName(port)});
+    return result;
+}
+
+std::shared_ptr<uapmd::MidiIOFeature> uapmd::openLibreMidiInputPort(const std::string& requestedPortId) {
+    auto observer = makeObserver();
+    for (const auto& port : observer.get_input_ports())
+        if (portId(port) == requestedPortId)
+            return std::make_shared<LibreMidiInputPort>(port);
+    return nullptr;
+}
+
+std::shared_ptr<uapmd::MidiIOFeature> uapmd::openLibreMidiOutputPort(const std::string& requestedPortId) {
+    auto observer = makeObserver();
+    for (const auto& port : observer.get_output_ports())
+        if (portId(port) == requestedPortId)
+            return std::make_shared<LibreMidiOutputPort>(port);
+    return nullptr;
 }

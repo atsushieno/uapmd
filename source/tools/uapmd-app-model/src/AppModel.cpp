@@ -257,6 +257,28 @@ std::shared_ptr<uapmd::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
     return createLibreMidiIODevice(apiName, deviceName, manufacturer, version);
 }
 
+std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiInputPorts() const {
+    auto ports = uapmd::getMidiInputPorts();
+    const auto devices = getDevices();
+    std::erase_if(ports, [&devices](const MidiPortInfo& port) {
+        return std::any_of(devices.begin(), devices.end(), [&port](const DeviceEntry& device) {
+            return device.state && port.displayName == device.state->label + " In";
+        });
+    });
+    return ports;
+}
+
+std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiOutputPorts() const {
+    auto ports = uapmd::getMidiOutputPorts();
+    const auto devices = getDevices();
+    std::erase_if(ports, [&devices](const MidiPortInfo& port) {
+        return std::any_of(devices.begin(), devices.end(), [&port](const DeviceEntry& device) {
+            return device.state && port.displayName == device.state->label + " Out";
+        });
+    });
+    return ports;
+}
+
 
 void uapmd::AppModel::instantiate() {
     appModelInstance = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());

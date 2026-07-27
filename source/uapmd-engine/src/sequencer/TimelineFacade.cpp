@@ -296,6 +296,13 @@ namespace uapmd {
             return master_timeline_track_.get();
         }
 
+        int32_t trackIndexForReferenceId(std::string_view trackId) const override {
+            for (size_t index = 0; index < timeline_tracks_.size(); ++index)
+                if (timeline_tracks_[index] && timeline_tracks_[index]->referenceId() == trackId)
+                    return static_cast<int32_t>(index);
+            return -1;
+        }
+
         AudioGraphProviderRegistry& audioGraphProviderRegistry() override {
             return audio_graph_provider_registry_;
         }

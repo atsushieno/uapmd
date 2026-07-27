@@ -2,10 +2,19 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
+    // A platform endpoint identity is intentionally opaque to callers. `id` is
+    // stable for the lifetime of the port enumeration and must be used for
+    // selection; `displayName` is for UI only and is not necessarily unique.
+    struct MidiPortInfo {
+        std::string id;
+        std::string displayName;
+    };
+
     class MidiIODevice : public MidiIOFeature {
 
     protected:
@@ -26,6 +35,16 @@ namespace uapmd {
                                                           uint64_t sysExDelayInMicroseconds = 10000
 #endif
                                                           );
+
+    // Enumerate and open physical/software platform endpoints. These are not
+    // UAPMD virtual devices; callers can pass their virtual endpoint IDs to
+    // the excludedPortIds argument when building a selector.
+    std::vector<MidiPortInfo> getMidiInputPorts(
+        const std::vector<std::string>& excludedPortIds = {});
+    std::vector<MidiPortInfo> getMidiOutputPorts(
+        const std::vector<std::string>& excludedPortIds = {});
+    std::shared_ptr<MidiIOFeature> openLibreMidiInputPort(const std::string& portId);
+    std::shared_ptr<MidiIOFeature> openLibreMidiOutputPort(const std::string& portId);
 
     bool midiApiSupportsDynamicUmpEndpoints(const std::string& apiName);
 }

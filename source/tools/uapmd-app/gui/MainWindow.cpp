@@ -738,13 +738,148 @@ void MainWindow::renderDeviceSettingsWindow() {
     }
 
     const std::string windowId = "DeviceSettings";
-    setNextChildWindowSize(windowId, ImVec2(400.0f, 360.0f));
+    setNextChildWindowSize(windowId, ImVec2(620.0f, 520.0f));
     if (ImGui::Begin("Settings", &showDeviceSettingsWindow_)) {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
+        ImGui::Separator();
+        renderPlatformMidiConnections();
     }
     ImGui::End();
+}
+
+void MainWindow::renderPlatformMidiConnections() {
+    auto& appModel = uapmd::AppModel::instance();
+    auto* engine = appModel.sequencer().engine();
+    if (!engine)
+        return;
+
+    struct TrackChoice {
+        uapmd::ProjectObjectId id;
+        std::string label;
+    };
+    std::vector<TrackChoice> tracks;
+    const auto timelineTracks = appModel.getTimelineTracks();
+    tracks.reserve(timelineTracks.size());
+    for (size_t index = 0; index < timelineTracks.size(); ++index)
+        if (const auto* track = timelineTracks[index])
+            tracks.push_back({track->referenceId(), std::format("{}: {}", index, track->referenceId())});
+
+    const auto renderConnections = [&]<typename Connect, typename Disconnect>(
+        const char* title,
+        const char* tableId,
+        const std::vector<uapmd::MidiPortInfo>& ports,
+        const std::vector<uapmd::MidiPortTrackConnection>& connections,
+        std::string& selectedPortId,
+        Connect&& connect,
+        Disconnect&& disconnect) {
+        const auto portLabel = [&ports](std::string_view portId) {
+            const auto found = std::ranges::find(ports, portId, &uapmd::MidiPortInfo::id);
+            return found == ports.end() ? std::string(portId) : found->displayName;
+        };
+        const auto trackLabel = [&tracks](std::string_view trackId) {
+            const auto found = std::ranges::find(tracks, trackId, &TrackChoice::id);
+            return found == tracks.end() ? std::string(trackId) : found->label;
+        };
+
+        ImGui::TextUnformatted(title);
+        if (ImGui::BeginTable(tableId, 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Port");
+            ImGui::TableSetupColumn("Action / Track");
+            ImGui::TableHeadersRow();
+            for (size_t row = 0; row < connections.size(); ++row) {
+                const auto& connection = connections[row];
+                ImGui::PushID(static_cast<int>(row));
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                if (ImGui::BeginCombo("Port", portLabel(connection.portId).c_str())) {
+                    for (const auto& port : ports) {
+                        const bool selected = port.id == connection.portId;
+                        ImGui::PushID(port.id.c_str());
+                        const bool chosen = UapmdSelectable(port.displayName.c_str(), selected);
+                        ImGui::PopID();
+                        if (chosen && !selected)
+                            if (connect(port.id, connection.trackId))
+                                disconnect(connection.portId, connection.trackId);
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                if (ImGui::BeginCombo("Action", trackLabel(connection.trackId).c_str())) {
+                    if (UapmdSelectable("(close)", false))
+                        disconnect(connection.portId, connection.trackId);
+                    for (const auto& track : tracks) {
+                        const bool selected = track.id == connection.trackId;
+                        ImGui::PushID(track.id.c_str());
+                        const bool chosen = UapmdSelectable(track.label.c_str(), selected);
+                        ImGui::PopID();
+                        if (chosen && !selected)
+                            if (connect(connection.portId, track.id))
+                                disconnect(connection.portId, connection.trackId);
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::PopID();
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            const auto portPreview = selectedPortId.empty() ? std::string("Select port") : portLabel(selectedPortId);
+            if (ImGui::BeginCombo("New port", portPreview.c_str())) {
+                for (const auto& port : ports) {
+                    ImGui::PushID(port.id.c_str());
+                    const bool chosen = UapmdSelectable(port.displayName.c_str(), port.id == selectedPortId);
+                    ImGui::PopID();
+                    if (chosen)
+                        selectedPortId = port.id;
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::BeginCombo("New action", "(close)")) {
+                for (const auto& track : tracks) {
+                    ImGui::PushID(track.id.c_str());
+                    const bool chosen = UapmdSelectable(track.label.c_str(), false);
+                    ImGui::PopID();
+                    if (chosen && !selectedPortId.empty())
+                        connect(selectedPortId, track.id);
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::EndTable();
+        }
+    };
+
+    renderConnections(
+        "MIDI Input Connections",
+        "##MidiInputConnections",
+        appModel.getMidiInputPorts(),
+        engine->platformMidiInputConnections(),
+        midi_input_port_id_,
+        [engine](const std::string& portId, const uapmd::ProjectObjectId& trackId) {
+            return engine->connectPlatformMidiInputToTrack(portId, trackId);
+        },
+        [engine](std::string_view portId, std::string_view trackId) {
+            engine->disconnectPlatformMidiInputFromTrack(portId, trackId);
+        });
+    renderConnections(
+        "MIDI Output Connections",
+        "##MidiOutputConnections",
+        appModel.getMidiOutputPorts(),
+        engine->platformMidiOutputConnections(),
+        midi_output_port_id_,
+        [engine](const std::string& portId, const uapmd::ProjectObjectId& trackId) {
+            return engine->connectPlatformMidiOutputToTrack(portId, trackId);
+        },
+        [engine](std::string_view portId, std::string_view trackId) {
+            engine->disconnectPlatformMidiOutputFromTrack(portId, trackId);
+        });
 }
 
 void MainWindow::renderAudioGraphEditorWindow() {

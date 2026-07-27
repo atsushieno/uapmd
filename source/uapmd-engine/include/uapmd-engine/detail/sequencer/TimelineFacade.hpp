@@ -30,6 +30,7 @@ public:
     // One TimelineTrack* per SequencerTrack, at the same index
     virtual std::vector<TimelineTrack*> tracks() = 0;
     virtual TimelineTrack* masterTimelineTrack() = 0;
+    virtual int32_t trackIndexForReferenceId(std::string_view trackId) const = 0;
 
     // Clip management
     struct ClipAddResult {
