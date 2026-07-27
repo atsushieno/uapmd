@@ -1,6 +1,5 @@
 
 #include "RemidyAudioPluginHost.hpp"
-#include <atomic>
 #include <functional>
 #include <ranges>
 #if ANDROID
@@ -94,20 +93,14 @@ namespace uapmd {
         };
 
         bool bypassed_{true};
-        std::atomic<bool> dirty_{false};
-        remidy::ParameterEventBase<void, bool> dirty_state_change_event_{};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
+        std::function<void()> on_plugin_state_changed_{};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
 #ifdef UAPMD_HAS_ARA
         AraHandleExtensionAdapter ara_handle_extension{*this};
 #endif
 
-        void markDirty() {
-            const bool wasDirty = dirty_.exchange(true, std::memory_order_acq_rel);
-            if (!wasDirty)
-                dirty_state_change_event_.notify(true);
-        }
         AapUiHostDetailsExtensionAdapter aap_ui_host_details_extension{*this};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
@@ -123,12 +116,13 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance)
-          : instancing(instancing), instance(instance) {
+        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance, std::function<void()> onPluginStateChanged)
+          : instancing(instancing), instance(instance), on_plugin_state_changed_(std::move(onPluginStateChanged)) {
             bypassed_ = false;
             if (instance)
                 plugin_state_change_listener_id_ = instance->pluginStateChangeEvent().addListener([this] {
-                    markDirty();
+                    if (on_plugin_state_changed_)
+                        on_plugin_state_changed_();
                 });
         }
         ~RemidyAudioPluginInstance() override {
@@ -287,7 +281,6 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->presets()->loadPreset(presetIndex);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            markDirty();
         }
 
         void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
@@ -297,7 +290,6 @@ namespace uapmd {
                 if (error.empty())
                     notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
                 if (error.empty())
-                    markDirty();
                 if (completed)
                     completed(std::move(error), callbackContext);
             });
@@ -347,7 +339,6 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setParameter(index, value);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            markDirty();
         }
 
         void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -363,7 +354,6 @@ namespace uapmd {
             const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setPerNoteController({.note = note }, index, value);
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-            markDirty();
         }
 
         void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -474,24 +464,6 @@ namespace uapmd {
             if (!instance)
                 return nullptr;
             return instance->audioBuses();
-        }
-
-        bool dirty() const override {
-            return dirty_.load(std::memory_order_acquire);
-        }
-
-        void clearDirty() override {
-            const bool wasDirty = dirty_.exchange(false, std::memory_order_acq_rel);
-            if (wasDirty)
-                dirty_state_change_event_.notify(false);
-        }
-
-        remidy::EventListenerId addDirtyStateListener(std::function<void(bool)> listener) override {
-            return dirty_state_change_event_.addListener(std::move(listener));
-        }
-
-        void removeDirtyStateListener(remidy::EventListenerId listenerId) override {
-            dirty_state_change_event_.removeListener(listenerId);
         }
 
         remidy::EventListenerId addTimingInfoChangeListener(
@@ -621,7 +593,9 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
             if (error.empty())
                 instancing->withInstance([this,instancing,cb](remidy::PluginInstance* instance) {
                     auto instanceId = instanceIdSerial++;
-                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
+                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance, [this, instanceId] {
+                        plugin_state_change_event_.notify(instanceId);
+                    });
                     instances[instanceId] = std::move(api);
                     cb(instanceId, "");
                 });
@@ -645,6 +619,14 @@ std::vector<int32_t> uapmd::RemidyAudioPluginHost::instanceIds() {
 uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
     const auto &i = instances[instanceId];
     return i ? i.get() : nullptr;
+}
+
+remidy::EventListenerId uapmd::RemidyAudioPluginHost::addPluginStateChangeListener(std::function<void(int32_t)> listener) {
+    return plugin_state_change_event_.addListener(std::move(listener));
+}
+
+void uapmd::RemidyAudioPluginHost::removePluginStateChangeListener(remidy::EventListenerId listenerId) {
+    plugin_state_change_event_.removeListener(listenerId);
 }
 
 void uapmd::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t instanceId, int32_t trackIndex, bool isMasterTrack, uint32_t order) {

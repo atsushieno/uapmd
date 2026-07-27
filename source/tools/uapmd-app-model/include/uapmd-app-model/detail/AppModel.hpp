@@ -120,6 +120,11 @@ namespace uapmd {
         };
 
     private:
+        struct PluginStateChangeDispatch {
+            std::mutex mutex;
+            AppModel* app_model{nullptr};
+        };
+
         // FIXME: currently there is little to no chance of changing this size at runtime, so we should probably remove this
         //  and define some system global constant somewhere in the core.
         size_t ump_buffer_size_in_bytes_;
@@ -149,8 +154,9 @@ namespace uapmd {
         std::set<int32_t> hidden_tracks_;
         mutable std::mutex dirtyStateMutex_;
         std::unordered_set<int32_t> dirty_tracks_;
-        std::unordered_set<int32_t> dirty_plugins_;
-        std::unordered_map<int32_t, remidy::EventListenerId> plugin_dirty_listener_ids_;
+        std::shared_ptr<PluginStateChangeDispatch> plugin_state_change_dispatch_{
+            std::make_shared<PluginStateChangeDispatch>()};
+        remidy::EventListenerId plugin_state_change_listener_id_{0};
         bool project_structure_dirty_{false};
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
         std::vector<std::unique_ptr<ScopedTempDir>> retiredProjectTempDirs_;
@@ -174,6 +180,7 @@ namespace uapmd {
         void resumeTransportAfterPluginMutation(bool resumeTransport);
         void joinAudioShutdownWorker();
         void completeAudioEngineShutdown();
+        void handlePluginStateChange(int32_t instanceId);
 
     public:
         static void instantiate();
@@ -207,10 +214,9 @@ namespace uapmd {
         bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
         bool isProjectDirty() const;
         bool isTrackDirty(int32_t trackIndex) const;
-        bool isPluginDirty(int32_t instanceId) const;
         void markProjectDirty();
         void markTrackDirty(int32_t trackIndex, bool dirty = true);
-        void markPluginDirty(int32_t instanceId, bool dirty = true);
+        void markPluginInstanceTrackDirty(int32_t instanceId);
         void clearProjectDirtyState();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};

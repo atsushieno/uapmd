@@ -94,7 +94,8 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         });
 
         state.parameterList.setOnParameterChanged([this, instanceId](uint32_t parameterIndex, float value) {
-            auto& seq = uapmd::AppModel::instance().sequencer();
+            auto& appModel = uapmd::AppModel::instance();
+            auto& seq = appModel.sequencer();
             auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
                 auto windowIt = windows_.find(instanceId);
                 if (windowIt == windows_.end()) {
@@ -105,6 +106,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
 
             if (!perNoteSelection) {
                 seq.engine()->setParameterValue(instanceId, parameterIndex, value);
+                appModel.markPluginInstanceTrackDirty(instanceId);
                 return;
             }
 
@@ -117,10 +119,13 @@ void InstanceDetails::showWindow(int32_t instanceId) {
                     static_cast<uint8_t>(perNoteSelection->context.note),
                     static_cast<uint8_t>(parameterIndex),
                     value);
+                appModel.markPluginInstanceTrackDirty(instanceId);
                 return;
             }
-            if (auto* parameterSupport = pal->parameterSupport())
+            if (auto* parameterSupport = pal->parameterSupport()) {
                 parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value);
+                appModel.markPluginInstanceTrackDirty(instanceId);
+            }
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
@@ -598,6 +603,7 @@ void InstanceDetails::loadSelectedPreset(int32_t instanceId, DetailsWindowState&
 
     const auto& preset = state.presets[state.selectedPreset];
     pal->loadPreset(preset.index);
+    uapmd::AppModel::instance().markPluginInstanceTrackDirty(instanceId);
     std::cout << "Loading preset " << preset.name << " for instance " << instanceId << std::endl;
 
     refreshParameters(instanceId, state);

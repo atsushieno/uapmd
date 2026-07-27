@@ -118,10 +118,6 @@ namespace uapmd {
 
         virtual remidy::PluginAudioBuses* audioBuses() = 0;
 
-        virtual bool dirty() const = 0;
-        virtual void clearDirty() = 0;
-        virtual remidy::EventListenerId addDirtyStateListener(std::function<void(bool)> listener) = 0;
-        virtual void removeDirtyStateListener(remidy::EventListenerId listenerId) = 0;
         virtual remidy::EventListenerId addTimingInfoChangeListener(
             std::function<void(remidy::PluginTimingInfoChange)> listener) = 0;
         virtual void removeTimingInfoChangeListener(remidy::EventListenerId listenerId) = 0;

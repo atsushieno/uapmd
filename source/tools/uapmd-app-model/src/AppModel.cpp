@@ -301,6 +301,16 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
         auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
+    plugin_state_change_dispatch_->app_model = this;
+    auto dispatch = plugin_state_change_dispatch_;
+    plugin_state_change_listener_id_ = sequencer_.engine()->pluginHost()->addPluginStateChangeListener([dispatch](int32_t instanceId) {
+        remidy::EventLoop::enqueueTaskOnMainThread([dispatch, instanceId] {
+            std::lock_guard lock(dispatch->mutex);
+            auto* appModel = dispatch->app_model;
+            if (appModel)
+                appModel->handlePluginStateChange(instanceId);
+        });
+    });
 
 #ifdef UAPMD_HAS_ARA
     try {
@@ -345,6 +355,12 @@ void uapmd::AppModel::maybeStartInitialPluginScan() {
 }
 
 uapmd::AppModel::~AppModel() {
+    {
+        std::lock_guard lock(plugin_state_change_dispatch_->mutex);
+        plugin_state_change_dispatch_->app_model = nullptr;
+    }
+    if (plugin_state_change_listener_id_ != 0)
+        sequencer_.engine()->pluginHost()->removePluginStateChangeListener(plugin_state_change_listener_id_);
     joinAudioShutdownWorker();
 }
 
@@ -667,7 +683,7 @@ bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
         return false;
     const bool changed = engine->setInstanceGroup(instanceId, group);
     if (changed)
-        markPluginDirty(instanceId, true);
+        markPluginInstanceTrackDirty(instanceId);
     return changed;
 }
 
@@ -814,17 +830,12 @@ void uapmd::AppModel::resumeTransportAfterPluginMutation(bool resumeTransport) {
 
 bool uapmd::AppModel::isProjectDirty() const {
     std::lock_guard lock(dirtyStateMutex_);
-    return project_structure_dirty_ || !dirty_tracks_.empty() || !dirty_plugins_.empty();
+    return project_structure_dirty_ || !dirty_tracks_.empty();
 }
 
 bool uapmd::AppModel::isTrackDirty(int32_t trackIndex) const {
     std::lock_guard lock(dirtyStateMutex_);
     return dirty_tracks_.contains(trackIndex);
-}
-
-bool uapmd::AppModel::isPluginDirty(int32_t instanceId) const {
-    std::lock_guard lock(dirtyStateMutex_);
-    return dirty_plugins_.contains(instanceId);
 }
 
 void uapmd::AppModel::markProjectDirty() {
@@ -848,48 +859,27 @@ void uapmd::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
             .projectTrackBecameDirty(trackIndex);
 }
 
-void uapmd::AppModel::markPluginDirty(int32_t instanceId, bool dirty) {
-    {
-        std::lock_guard lock(dirtyStateMutex_);
-        if (dirty)
-            dirty_plugins_.insert(instanceId);
-        else
-            dirty_plugins_.erase(instanceId);
-    }
-    if (!dirty)
+void uapmd::AppModel::markPluginInstanceTrackDirty(int32_t instanceId) {
+    const auto trackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
+    if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
+        markTrackDirty(trackIndex);
+}
+
+void uapmd::AppModel::handlePluginStateChange(int32_t instanceId) {
+    // State restoration while a frozen track is rendering can make the plugin
+    // report a change. It is not a document edit and must not cancel or loop a
+    // freeze render.
+    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
         return;
-    // Plugin dirty callbacks are not guaranteed to originate on the main
-    // thread. Freeze invalidation can restore processing state, so marshal it
-    // to the event loop rather than doing that work on an audio/plugin thread.
-    remidy::EventLoop::enqueueTaskOnMainThread([this, instanceId] {
-        auto& manager = sequencer_.engine()->frozenTrackManager();
-        // Plugin state restoration is part of Busy cleanup and may itself emit
-        // a dirty notification. User plugin interaction is unavailable while
-        // Busy, so do not create an endless cancel/re-render loop.
-        if (manager.isInstanceBusy(instanceId))
-            return;
-        const auto trackIndex =
-            sequencer_.engine()->findTrackIndexForInstance(instanceId);
-        if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
-            manager.projectTrackBecameDirty(trackIndex);
-    });
+    markPluginInstanceTrackDirty(instanceId);
 }
 
 void uapmd::AppModel::clearProjectDirtyState() {
-    std::vector<int32_t> pluginIds;
     {
         std::lock_guard lock(dirtyStateMutex_);
         project_structure_dirty_ = false;
         dirty_tracks_.clear();
-        dirty_plugins_.clear();
-        pluginIds.reserve(plugin_dirty_listener_ids_.size());
-        for (const auto& [instanceId, listenerId] : plugin_dirty_listener_ids_)
-            pluginIds.push_back(instanceId);
     }
-
-    for (int32_t instanceId : pluginIds)
-        if (auto* instance = sequencer_.engine()->getPluginInstance(instanceId))
-            instance->clearDirty();
 }
 
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
@@ -979,22 +969,6 @@ uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInt
         result.error = "Plugin instance not found";
         return result;
     }
-    {
-        std::lock_guard lock(dirtyStateMutex_);
-        if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
-            instance->removeDirtyStateListener(it->second);
-            plugin_dirty_listener_ids_.erase(it);
-        }
-    }
-    auto dirtyListenerId = instance->addDirtyStateListener([this, instanceId](bool dirty) {
-        markPluginDirty(instanceId, dirty);
-    });
-    if (dirtyListenerId != 0) {
-        std::lock_guard lock(dirtyStateMutex_);
-        plugin_dirty_listener_ids_[instanceId] = dirtyListenerId;
-    }
-    if (instance->dirty())
-        markPluginDirty(instanceId, true);
 
     std::string pluginName = instance->displayName();
     std::string pluginFormat = instance->formatName();
@@ -1095,14 +1069,6 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     // Hide and destroy plugin UI before removing the instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (instance) {
-        {
-            std::lock_guard lock(dirtyStateMutex_);
-            if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
-                instance->removeDirtyStateListener(it->second);
-                plugin_dirty_listener_ids_.erase(it);
-            }
-            dirty_plugins_.erase(instanceId);
-        }
         if (instance->hasUISupport() && instance->isUIVisible()) {
             instance->hideUI();
         }
@@ -1481,18 +1447,24 @@ std::optional<std::shared_ptr<uapmd::AppModel::DeviceState>> uapmd::AppModel::ge
 }
 
 void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& label) {
-    std::lock_guard lock(devicesMutex_);
-    for (auto& entry : devices_) {
-        auto state = entry.state;
-        if (state) {
-            std::lock_guard guard(state->mutex);
-            if (state->pluginInstances.count(instanceId) > 0) {
-                state->label = label;
-                markPluginDirty(instanceId, true);
-                break;
+    bool updated = false;
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            if (state) {
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(instanceId) > 0) {
+                    state->label = label;
+                    updated = true;
+                    break;
+                }
             }
         }
     }
+    if (!updated)
+        return;
+    markPluginInstanceTrackDirty(instanceId);
 }
 
 void uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {

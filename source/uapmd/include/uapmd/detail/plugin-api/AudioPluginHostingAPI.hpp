@@ -22,6 +22,14 @@ namespace uapmd {
                                           std::function<void(int32_t instanceId, std::string)>&& callback) = 0;
         virtual void deletePluginInstance(int32_t instanceId) = 0;
         virtual AudioPluginInstanceAPI* getInstance(int32_t instanceId) = 0;
+
+        // In some plugin format (namely VST3), an instance may report its internal state changed,
+        // and in that case we will have to tell the document models that the plugin becomes dirty.
+        // On the other hand, most plugin formats are good and host is the single source of truth,
+        // so it can be ignored.
+        virtual remidy::EventListenerId addPluginStateChangeListener(std::function<void(int32_t)> listener) = 0;
+        virtual void removePluginStateChangeListener(remidy::EventListenerId listenerId) = 0;
+        
         virtual void onTrackGraphNodeAdded(int32_t, int32_t, bool, uint32_t) {}
 
         virtual std::vector<int32_t> instanceIds() = 0;

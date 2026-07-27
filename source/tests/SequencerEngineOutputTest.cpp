@@ -150,10 +150,6 @@ public:
     bool canUIResize() override { return false; }
     remidy::PluginParameterSupport* parameterSupport() override { return nullptr; }
     remidy::PluginAudioBuses* audioBuses() override { return &audio_buses_; }
-    bool dirty() const override { return false; }
-    void clearDirty() override {}
-    remidy::EventListenerId addDirtyStateListener(std::function<void(bool)>) override { return 0; }
-    void removeDirtyStateListener(remidy::EventListenerId) override {}
     remidy::EventListenerId addTimingInfoChangeListener(
         std::function<void(remidy::PluginTimingInfoChange)>) override {
         return 0;

@@ -12,6 +12,7 @@ namespace uapmd {
     class RemidyAudioPluginHost : public AudioPluginHostingAPI {
         std::unique_ptr<remidy_tooling::PluginScanTool> scanning;
         std::map<int32_t,std::unique_ptr<AudioPluginInstanceAPI>> instances{};
+        remidy::ParameterEventBase<void, int32_t> plugin_state_change_event_{};
 #if _WIN32
         bool comInitialized{false};
 #endif
@@ -34,6 +35,8 @@ namespace uapmd {
                                   std::function<void(int32_t instanceId, std::string error)>&& callback) override;
         void deletePluginInstance(int32_t instanceId) override;
         std::vector<int32_t> instanceIds() override;
+        remidy::EventListenerId addPluginStateChangeListener(std::function<void(int32_t)> listener) override;
+        void removePluginStateChangeListener(remidy::EventListenerId listenerId) override;
         AudioPluginInstanceAPI* getInstance(int32_t instanceId) override;
         void onTrackGraphNodeAdded(int32_t instanceId, int32_t trackIndex, bool isMasterTrack, uint32_t order) override;
     };
