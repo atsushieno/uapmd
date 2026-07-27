@@ -1,5 +1,5 @@
 
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "LibreMidiIODevice.hpp"
 
 #include <algorithm>

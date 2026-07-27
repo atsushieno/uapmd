@@ -7,8 +7,8 @@ In the latest source tree, the following description applies to the `source` dir
 
 - `remidy/`: plugin API abstraction (VST3/AU/LV2/CLAP backends).
 - `remidy-gui`: common GUI helper that is required by plugin formats (such as `ContainerWindow`)
-- `remidy-tooling/`: commonized scanning/instancing utilities.
-- `uapmd/`: virtual MIDI 2.0 device foundation (function block manager, plugin hosting API integration).
+- `uapmd-plugin-hosting/`: commonized scanning/instancing utilities, and the plugin hosting API (`AudioPluginHostingAPI` / `AudioPluginInstanceAPI`) plus its `remidy`-backed implementation.
+- `uapmd-midi-service/`: virtual MIDI 2.0 device foundation (function block manager, UMP mapping).
 - `uapmd-graph/`: audio graph and graph nodes.
 - `uapmd-data/`: sequencer data structures.
 - `uapmd-file/`: platform abstraction API for file dialog and file system.

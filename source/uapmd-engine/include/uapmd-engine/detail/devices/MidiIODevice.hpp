@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 
 namespace uapmd {
     // A platform endpoint identity is intentionally opaque to callers. `id` is

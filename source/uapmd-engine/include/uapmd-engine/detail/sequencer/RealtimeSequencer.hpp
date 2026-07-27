@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "remidy/remidy.hpp"
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 
 namespace uapmd {
 

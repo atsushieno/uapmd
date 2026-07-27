@@ -2,7 +2,7 @@ add_executable(uapmd-scan)
 
 set(UAPMD_SCAN_PRIVATE_INCLUDES
         ../../remidy/include
-        ../../remidy-tooling/include
+        ../../uapmd-plugin-hosting/include
         ${choc_SOURCE_DIR}
 )
 
@@ -17,7 +17,7 @@ endif ()
 
 target_link_libraries(uapmd-scan PRIVATE
         remidy
-        remidy-tooling
+        uapmd-plugin-hosting
         ${uapmd-scan_LIBS_PLAT}
 )
 if(UAPMD_ENABLE_CPPTRACE)

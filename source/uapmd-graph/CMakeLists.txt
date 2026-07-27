@@ -4,9 +4,9 @@ target_include_directories(uapmd-graph
         PUBLIC
         include
         PRIVATE
-        ../uapmd/include
-        ../uapmd/src
         ../remidy/include
+        ../uapmd-plugin-hosting/include
+        ../uapmd-midi-service/include
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
         ${readerwriterqueue_SOURCE_DIR}
@@ -14,7 +14,7 @@ target_include_directories(uapmd-graph
 
 target_link_libraries(uapmd-graph
         PUBLIC
-        uapmd
+        uapmd-midi-service
         PRIVATE
         farbot::farbot
 )

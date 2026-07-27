@@ -22,7 +22,7 @@ NOTE: we are still not at the stage where API stability matters.
 
 ## Include path stability
 
-There are frontend header files such as `remidy/remidy.hpp` and `uapmd/uapmd.hpp`, and only those file paths are stable.
+There are frontend header files such as `remidy/remidy.hpp` and `uapmd-midi-service/uapmd-midi-service.hpp`, and only those file paths are stable.
 Path to an individual include file will not be stable.
 
 ## Third party library types

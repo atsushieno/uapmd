@@ -3,7 +3,7 @@
 // Shared application logic is in main_common.cpp
 
 #include "main_common.hpp"
-#include <remidy-tooling/remidy-tooling.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #if UAPMD_HAS_CPPTRACE
 #include <cpptrace/cpptrace.hpp>
 #include <cpptrace/from_current.hpp>

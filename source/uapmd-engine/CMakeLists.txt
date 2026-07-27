@@ -169,10 +169,11 @@ target_include_directories(uapmd-engine PRIVATE
         ${concurrentqueue_SOURCE_DIR}
         ${readerwriterqueue_SOURCE_DIR}
         ../remidy/include
-        ../uapmd/include
+        ../uapmd-midi-service/include
         ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include
+        ../uapmd-plugin-hosting/include
         include
 )
 
@@ -182,8 +183,8 @@ target_link_libraries(uapmd-engine
         midicci_static
         PUBLIC
         remidy::remidy
-        remidy::remidy-tooling
-        uapmd
+        uapmd::uapmd-plugin-hosting
+        uapmd-midi-service
         uapmd-graph
         uapmd-data
 )

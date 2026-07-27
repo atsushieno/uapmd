@@ -11,7 +11,7 @@
 #include <cxxopts.hpp>
 
 #include <remidy/remidy.hpp>
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 
 static constexpr uint32_t DEFAULT_AUDIO_BUFFER_SIZE = 1024;

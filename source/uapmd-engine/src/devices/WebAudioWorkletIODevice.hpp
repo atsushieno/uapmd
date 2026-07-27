@@ -10,7 +10,7 @@
 
 #include <emscripten/webaudio.h>
 
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {

@@ -7,7 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <uapmd-engine/detail/sequencer/LatencyCompensationManager.hpp>
 
 namespace uapmd {

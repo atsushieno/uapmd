@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <imgui.h>
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include "SequenceEditor.hpp"
 #include "BeatsSequenceEditor.hpp"
 #include "AudioEventListEditor.hpp"

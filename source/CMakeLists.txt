@@ -274,8 +274,8 @@ endif()
 
 add_subdirectory(remidy)
 add_subdirectory(remidy-gui)
-add_subdirectory(remidy-tooling)
-add_subdirectory(uapmd)
+add_subdirectory(uapmd-plugin-hosting)
+add_subdirectory(uapmd-midi-service)
 add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
@@ -316,8 +316,8 @@ endif()
 set(_UAPMD_PUBLIC_INCLUDE_SUBDIRS
         remidy
         remidy-gui
-        remidy-tooling
-        uapmd
+        uapmd-plugin-hosting
+        uapmd-midi-service
         uapmd-graph
         uapmd-data
         uapmd-engine
@@ -343,9 +343,9 @@ endforeach()
 
 install(TARGETS
         remidy
-        remidy-tooling
+        uapmd-plugin-hosting
         remidy-gui
-        uapmd
+        uapmd-midi-service
         uapmd-engine
         uapmd-data
         uapmd-file

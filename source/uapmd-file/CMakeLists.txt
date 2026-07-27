@@ -2,7 +2,7 @@ add_library(uapmd-file STATIC)
 
 target_include_directories(uapmd-file PUBLIC
         ../remidy/include
-        ../uapmd/include
+        ../uapmd-midi-service/include
         include
 )
 

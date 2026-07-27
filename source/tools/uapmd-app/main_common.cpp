@@ -2,7 +2,7 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
-#include <../../remidy-tooling/include/remidy-tooling/detail/ScanOnlyRunner.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <ImGuiEventLoop.hpp>
 #include <PlatformBackend.hpp>
 #include <algorithm>

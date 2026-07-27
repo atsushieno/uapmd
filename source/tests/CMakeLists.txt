@@ -22,8 +22,8 @@ add_executable(uapmd-engine-output-tests
 
 target_include_directories(uapmd-project-file-tests PRIVATE
         ../remidy/include
-        ../remidy-tooling/include
-        ../uapmd/include
+        ../uapmd-plugin-hosting/include
+        ../uapmd-midi-service/include
         ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include
@@ -34,8 +34,8 @@ target_include_directories(uapmd-project-file-tests PRIVATE
 
 target_include_directories(uapmd-engine-output-tests PRIVATE
         ../remidy/include
-        ../remidy-tooling/include
-        ../uapmd/include
+        ../uapmd-plugin-hosting/include
+        ../uapmd-midi-service/include
         ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include

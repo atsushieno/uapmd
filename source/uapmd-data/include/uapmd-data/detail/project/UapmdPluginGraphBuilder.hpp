@@ -1,4 +1,4 @@
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "UapmdProjectFile.hpp"
 #include "UapmdSequence.hpp"

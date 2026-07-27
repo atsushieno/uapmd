@@ -15,6 +15,7 @@
 #include "ProjectSerialization.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
+#include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 #include <umppi/umppi.hpp>
 

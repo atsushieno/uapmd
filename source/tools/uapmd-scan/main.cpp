@@ -9,8 +9,7 @@
 #include <cpptrace/from_current.hpp>
 #endif
 
-#include <../../remidy-tooling/include/remidy-tooling/detail/ScanOnlyRunner.hpp>
-#include <remidy-tooling/remidy-tooling.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
 namespace {
 

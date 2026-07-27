@@ -10,7 +10,7 @@
 #include <array>
 #include <filesystem>
 #include <imgui.h>
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include "PluginList.hpp"
 #include "TimelineEditor.hpp"
 #include "TrackList.hpp"

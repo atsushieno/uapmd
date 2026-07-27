@@ -1,5 +1,5 @@
 #pragma once
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "AudioDeviceConfiguration.hpp"
 
 namespace uapmd {

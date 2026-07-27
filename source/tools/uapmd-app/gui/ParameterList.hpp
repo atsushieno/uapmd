@@ -6,7 +6,8 @@
 #include <vector>
 
 #include <imgui.h>
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
 #include "../../remidy-imgui-shared/MidiKeyboard.hpp"
 

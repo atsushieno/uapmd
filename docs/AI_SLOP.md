@@ -14,7 +14,7 @@ Unless otherwise noted, "I" points to @atsushieno.
 - Parameter updates API: transmits of parameter value changes were mostly by those AI coders, including some parts of the API. I prohibited a lot of arbitrary API bloats, but not that was not absolute.
 - WebCLAP implementation is full of AI slop. There is no code written by human.
 
-## remidy-tooling
+## uapmd-plugin-hosting (formerly remidy-tooling)
 
 - The new `PluginScanTool` has a lot of AI-generated code involved, especially at the IPC foundation and remote scanner process manager. There was a bunch of dumped AI code and rewrites by @atsushieno though.
 
@@ -23,7 +23,7 @@ Unless otherwise noted, "I" points to @atsushieno.
 - Nowadays it is almost all AI slop; the GUI stuff is mostly done by AI coders, and this module is no exception.
 - It only features `ContainerWindow` for each platform, and `GLContextGuard` that is used to restore GL context after UI events are handled on the UI thread loop.
 
-## uapmd
+## uapmd-midi-service (formerly uapmd)
 
 - At some stage it involved a lot of AI slop, but there was a lot of API and implementation reorganization and cleanup that ended up splitting `uapmd` from `uapmd-engine`, and this module became solid human-designed API with some AI implementation. The `UapmdFunctionBlock` API and around should make sense.
 - `AudioPluginGraph` and `AudioPluginNode` are primarily used by the sequencer engine that could involve a lot of changes, but essentially it is designed to be abstract and only minimum use cases are covered.

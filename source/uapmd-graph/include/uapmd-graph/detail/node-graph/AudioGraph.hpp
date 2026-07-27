@@ -6,7 +6,6 @@
 #include <type_traits>
 #include <typeinfo>
 
-#include "uapmd/uapmd.hpp"
 #include "AudioGraphExtension.hpp"
 #include "AudioGraphNode.hpp"
 

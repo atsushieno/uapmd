@@ -14,9 +14,10 @@
 #include <memory>
 #undef None
 #undef PropertyNotify
+#include <choc/containers/choc_Value.h>
 #include <midicci/midicci.hpp>
-#include <remidy-tooling/remidy-tooling.hpp>
-#include <uapmd/uapmd.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 #include <uapmd-file/IDocumentProvider.hpp>

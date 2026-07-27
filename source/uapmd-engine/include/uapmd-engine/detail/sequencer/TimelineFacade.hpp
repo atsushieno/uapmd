@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
 

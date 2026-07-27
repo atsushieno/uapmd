@@ -1,5 +1,5 @@
 #define MINIAUDIO_IMPLEMENTATION 1
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "MiniAudioIODevice.hpp"
 #include <algorithm>
 #include <chrono>

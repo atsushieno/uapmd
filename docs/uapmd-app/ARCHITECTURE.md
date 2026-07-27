@@ -17,13 +17,12 @@ We split DAW features like this:
   - plugin instance hosting interface: audio processing, audio buses, parameters, states, presets, UI
   - implementation:
     - VST3, AU, LV2, CLAP
-- remidy-tooling: plugin scanner tooling
+- uapmd-plugin-hosting: plugin scanner tooling, and the plugin hosting/instance API used by virtual MIDI 2.0 devices (interface plus `remidy`-backed implementation)
 - remidy-gui: commonized GUI library
   - container window across platforms (used by GUI apps to host plugin UIs)
-- uapmd: platform-boundable UMP device management
+- uapmd-midi-service: platform-boundable UMP device management
   - platform MIDI integration API (without implementation)
   - function block management
-  - audio plugin host and instance API integration for virtual MIDI 2.0 devices (without implementation)
   - audio plugin graph API, and simple linear graph implementation (without decent DAG)
 - uapmd-data: sequence data serialization (probably support for SMF2 Container equivalent)
 - uapmd-engine:

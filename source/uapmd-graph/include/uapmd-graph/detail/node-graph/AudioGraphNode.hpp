@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "uapmd/detail/plugin-api/AudioPluginNodeFeature.hpp"
+#include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
 namespace uapmd {
 

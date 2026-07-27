@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "uapmd-data/detail/project/UapmdProjectFile.hpp"
 

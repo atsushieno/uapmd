@@ -11,8 +11,8 @@ set(_uapmd_app_model_public_include_dirs
         ${midicci_SOURCE_DIR}/include
         ${libremidi_SOURCE_DIR}/include
         ../../remidy/include
-        ../../remidy-tooling/include
-        ../../uapmd/include
+        ../../uapmd-plugin-hosting/include
+        ../../uapmd-midi-service/include
         ../../uapmd-graph/include
         ../../uapmd-file/include
         ../../uapmd-data/include
@@ -53,8 +53,8 @@ endif()
 
 set(_uapmd_app_model_link_libraries
         remidy
-        remidy-tooling
-        uapmd
+        uapmd-plugin-hosting
+        uapmd-midi-service
         uapmd-file
         midicci_static
         uapmd-engine

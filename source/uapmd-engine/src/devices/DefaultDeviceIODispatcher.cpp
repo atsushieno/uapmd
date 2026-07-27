@@ -1,5 +1,5 @@
 #include <cstring>
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "DefaultDeviceIODispatcher.hpp"
 
 namespace uapmd {

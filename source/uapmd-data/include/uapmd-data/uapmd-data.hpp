@@ -1,6 +1,6 @@
 #pragma once
 
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-graph/uapmd-graph.hpp"
 #include "detail/midi/MidiTimelineEvents.hpp"
 #include "detail/audio/AudioFileReader.hpp"

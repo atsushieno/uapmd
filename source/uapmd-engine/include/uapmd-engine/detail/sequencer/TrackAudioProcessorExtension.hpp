@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <limits>
 
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 
 namespace uapmd {
 

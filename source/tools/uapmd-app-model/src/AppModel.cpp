@@ -27,7 +27,7 @@
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
 #include <remidy/detail/event-loop.hpp>
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #ifdef UAPMD_HAS_ARA

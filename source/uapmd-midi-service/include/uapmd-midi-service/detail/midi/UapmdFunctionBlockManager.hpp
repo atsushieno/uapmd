@@ -1,0 +1,103 @@
+#pragma once
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
+
+namespace uapmd {
+    // It is a "MIDI 2.0 Device" which contains zero or more Function Blocks indicated by a span of groups.
+    // A UapmdFunctionBlock corresponds to a plugin instance.
+    class UapmdFunctionDevice {
+        MidiIOManagerFeature* midi_io_manager;
+        std::map<int32_t,std::shared_ptr<UapmdFunctionBlock>> blocks{};
+
+    public:
+        explicit UapmdFunctionDevice(MidiIOManagerFeature* midiIoManager) : midi_io_manager(midiIoManager) {}
+
+        std::vector<UapmdFunctionBlock*> devices();
+
+        bool createFunctionBlock(const std::string& apiName,
+                AudioPluginNodeFeature* pluginNodeFeature,
+                int32_t instanceId,
+                std::string deviceName,
+                std::string manufacturer,
+                std::string version);
+
+        // FIXME: we should not really return shared_ptr here...
+        std::shared_ptr<UapmdFunctionBlock> getDeviceByInstanceId(int32_t instanceId) {
+            const auto it = blocks.find(instanceId);
+            return it != blocks.end() ? it->second : nullptr;
+        }
+
+        bool containsInstance(int32_t instanceId) const {
+            return blocks.contains(instanceId);
+        }
+
+        void destroyDevice(const int32_t instanceId) {
+            blocks.erase(instanceId);
+        }
+
+        void detachAllOutputMappers() {
+            for (auto& [id, block] : blocks)
+                if (block)
+                    block->detachOutputMapper();
+        }
+
+        bool isEmpty() const {
+            return blocks.empty();
+        }
+    };
+
+    class UapmdFunctionBlockManager {
+        MidiIOManagerFeature* midi_io_manager{};
+        std::vector<UapmdFunctionDevice> devices{};
+
+    public:
+        void setMidiIOManager(MidiIOManagerFeature* midiIOManager) { midi_io_manager = midiIOManager; }
+
+        size_t count() const { return devices.size(); }
+
+        size_t create() {
+            // FIXME: this should not simply add a new device and return the simple size, because
+            //  devices can be removed and then we will return the same index for different devices.
+            devices.emplace_back(midi_io_manager);
+            return devices.size() - 1;
+        }
+
+        UapmdFunctionDevice* getFunctionDeviceByIndex(const int32_t index) {
+            return &devices[index];
+        }
+
+        // return the containing `UapmdFunctionDevice` of the `UapmdFunctionBlock` for the instance indicated by `instanceId`
+        UapmdFunctionDevice* getFunctionDeviceForInstance(int32_t instanceId) {
+            for (auto& block : devices) {
+                if (block.containsInstance(instanceId))
+                    return &block;
+            }
+            return nullptr;
+        }
+
+        // FIXME: we should not really return shared_ptr here...
+        std::shared_ptr<UapmdFunctionBlock> getFunctionDeviceByInstanceId(int32_t instanceId) {
+            for (auto& block : devices) {
+                if (auto ret = block.getDeviceByInstanceId(instanceId))
+                    return ret;
+            }
+            return nullptr;
+        }
+
+        void deleteEmptyDevices() {
+            devices.erase(
+                std::remove_if(devices.begin(), devices.end(),
+                    [](const UapmdFunctionDevice& block) { return block.isEmpty(); }),
+                devices.end()
+            );
+        }
+
+        void detachAllOutputMappers() {
+            for (auto& device : devices)
+                device.detachAllOutputMappers();
+        }
+
+        void clearAllDevices() {
+            devices.clear();
+        }
+    };
+}

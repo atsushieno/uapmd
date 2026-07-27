@@ -2,7 +2,8 @@ add_executable(uapmd-apply)
 
 target_include_directories(uapmd-apply PRIVATE
         ../../remidy/include
-        ../../uapmd/include
+        ../../uapmd-midi-service/include
+        ../../uapmd-plugin-hosting/include
         ../../uapmd-graph/include
         ../../uapmd-engine/include
         ../../uapmd-data/include
@@ -19,7 +20,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 endif ()
 
 target_link_libraries(uapmd-apply PRIVATE
-        uapmd
+        uapmd-midi-service
         uapmd-engine
         uapmd-data
         ${uapmd-apply_LIBS_PLAT}

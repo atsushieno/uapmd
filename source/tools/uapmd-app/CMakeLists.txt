@@ -698,8 +698,8 @@ set(_uapmd_app_common_include_dirs
         ${midicci_SOURCE_DIR}/include
         ${libremidi_SOURCE_DIR}/include
         ../../remidy/include
-        ../../remidy-tooling/include
-        ../../uapmd/include
+        ../../uapmd-plugin-hosting/include
+        ../../uapmd-midi-service/include
         ../../uapmd-graph/include
         ../../uapmd-file/include
         ../../uapmd-data/include

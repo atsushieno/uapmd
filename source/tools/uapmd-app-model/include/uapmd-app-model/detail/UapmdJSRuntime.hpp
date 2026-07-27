@@ -8,7 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "uapmd/uapmd.hpp"
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
 
 namespace uapmd {
 

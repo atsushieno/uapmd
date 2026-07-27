@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include <uapmd/uapmd.hpp>
+#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include "ProjectDocumentEvents.hpp"
 #include "../timeline/TimelineTypes.hpp"
 
