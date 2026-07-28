@@ -19,7 +19,7 @@
 #include "IpcJsonChannel.hpp"
 #include "ScanSessionManager.hpp"
 #if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED == 0
-#include "uapmd-plugin-hosting/detail/PluginScanTool.hpp"
+#include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 #endif
 
 namespace remidy_tooling {
