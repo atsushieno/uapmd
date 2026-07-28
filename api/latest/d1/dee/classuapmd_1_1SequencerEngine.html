@@ -85,25 +85,52 @@ $(function() {
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
 Public Types</h2></td></tr>
 <tr class="memitem:aa6a7aa18ccdfcf99ade76cb355487544" id="r_aa6a7aa18ccdfcf99ade76cb355487544"><td class="memItemLeft" align="right" valign="top"><a id="aa6a7aa18ccdfcf99ade76cb355487544" name="aa6a7aa18ccdfcf99ade76cb355487544"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPreprocessCallback</b> = std::function&lt; void(<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)&gt;</td></tr>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPreprocessCallback</b> = std::function&lt; void(AudioProcessContext &amp;process)&gt;</td></tr>
 <tr class="separator:aa6a7aa18ccdfcf99ade76cb355487544"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7fe760ec4970047448a889e94ec26a58" id="r_a7fe760ec4970047448a889e94ec26a58"><td class="memItemLeft" align="right" valign="top"><a id="a7fe760ec4970047448a889e94ec26a58" name="a7fe760ec4970047448a889e94ec26a58"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>TrackOutputHandler</b> = std::function&lt; bool(uapmd_track_index_t, <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> &amp;, <a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;)&gt;</td></tr>
-<tr class="separator:a7fe760ec4970047448a889e94ec26a58"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:aaecf78d1a7f1b9527459781085428b36" id="r_aaecf78d1a7f1b9527459781085428b36"><td class="memItemLeft" align="right" valign="top"><a id="aaecf78d1a7f1b9527459781085428b36" name="aaecf78d1a7f1b9527459781085428b36"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>enqueueUmp</b> (int32_t instanceId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp)=0</td></tr>
 <tr class="separator:aaecf78d1a7f1b9527459781085428b36"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac2c6f33d4cfef4656295f922a75a47ad" id="r_ac2c6f33d4cfef4656295f922a75a47ad"><td class="memItemLeft" align="right" valign="top"><a id="ac2c6f33d4cfef4656295f922a75a47ad" name="ac2c6f33d4cfef4656295f922a75a47ad"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>connectPlatformMidiInputToTrack</b> (std::string portId, ProjectObjectId trackId)=0</td></tr>
+<tr class="separator:ac2c6f33d4cfef4656295f922a75a47ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a18a53288fc623240e4da3f8d140bda3b" id="r_a18a53288fc623240e4da3f8d140bda3b"><td class="memItemLeft" align="right" valign="top"><a id="a18a53288fc623240e4da3f8d140bda3b" name="a18a53288fc623240e4da3f8d140bda3b"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>disconnectPlatformMidiInputFromTrack</b> (std::string_view portId, std::string_view trackId)=0</td></tr>
+<tr class="separator:a18a53288fc623240e4da3f8d140bda3b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aec4ad83cc16349197c47fb2698940c65" id="r_aec4ad83cc16349197c47fb2698940c65"><td class="memItemLeft" align="right" valign="top"><a id="aec4ad83cc16349197c47fb2698940c65" name="aec4ad83cc16349197c47fb2698940c65"></a>
+virtual std::vector&lt; <a class="el" href="../../d2/de9/structuapmd_1_1MidiPortTrackConnection.html">MidiPortTrackConnection</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>platformMidiInputConnections</b> () const =0</td></tr>
+<tr class="separator:aec4ad83cc16349197c47fb2698940c65"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a72c87acbb75436aa29ad1c5d28e9735a" id="r_a72c87acbb75436aa29ad1c5d28e9735a"><td class="memItemLeft" align="right" valign="top"><a id="a72c87acbb75436aa29ad1c5d28e9735a" name="a72c87acbb75436aa29ad1c5d28e9735a"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlatformMidiInputRoute</b> ()=0</td></tr>
+<tr class="separator:a72c87acbb75436aa29ad1c5d28e9735a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a96c75099c637cc8a9007e39ff7166b8f" id="r_a96c75099c637cc8a9007e39ff7166b8f"><td class="memItemLeft" align="right" valign="top"><a id="a96c75099c637cc8a9007e39ff7166b8f" name="a96c75099c637cc8a9007e39ff7166b8f"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>connectPlatformMidiOutputToTrack</b> (std::string portId, ProjectObjectId trackId)=0</td></tr>
+<tr class="separator:a96c75099c637cc8a9007e39ff7166b8f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a97ab8591dd1d923866d563adaa2f51f7" id="r_a97ab8591dd1d923866d563adaa2f51f7"><td class="memItemLeft" align="right" valign="top"><a id="a97ab8591dd1d923866d563adaa2f51f7" name="a97ab8591dd1d923866d563adaa2f51f7"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>disconnectPlatformMidiOutputFromTrack</b> (std::string_view portId, std::string_view trackId)=0</td></tr>
+<tr class="separator:a97ab8591dd1d923866d563adaa2f51f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab9744bc0949725bb545fab3896ca2127" id="r_ab9744bc0949725bb545fab3896ca2127"><td class="memItemLeft" align="right" valign="top"><a id="ab9744bc0949725bb545fab3896ca2127" name="ab9744bc0949725bb545fab3896ca2127"></a>
+virtual std::vector&lt; <a class="el" href="../../d2/de9/structuapmd_1_1MidiPortTrackConnection.html">MidiPortTrackConnection</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>platformMidiOutputConnections</b> () const =0</td></tr>
+<tr class="separator:ab9744bc0949725bb545fab3896ca2127"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abf92c9a6f77fbe028d5b8e35d3e83c7b" id="r_abf92c9a6f77fbe028d5b8e35d3e83c7b"><td class="memItemLeft" align="right" valign="top"><a id="abf92c9a6f77fbe028d5b8e35d3e83c7b" name="abf92c9a6f77fbe028d5b8e35d3e83c7b"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlatformMidiOutputRoute</b> ()=0</td></tr>
+<tr class="separator:abf92c9a6f77fbe028d5b8e35d3e83c7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aae8175d5b4fd8d001b767f1e037a767e" id="r_aae8175d5b4fd8d001b767f1e037a767e"><td class="memItemLeft" align="right" valign="top"><a id="aae8175d5b4fd8d001b767f1e037a767e" name="aae8175d5b4fd8d001b767f1e037a767e"></a>
-virtual <a class="el" href="../../d5/d46/classuapmd_1_1AudioPluginHostingAPI.html">AudioPluginHostingAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>pluginHost</b> ()=0</td></tr>
+virtual AudioPluginHostingAPI *&#160;</td><td class="memItemRight" valign="bottom"><b>pluginHost</b> ()=0</td></tr>
 <tr class="separator:aae8175d5b4fd8d001b767f1e037a767e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0fda5b2e10c1176b67271904a72fc979" id="r_a0fda5b2e10c1176b67271904a72fc979"><td class="memItemLeft" align="right" valign="top"><a id="a0fda5b2e10c1176b67271904a72fc979" name="a0fda5b2e10c1176b67271904a72fc979"></a>
+virtual <a class="el" href="../../d5/dff/classuapmd_1_1FrozenTrackManager.html">FrozenTrackManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>frozenTrackManager</b> ()=0</td></tr>
+<tr class="separator:a0fda5b2e10c1176b67271904a72fc979"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a19635f557c9009a0a3cb286bf5a8db23" id="r_a19635f557c9009a0a3cb286bf5a8db23"><td class="memItemLeft" align="right" valign="top"><a id="a19635f557c9009a0a3cb286bf5a8db23" name="a19635f557c9009a0a3cb286bf5a8db23"></a>
+virtual <a class="el" href="../../df/d1d/classuapmd_1_1TailProcessManager.html">TailProcessManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>tailProcessManager</b> ()=0</td></tr>
+<tr class="separator:a19635f557c9009a0a3cb286bf5a8db23"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1db21b7bbfbc81c09f99a72b9acd136e" id="r_a1db21b7bbfbc81c09f99a72b9acd136e"><td class="memItemLeft" align="right" valign="top"><a id="a1db21b7bbfbc81c09f99a72b9acd136e" name="a1db21b7bbfbc81c09f99a72b9acd136e"></a>
-virtual <a class="el" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getPluginInstance</b> (int32_t instanceId)=0</td></tr>
+virtual AudioPluginInstanceAPI *&#160;</td><td class="memItemRight" valign="bottom"><b>getPluginInstance</b> (int32_t instanceId)=0</td></tr>
 <tr class="separator:a1db21b7bbfbc81c09f99a72b9acd136e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a70b5b77888102f2dbc8adf11a9eecd8a" id="r_a70b5b77888102f2dbc8adf11a9eecd8a"><td class="memItemLeft" align="right" valign="top"><a id="a70b5b77888102f2dbc8adf11a9eecd8a" name="a70b5b77888102f2dbc8adf11a9eecd8a"></a>
-virtual <a class="el" href="../../d6/d47/classuapmd_1_1UapmdFunctionBlockManager.html">UapmdFunctionBlockManager</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>functionBlockManager</b> ()=0</td></tr>
+virtual UapmdFunctionBlockManager *&#160;</td><td class="memItemRight" valign="bottom"><b>functionBlockManager</b> ()=0</td></tr>
 <tr class="separator:a70b5b77888102f2dbc8adf11a9eecd8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adfad89c6c98533e38b8eda395cfd5fc7" id="r_adfad89c6c98533e38b8eda395cfd5fc7"><td class="memItemLeft" align="right" valign="top"><a id="adfad89c6c98533e38b8eda395cfd5fc7" name="adfad89c6c98533e38b8eda395cfd5fc7"></a>
 virtual int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>findTrackIndexForInstance</b> (int32_t instanceId) const =0</td></tr>
@@ -198,6 +225,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setOutputMute
 <tr class="memitem:a658356fb8506f6d4625328dcb114780d" id="r_a658356fb8506f6d4625328dcb114780d"><td class="memItemLeft" align="right" valign="top"><a id="a658356fb8506f6d4625328dcb114780d" name="a658356fb8506f6d4625328dcb114780d"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>resetProcessingState</b> ()=0</td></tr>
 <tr class="separator:a658356fb8506f6d4625328dcb114780d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a739b14ea6341c66bf415e3d8110fd96c" id="r_a739b14ea6341c66bf415e3d8110fd96c"><td class="memItemLeft" align="right" valign="top"><a id="a739b14ea6341c66bf415e3d8110fd96c" name="a739b14ea6341c66bf415e3d8110fd96c"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>resetTrackProcessingState</b> (uapmd_track_index_t trackIndex, bool resetPlugins, const std::function&lt; void()&gt; &amp;transition={})=0</td></tr>
+<tr class="separator:a739b14ea6341c66bf415e3d8110fd96c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac07839f86bc7a2a3e220d335bc9bf26b" id="r_ac07839f86bc7a2a3e220d335bc9bf26b"><td class="memItemLeft" align="right" valign="top"><a id="ac07839f86bc7a2a3e220d335bc9bf26b" name="ac07839f86bc7a2a3e220d335bc9bf26b"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioPreprocessCallback</b> (AudioPreprocessCallback callback)=0</td></tr>
 <tr class="separator:ac07839f86bc7a2a3e220d335bc9bf26b"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -205,17 +235,29 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioPrepr
 virtual <a class="el" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>data</b> ()=0</td></tr>
 <tr class="separator:a320e39f7eaac8c9fadaf90ab30108788"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8c5705a33b65cb293c46307b1bae3882" id="r_a8c5705a33b65cb293c46307b1bae3882"><td class="memItemLeft" align="right" valign="top"><a id="a8c5705a33b65cb293c46307b1bae3882" name="a8c5705a33b65cb293c46307b1bae3882"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pumpAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pumpAudio</b> (AudioProcessContext &amp;process)=0</td></tr>
 <tr class="separator:a8c5705a33b65cb293c46307b1bae3882"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a55e264b71cb76f4265121044f2ee1d3a" id="r_a55e264b71cb76f4265121044f2ee1d3a"><td class="memItemLeft" align="right" valign="top"><a id="a55e264b71cb76f4265121044f2ee1d3a" name="a55e264b71cb76f4265121044f2ee1d3a"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setExternalPump</b> (bool enabled)=0</td></tr>
-<tr class="separator:a55e264b71cb76f4265121044f2ee1d3a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ab6adf7c5927745702266c601a54ebc75" id="r_ab6adf7c5927745702266c601a54ebc75"><td class="memItemLeft" align="right" valign="top"><a id="ab6adf7c5927745702266c601a54ebc75" name="ab6adf7c5927745702266c601a54ebc75"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackOutputHandler</b> (TrackOutputHandler handler)=0</td></tr>
-<tr class="separator:ab6adf7c5927745702266c601a54ebc75"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2a4729e4931128179f2c5e7a6a40e596" id="r_a2a4729e4931128179f2c5e7a6a40e596"><td class="memItemLeft" align="right" valign="top"><a id="a2a4729e4931128179f2c5e7a6a40e596" name="a2a4729e4931128179f2c5e7a6a40e596"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addTrackAudioProcessorExtension</b> (<a class="el" href="../../d7/d5f/classuapmd_1_1TrackAudioProcessorExtension.html">TrackAudioProcessorExtension</a> &amp;extension)=0</td></tr>
+<tr class="separator:a2a4729e4931128179f2c5e7a6a40e596"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae3621bf0197f45ac7d7647168bc59745" id="r_ae3621bf0197f45ac7d7647168bc59745"><td class="memItemLeft" align="right" valign="top"><a id="ae3621bf0197f45ac7d7647168bc59745" name="ae3621bf0197f45ac7d7647168bc59745"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removeTrackAudioProcessorExtension</b> (<a class="el" href="../../d7/d5f/classuapmd_1_1TrackAudioProcessorExtension.html">TrackAudioProcessorExtension</a> &amp;extension)=0</td></tr>
+<tr class="separator:ae3621bf0197f45ac7d7647168bc59745"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab8b7690decf5e5d488be6f5444c2abcb" id="r_ab8b7690decf5e5d488be6f5444c2abcb"><td class="memItemLeft" align="right" valign="top"><a id="ab8b7690decf5e5d488be6f5444c2abcb" name="ab8b7690decf5e5d488be6f5444c2abcb"></a>
-virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
+virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (AudioProcessContext &amp;process)=0</td></tr>
 <tr class="separator:ab8b7690decf5e5d488be6f5444c2abcb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abce8d137afdcf13df40bdf8e4a4fd3f7" id="r_abce8d137afdcf13df40bdf8e4a4fd3f7"><td class="memItemLeft" align="right" valign="top"><a id="abce8d137afdcf13df40bdf8e4a4fd3f7" name="abce8d137afdcf13df40bdf8e4a4fd3f7"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>beginOfflineTrackRender</b> (const <a class="el" href="../../df/d18/structuapmd_1_1OfflineTrackRenderSettings.html">OfflineTrackRenderSettings</a> &amp;settings, std::string &amp;error)=0</td></tr>
+<tr class="separator:abce8d137afdcf13df40bdf8e4a4fd3f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad1edc645740b9595b6400a959ef2b3aa" id="r_ad1edc645740b9595b6400a959ef2b3aa"><td class="memItemLeft" align="right" valign="top"><a id="ad1edc645740b9595b6400a959ef2b3aa" name="ad1edc645740b9595b6400a959ef2b3aa"></a>
+virtual <a class="el" href="../../d5/d64/structuapmd_1_1OfflineTrackRenderStepResult.html">OfflineTrackRenderStepResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>renderOfflineTrackStep</b> (uint32_t maximumBlocks)=0</td></tr>
+<tr class="separator:ad1edc645740b9595b6400a959ef2b3aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2d7340ac754b8c0c428eb0307bee4a4c" id="r_a2d7340ac754b8c0c428eb0307bee4a4c"><td class="memItemLeft" align="right" valign="top"><a id="a2d7340ac754b8c0c428eb0307bee4a4c" name="a2d7340ac754b8c0c428eb0307bee4a4c"></a>
+virtual <a class="el" href="../../d9/d60/structuapmd_1_1OfflineTrackRenderResult.html">OfflineTrackRenderResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>finishOfflineTrackRender</b> (bool canceled, const std::function&lt; void(<a class="el" href="../../d9/d60/structuapmd_1_1OfflineTrackRenderResult.html">OfflineTrackRenderResult</a> &amp;)&gt; &amp;transition={})=0</td></tr>
+<tr class="separator:a2d7340ac754b8c0c428eb0307bee4a4c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8c34bcd236055ee89029973d8b888e0c" id="r_a8c34bcd236055ee89029973d8b888e0c"><td class="memItemLeft" align="right" valign="top"><a id="a8c34bcd236055ee89029973d8b888e0c" name="a8c34bcd236055ee89029973d8b888e0c"></a>
+virtual <a class="el" href="../../d9/d60/structuapmd_1_1OfflineTrackRenderResult.html">OfflineTrackRenderResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>renderOfflineTrack</b> (const <a class="el" href="../../df/d18/structuapmd_1_1OfflineTrackRenderSettings.html">OfflineTrackRenderSettings</a> &amp;settings, const <a class="el" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">OfflineRenderCallbacks</a> &amp;callbacks={})=0</td></tr>
+<tr class="separator:a8c34bcd236055ee89029973d8b888e0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a694520d24e64e41697bc51903f17cde9" id="r_a694520d24e64e41697bc51903f17cde9"><td class="memItemLeft" align="right" valign="top"><a id="a694520d24e64e41697bc51903f17cde9" name="a694520d24e64e41697bc51903f17cde9"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>isPlaybackActive</b> () const =0</td></tr>
 <tr class="separator:a694520d24e64e41697bc51903f17cde9"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -243,12 +285,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pausePlayback
 <tr class="memitem:a7d6117fecd6dae9a8855f4252bf4e164" id="r_a7d6117fecd6dae9a8855f4252bf4e164"><td class="memItemLeft" align="right" valign="top"><a id="a7d6117fecd6dae9a8855f4252bf4e164" name="a7d6117fecd6dae9a8855f4252bf4e164"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>resumePlayback</b> ()=0</td></tr>
 <tr class="separator:a7d6117fecd6dae9a8855f4252bf4e164"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4ca6a5b83cb32e260d9a4146a4cabf81" id="r_a4ca6a5b83cb32e260d9a4146a4cabf81"><td class="memItemLeft" align="right" valign="top"><a id="a4ca6a5b83cb32e260d9a4146a4cabf81" name="a4ca6a5b83cb32e260d9a4146a4cabf81"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>getInputSpectrum</b> (float *outSpectrum, int numBars) const =0</td></tr>
-<tr class="separator:a4ca6a5b83cb32e260d9a4146a4cabf81"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9c1fc51b316a4c76aa24a026ebbc212d" id="r_a9c1fc51b316a4c76aa24a026ebbc212d"><td class="memItemLeft" align="right" valign="top"><a id="a9c1fc51b316a4c76aa24a026ebbc212d" name="a9c1fc51b316a4c76aa24a026ebbc212d"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>getOutputSpectrum</b> (float *outSpectrum, int numBars) const =0</td></tr>
-<tr class="separator:a9c1fc51b316a4c76aa24a026ebbc212d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3dc674c2e6724a32075bd9777e613317" id="r_a3dc674c2e6724a32075bd9777e613317"><td class="memItemLeft" align="right" valign="top"><a id="a3dc674c2e6724a32075bd9777e613317" name="a3dc674c2e6724a32075bd9777e613317"></a>
+virtual builtin::AnalyserNode *&#160;</td><td class="memItemRight" valign="bottom"><b>inputAnalyser</b> ()=0</td></tr>
+<tr class="separator:a3dc674c2e6724a32075bd9777e613317"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0caa08f83dcb21fd2f37b126f6fa44ce" id="r_a0caa08f83dcb21fd2f37b126f6fa44ce"><td class="memItemLeft" align="right" valign="top"><a id="a0caa08f83dcb21fd2f37b126f6fa44ce" name="a0caa08f83dcb21fd2f37b126f6fa44ce"></a>
+virtual builtin::AnalyserNode *&#160;</td><td class="memItemRight" valign="bottom"><b>outputAnalyser</b> ()=0</td></tr>
+<tr class="separator:a0caa08f83dcb21fd2f37b126f6fa44ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a185a5b95c82a4a7078798ef1153a4470" id="r_a185a5b95c82a4a7078798ef1153a4470"><td class="memItemLeft" align="right" valign="top"><a id="a185a5b95c82a4a7078798ef1153a4470" name="a185a5b95c82a4a7078798ef1153a4470"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>sendNoteOn</b> (int32_t instanceId, int32_t note)=0</td></tr>
 <tr class="separator:a185a5b95c82a4a7078798ef1153a4470"><td class="memSeparator" colspan="2">&#160;</td></tr>

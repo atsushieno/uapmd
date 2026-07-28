@@ -90,7 +90,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
 <div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;vector&gt;</span></div>
 <div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span> </div>
-<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;uapmd/uapmd.hpp&gt;</span></div>
+<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;uapmd-midi-service/uapmd-midi-service.hpp&gt;</span></div>
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;uapmd-graph/uapmd-graph.hpp&gt;</span></div>
 <div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &quot;UapmdProjectFile.hpp&quot;</span></div>
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
@@ -104,7 +104,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    <span class="keyword">using </span>PluginStateFileCallback = std::function&lt;void(</div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>        int32_t instanceId,</div>
 <div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>        <span class="keywordtype">size_t</span> pluginOrder,</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>        <a class="code hl_class" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a>* instance,</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>        AudioPluginInstanceAPI* instance,</div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>        <span class="keyword">const</span> std::function&lt;<span class="keywordtype">void</span>(<span class="keyword">const</span> std::string&amp; relativePath)&gt;&amp; setStateFile)&gt;;</div>
 <div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    <span class="keyword">virtual</span> <span class="keyword">const</span> std::string&amp; id() <span class="keyword">const</span> = 0;</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>    <span class="keyword">virtual</span> <span class="keyword">const</span> std::string&amp; label() <span class="keyword">const</span> = 0;</div>
@@ -134,7 +134,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="keyword">const</span> <a class="code hl_class" href="../../d2/d2f/classuapmd_1_1AudioGraphProvider.html">AudioGraphProvider</a>&amp; provider,</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="keyword">const</span> std::vector&lt;int32_t&gt;&amp; orderedInstanceIds,</div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    AudioPluginGraph&amp; runtimeGraph,</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keyword">const</span> std::function&lt;<a class="code hl_class" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a>*(int32_t instanceId)&gt;&amp; resolveInstance,</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keyword">const</span> std::function&lt;AudioPluginInstanceAPI*(int32_t instanceId)&gt;&amp; resolveInstance,</div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="keyword">const</span> AudioGraphProvider::PluginStateFileCallback&amp; pluginStateFileCallback = {});</div>
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>std::unique_ptr&lt;UapmdProjectPluginGraphData&gt; loadSerializedProjectGraph(</div>
 <div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keyword">const</span> AudioGraphProvider&amp; provider,</div>
@@ -163,8 +163,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>} <span class="comment">// namespace uapmd</span></div>
 <div class="ttc" id="aclassuapmd_1_1AudioGraphProviderRegistry_html"><div class="ttname"><a href="../../dd/dd3/classuapmd_1_1AudioGraphProviderRegistry.html">uapmd::AudioGraphProviderRegistry</a></div><div class="ttdef"><b>Definition</b> AudioGraphProvider.hpp:59</div></div>
 <div class="ttc" id="aclassuapmd_1_1AudioGraphProvider_html"><div class="ttname"><a href="../../d2/d2f/classuapmd_1_1AudioGraphProvider.html">uapmd::AudioGraphProvider</a></div><div class="ttdef"><b>Definition</b> AudioGraphProvider.hpp:16</div></div>
-<div class="ttc" id="aclassuapmd_1_1AudioPluginInstanceAPI_html"><div class="ttname"><a href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">uapmd::AudioPluginInstanceAPI</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:54</div></div>
-<div class="ttc" id="aclassuapmd_1_1UapmdProjectPluginGraphData_html"><div class="ttname"><a href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">uapmd::UapmdProjectPluginGraphData</a></div><div class="ttdef"><b>Definition</b> UapmdProjectFile.hpp:76</div></div>
+<div class="ttc" id="aclassuapmd_1_1UapmdProjectPluginGraphData_html"><div class="ttname"><a href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">uapmd::UapmdProjectPluginGraphData</a></div><div class="ttdef"><b>Definition</b> UapmdProjectFile.hpp:79</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['aapuihostdetailsextension_0',['AapUiHostDetailsExtension',['../d6/dd2/classuapmd_1_1AapUiHostDetailsExtension.html',1,'uapmd']]],
-  ['absolute_20positioning_1',['Example 1: Absolute Positioning',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md40',1,'']]],
+  ['absolute_20positioning_0',['Example 1: Absolute Positioning',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md40',1,'']]],
+  ['ai_20slop_1',['UAPMD Project File Format Documentation (AI slop)',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html',1,'']]],
   ['anchor_20resolution_2',['Anchor Resolution',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md46',1,'']]],
   ['anchor_20validation_3',['Anchor Validation',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md47',1,'']]],
   ['anchored_20positioning_4',['anchored positioning',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md41',1,'Example 2: Track-Anchored Positioning'],['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md42',1,'Example 3: Clip-Anchored Positioning']]],
@@ -18,14 +18,10 @@ var searchData=
   ['audioiodevice_15',['AudioIODevice',['../d2/de4/classuapmd_1_1AudioIODevice.html',1,'uapmd']]],
   ['audioiodeviceinfo_16',['AudioIODeviceInfo',['../db/d19/classuapmd_1_1AudioIODeviceInfo.html',1,'uapmd']]],
   ['audioiodevicemanager_17',['AudioIODeviceManager',['../d4/dc6/classuapmd_1_1AudioIODeviceManager.html',1,'uapmd']]],
-  ['audiopluginhostingapi_18',['AudioPluginHostingAPI',['../d5/d46/classuapmd_1_1AudioPluginHostingAPI.html',1,'uapmd']]],
-  ['audioplugininstanceapi_19',['AudioPluginInstanceAPI',['../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html',1,'uapmd']]],
-  ['audioplugininstanceextension_20',['AudioPluginInstanceExtension',['../d0/d24/classuapmd_1_1AudioPluginInstanceExtension.html',1,'uapmd']]],
-  ['audiopluginnodefeature_21',['AudioPluginNodeFeature',['../dd/d0e/classuapmd_1_1AudioPluginNodeFeature.html',1,'uapmd']]],
-  ['audioprocesscontext_22',['AudioProcessContext',['../dd/da4/classremidy_1_1AudioProcessContext.html',1,'remidy']]],
-  ['audiosourceinfo_23',['AudioSourceInfo',['../db/de2/structuapmd_1_1AudioSourceInfo.html',1,'uapmd']]],
-  ['audiosourcenode_24',['AudioSourceNode',['../d1/d5c/classuapmd_1_1AudioSourceNode.html',1,'uapmd']]],
-  ['audiosourcerepository_25',['AudioSourceRepository',['../d5/dfa/classuapmd_1_1AudioSourceRepository.html',1,'uapmd']]],
-  ['audiostemimport_26',['AudioStemImport',['../de/df5/structuapmd_1_1import_1_1AudioStemImport.html',1,'uapmd::import']]],
-  ['audiowarppoint_27',['AudioWarpPoint',['../de/dba/structuapmd_1_1AudioWarpPoint.html',1,'uapmd']]]
+  ['audioprocesscontext_18',['AudioProcessContext',['../dd/da4/classremidy_1_1AudioProcessContext.html',1,'remidy']]],
+  ['audiosourceinfo_19',['AudioSourceInfo',['../db/de2/structuapmd_1_1AudioSourceInfo.html',1,'uapmd']]],
+  ['audiosourcenode_20',['AudioSourceNode',['../d1/d5c/classuapmd_1_1AudioSourceNode.html',1,'uapmd']]],
+  ['audiosourcerepository_21',['AudioSourceRepository',['../d5/dfa/classuapmd_1_1AudioSourceRepository.html',1,'uapmd']]],
+  ['audiostemimport_22',['AudioStemImport',['../de/df5/structuapmd_1_1import_1_1AudioStemImport.html',1,'uapmd::import']]],
+  ['audiowarppoint_23',['AudioWarpPoint',['../de/dba/structuapmd_1_1AudioWarpPoint.html',1,'uapmd']]]
 ];

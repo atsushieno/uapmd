@@ -41,18 +41,18 @@ parameters, states, presets, UI</li>
 <li>VST3, AU, LV2, CLAP</li>
 </ul></li>
 </ul></li>
-<li>remidy-tooling: plugin scanner tooling</li>
+<li>uapmd-plugin-hosting: plugin scanner tooling, and the plugin
+hosting/instance API used by virtual MIDI 2.0 devices (interface plus
+<code>remidy</code>-backed implementation)</li>
 <li>remidy-gui: commonized GUI library
 <ul>
 <li>container window across platforms (used by GUI apps to host plugin
 UIs)</li>
 </ul></li>
-<li>uapmd: platform-boundable UMP device management
+<li>uapmd-midi-service: platform-boundable UMP device management
 <ul>
 <li>platform MIDI integration API (without implementation)</li>
 <li>function block management</li>
-<li>audio plugin host and instance API integration for virtual MIDI 2.0
-devices (without implementation)</li>
 <li>audio plugin graph API, and simple linear graph implementation
 (without decent DAG)</li>
 </ul></li>

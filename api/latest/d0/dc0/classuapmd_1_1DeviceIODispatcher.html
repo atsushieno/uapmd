@@ -82,9 +82,9 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ac7accb418efa002855960366b2ebccfb" id="r_ac7accb418efa002855960366b2ebccfb"><td class="memItemLeft" align="right" valign="top"><a id="ac7accb418efa002855960366b2ebccfb" name="ac7accb418efa002855960366b2ebccfb"></a>
-virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>configure</b> (size_t umpBufferSizeInBytes, <a class="el" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a> *audio=nullptr, <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a> *midiIn=nullptr, <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a> *midiOut=nullptr, uint32_t preferredCallbackFrames=0)=0</td></tr>
-<tr class="separator:ac7accb418efa002855960366b2ebccfb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8f90497730554d7930af125690c22bd2" id="r_a8f90497730554d7930af125690c22bd2"><td class="memItemLeft" align="right" valign="top"><a id="a8f90497730554d7930af125690c22bd2" name="a8f90497730554d7930af125690c22bd2"></a>
+virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>configure</b> (size_t umpBufferSizeInBytes, <a class="el" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a> *audio, <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a> *midiIn, <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a> *midiOut, uint32_t preferredCallbackFrames)=0</td></tr>
+<tr class="separator:a8f90497730554d7930af125690c22bd2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a38fc49a50fa412a832e8d958d1dfa3ed" id="r_a38fc49a50fa412a832e8d958d1dfa3ed"><td class="memItemLeft" align="right" valign="top"><a id="a38fc49a50fa412a832e8d958d1dfa3ed" name="a38fc49a50fa412a832e8d958d1dfa3ed"></a>
 virtual <a class="el" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>audio</b> ()=0</td></tr>
 <tr class="separator:a38fc49a50fa412a832e8d958d1dfa3ed"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -95,7 +95,7 @@ virtual <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIO
 virtual <a class="el" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>midiOut</b> ()=0</td></tr>
 <tr class="separator:a7592c84fcdc845a09f50a67ec15c8f8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae7230018be5db87c69bb269fe4fa6a95" id="r_ae7230018be5db87c69bb269fe4fa6a95"><td class="memItemLeft" align="right" valign="top"><a id="ae7230018be5db87c69bb269fe4fa6a95" name="ae7230018be5db87c69bb269fe4fa6a95"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addCallback</b> (std::function&lt; uapmd_status_t(<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;data)&gt; &amp;&amp;callback)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addCallback</b> (std::function&lt; uapmd_status_t(AudioProcessContext &amp;data)&gt; &amp;&amp;callback)=0</td></tr>
 <tr class="separator:ae7230018be5db87c69bb269fe4fa6a95"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6396ca940decaf4d9542c6b24f90161c" id="r_a6396ca940decaf4d9542c6b24f90161c"><td class="memItemLeft" align="right" valign="top"><a id="a6396ca940decaf4d9542c6b24f90161c" name="a6396ca940decaf4d9542c6b24f90161c"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearOutputBuffers</b> ()=0</td></tr>

@@ -83,38 +83,32 @@ $(function() {
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:ad1c3173542997c252dd6808402387edc" id="r_ad1c3173542997c252dd6808402387edc"><td class="memItemLeft" align="right" valign="top"><a id="ad1c3173542997c252dd6808402387edc" name="ad1c3173542997c252dd6808402387edc"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addAudioCallback</b> (std::function&lt; uapmd_status_t(<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;data)&gt; &amp;&amp;callback)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addAudioCallback</b> (std::function&lt; uapmd_status_t(AudioProcessContext &amp;data)&gt; &amp;&amp;callback)=0</td></tr>
 <tr class="separator:ad1c3173542997c252dd6808402387edc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af1722020657f71b99ae1c83df3aef3d8" id="r_af1722020657f71b99ae1c83df3aef3d8"><td class="memItemLeft" align="right" valign="top"><a id="af1722020657f71b99ae1c83df3aef3d8" name="af1722020657f71b99ae1c83df3aef3d8"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearAudioCallbacks</b> ()=0</td></tr>
 <tr class="separator:af1722020657f71b99ae1c83df3aef3d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a1b6999a6b957eab1dcabc1747afe84cc" id="r_a1b6999a6b957eab1dcabc1747afe84cc"><td class="memItemLeft" align="right" valign="top"><a id="a1b6999a6b957eab1dcabc1747afe84cc" name="a1b6999a6b957eab1dcabc1747afe84cc"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPreferredCallbackSize</b> (uint32_t framesPerCallback)</td></tr>
-<tr class="separator:a1b6999a6b957eab1dcabc1747afe84cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af3767500fbace6db94300c1e43e6f253" id="r_af3767500fbace6db94300c1e43e6f253"><td class="memItemLeft" align="right" valign="top"><a id="af3767500fbace6db94300c1e43e6f253" name="af3767500fbace6db94300c1e43e6f253"></a>
-virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>preferredCallbackSize</b> () const</td></tr>
-<tr class="separator:af3767500fbace6db94300c1e43e6f253"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a57be621ddda54673c3e97c770401a069" id="r_a57be621ddda54673c3e97c770401a069"><td class="memItemLeft" align="right" valign="top"><a id="a57be621ddda54673c3e97c770401a069" name="a57be621ddda54673c3e97c770401a069"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPreferredCallbackSize</b> (uint32_t framesPerCallback)=0</td></tr>
+<tr class="separator:a57be621ddda54673c3e97c770401a069"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9cb2e19b153e174e23c7cfe583ee27aa" id="r_a9cb2e19b153e174e23c7cfe583ee27aa"><td class="memItemLeft" align="right" valign="top"><a id="a9cb2e19b153e174e23c7cfe583ee27aa" name="a9cb2e19b153e174e23c7cfe583ee27aa"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>preferredCallbackSize</b> () const =0</td></tr>
+<tr class="separator:a9cb2e19b153e174e23c7cfe583ee27aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8bdaedc80afeea74d357eac8ca9cfae0" id="r_a8bdaedc80afeea74d357eac8ca9cfae0"><td class="memItemLeft" align="right" valign="top"><a id="a8bdaedc80afeea74d357eac8ca9cfae0" name="a8bdaedc80afeea74d357eac8ca9cfae0"></a>
 virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>sampleRate</b> ()=0</td></tr>
 <tr class="separator:a8bdaedc80afeea74d357eac8ca9cfae0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aee133237519659bc8e1905dcbc6cef5b" id="r_aee133237519659bc8e1905dcbc6cef5b"><td class="memItemLeft" align="right" valign="top"><a id="aee133237519659bc8e1905dcbc6cef5b" name="aee133237519659bc8e1905dcbc6cef5b"></a>
-virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>channels</b> ()=0</td></tr>
-<tr class="separator:aee133237519659bc8e1905dcbc6cef5b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a25778bc18b6166048561598ac2243213" id="r_a25778bc18b6166048561598ac2243213"><td class="memItemLeft" align="right" valign="top"><a id="a25778bc18b6166048561598ac2243213" name="a25778bc18b6166048561598ac2243213"></a>
-virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>inputChannels</b> ()</td></tr>
-<tr class="separator:a25778bc18b6166048561598ac2243213"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5ec70cfdd7293292092f488eae4cc05d" id="r_a5ec70cfdd7293292092f488eae4cc05d"><td class="memItemLeft" align="right" valign="top"><a id="a5ec70cfdd7293292092f488eae4cc05d" name="a5ec70cfdd7293292092f488eae4cc05d"></a>
-virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputChannels</b> ()</td></tr>
-<tr class="separator:a5ec70cfdd7293292092f488eae4cc05d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abb739aac972c7fc7a5820efc37079083" id="r_abb739aac972c7fc7a5820efc37079083"><td class="memItemLeft" align="right" valign="top"><a id="abb739aac972c7fc7a5820efc37079083" name="abb739aac972c7fc7a5820efc37079083"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>inputChannels</b> ()=0</td></tr>
+<tr class="separator:abb739aac972c7fc7a5820efc37079083"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a142b9c3a568faca112a7c52a38ab4247" id="r_a142b9c3a568faca112a7c52a38ab4247"><td class="memItemLeft" align="right" valign="top"><a id="a142b9c3a568faca112a7c52a38ab4247" name="a142b9c3a568faca112a7c52a38ab4247"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputChannels</b> ()=0</td></tr>
+<tr class="separator:a142b9c3a568faca112a7c52a38ab4247"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afef8f01939d767fd3db5e1357fe67871" id="r_afef8f01939d767fd3db5e1357fe67871"><td class="memItemLeft" align="right" valign="top"><a id="afef8f01939d767fd3db5e1357fe67871" name="afef8f01939d767fd3db5e1357fe67871"></a>
 virtual std::vector&lt; uint32_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getNativeSampleRates</b> ()=0</td></tr>
 <tr class="separator:afef8f01939d767fd3db5e1357fe67871"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5cd3a00b6319c1e54409200af27daa72" id="r_a5cd3a00b6319c1e54409200af27daa72"><td class="memItemLeft" align="right" valign="top"><a id="a5cd3a00b6319c1e54409200af27daa72" name="a5cd3a00b6319c1e54409200af27daa72"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearOutputBuffers</b> ()</td></tr>
-<tr class="separator:a5cd3a00b6319c1e54409200af27daa72"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ab1ccc6100a99c70d1a3e8ccd17177c3b" id="r_ab1ccc6100a99c70d1a3e8ccd17177c3b"><td class="memItemLeft" align="right" valign="top"><a id="ab1ccc6100a99c70d1a3e8ccd17177c3b" name="ab1ccc6100a99c70d1a3e8ccd17177c3b"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setEngine</b> (<a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> *)</td></tr>
-<tr class="separator:ab1ccc6100a99c70d1a3e8ccd17177c3b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a01041856d30916342669a8892c67c7c7" id="r_a01041856d30916342669a8892c67c7c7"><td class="memItemLeft" align="right" valign="top"><a id="a01041856d30916342669a8892c67c7c7" name="a01041856d30916342669a8892c67c7c7"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearOutputBuffers</b> ()=0</td></tr>
+<tr class="separator:a01041856d30916342669a8892c67c7c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a504a8a8abd1a4369416536566c5b6f4b" id="r_a504a8a8abd1a4369416536566c5b6f4b"><td class="memItemLeft" align="right" valign="top"><a id="a504a8a8abd1a4369416536566c5b6f4b" name="a504a8a8abd1a4369416536566c5b6f4b"></a>
 virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>start</b> ()=0</td></tr>
 <tr class="separator:a504a8a8abd1a4369416536566c5b6f4b"><td class="memSeparator" colspan="2">&#160;</td></tr>

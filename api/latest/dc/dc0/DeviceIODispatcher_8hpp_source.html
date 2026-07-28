@@ -84,7 +84,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="fragment"><div class="line"><a id="l00001" name="l00001"></a><span class="lineno">    1</span><span class="preprocessor">#pragma once</span></div>
 <div class="line"><a id="l00002" name="l00002"></a><span class="lineno">    2</span> </div>
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="preprocessor">#include &lt;functional&gt;</span></div>
-<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &quot;uapmd/uapmd.hpp&quot;</span></div>
+<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &quot;uapmd-midi-service/uapmd-midi-service.hpp&quot;</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="preprocessor">#include &quot;AudioIODevice.hpp&quot;</span></div>
 <div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span> </div>
 <div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="keyword">namespace </span>uapmd {</div>
@@ -95,16 +95,16 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../d0/dc0/classuapmd_1_1DeviceIODispatcher.html">~DeviceIODispatcher</a>() = <span class="keywordflow">default</span>;</div>
 <div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span>        <span class="keyword">virtual</span> uapmd_status_t configure(<span class="keywordtype">size_t</span> umpBufferSizeInBytes,</div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>                                         <a class="code hl_class" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a>* audio = <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span>                                         <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiIn = <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>                                         <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiOut = <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>                                         uint32_t preferredCallbackFrames = 0) = 0;</div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>                                         <a class="code hl_class" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a>* audio,</div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span>                                         <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiIn,</div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>                                         <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiOut,</div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>                                         uint32_t preferredCallbackFrames) = 0;</div>
 <div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../d2/de4/classuapmd_1_1AudioIODevice.html">AudioIODevice</a>* audio() = 0;</div>
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiIn() = 0;</div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../da/d03/classuapmd_1_1MidiIODevice.html">MidiIODevice</a>* midiOut() = 0;</div>
 <div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> addCallback(std::function&lt;uapmd_status_t(<a class="code hl_class" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a>&amp; data)&gt;&amp;&amp; callback) = 0;</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> addCallback(std::function&lt;uapmd_status_t(AudioProcessContext&amp; data)&gt;&amp;&amp; callback) = 0;</div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> clearOutputBuffers() = 0;</div>
 <div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>        <span class="keyword">virtual</span> uapmd_status_t start() = 0;</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>        <span class="keyword">virtual</span> uapmd_status_t stop() = 0;</div>
@@ -115,10 +115,9 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span> </div>
 <div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    <a class="code hl_class" href="../../d0/dc0/classuapmd_1_1DeviceIODispatcher.html">DeviceIODispatcher</a>* defaultDeviceIODispatcher();</div>
 <div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>}</div>
-<div class="ttc" id="aclassremidy_1_1AudioProcessContext_html"><div class="ttname"><a href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a></div><div class="ttdef"><b>Definition</b> processing-context.hpp:97</div></div>
-<div class="ttc" id="aclassuapmd_1_1AudioIODevice_html"><div class="ttname"><a href="../../d2/de4/classuapmd_1_1AudioIODevice.html">uapmd::AudioIODevice</a></div><div class="ttdef"><b>Definition</b> AudioIODevice.hpp:30</div></div>
+<div class="ttc" id="aclassuapmd_1_1AudioIODevice_html"><div class="ttname"><a href="../../d2/de4/classuapmd_1_1AudioIODevice.html">uapmd::AudioIODevice</a></div><div class="ttdef"><b>Definition</b> AudioIODevice.hpp:29</div></div>
 <div class="ttc" id="aclassuapmd_1_1DeviceIODispatcher_html"><div class="ttname"><a href="../../d0/dc0/classuapmd_1_1DeviceIODispatcher.html">uapmd::DeviceIODispatcher</a></div><div class="ttdef"><b>Definition</b> DeviceIODispatcher.hpp:9</div></div>
-<div class="ttc" id="aclassuapmd_1_1MidiIODevice_html"><div class="ttname"><a href="../../da/d03/classuapmd_1_1MidiIODevice.html">uapmd::MidiIODevice</a></div><div class="ttdef"><b>Definition</b> MidiIODevice.hpp:9</div></div>
+<div class="ttc" id="aclassuapmd_1_1MidiIODevice_html"><div class="ttname"><a href="../../da/d03/classuapmd_1_1MidiIODevice.html">uapmd::MidiIODevice</a></div><div class="ttdef"><b>Definition</b> MidiIODevice.hpp:18</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

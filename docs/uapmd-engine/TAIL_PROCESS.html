@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="tail-processing-and-transport-quiet-detection-ai-slop">Tail
+Processing and Transport Quiet Detection (AI slop)</h1>
+<p><code>TailProcessManager</code> manages audio processing between a
+transport Stop or Pause and the point at which the engine output is
+considered completely quiet.</p>
+<h2 id="responsibilities">Responsibilities</h2>
+<p>The manager owns:</p>
+<ul>
+<li>the active tail-drain state and remaining sample count;</li>
+<li>transport-quiet detection;</li>
+<li>the stopped-output silence hold used after track freezing starts;
+and</li>
+<li>registration and dispatch of transport-quiet listeners.</li>
+</ul>
+<p><code>SequencerEngine</code> coordinates the process. On Stop or
+Pause it obtains the required drain length from
+<code>LatencyCompensationManager</code> and passes that value to
+<code>TailProcessManager</code>. The managers do not depend directly on
+each other. See <a
+href="LATENCY_COMPENSATION.html">LATENCY_COMPENSATION.md</a> for
+calculation of the drain length.</p>
+<h2 id="stop-and-pause">Stop and Pause</h2>
+<p>Stop and Pause use the same tail-processing path. Their only
+transport difference is the final position: Stop resets it, while Pause
+retains it.</p>
+<p>The declared drain length is rounded up to an audio-processing
+quantum. During the drain, the graph continues processing and the
+private render position advances so delayed audio and finite plugin
+tails can reach the output.</p>
+<p>After the declared drain finishes, the manager observes the mixed
+output. The transport becomes quiet only after the peak remains at or
+below <code>0.0001</code> (-80 dB) continuously for 250 ms. This
+additional observation handles plugins that report a zero or inaccurate
+tail while release audio is still audible.</p>
+<p>Starting or resuming transport cancels pending tail processing and
+clears the quiet state. Explicit transport or timing changes may also
+cancel a pending drain.</p>
+<h2 id="quiet-event">Quiet Event</h2>
+<p>The audio thread updates drain and silence counters using atomics. It
+does not lock, allocate, or invoke listeners.</p>
+<p>When quiet is detected, the audio thread increments an event sequence
+and wakes a dispatch thread. The dispatch thread snapshots the
+registered listeners under a mutex and invokes them outside the realtime
+audio thread. Listeners must unregister before their owning object is
+destroyed.</p>
+<p>Track freezing registers a listener for this event and starts pending
+renders only after transport has become quiet.</p>
+<h2 id="output-silence-hold">Output Silence Hold</h2>
+<p>Once a stopped transport enters track-freeze rendering, device output
+is held at silence until an explicit Play or Resume. This prevents
+previously buffered tail audio from becoming audible after offline
+rendering finishes. Audio used for quiet detection is measured before
+this final output silencing step.</p>
+    </main>
+</div>
+</body>
+</html>

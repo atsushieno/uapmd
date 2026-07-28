@@ -28,10 +28,13 @@ Module Organization</h2>
 backends).</li>
 <li><code>remidy-gui</code>: common GUI helper that is required by
 plugin formats (such as <code>ContainerWindow</code>)</li>
-<li><code>remidy-tooling/</code>: commonized scanning/instancing
-utilities.</li>
-<li><code>uapmd/</code>: virtual MIDI 2.0 device foundation (function
-block manager, plugin hosting API integration).</li>
+<li><code>uapmd-plugin-hosting/</code>: commonized scanning/instancing
+utilities, and the plugin hosting API
+(<code>AudioPluginHostingAPI</code> /
+<code>AudioPluginInstanceAPI</code>) plus its <code>remidy</code>-backed
+implementation.</li>
+<li><code>uapmd-midi-service/</code>: virtual MIDI 2.0 device foundation
+(function block manager, UMP mapping).</li>
 <li><code>uapmd-graph/</code>: audio graph and graph nodes.</li>
 <li><code>uapmd-data/</code>: sequencer data structures.</li>
 <li><code>uapmd-file/</code>: platform abstraction API for file dialog

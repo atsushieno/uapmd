@@ -52,9 +52,10 @@ CLion).</li>
 </ul>
 <h2 id="include-path-stability">Include path stability</h2>
 <p>There are frontend header files such as
-<code>remidy/remidy.hpp</code> and <code>uapmd/uapmd.hpp</code>, and
-only those file paths are stable. Path to an individual include file
-will not be stable.</p>
+<code>remidy/remidy.hpp</code> and
+<code>uapmd-midi-service/uapmd-midi-service.hpp</code>, and only those
+file paths are stable. Path to an individual include file will not be
+stable.</p>
 <h2 id="third-party-library-types">Third party library types</h2>
 <ul>
 <li>No third party library types are part of stable API.</li>
@@ -69,6 +70,26 @@ translated to third-party libraries in the implementation details.</li>
 </ul></li>
 </ul></li>
 </ul>
+<h2 id="modular-design">Modular design</h2>
+<p>UAPMD contains full of AI generated code, and they tend to be
+overcomplicated due to its too durable thinking brain up to the level
+where human beings can give up thinking through. We, human beings,
+should weigh in and bring in appropriate separation of concern, so that
+we can conveniently reduce token consumption in our own brain.
+Therefore, whenever workable, UAPMD tries to modularize the feature set
+into a class, a source file, or a module.</p>
+<p>For example, our <code>SequencerEngine</code> can be quite
+complicated if it does not separate
+<code>LatencyCompensationManager</code>,
+<code>TailProcessManager</code>, or <code>FrozenTrackManager</code>. It
+is often difficult to actually keep them separate (because <a
+href="../uapmd-app/EXTENSIBILITY.html">EXTENSIBILITY</a> also
+matters).</p>
+<p>They were split after AI generated a lot of code. It is more like a
+<a href="https://en.wikipedia.org/wiki/Bonsai">bonsai</a> work - we
+adjust things as it grows, not necessarily in prior to the actual
+implementation. We admit that we cannot come up with ideas before
+actually seeing working implementation.</p>
     </main>
 </div>
 </body>

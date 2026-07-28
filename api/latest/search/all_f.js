@@ -5,6 +5,9 @@ var searchData=
   ['offlinerenderprogress_2',['OfflineRenderProgress',['../de/d77/structuapmd_1_1OfflineRenderProgress.html',1,'uapmd']]],
   ['offlinerenderresult_3',['OfflineRenderResult',['../df/da3/structuapmd_1_1OfflineRenderResult.html',1,'uapmd']]],
   ['offlinerendersettings_4',['OfflineRenderSettings',['../da/dbd/structuapmd_1_1OfflineRenderSettings.html',1,'uapmd']]],
-  ['offset_5',['Example 4: Negative Offset',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md43',1,'']]],
-  ['overview_6',['Overview',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md1',1,'']]]
+  ['offlinetrackrenderresult_5',['OfflineTrackRenderResult',['../d9/d60/structuapmd_1_1OfflineTrackRenderResult.html',1,'uapmd']]],
+  ['offlinetrackrendersettings_6',['OfflineTrackRenderSettings',['../df/d18/structuapmd_1_1OfflineTrackRenderSettings.html',1,'uapmd']]],
+  ['offlinetrackrenderstepresult_7',['OfflineTrackRenderStepResult',['../d5/d64/structuapmd_1_1OfflineTrackRenderStepResult.html',1,'uapmd']]],
+  ['offset_8',['Example 4: Negative Offset',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md43',1,'']]],
+  ['overview_9',['Overview',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md1',1,'']]]
 ];
