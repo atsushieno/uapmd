@@ -84,7 +84,7 @@ $(function() {
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
 Public Types</h2></td></tr>
 <tr class="memitem:a914d0a7e31ca4c0ef6e5ef85c2da16fb" id="r_a914d0a7e31ca4c0ef6e5ef85c2da16fb"><td class="memItemLeft" align="right" valign="top"><a id="a914d0a7e31ca4c0ef6e5ef85c2da16fb" name="a914d0a7e31ca4c0ef6e5ef85c2da16fb"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>PluginStateFileCallback</b> = std::function&lt; void(int32_t instanceId, size_t pluginOrder, AudioPluginInstanceAPI *instance, const std::function&lt; void(const std::string &amp;relativePath)&gt; &amp;setStateFile)&gt;</td></tr>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>PluginStateFileCallback</b> = std::function&lt; void(int32_t instanceId, size_t pluginOrder, <a class="el" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a> *instance, const std::function&lt; void(const std::string &amp;relativePath)&gt; &amp;setStateFile)&gt;</td></tr>
 <tr class="separator:a914d0a7e31ca4c0ef6e5ef85c2da16fb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
@@ -96,10 +96,10 @@ virtual const std::string &amp;&#160;</td><td class="memItemRight" valign="botto
 virtual const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>label</b> () const =0</td></tr>
 <tr class="separator:a34395afbcc26eeee752fb375ac832c46"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aac7009187c8e96cf28d304f53408446a" id="r_aac7009187c8e96cf28d304f53408446a"><td class="memItemLeft" align="right" valign="top"><a id="aac7009187c8e96cf28d304f53408446a" name="aac7009187c8e96cf28d304f53408446a"></a>
-virtual std::unique_ptr&lt; AudioPluginGraph &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>createGraph</b> (size_t eventBufferSizeInBytes) const =0</td></tr>
+virtual std::unique_ptr&lt; <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>createGraph</b> (size_t eventBufferSizeInBytes) const =0</td></tr>
 <tr class="separator:aac7009187c8e96cf28d304f53408446a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3d4c7a6f77b1cf58821ef271f54c8152" id="r_a3d4c7a6f77b1cf58821ef271f54c8152"><td class="memItemLeft" align="right" valign="top"><a id="a3d4c7a6f77b1cf58821ef271f54c8152" name="a3d4c7a6f77b1cf58821ef271f54c8152"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>deserializeRuntimeGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *data, AudioPluginGraph &amp;graph, const std::vector&lt; int32_t &gt; &amp;orderedInstanceIds) const =0</td></tr>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>deserializeRuntimeGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *data, <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &amp;graph, const std::vector&lt; int32_t &gt; &amp;orderedInstanceIds) const =0</td></tr>
 <tr class="separator:a3d4c7a6f77b1cf58821ef271f54c8152"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a006368bdaf2537e5a89f6d40635bdb5c" id="r_a006368bdaf2537e5a89f6d40635bdb5c"><td class="memItemLeft" align="right" valign="top"><a id="a006368bdaf2537e5a89f6d40635bdb5c" name="a006368bdaf2537e5a89f6d40635bdb5c"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *data, const std::vector&lt; uint8_t &gt; &amp;bytes) const =0</td></tr>
@@ -108,7 +108,7 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectGr
 virtual std::vector&lt; <a class="el" href="../../d8/d09/structuapmd_1_1UapmdProjectPluginNodeData.html">UapmdProjectPluginNodeData</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getPluginNodeDataListFrom</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *data) const =0</td></tr>
 <tr class="separator:abcb9b92211b4f1ebf4ef4b2aac1170b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5a512ba569e9f33c13f68755dc29bcf0" id="r_a5a512ba569e9f33c13f68755dc29bcf0"><td class="memItemLeft" align="right" valign="top"><a id="a5a512ba569e9f33c13f68755dc29bcf0" name="a5a512ba569e9f33c13f68755dc29bcf0"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>serializeRuntimeGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *graphData, AudioPluginGraph &amp;runtimeGraph, const std::unordered_map&lt; int32_t, int32_t &gt; &amp;instanceToIndex) const =0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>serializeRuntimeGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *graphData, <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &amp;runtimeGraph, const std::unordered_map&lt; int32_t, int32_t &gt; &amp;instanceToIndex) const =0</td></tr>
 <tr class="separator:a5a512ba569e9f33c13f68755dc29bcf0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af977eebb25c9bb13aac929f2fbcb100d" id="r_af977eebb25c9bb13aac929f2fbcb100d"><td class="memItemLeft" align="right" valign="top"><a id="af977eebb25c9bb13aac929f2fbcb100d" name="af977eebb25c9bb13aac929f2fbcb100d"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>saveProjectGraph</b> (<a class="el" href="../../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html">UapmdProjectPluginGraphData</a> *graphData, std::vector&lt; uint8_t &gt; &amp;bytes) const =0</td></tr>

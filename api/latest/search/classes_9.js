@@ -1,10 +1,20 @@
 var searchData=
 [
-  ['offlinerendercallbacks_0',['OfflineRenderCallbacks',['../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html',1,'uapmd']]],
-  ['offlinerenderprogress_1',['OfflineRenderProgress',['../de/d77/structuapmd_1_1OfflineRenderProgress.html',1,'uapmd']]],
-  ['offlinerenderresult_2',['OfflineRenderResult',['../df/da3/structuapmd_1_1OfflineRenderResult.html',1,'uapmd']]],
-  ['offlinerendersettings_3',['OfflineRenderSettings',['../da/dbd/structuapmd_1_1OfflineRenderSettings.html',1,'uapmd']]],
-  ['offlinetrackrenderresult_4',['OfflineTrackRenderResult',['../d9/d60/structuapmd_1_1OfflineTrackRenderResult.html',1,'uapmd']]],
-  ['offlinetrackrendersettings_5',['OfflineTrackRenderSettings',['../df/d18/structuapmd_1_1OfflineTrackRenderSettings.html',1,'uapmd']]],
-  ['offlinetrackrenderstepresult_6',['OfflineTrackRenderStepResult',['../d5/d64/structuapmd_1_1OfflineTrackRenderStepResult.html',1,'uapmd']]]
+  ['mastercontext_0',['MasterContext',['../dd/d92/classremidy_1_1MasterContext.html',1,'remidy']]],
+  ['mastertracksnapshot_1',['mastertracksnapshot',['../df/d33/structuapmd_1_1AppModel_1_1MasterTrackSnapshot.html',1,'uapmd::AppModel::MasterTrackSnapshot'],['../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
+  ['midiclipreader_2',['MidiClipReader',['../d9/d5e/classuapmd_1_1MidiClipReader.html',1,'uapmd']]],
+  ['midiclipsourcenode_3',['MidiClipSourceNode',['../d2/da7/classuapmd_1_1MidiClipSourceNode.html',1,'uapmd']]],
+  ['midiimportresult_4',['MidiImportResult',['../de/df0/structuapmd_1_1import_1_1MidiImportResult.html',1,'uapmd::import']]],
+  ['midiiodevice_5',['MidiIODevice',['../da/d03/classuapmd_1_1MidiIODevice.html',1,'uapmd']]],
+  ['midiiofeature_6',['MidiIOFeature',['../d4/df1/classuapmd_1_1MidiIOFeature.html',1,'uapmd']]],
+  ['midiiomanagerfeature_7',['MidiIOManagerFeature',['../d5/d63/classuapmd_1_1MidiIOManagerFeature.html',1,'uapmd']]],
+  ['midinotepreview_8',['MidiNotePreview',['../da/d11/structuapmd_1_1TimelineFacade_1_1MidiNotePreview.html',1,'uapmd::TimelineFacade']]],
+  ['midiportinfo_9',['MidiPortInfo',['../d7/df1/structuapmd_1_1MidiPortInfo.html',1,'uapmd']]],
+  ['midiporttrackconnection_10',['MidiPortTrackConnection',['../d2/de9/structuapmd_1_1MidiPortTrackConnection.html',1,'uapmd']]],
+  ['midisourcenode_11',['MidiSourceNode',['../d7/d4f/classuapmd_1_1MidiSourceNode.html',1,'uapmd']]],
+  ['miditempochange_12',['MidiTempoChange',['../d9/d30/structuapmd_1_1MidiTempoChange.html',1,'uapmd']]],
+  ['miditimesignaturechange_13',['MidiTimeSignatureChange',['../d0/d34/structuapmd_1_1MidiTimeSignatureChange.html',1,'uapmd']]],
+  ['miditrackimport_14',['MidiTrackImport',['../d1/d6d/structuapmd_1_1import_1_1MidiTrackImport.html',1,'uapmd::import']]],
+  ['miditracksimportresult_15',['MidiTracksImportResult',['../dd/da8/structuapmd_1_1AppModel_1_1MidiTracksImportResult.html',1,'uapmd::AppModel']]],
+  ['moduleentry_16',['ModuleEntry',['../dd/d47/structremidy_1_1PluginBundlePool_1_1ModuleEntry.html',1,'remidy::PluginBundlePool']]]
 ];

@@ -292,7 +292,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>    <span class="comment">// Audio preprocess callback — feeds clip source nodes into track input buffers.</span></div>
 <div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>    <span class="comment">// Called by SequencerEngineImpl via the registered AudioPreprocessCallback.</span></div>
 <div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>    <span class="comment">// Writes into targetSequence.tracks[i], typically pump ring-buffer slots.</span></div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>    <span class="keyword">virtual</span> <span class="keywordtype">void</span> processTracksAudio(AudioProcessContext&amp; process, <a class="code hl_class" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a>&amp; targetSequence) = 0;</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>    <span class="keyword">virtual</span> <span class="keywordtype">void</span> processTracksAudio(<a class="code hl_class" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a>&amp; process, <a class="code hl_class" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a>&amp; targetSequence) = 0;</div>
 <div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span> </div>
 <div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>    <span class="comment">// Lifecycle hooks called by SequencerEngineImpl when tracks are added/removed</span></div>
 <div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    <span class="keyword">virtual</span> <span class="keywordtype">void</span> onTrackAdded(uint32_t outputChannels,</div>
@@ -306,6 +306,7 @@ $(document).ready(function() { init_codefold(1); });
 </div>
 <div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span> </div>
 <div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>} <span class="comment">// namespace uapmd</span></div>
+<div class="ttc" id="aclassremidy_1_1AudioProcessContext_html"><div class="ttname"><a href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a></div><div class="ttdef"><b>Definition</b> processing-context.hpp:97</div></div>
 <div class="ttc" id="aclassuapmd_1_1AudioGraphProviderRegistry_html"><div class="ttname"><a href="../../dd/dd3/classuapmd_1_1AudioGraphProviderRegistry.html">uapmd::AudioGraphProviderRegistry</a></div><div class="ttdef"><b>Definition</b> AudioGraphProvider.hpp:59</div></div>
 <div class="ttc" id="aclassuapmd_1_1AudioSourceRepository_html"><div class="ttname"><a href="../../d5/dfa/classuapmd_1_1AudioSourceRepository.html">uapmd::AudioSourceRepository</a></div><div class="ttdef"><b>Definition</b> AudioSourceRepository.hpp:21</div></div>
 <div class="ttc" id="aclassuapmd_1_1ProjectDocumentEventSource_html"><div class="ttname"><a href="../../dc/d65/classuapmd_1_1ProjectDocumentEventSource.html">uapmd::ProjectDocumentEventSource</a></div><div class="ttdef"><b>Definition</b> ProjectDocumentEvents.hpp:255</div></div>

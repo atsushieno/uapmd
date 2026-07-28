@@ -85,7 +85,7 @@ $(function() {
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-types" name="pub-types"></a>
 Public Types</h2></td></tr>
 <tr class="memitem:aa6a7aa18ccdfcf99ade76cb355487544" id="r_aa6a7aa18ccdfcf99ade76cb355487544"><td class="memItemLeft" align="right" valign="top"><a id="aa6a7aa18ccdfcf99ade76cb355487544" name="aa6a7aa18ccdfcf99ade76cb355487544"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPreprocessCallback</b> = std::function&lt; void(AudioProcessContext &amp;process)&gt;</td></tr>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPreprocessCallback</b> = std::function&lt; void(<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)&gt;</td></tr>
 <tr class="separator:aa6a7aa18ccdfcf99ade76cb355487544"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
@@ -118,7 +118,7 @@ virtual std::vector&lt; <a class="el" href="../../d2/de9/structuapmd_1_1MidiPort
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlatformMidiOutputRoute</b> ()=0</td></tr>
 <tr class="separator:abf92c9a6f77fbe028d5b8e35d3e83c7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aae8175d5b4fd8d001b767f1e037a767e" id="r_aae8175d5b4fd8d001b767f1e037a767e"><td class="memItemLeft" align="right" valign="top"><a id="aae8175d5b4fd8d001b767f1e037a767e" name="aae8175d5b4fd8d001b767f1e037a767e"></a>
-virtual AudioPluginHostingAPI *&#160;</td><td class="memItemRight" valign="bottom"><b>pluginHost</b> ()=0</td></tr>
+virtual <a class="el" href="../../d5/d46/classuapmd_1_1AudioPluginHostingAPI.html">AudioPluginHostingAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>pluginHost</b> ()=0</td></tr>
 <tr class="separator:aae8175d5b4fd8d001b767f1e037a767e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0fda5b2e10c1176b67271904a72fc979" id="r_a0fda5b2e10c1176b67271904a72fc979"><td class="memItemLeft" align="right" valign="top"><a id="a0fda5b2e10c1176b67271904a72fc979" name="a0fda5b2e10c1176b67271904a72fc979"></a>
 virtual <a class="el" href="../../d5/dff/classuapmd_1_1FrozenTrackManager.html">FrozenTrackManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>frozenTrackManager</b> ()=0</td></tr>
@@ -127,10 +127,10 @@ virtual <a class="el" href="../../d5/dff/classuapmd_1_1FrozenTrackManager.html">
 virtual <a class="el" href="../../df/d1d/classuapmd_1_1TailProcessManager.html">TailProcessManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>tailProcessManager</b> ()=0</td></tr>
 <tr class="separator:a19635f557c9009a0a3cb286bf5a8db23"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1db21b7bbfbc81c09f99a72b9acd136e" id="r_a1db21b7bbfbc81c09f99a72b9acd136e"><td class="memItemLeft" align="right" valign="top"><a id="a1db21b7bbfbc81c09f99a72b9acd136e" name="a1db21b7bbfbc81c09f99a72b9acd136e"></a>
-virtual AudioPluginInstanceAPI *&#160;</td><td class="memItemRight" valign="bottom"><b>getPluginInstance</b> (int32_t instanceId)=0</td></tr>
+virtual <a class="el" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getPluginInstance</b> (int32_t instanceId)=0</td></tr>
 <tr class="separator:a1db21b7bbfbc81c09f99a72b9acd136e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a70b5b77888102f2dbc8adf11a9eecd8a" id="r_a70b5b77888102f2dbc8adf11a9eecd8a"><td class="memItemLeft" align="right" valign="top"><a id="a70b5b77888102f2dbc8adf11a9eecd8a" name="a70b5b77888102f2dbc8adf11a9eecd8a"></a>
-virtual UapmdFunctionBlockManager *&#160;</td><td class="memItemRight" valign="bottom"><b>functionBlockManager</b> ()=0</td></tr>
+virtual <a class="el" href="../../d6/d47/classuapmd_1_1UapmdFunctionBlockManager.html">UapmdFunctionBlockManager</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>functionBlockManager</b> ()=0</td></tr>
 <tr class="separator:a70b5b77888102f2dbc8adf11a9eecd8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adfad89c6c98533e38b8eda395cfd5fc7" id="r_adfad89c6c98533e38b8eda395cfd5fc7"><td class="memItemLeft" align="right" valign="top"><a id="adfad89c6c98533e38b8eda395cfd5fc7" name="adfad89c6c98533e38b8eda395cfd5fc7"></a>
 virtual int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>findTrackIndexForInstance</b> (int32_t instanceId) const =0</td></tr>
@@ -169,13 +169,13 @@ virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutp
 virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputBusAlignmentHoldbackInSamples</b> (uapmd_track_index_t trackIndex, uint32_t outputBusIndex)=0</td></tr>
 <tr class="separator:a824d78ec443646cb54205e1357f613bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae02161738793ab1fdb33feb23adaeb68" id="r_ae02161738793ab1fdb33feb23adaeb68"><td class="memItemLeft" align="right" valign="top"><a id="ae02161738793ab1fdb33feb23adaeb68" name="ae02161738793ab1fdb33feb23adaeb68"></a>
-virtual TrackOutputRoutingTarget&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputBusRoutingTarget</b> (uapmd_track_index_t trackIndex, uint32_t outputBusIndex)=0</td></tr>
+virtual <a class="el" href="../../df/d3f/structuapmd_1_1TrackOutputRoutingTarget.html">TrackOutputRoutingTarget</a>&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputBusRoutingTarget</b> (uapmd_track_index_t trackIndex, uint32_t outputBusIndex)=0</td></tr>
 <tr class="separator:ae02161738793ab1fdb33feb23adaeb68"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a071b9ae027ca07d478aa071d7ff9bd3a" id="r_a071b9ae027ca07d478aa071d7ff9bd3a"><td class="memItemLeft" align="right" valign="top"><a id="a071b9ae027ca07d478aa071d7ff9bd3a" name="a071b9ae027ca07d478aa071d7ff9bd3a"></a>
-virtual std::vector&lt; TrackOutputRoutingRule &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputRoutingRules</b> (uapmd_track_index_t trackIndex)=0</td></tr>
+virtual std::vector&lt; <a class="el" href="../../de/d54/structuapmd_1_1TrackOutputRoutingRule.html">TrackOutputRoutingRule</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputRoutingRules</b> (uapmd_track_index_t trackIndex)=0</td></tr>
 <tr class="separator:a071b9ae027ca07d478aa071d7ff9bd3a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adabf61a9331068a0816951a5a467b35a" id="r_adabf61a9331068a0816951a5a467b35a"><td class="memItemLeft" align="right" valign="top"><a id="adabf61a9331068a0816951a5a467b35a" name="adabf61a9331068a0816951a5a467b35a"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackOutputRoutingRules</b> (uapmd_track_index_t trackIndex, const std::vector&lt; TrackOutputRoutingRule &gt; &amp;rules)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackOutputRoutingRules</b> (uapmd_track_index_t trackIndex, const std::vector&lt; <a class="el" href="../../de/d54/structuapmd_1_1TrackOutputRoutingRule.html">TrackOutputRoutingRule</a> &gt; &amp;rules)=0</td></tr>
 <tr class="separator:adabf61a9331068a0816951a5a467b35a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7505793b8ca5388354f708c449d0c72b" id="r_a7505793b8ca5388354f708c449d0c72b"><td class="memItemLeft" align="right" valign="top"><a id="a7505793b8ca5388354f708c449d0c72b" name="a7505793b8ca5388354f708c449d0c72b"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>isOutputAlignmentActive</b> ()=0</td></tr>
@@ -193,7 +193,7 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removePluginI
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removeTrack</b> (uapmd_track_index_t trackIndex)=0</td></tr>
 <tr class="separator:ae0bfdf385ca57b5e287a5c26ec2e60b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af81c3b0de4d5ab1d6d55de21d8fa8494" id="r_af81c3b0de4d5ab1d6d55de21d8fa8494"><td class="memItemLeft" align="right" valign="top"><a id="af81c3b0de4d5ab1d6d55de21d8fa8494" name="af81c3b0de4d5ab1d6d55de21d8fa8494"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceTrackGraph</b> (uapmd_track_index_t trackIndex, std::unique_ptr&lt; AudioPluginGraph &gt; &amp;&amp;graph)=0</td></tr>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceTrackGraph</b> (uapmd_track_index_t trackIndex, std::unique_ptr&lt; <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &gt; &amp;&amp;graph)=0</td></tr>
 <tr class="separator:af81c3b0de4d5ab1d6d55de21d8fa8494"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6ff133c2187098bfac1aa4bb54aab387" id="r_a6ff133c2187098bfac1aa4bb54aab387"><td class="memItemLeft" align="right" valign="top"><a id="a6ff133c2187098bfac1aa4bb54aab387" name="a6ff133c2187098bfac1aa4bb54aab387"></a>
 virtual uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getInstanceGroup</b> (int32_t instanceId) const =0</td></tr>
@@ -235,7 +235,7 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioPrepr
 virtual <a class="el" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>data</b> ()=0</td></tr>
 <tr class="separator:a320e39f7eaac8c9fadaf90ab30108788"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8c5705a33b65cb293c46307b1bae3882" id="r_a8c5705a33b65cb293c46307b1bae3882"><td class="memItemLeft" align="right" valign="top"><a id="a8c5705a33b65cb293c46307b1bae3882" name="a8c5705a33b65cb293c46307b1bae3882"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pumpAudio</b> (AudioProcessContext &amp;process)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pumpAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:a8c5705a33b65cb293c46307b1bae3882"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2a4729e4931128179f2c5e7a6a40e596" id="r_a2a4729e4931128179f2c5e7a6a40e596"><td class="memItemLeft" align="right" valign="top"><a id="a2a4729e4931128179f2c5e7a6a40e596" name="a2a4729e4931128179f2c5e7a6a40e596"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addTrackAudioProcessorExtension</b> (<a class="el" href="../../d7/d5f/classuapmd_1_1TrackAudioProcessorExtension.html">TrackAudioProcessorExtension</a> &amp;extension)=0</td></tr>
@@ -244,7 +244,7 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addTrackAudio
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removeTrackAudioProcessorExtension</b> (<a class="el" href="../../d7/d5f/classuapmd_1_1TrackAudioProcessorExtension.html">TrackAudioProcessorExtension</a> &amp;extension)=0</td></tr>
 <tr class="separator:ae3621bf0197f45ac7d7647168bc59745"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab8b7690decf5e5d488be6f5444c2abcb" id="r_ab8b7690decf5e5d488be6f5444c2abcb"><td class="memItemLeft" align="right" valign="top"><a id="ab8b7690decf5e5d488be6f5444c2abcb" name="ab8b7690decf5e5d488be6f5444c2abcb"></a>
-virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (AudioProcessContext &amp;process)=0</td></tr>
+virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:ab8b7690decf5e5d488be6f5444c2abcb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abce8d137afdcf13df40bdf8e4a4fd3f7" id="r_abce8d137afdcf13df40bdf8e4a4fd3f7"><td class="memItemLeft" align="right" valign="top"><a id="abce8d137afdcf13df40bdf8e4a4fd3f7" name="abce8d137afdcf13df40bdf8e4a4fd3f7"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>beginOfflineTrackRender</b> (const <a class="el" href="../../df/d18/structuapmd_1_1OfflineTrackRenderSettings.html">OfflineTrackRenderSettings</a> &amp;settings, std::string &amp;error)=0</td></tr>
@@ -286,10 +286,10 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pausePlayback
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>resumePlayback</b> ()=0</td></tr>
 <tr class="separator:a7d6117fecd6dae9a8855f4252bf4e164"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3dc674c2e6724a32075bd9777e613317" id="r_a3dc674c2e6724a32075bd9777e613317"><td class="memItemLeft" align="right" valign="top"><a id="a3dc674c2e6724a32075bd9777e613317" name="a3dc674c2e6724a32075bd9777e613317"></a>
-virtual builtin::AnalyserNode *&#160;</td><td class="memItemRight" valign="bottom"><b>inputAnalyser</b> ()=0</td></tr>
+virtual <a class="el" href="../../d7/d63/classuapmd_1_1builtin_1_1AnalyserNode.html">builtin::AnalyserNode</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>inputAnalyser</b> ()=0</td></tr>
 <tr class="separator:a3dc674c2e6724a32075bd9777e613317"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0caa08f83dcb21fd2f37b126f6fa44ce" id="r_a0caa08f83dcb21fd2f37b126f6fa44ce"><td class="memItemLeft" align="right" valign="top"><a id="a0caa08f83dcb21fd2f37b126f6fa44ce" name="a0caa08f83dcb21fd2f37b126f6fa44ce"></a>
-virtual builtin::AnalyserNode *&#160;</td><td class="memItemRight" valign="bottom"><b>outputAnalyser</b> ()=0</td></tr>
+virtual <a class="el" href="../../d7/d63/classuapmd_1_1builtin_1_1AnalyserNode.html">builtin::AnalyserNode</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>outputAnalyser</b> ()=0</td></tr>
 <tr class="separator:a0caa08f83dcb21fd2f37b126f6fa44ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a185a5b95c82a4a7078798ef1153a4470" id="r_a185a5b95c82a4a7078798ef1153a4470"><td class="memItemLeft" align="right" valign="top"><a id="a185a5b95c82a4a7078798ef1153a4470" name="a185a5b95c82a4a7078798ef1153a4470"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>sendNoteOn</b> (int32_t instanceId, int32_t note)=0</td></tr>

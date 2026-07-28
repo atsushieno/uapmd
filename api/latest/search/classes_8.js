@@ -1,17 +1,6 @@
 var searchData=
 [
-  ['mastercontext_0',['MasterContext',['../dd/d92/classremidy_1_1MasterContext.html',1,'remidy']]],
-  ['mastertracksnapshot_1',['MasterTrackSnapshot',['../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html',1,'uapmd::TimelineFacade']]],
-  ['midiclipreader_2',['MidiClipReader',['../d9/d5e/classuapmd_1_1MidiClipReader.html',1,'uapmd']]],
-  ['midiclipsourcenode_3',['MidiClipSourceNode',['../d2/da7/classuapmd_1_1MidiClipSourceNode.html',1,'uapmd']]],
-  ['midiimportresult_4',['MidiImportResult',['../de/df0/structuapmd_1_1import_1_1MidiImportResult.html',1,'uapmd::import']]],
-  ['midiiodevice_5',['MidiIODevice',['../da/d03/classuapmd_1_1MidiIODevice.html',1,'uapmd']]],
-  ['midinotepreview_6',['MidiNotePreview',['../da/d11/structuapmd_1_1TimelineFacade_1_1MidiNotePreview.html',1,'uapmd::TimelineFacade']]],
-  ['midiportinfo_7',['MidiPortInfo',['../d7/df1/structuapmd_1_1MidiPortInfo.html',1,'uapmd']]],
-  ['midiporttrackconnection_8',['MidiPortTrackConnection',['../d2/de9/structuapmd_1_1MidiPortTrackConnection.html',1,'uapmd']]],
-  ['midisourcenode_9',['MidiSourceNode',['../d7/d4f/classuapmd_1_1MidiSourceNode.html',1,'uapmd']]],
-  ['miditempochange_10',['MidiTempoChange',['../d9/d30/structuapmd_1_1MidiTempoChange.html',1,'uapmd']]],
-  ['miditimesignaturechange_11',['MidiTimeSignatureChange',['../d0/d34/structuapmd_1_1MidiTimeSignatureChange.html',1,'uapmd']]],
-  ['miditrackimport_12',['MidiTrackImport',['../d1/d6d/structuapmd_1_1import_1_1MidiTrackImport.html',1,'uapmd::import']]],
-  ['moduleentry_13',['ModuleEntry',['../dd/d47/structremidy_1_1PluginBundlePool_1_1ModuleEntry.html',1,'remidy::PluginBundlePool']]]
+  ['latencycompensationmanager_0',['LatencyCompensationManager',['../dc/d5b/classuapmd_1_1LatencyCompensationManager.html',1,'uapmd']]],
+  ['latencycompensationprojectsettings_1',['LatencyCompensationProjectSettings',['../d3/dd6/structuapmd_1_1LatencyCompensationProjectSettings.html',1,'uapmd']]],
+  ['logger_2',['Logger',['../d0/d04/classremidy_1_1Logger.html',1,'remidy']]]
 ];

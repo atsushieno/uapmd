@@ -1,15 +1,18 @@
 var searchData=
 [
-  ['tailprocessmanager_0',['TailProcessManager',['../df/d1d/classuapmd_1_1TailProcessManager.html',1,'uapmd']]],
-  ['tempomap_1',['TempoMap',['../d8/df0/classuapmd_1_1TempoMap.html',1,'uapmd']]],
-  ['tempopoint_2',['tempopoint',['../d6/d9b/structuapmd_1_1TempoMap_1_1TempoPoint.html',1,'uapmd::TempoMap::TempoPoint'],['../dd/d37/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TempoPoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot::TempoPoint']]],
-  ['timelinefacade_3',['TimelineFacade',['../d9/ded/classuapmd_1_1TimelineFacade.html',1,'uapmd']]],
-  ['timelineposition_4',['TimelinePosition',['../d1/d17/structuapmd_1_1TimelinePosition.html',1,'uapmd']]],
-  ['timelinestate_5',['TimelineState',['../df/d2b/structuapmd_1_1TimelineState.html',1,'uapmd']]],
-  ['timelinetrack_6',['TimelineTrack',['../d3/d29/classuapmd_1_1TimelineTrack.html',1,'uapmd']]],
-  ['timereference_7',['TimeReference',['../d3/d55/structuapmd_1_1TimeReference.html',1,'uapmd']]],
-  ['timesignaturepoint_8',['timesignaturepoint',['../d3/d70/structuapmd_1_1TempoMap_1_1TimeSignaturePoint.html',1,'uapmd::TempoMap::TimeSignaturePoint'],['../de/d13/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TimeSignaturePoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot::TimeSignaturePoint']]],
-  ['trackaudioprocessorextension_9',['TrackAudioProcessorExtension',['../d7/d5f/classuapmd_1_1TrackAudioProcessorExtension.html',1,'uapmd']]],
-  ['trackimporter_10',['TrackImporter',['../dc/de3/classuapmd_1_1import_1_1TrackImporter.html',1,'uapmd::import']]],
-  ['typedumpinputdispatcher_11',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
+  ['scannedpluginentry_0',['ScannedPluginEntry',['../d6/dfc/structremidy__tooling_1_1ScannedPluginEntry.html',1,'remidy_tooling']]],
+  ['scanonlyoptions_1',['ScanOnlyOptions',['../d4/d11/structremidy__tooling_1_1ScanOnlyOptions.html',1,'remidy_tooling']]],
+  ['scanonlyreport_2',['ScanOnlyReport',['../d7/dc5/structremidy__tooling_1_1ScanOnlyReport.html',1,'remidy_tooling']]],
+  ['scanverificationfailure_3',['ScanVerificationFailure',['../dc/d07/structremidy__tooling_1_1ScanVerificationFailure.html',1,'remidy_tooling']]],
+  ['scanverificationreport_4',['ScanVerificationReport',['../d7/d2a/structremidy__tooling_1_1ScanVerificationReport.html',1,'remidy_tooling']]],
+  ['separatedmastertrackevents_5',['SeparatedMasterTrackEvents',['../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html',1,'uapmd::MidiClipReader']]],
+  ['sequenceprocesscontext_6',['SequenceProcessContext',['../d1/d7c/classuapmd_1_1SequenceProcessContext.html',1,'uapmd']]],
+  ['sequencerengine_7',['SequencerEngine',['../d1/dee/classuapmd_1_1SequencerEngine.html',1,'uapmd']]],
+  ['sequencertrack_8',['SequencerTrack',['../d0/dc0/classuapmd_1_1SequencerTrack.html',1,'uapmd']]],
+  ['silentaudiofilereader_9',['SilentAudioFileReader',['../d5/d8a/classuapmd_1_1SilentAudioFileReader.html',1,'uapmd']]],
+  ['slowscanprogressstate_10',['SlowScanProgressState',['../de/d9a/structuapmd_1_1AppModel_1_1SlowScanProgressState.html',1,'uapmd::AppModel']]],
+  ['smf2clipreaderwriter_11',['Smf2ClipReaderWriter',['../dd/dc4/classuapmd_1_1Smf2ClipReaderWriter.html',1,'uapmd']]],
+  ['smfconverter_12',['SmfConverter',['../de/d16/classuapmd_1_1SmfConverter.html',1,'uapmd']]],
+  ['sourcenode_13',['SourceNode',['../d6/dbc/classuapmd_1_1SourceNode.html',1,'uapmd']]],
+  ['stemfile_14',['StemFile',['../de/d57/structuapmd_1_1import_1_1DemucsStemSeparator_1_1StemFile.html',1,'uapmd::import::DemucsStemSeparator']]]
 ];
