@@ -793,10 +793,11 @@ void MainWindow::renderPlatformMidiConnections() {
                 ImGui::PushID(static_cast<int>(row));
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                if (ImGui::BeginCombo("Port", portLabel(connection.portId).c_str())) {
-                    for (const auto& port : ports) {
+                if (ImGui::BeginCombo("##Port", portLabel(connection.portId).c_str())) {
+                    for (size_t option = 0; option < ports.size(); ++option) {
+                        const auto& port = ports[option];
                         const bool selected = port.id == connection.portId;
-                        ImGui::PushID(port.id.c_str());
+                        ImGui::PushID(static_cast<int>(option));
                         const bool chosen = UapmdSelectable(port.displayName.c_str(), selected);
                         ImGui::PopID();
                         if (chosen && !selected)
@@ -809,12 +810,13 @@ void MainWindow::renderPlatformMidiConnections() {
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                if (ImGui::BeginCombo("Action", trackLabel(connection.trackId).c_str())) {
+                if (ImGui::BeginCombo("##Action", trackLabel(connection.trackId).c_str())) {
                     if (UapmdSelectable("(close)", false))
                         disconnect(connection.portId, connection.trackId);
-                    for (const auto& track : tracks) {
+                    for (size_t option = 0; option < tracks.size(); ++option) {
+                        const auto& track = tracks[option];
                         const bool selected = track.id == connection.trackId;
-                        ImGui::PushID(track.id.c_str());
+                        ImGui::PushID(static_cast<int>(option));
                         const bool chosen = UapmdSelectable(track.label.c_str(), selected);
                         ImGui::PopID();
                         if (chosen && !selected)
@@ -831,9 +833,10 @@ void MainWindow::renderPlatformMidiConnections() {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             const auto portPreview = selectedPortId.empty() ? std::string("Select port") : portLabel(selectedPortId);
-            if (ImGui::BeginCombo("New port", portPreview.c_str())) {
-                for (const auto& port : ports) {
-                    ImGui::PushID(port.id.c_str());
+            if (ImGui::BeginCombo("##NewPort", portPreview.c_str())) {
+                for (size_t option = 0; option < ports.size(); ++option) {
+                    const auto& port = ports[option];
+                    ImGui::PushID(static_cast<int>(option));
                     const bool chosen = UapmdSelectable(port.displayName.c_str(), port.id == selectedPortId);
                     ImGui::PopID();
                     if (chosen)
@@ -842,9 +845,10 @@ void MainWindow::renderPlatformMidiConnections() {
                 ImGui::EndCombo();
             }
             ImGui::TableSetColumnIndex(1);
-            if (ImGui::BeginCombo("New action", "(close)")) {
-                for (const auto& track : tracks) {
-                    ImGui::PushID(track.id.c_str());
+            if (ImGui::BeginCombo("##NewAction", "(close)")) {
+                for (size_t option = 0; option < tracks.size(); ++option) {
+                    const auto& track = tracks[option];
+                    ImGui::PushID(static_cast<int>(option));
                     const bool chosen = UapmdSelectable(track.label.c_str(), false);
                     ImGui::PopID();
                     if (chosen && !selectedPortId.empty())

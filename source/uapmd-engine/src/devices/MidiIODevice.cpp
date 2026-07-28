@@ -97,9 +97,12 @@ std::optional<libremidi::API> pick_default_api(const std::vector<libremidi::API>
 
 template <typename Port>
 std::string portId(const Port& port) {
-    // This is libremidi's port identity: it is API-local and opaque, but does
-    // not depend on display metadata that may change when an endpoint opens.
-    return std::format("{}:{}", static_cast<int>(port.api), port.port);
+    // This is based on libremidi's API-local port identity plus its stable
+    // endpoint names. Display metadata is deliberately excluded because it
+    // can change while an endpoint is open.
+    return std::format("{}:{}:{}:{}",
+                       static_cast<int>(port.api), port.port,
+                       port.device_name, port.port_name);
 }
 
 template <typename Port>
