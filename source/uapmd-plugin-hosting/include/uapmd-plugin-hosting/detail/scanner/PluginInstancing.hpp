@@ -2,7 +2,7 @@
 
 #include <cassert>
 #include "remidy/remidy.hpp"
-#include "PluginScanTool.hpp"
+#include "../scanner/PluginScanTool.hpp"
 
 namespace remidy_tooling {
     using namespace remidy;

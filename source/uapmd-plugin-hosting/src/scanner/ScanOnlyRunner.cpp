@@ -1,4 +1,4 @@
-#include "../include/uapmd-plugin-hosting/detail/ScanOnlyRunner.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/ScanOnlyRunner.hpp"
 
 #include <cstdlib>
 

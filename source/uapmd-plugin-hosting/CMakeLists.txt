@@ -45,11 +45,11 @@ if(UAPMD_ENABLE_CPPLOCATE)
 endif()
 
 target_sources(uapmd-plugin-hosting PRIVATE
-        src/RemotePluginScannerProcess.cpp
-        src/PluginScanTool.cpp
-        src/PluginFormatManager.cpp
-        src/PluginInstancing.cpp
-        src/ScanOnlyRunner.cpp
+        src/scanner/RemotePluginScannerProcess.cpp
+        src/scanner/PluginScanTool.cpp
+        src/scanner/PluginFormatManager.cpp
+        src/scanner/PluginInstancing.cpp
+        src/scanner/ScanOnlyRunner.cpp
         src/ipc/InProcessScanSessionManager.cpp
         src/ipc/IpcJsonChannel.cpp
         src/ipc/TcpSocket.cpp

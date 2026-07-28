@@ -1,4 +1,4 @@
-#include "uapmd-plugin-hosting/detail/RemoteScannerServer.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/RemoteScannerServer.hpp"
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -21,7 +21,7 @@
 #include "ScannerProtocol.hpp"
 #include "TcpSocket.hpp"
 #include "ScanSessionManager.hpp"
-#include "uapmd-plugin-hosting/detail/PluginScanTool.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 
 namespace remidy_tooling {
 

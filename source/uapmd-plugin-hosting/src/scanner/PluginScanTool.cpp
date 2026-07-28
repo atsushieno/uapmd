@@ -21,11 +21,9 @@
 #endif
 #include <choc/text/choc_JSON.h>
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
-#include "uapmd-plugin-hosting/detail/PluginFormatManager.hpp"
-#include "ScanConstants.hpp"
-#include "ipc/ScanSessionManager.hpp"
-#include "ipc/InProcessScanSessionManager.hpp"
-#include "ipc/RemoteScanSessionManager.hpp"
+#include "../ipc/ScanSessionManager.hpp"
+#include "../ipc/InProcessScanSessionManager.hpp"
+#include "../ipc/RemoteScanSessionManager.hpp"
 
 namespace remidy_tooling {
 

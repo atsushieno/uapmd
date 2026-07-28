@@ -1,4 +1,4 @@
-#include "uapmd-plugin-hosting/detail/RemotePluginScannerProcess.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/RemotePluginScannerProcess.hpp"
 
 #include <cstdlib>
 #include <string>

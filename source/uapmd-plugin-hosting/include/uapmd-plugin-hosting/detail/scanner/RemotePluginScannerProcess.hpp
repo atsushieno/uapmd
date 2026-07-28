@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string>
 
-#include "uapmd-plugin-hosting/detail/ChildProcess.hpp"
-#include "uapmd-plugin-hosting/detail/RemoteScannerServer.hpp"
+#include "ChildProcess.hpp"
+#include "RemoteScannerServer.hpp"
 
 namespace remidy_tooling {
 

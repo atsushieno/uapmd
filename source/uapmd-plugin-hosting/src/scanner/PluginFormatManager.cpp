@@ -1,4 +1,4 @@
-#include "uapmd-plugin-hosting/detail/PluginFormatManager.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/PluginFormatManager.hpp"
 
 namespace remidy_tooling {
 

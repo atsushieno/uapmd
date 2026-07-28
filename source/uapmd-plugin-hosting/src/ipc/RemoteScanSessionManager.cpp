@@ -1,5 +1,5 @@
 #include "RemoteScanSessionManager.hpp"
-#include "../ScanConstants.hpp"
+#include "../scanner/ScanConstants.hpp"
 
 #if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED
 
@@ -28,7 +28,7 @@
 extern char** environ;
 #endif
 
-#include "uapmd-plugin-hosting/detail/PluginScanTool.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 #include "ScannerProtocol.hpp"
 
 namespace remidy_tooling {

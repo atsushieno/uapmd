@@ -3,7 +3,7 @@
 #include <mutex>
 #include <condition_variable>
 #include "InProcessScanSessionManager.hpp"
-#include "uapmd-plugin-hosting/detail/PluginScanTool.hpp"
+#include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 
 namespace remidy_tooling {
 
