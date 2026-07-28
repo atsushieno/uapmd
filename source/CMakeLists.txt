@@ -40,6 +40,13 @@ option(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT "Enable cpptrace stack traces resolve
 if(UAPMD_TARGET_WASM AND NOT EMSCRIPTEN)
     message(FATAL_ERROR "UAPMD_TARGET_WASM=ON requires configuring with the Emscripten toolchain (use emcmake cmake).")
 endif()
+
+# Derived here (rather than only inside tools/uapmd-app) so that subdirectories processed
+# before uapmd-app, such as uapmd-app-model, can also branch on it correctly.
+set(UAPMD_BUILDING_WASM OFF)
+if(UAPMD_TARGET_WASM)
+    set(UAPMD_BUILDING_WASM ON)
+endif()
 if(EMSCRIPTEN)
     set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 endif()

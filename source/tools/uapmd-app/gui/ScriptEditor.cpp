@@ -11,15 +11,12 @@
 #endif
 #include <choc/text/choc_JSON.h>
 #include <AppScripts.h>
-#include <AppJsLib.h>
 #include <ResEmbed/ResEmbed.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <iostream>
 #include <algorithm>
-#include <thread>
-#include <chrono>
 #include <cstring>
 
 namespace uapmd::gui {
@@ -29,23 +26,16 @@ ScriptEditor::ScriptEditor()
     // Initialize buffer with a large size for the text editor
     scriptBuffer_.resize(65536, '\0');
 
-    if (auto data = ResEmbed::get ("uapmd-api.js", "AppJsLib"))
-    {
-        std::string src (reinterpret_cast<const char*> (data.data()), data.size());
-        try {
-            jsRuntime_.context().evaluateExpression (src);
-        } catch (const std::exception& e) {
-            errorMessage_ = std::string ("Failed to initialize scripting API: ") + e.what();
-        }
-    }
-    else
-    {
-        errorMessage_ = "Embedded AppJsLib/uapmd-api.js was not found";
+    try {
+        jsRuntime_.ensureApiBootstrapped();
+    } catch (const std::exception& e) {
+        errorMessage_ = std::string ("Failed to initialize scripting API: ") + e.what();
     }
 
     // Register built-in script presets from embedded resources.
-    // New preset .js files under scripts/ are embedded automatically unless
-    // they are reserved bridge library modules listed under AppJsLib.
+    // New preset .js files under scripts/ are embedded automatically; the
+    // bridge library modules (remidy-bridge.js, uapmd-api.js) live separately
+    // under uapmd-app-model's AppJsLib category.
     for (auto& [filename, data] : ResEmbed::getCategory ("AppScripts"))
     {
         // Strip the .js extension to form the display title
@@ -174,89 +164,35 @@ void ScriptEditor::executeScript()
     try
     {
         auto scriptText = std::string(scriptBuffer_.data());
-        auto& jsContext = jsRuntime_.context();
 
-        // Check if the script contains import statements (for module support)
-        bool hasImports = scriptText.find ("import") != std::string::npos;
-
-        if (hasImports)
+        // Module resolver fallback — tried when a module isn't found in the
+        // embedded AppJsLib bundle. Desktop-only dev convenience for
+        // iterating on JS sources without rebuilding.
+        auto fallbackResolver = [this] (std::string_view modulePath) -> std::optional<std::string>
         {
-            // Use runModule for scripts with imports
-            bool completed = false;
-            std::string lastError;
-            choc::value::Value lastResult;
+            auto name = std::string (modulePath);
+            auto fullPath = getJsLibraryPath (name);
 
-            jsContext.runModule (scriptText,
-                // Module resolver — tries embedded libraries first (all platforms),
-                // then falls back to the filesystem on desktop for dev convenience.
-                [this] (std::string_view modulePath) -> std::optional<std::string>
-                {
-                    auto name = std::string (modulePath);
-                    auto withExt = name.ends_with (".js") ? name : name + ".js";
-
-                    if (auto data = ResEmbed::get (withExt, "AppJsLib"))
-                        return std::string (reinterpret_cast<const char*> (data.data()), data.size());
-
-                    // Fallback: load from filesystem (desktop dev workflow)
-                    auto fullPath = getJsLibraryPath (name);
-
-                    if (fullPath.empty())
-                    {
-                        std::cerr << "[JS] Module not found: " << modulePath << std::endl;
-                        return std::nullopt;
-                    }
-
-                    std::ifstream file (fullPath);
-
-                    if (! file.is_open())
-                    {
-                        std::cerr << "[JS] Failed to open module: " << fullPath << std::endl;
-                        return std::nullopt;
-                    }
-
-                    std::stringstream buffer;
-                    buffer << file.rdbuf();
-                    return buffer.str();
-                },
-                // Completion handler
-                [&completed, &lastError, &lastResult] (const std::string& error, const choc::value::ValueView& result)
-                {
-                    completed = true;
-
-                    if (! error.empty())
-                    {
-                        lastError = error;
-                    }
-                    else
-                    {
-                        lastResult = choc::value::Value (result);
-                    }
-                });
-
-            // Wait a bit for async completion (simple approach)
-            // In a real application, you'd want a proper event loop
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-
-            if (! lastError.empty())
+            if (fullPath.empty())
             {
-                throw std::runtime_error (lastError);
+                std::cerr << "[JS] Module not found: " << modulePath << std::endl;
+                return std::nullopt;
             }
 
-            if (lastResult.isVoid())
-                resultMessage_ = "Module executed successfully";
-            else
-                resultMessage_ = choc::json::toString (lastResult, true);
-        }
-        else
-        {
-            // Use evaluateExpression for simple scripts without imports
-            auto result = jsContext.evaluateExpression (scriptText);
+            std::ifstream file (fullPath);
 
-            if (result.isVoid())
-                resultMessage_ = "Script executed successfully";
-            else
-                resultMessage_ = choc::json::toString (result, true);
-        }
+            if (! file.is_open())
+            {
+                std::cerr << "[JS] Failed to open module: " << fullPath << std::endl;
+                return std::nullopt;
+            }
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            return buffer.str();
+        };
+
+        resultMessage_ = jsRuntime_.evaluateScript (scriptText, fallbackResolver);
     }
     catch (const std::exception& e)
     {

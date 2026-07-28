@@ -2,8 +2,6 @@
 
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
-#include <AppJsLib.h>
-#include <ResEmbed/ResEmbed.h>
 #include <android/log.h>
 #include <jni.h>
 #include <remidy/remidy.hpp>
@@ -23,9 +21,11 @@ namespace {
 
 constexpr const char* kLogTag = "uapmd-adb";
 
+// Shared across JNI calls from arbitrary threads; evaluateScriptNow() takes
+// this lock for the whole bootstrap+evaluate sequence since UapmdJSRuntime
+// itself is not thread-safe for concurrent use.
 std::mutex g_js_runtime_mutex;
 std::unique_ptr<uapmd::UapmdJSRuntime> g_js_runtime;
-bool g_js_bootstrapped = false;
 
 struct AutomationJob {
     std::string job_id;
@@ -37,64 +37,12 @@ std::mutex g_jobs_mutex;
 std::map<std::string, std::shared_ptr<AutomationJob>> g_jobs;
 std::atomic<uint64_t> g_next_job_id{1};
 
-void ensureJsRuntimeBootstrapped() {
+std::string evaluateScriptNow(const std::string& code) {
     std::lock_guard lock(g_js_runtime_mutex);
     if (!g_js_runtime)
         g_js_runtime = std::make_unique<uapmd::UapmdJSRuntime>();
-    if (g_js_bootstrapped)
-        return;
-
-    if (auto data = ResEmbed::get("uapmd-api.js", "AppJsLib")) {
-        std::string src(reinterpret_cast<const char*>(data.data()), data.size());
-        g_js_runtime->context().evaluateExpression(src);
-    } else {
-        throw std::runtime_error("Embedded AppJsLib/uapmd-api.js was not found");
-    }
-    g_js_bootstrapped = true;
-}
-
-std::string runModule(uapmd::UapmdJSRuntime& runtime, const std::string& code) {
-    bool completed = false;
-    std::string lastError;
-    std::string lastResult = "undefined";
-
-    runtime.context().runModule(
-        code,
-        [] (std::string_view modulePath) -> std::optional<std::string> {
-            auto name = std::string(modulePath);
-            auto withExt = name.ends_with(".js") ? name : name + ".js";
-            if (auto data = ResEmbed::get(withExt, "AppJsLib"))
-                return std::string(reinterpret_cast<const char*>(data.data()), data.size());
-            return std::nullopt;
-        },
-        [&completed, &lastError, &lastResult](const std::string& error, const choc::value::ValueView& result) {
-            completed = true;
-            if (!error.empty()) {
-                lastError = error;
-                return;
-            }
-            if (!result.isVoid())
-                lastResult = choc::json::toString(result);
-        });
-
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (!completed && std::chrono::steady_clock::now() < deadline)
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-    if (!completed)
-        throw std::runtime_error("Timed out waiting for JS module execution");
-    if (!lastError.empty())
-        throw std::runtime_error(lastError);
-    return lastResult;
-}
-
-std::string evaluateScriptNow(const std::string& code) {
-    ensureJsRuntimeBootstrapped();
-    std::lock_guard lock(g_js_runtime_mutex);
-    if (code.find("import") != std::string::npos)
-        return runModule(*g_js_runtime, code);
-    auto result = g_js_runtime->context().evaluateExpression(code);
-    return result.isVoid() ? std::string("undefined") : choc::json::toString(result);
+    g_js_runtime->ensureApiBootstrapped();
+    return g_js_runtime->evaluateScript(code);
 }
 
 std::string escapeJson(const std::string& value) {

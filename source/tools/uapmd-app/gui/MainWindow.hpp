@@ -25,7 +25,6 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "SharedTheme.hpp"
 #ifdef UAPMD_HAS_MCP_SERVER
-#include "../mcp/McpServer.hpp"
 #ifndef UAPMD_MCP_HAS_HTTP_SERVER
 // On platforms without an embedded HTTP server, default to client mode.
 #define UAPMD_MCP_DEFAULT_MODE 1

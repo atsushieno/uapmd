@@ -6,6 +6,9 @@
 #include <sys/time.h>
 #endif
 #include <choc/javascript/choc_javascript_QuickJS.h>
+#include <choc/text/choc_JSON.h>
+#include <AppJsLib.h>
+#include <ResEmbed/ResEmbed.h>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -13,6 +16,7 @@
 #include <filesystem>
 #include <future>
 #include <limits>
+#include <stdexcept>
 
 namespace uapmd {
 
@@ -26,6 +30,7 @@ UapmdJSRuntime::UapmdJSRuntime()
 void UapmdJSRuntime::reinitialize()
 {
     jsContext_ = choc::javascript::createQuickJSContext();
+    apiBootstrapped_ = false;
 
     registerConsoleFunctions();
     registerProjectAPI();
@@ -39,6 +44,54 @@ void UapmdJSRuntime::reinitialize()
     registerSequencerAudioDeviceAPI();
     registerTimelineAPI();
     registerRenderAPI();
+}
+
+void UapmdJSRuntime::ensureApiBootstrapped()
+{
+    if (apiBootstrapped_)
+        return;
+
+    auto data = ResEmbed::get ("uapmd-api.js", "AppJsLib");
+    if (! data)
+        throw std::runtime_error ("Embedded AppJsLib/uapmd-api.js was not found");
+
+    std::string src (reinterpret_cast<const char*> (data.data()), data.size());
+    jsContext_.evaluateExpression (src);
+    apiBootstrapped_ = true;
+}
+
+std::string UapmdJSRuntime::evaluateScript(const std::string& code,
+    std::function<std::optional<std::string>(std::string_view)> fallbackModuleResolver)
+{
+    if (code.find ("import") == std::string::npos)
+    {
+        auto result = jsContext_.evaluateExpression (code);
+        return result.isVoid() ? std::string ("undefined") : choc::json::toString (result);
+    }
+
+    std::string error;
+    std::string output ("undefined");
+    jsContext_.runModule (code,
+        [&fallbackModuleResolver] (std::string_view modulePath) -> std::optional<std::string>
+        {
+            auto name = std::string (modulePath);
+            auto withExt = name.ends_with (".js") ? name : name + ".js";
+            if (auto data = ResEmbed::get (withExt, "AppJsLib"))
+                return std::string (reinterpret_cast<const char*> (data.data()), data.size());
+            if (fallbackModuleResolver)
+                return fallbackModuleResolver (modulePath);
+            return std::nullopt;
+        },
+        [&error, &output] (const std::string& err, const choc::value::ValueView& result)
+        {
+            if (! err.empty())
+                error = err;
+            else if (! result.isVoid())
+                output = choc::json::toString (result);
+        });
+    if (! error.empty())
+        throw std::runtime_error (error);
+    return output;
 }
 
 void UapmdJSRuntime::registerConsoleFunctions()

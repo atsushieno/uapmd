@@ -25,11 +25,11 @@ The Android document picker does not give the app a plain filesystem path. It gi
 
 Relevant implementation:
 
-- JS binding: `source/tools/uapmd-app/UapmdJSRuntime.cpp`
-- JS API surface: `source/tools/uapmd-app/scripts/uapmd-api.js`
-- app loader: `source/tools/uapmd-app/AppModel.cpp`
+- JS binding: `source/tools/uapmd-app-model/src/UapmdJSRuntime.cpp`
+- JS API surface: `source/tools/uapmd-app-model/scripts/uapmd-api.js`
+- app loader: `source/tools/uapmd-app-model/src/AppModel.cpp`
 - Android token persistence: `source/uapmd-file/src/DocumentProviderAndroid.cpp`
-- MCP tool: `source/tools/uapmd-app/mcp/McpServer.cpp`
+- MCP tool: `source/tools/uapmd-app-model/src/McpServer.cpp`
 
 Today, Android `persistHandle()` simply serializes the URI string itself. In practice, the “token” is the `content://...` URI.
 

@@ -32,30 +32,6 @@ if(UAPMD_TARGET_WASM)
     endif()
 endif()
 
-# MCP: cpp-httplib for embedded HTTP server mode (desktop only)
-if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
-    CPMAddPackage(
-        NAME cpp-httplib
-        GIT_TAG v0.18.1
-        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
-        DOWNLOAD_ONLY YES
-    )
-endif()
-
-# MCP: IXWebSocket for outbound WebSocket client mode (all platforms except Wasm —
-# Wasm uses the browser's native WebSocket via a future Emscripten binding path)
-if(NOT UAPMD_BUILDING_WASM)
-    CPMAddPackage(
-        NAME ixwebsocket
-        GIT_TAG v11.4.6
-        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
-        OPTIONS
-            "USE_TLS OFF"
-            "USE_ZLIB OFF"
-            "IXWEBSOCKET_INSTALL OFF"
-    )
-endif()
-
 # GUI/application shell sources.
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
@@ -84,8 +60,6 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
 if(ANDROID)
     list(APPEND UAPMD_APP_COMMON_SOURCE_FILES AndroidAutomationBridge.cpp)
 endif()
-
-list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
 
 # Platform-specific entrypoints
 if(UAPMD_BUILDING_WASM)
@@ -400,102 +374,10 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
-# ResEmbed: build-time resource/font embedding
-#
-# When cross-compiling for WASM, ResEmbed's Generator must run on the host ABI.
-# Define a helper that locates a usable host compiler even when the active
-# toolchain is Emscripten (whose wrappers live inside the emsdk sysroot).
-function(uapmd_detect_host_cxx OUTPUT_VAR)
-    set(_uapmd_candidate "")
-    if(ARGC GREATER 1)
-        set(_uapmd_candidate "${ARGV1}")
-    endif()
-    if(_uapmd_candidate AND NOT _uapmd_candidate STREQUAL "" AND
-            NOT _uapmd_candidate MATCHES "-NOTFOUND$")
-        set(${OUTPUT_VAR} "${_uapmd_candidate}" PARENT_SCOPE)
-        return()
-    endif()
-
-    set(_uapmd_result "")
-    set(_uapmd_known_host_dirs /usr/bin /usr/local/bin /opt/homebrew/bin)
-    find_program(_uapmd_probe_host_cxx
-        NAMES clang++ g++
-        PATHS ${_uapmd_known_host_dirs}
-        NO_DEFAULT_PATH
-        NO_CMAKE_FIND_ROOT_PATH)
-    if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
-        set(_uapmd_result "${_uapmd_probe_host_cxx}")
-    endif()
-
-    if(NOT _uapmd_result AND APPLE)
-        execute_process(
-            COMMAND xcrun --find clang++
-            OUTPUT_VARIABLE _uapmd_xcrun_host_cxx
-            RESULT_VARIABLE _uapmd_xcrun_status
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
-        if(_uapmd_xcrun_status EQUAL 0 AND EXISTS "${_uapmd_xcrun_host_cxx}")
-            set(_uapmd_result "${_uapmd_xcrun_host_cxx}")
-        endif()
-    endif()
-
-    if(NOT _uapmd_result)
-        find_program(_uapmd_probe_host_cxx
-            NAMES clang++ g++ c++
-            NO_CMAKE_FIND_ROOT_PATH)
-        if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
-            set(_uapmd_result "${_uapmd_probe_host_cxx}")
-        endif()
-    endif()
-
-    if(NOT _uapmd_result AND WIN32)
-        find_program(_uapmd_probe_host_cxx
-            NAMES cl CL)
-        if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
-            set(_uapmd_result "${_uapmd_probe_host_cxx}")
-        endif()
-    endif()
-
-    if(_uapmd_result MATCHES "\\.emsdk/" OR _uapmd_result MATCHES "emscripten")
-        set(_uapmd_result "")
-    endif()
-
-    unset(_uapmd_known_host_dirs)
-    unset(_uapmd_probe_host_cxx CACHE)
-    unset(_uapmd_xcrun_host_cxx)
-    unset(_uapmd_xcrun_status)
-
-    set(${OUTPUT_VAR} "${_uapmd_result}" PARENT_SCOPE)
-endfunction()
-
-if(UAPMD_BUILDING_WASM)
-    uapmd_detect_host_cxx(_uapmd_host_cxx "${UAPMD_HOST_CXX_COMPILER}")
-    if(_uapmd_host_cxx)
-        set(UAPMD_HOST_CXX_COMPILER "${_uapmd_host_cxx}" CACHE FILEPATH
-            "Host C++ compiler for build-time tools when cross-compiling" FORCE)
-    endif()
-
-    set(_uapmd_resembed_host "${RES_EMBED_HOST_CXX}")
-    if(NOT _uapmd_resembed_host OR _uapmd_resembed_host STREQUAL "" OR _uapmd_resembed_host MATCHES "-NOTFOUND$")
-        set(_uapmd_resembed_host "${_uapmd_host_cxx}")
-        if(_uapmd_resembed_host)
-            set(RES_EMBED_HOST_CXX "${_uapmd_resembed_host}" CACHE FILEPATH
-                "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
-        endif()
-    endif()
-    if(NOT _uapmd_resembed_host OR _uapmd_resembed_host STREQUAL "" OR _uapmd_resembed_host MATCHES "-NOTFOUND$")
-        message(WARNING "uapmd: UAPMD_HOST_CXX_COMPILER is unset; ResEmbed's Generator may fail. "
-            "Pass -DUAPMD_HOST_CXX_COMPILER=<path> to cmake.")
-    endif()
-    unset(_uapmd_host_cxx)
-    unset(_uapmd_resembed_host)
-endif()
-set(_resembed_patch "${UAPMD_REPO_ROOT}/external/patches/resembed-host-toolchain.patch")
-CPMAddPackage(
-    NAME ResEmbed
-    GIT_TAG 23ba82c
-    GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed
-)
-unset(_resembed_patch)
+# ResEmbed itself (the res_embed_add function, the ResEmbed target, and the
+# WASM host-compiler detection it needs) is set up once in uapmd-app-model's
+# CMakeLists.txt, which is processed before this file. res_embed_add() below
+# reuses that setup.
 
 # Embed font files into the app binary at build time.
 # Sources compile once through UAPMD_COMPILE_TARGET; both executables share
@@ -510,15 +392,11 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 )
 
 # Embed built-in script presets into the app binary at build time.
-# All .js files under scripts/ are treated as presets except the bridge
-# library modules embedded separately below in AppJsLib.
+# The JS bridge library modules (remidy-bridge.js, uapmd-api.js) live and are
+# embedded under uapmd-app-model's AppJsLib category instead — everything
+# under this directory's scripts/ is example/preset content for ScriptEditor.
 file(GLOB UAPMD_APP_SCRIPT_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.js")
-set(UAPMD_APP_JS_LIB_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
-    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
-)
-list(REMOVE_ITEM UAPMD_APP_SCRIPT_FILES ${UAPMD_APP_JS_LIB_FILES})
 list(SORT UAPMD_APP_SCRIPT_FILES)
 
 # Each preset becomes accessible at runtime via
@@ -528,17 +406,6 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
         ${UAPMD_APP_SCRIPT_FILES}
     NAMESPACE AppScripts
     CATEGORY AppScripts
-)
-
-# Embed the JS bridge library modules so the module resolver works on all
-# platforms (Android, iOS, Emscripten) without requiring filesystem access.
-# The desktop fallback (cpplocate-based filesystem search) is kept for
-# development convenience when iterating on the JS sources without rebuilding.
-res_embed_add(${UAPMD_COMPILE_TARGET}
-    FILES
-        ${UAPMD_APP_JS_LIB_FILES}
-    NAMESPACE AppJsLib
-    CATEGORY AppJsLib
 )
 
 if(NOT TARGET imgui)
@@ -679,16 +546,8 @@ elseif(BACKEND_TYPE STREQUAL "GLFW")
     target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_GLFW_BACKEND)
 endif()
 
-# UAPMD_HAS_MCP_SERVER     — MCP feature present (all platforms)
-# UAPMD_MCP_HAS_HTTP_SERVER — embedded HTTP server mode available (desktop only)
-target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_MCP_SERVER=1)
-if(NOT UAPMD_BUILDING_WASM)
-    target_link_libraries(${UAPMD_COMPILE_TARGET} PRIVATE ixwebsocket)
-    if(NOT IOS AND NOT ANDROID)
-        target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE ${cpp-httplib_SOURCE_DIR})
-        target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_MCP_HAS_HTTP_SERVER=1)
-    endif()
-endif()
+# UAPMD_HAS_MCP_SERVER and UAPMD_MCP_HAS_HTTP_SERVER are defined PUBLIC on
+# uapmd-app-model and reach this target transitively through that link.
 
 set(_uapmd_app_common_include_dirs
         ${CMAKE_CURRENT_SOURCE_DIR}

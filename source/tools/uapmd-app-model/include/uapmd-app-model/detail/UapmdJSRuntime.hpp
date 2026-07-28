@@ -1,9 +1,12 @@
 #pragma once
 
 #include <choc/javascript/choc_javascript.h>
+#include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -25,6 +28,7 @@ struct ParameterUpdate {
  */
 class UapmdJSRuntime {
     choc::javascript::Context jsContext_;
+    bool apiBootstrapped_ = false;
 
     // Parameter update queue for JavaScript polling
     std::unordered_map<int32_t, std::vector<ParameterUpdate>> js_parameter_updates_;
@@ -49,6 +53,23 @@ public:
      * Re-initialize the JavaScript context (e.g., after a reset).
      */
     void reinitialize();
+
+    /**
+     * Idempotently bootstraps the uapmd-api.js global API into this context,
+     * loading it from the embedded AppJsLib resource bundle. Safe to call
+     * multiple times. Throws std::runtime_error if the resource is missing.
+     */
+    void ensureApiBootstrapped();
+
+    /**
+     * Evaluates `code`. If it contains "import", runs it as an ES module via
+     * runModule, resolving imports against the embedded AppJsLib bundle first;
+     * fallbackModuleResolver (if provided) is tried when a module isn't found
+     * there. Otherwise evaluates it as a plain expression.
+     * Returns the JSON string of the result, or "undefined". Throws on error.
+     */
+    std::string evaluateScript(const std::string& code,
+        std::function<std::optional<std::string>(std::string_view)> fallbackModuleResolver = {});
 
     /**
      * Register parameter update listener for an instance.

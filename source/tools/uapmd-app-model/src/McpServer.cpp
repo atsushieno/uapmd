@@ -1,4 +1,3 @@
-#include "McpServer.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
 #ifdef UAPMD_MCP_HAS_HTTP_SERVER
@@ -11,8 +10,6 @@
 #endif
 #include <choc/javascript/choc_javascript.h>
 #include <choc/text/choc_JSON.h>
-#include <AppJsLib.h>
-#include <ResEmbed/ResEmbed.h>
 
 #include <atomic>
 #include <functional>
@@ -1448,53 +1445,17 @@ struct McpServer::Impl {
         return jsonRpcResult (id, result);
     }
 
-    // Run code as an ES module, resolving imports against the embedded
-    // AppJsLib bundle. Returns the module result as a JSON string.
-    std::string runModule(const std::string& code)
-    {
-        std::string error;
-        std::string output ("undefined");
-        jsRuntime_->context().runModule (code,
-            [] (std::string_view modulePath) -> std::optional<std::string>
-            {
-                auto name = std::string (modulePath);
-                auto withExt = name.ends_with (".js") ? name : name + ".js";
-                if (auto data = ResEmbed::get (withExt, "AppJsLib"))
-                    return std::string (reinterpret_cast<const char*> (data.data()), data.size());
-                return std::nullopt;
-            },
-            [&error, &output] (const std::string& err, const choc::value::ValueView& result)
-            {
-                if (! err.empty())
-                    error = err;
-                else if (! result.isVoid())
-                    output = choc::json::toString (result);
-            });
-        if (! error.empty())
-            throw std::runtime_error (error);
-        return output;
-    }
-
     // Lazily initialise the JS runtime and bootstrap uapmd-api.js, which
-    // installs the global `uapmd` object. ES modules such as remidy-bridge.js
-    // are not bootstrapped here; they are resolved on demand when evaluated
-    // code imports them, matching AndroidAutomationBridge and ScriptEditor.
-    // Safe to call multiple times — no-op after the first call.
+    // installs the global `uapmd` object. Safe to call multiple times —
+    // no-op after the first call.
     void ensureJSRuntime()
     {
-        if (jsRuntime_)
-            return;
-        jsRuntime_ = std::make_unique<UapmdJSRuntime>();
-        if (auto data = ResEmbed::get ("uapmd-api.js", "AppJsLib"))
-        {
-            std::string src (reinterpret_cast<const char*> (data.data()), data.size());
-            try { jsRuntime_->context().evaluateExpression (src); }
-            catch (const std::exception& e) {
-                std::cerr << "[MCP] Failed to bootstrap uapmd-api.js: " << e.what() << std::endl;
-            }
+        if (! jsRuntime_)
+            jsRuntime_ = std::make_unique<UapmdJSRuntime>();
+        try { jsRuntime_->ensureApiBootstrapped(); }
+        catch (const std::exception& e) {
+            std::cerr << "[MCP] Failed to bootstrap uapmd-api.js: " << e.what() << std::endl;
         }
-        else
-            std::cerr << "[MCP] Embedded AppJsLib/uapmd-api.js was not found" << std::endl;
     }
 
     // Execute a JS snippet and return the string representation of the result.
@@ -1502,11 +1463,7 @@ struct McpServer::Impl {
     std::string evalScript(const std::string& code)
     {
         ensureJSRuntime();
-        if (code.find ("import") != std::string::npos)
-            return runModule (code);
-        auto evalResult = jsRuntime_->context().evaluateExpression (code);
-        return evalResult.isVoid() ? std::string ("undefined")
-                                   : choc::json::toString (evalResult);
+        return jsRuntime_->evaluateScript (code);
     }
 
     std::string handleToolsCall(const choc::value::Value& id, const choc::value::Value& msg)
