@@ -12,6 +12,35 @@ namespace uapmd {
 
     namespace {
         std::atomic<WebAudioSAB*> g_active_web_audio_sab{nullptr};
+        std::atomic<uint32_t> g_active_web_audio_buffer_size{0};
+    }
+
+    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context) {
+        auto* sab = g_active_web_audio_sab.load(std::memory_order_acquire);
+        const auto bufferSize = g_active_web_audio_buffer_size.load(std::memory_order_acquire);
+        if (!sab || trackIndex >= kWebAudioMaxTracks || bufferSize == 0 ||
+            bufferSize > kWebAudioMaxQuantum)
+            return;
+
+        const auto frameCount = context.frameCount();
+        if (frameCount <= 0)
+            return;
+        const auto frames = std::min<uint32_t>(static_cast<uint32_t>(frameCount), bufferSize);
+        auto* destination = sab->track_output + trackIndex * kWebAudioChannels * bufferSize;
+        for (uint32_t channel = 0; channel < kWebAudioChannels; ++channel) {
+            auto* dst = destination + channel * bufferSize;
+            const auto* src = context.audioOutBusCount() > 0 &&
+                    channel < context.outputChannelCount(0)
+                ? context.getFloatOutBuffer(0, channel)
+                : nullptr;
+            if (src)
+                std::memcpy(dst, src, frames * sizeof(float));
+        }
+    }
+
+    void publishWebAudioTrackCount(uint32_t trackCount) {
+        if (auto* sab = g_active_web_audio_sab.load(std::memory_order_acquire))
+            sab->track_count.store(std::min(trackCount, kWebAudioMaxTracks), std::memory_order_release);
     }
 
     extern "C" bool uapmd_webclap_enqueue_shared_ump(uint32_t slot, const uint32_t* words, size_t wordCount) {
@@ -56,6 +85,7 @@ namespace uapmd {
         if (running_.load(std::memory_order_relaxed))
             return;
         running_.store(true, std::memory_order_release);
+        g_active_web_audio_buffer_size.store(buffer_size_, std::memory_order_release);
         g_active_web_audio_sab.store(sab_, std::memory_order_release);
         engine_thread_ = std::thread([this]{ engineLoop(); });
     }
@@ -67,6 +97,7 @@ namespace uapmd {
         if (engine_thread_.joinable()) engine_thread_.join();
         auto* expected = sab_;
         g_active_web_audio_sab.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+        g_active_web_audio_buffer_size.store(0, std::memory_order_release);
     }
 
     void WebAudioEngineThread::engineLoop() {

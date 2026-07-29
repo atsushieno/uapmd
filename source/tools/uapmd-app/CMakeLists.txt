@@ -324,11 +324,16 @@ if(NOT DEFINED imgui_SOURCE_DIR)
     )
 endif()
 
+set(_UAPMD_IMNODES_PATCH "${UAPMD_EXTERNAL_DIR}/patches/imnodes-imgui-1.92.patch")
+set(_UAPMD_IMNODES_PATCH_EPOCH "2")
+file(SHA1 "${_UAPMD_IMNODES_PATCH}" _UAPMD_IMNODES_PATCH_SHA1)
 CPMAddPackage(
     NAME imnodes
     GIT_TAG 5025ad189b6a17c931bbdb39b8a575b63adf3e91
     GIT_REPOSITORY https://github.com/0aids/imnodes
+    CUSTOM_CACHE_KEY "5025ad189b6a17c931bbdb39b8a575b63adf3e91-v${_UAPMD_IMNODES_PATCH_EPOCH}-${_UAPMD_IMNODES_PATCH_SHA1}"
     DOWNLOAD_ONLY YES
+    PATCHES "${_UAPMD_IMNODES_PATCH}"
 )
 
 # ImTimeline for SequenceEditor timeline view

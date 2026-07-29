@@ -19,6 +19,10 @@
 #include "TrackRoutingManager.hpp"
 #include "readerwriterqueue.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../devices/WebAudioWorkletIODevice.hpp"
+#endif
+
 namespace uapmd {
 
     // ── Pump / RT ring-buffer structures ─────────────────────────────────────
@@ -1117,6 +1121,10 @@ namespace uapmd {
             track_processing_flags_[i]->store(false, std::memory_order_release);
         }
 
+#ifdef __EMSCRIPTEN__
+        publishWebAudioTrackCount(static_cast<uint32_t>(processTrackCount));
+#endif
+
         for (size_t i = 0; i < sequence.tracks.size() && i < tracks_.size(); ++i) {
             auto* track = tracks_[i].get();
             auto* ctx = sequence.tracks[i];
@@ -1127,6 +1135,11 @@ namespace uapmd {
                     static_cast<uapmd_track_index_t>(i),
                     *ctx,
                     trackFrameCount);
+#ifdef __EMSCRIPTEN__
+            // Publish the latency-aligned signal. The AudioWorklet replaces this
+            // exact dry contribution in the native master mix with WebCLAP DSP.
+            publishWebAudioTrackOutput(static_cast<uint32_t>(i), *ctx);
+#endif
         }
 
         const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);

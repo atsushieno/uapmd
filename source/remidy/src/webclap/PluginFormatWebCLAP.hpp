@@ -86,11 +86,14 @@ namespace remidy {
 
         class BusesWebCLAP : public PluginAudioBuses {
             PluginInstanceWebCLAP* owner_;
+            AudioBusDefinition              in_def_{"main", AudioBusRole::Main,
+                                                    {AudioChannelLayout::stereo()}};
+            AudioBusConfiguration           in_cfg_{in_def_};
+            std::vector<AudioBusConfiguration*> in_buses_{&in_cfg_};
             AudioBusDefinition              out_def_{"main", AudioBusRole::Main,
                                                      {AudioChannelLayout::stereo()}};
             AudioBusConfiguration           out_cfg_{out_def_};
             std::vector<AudioBusConfiguration*> out_buses_{&out_cfg_};
-            std::vector<AudioBusConfiguration*> in_buses_{};
         public:
             explicit BusesWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
             bool hasEventInputs() override;

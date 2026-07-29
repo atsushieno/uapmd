@@ -14,7 +14,7 @@
 //   ② Spin-wait engine_seq === n+1
 //   ③ Drain WebCLAP input events produced during native graph rendering
 //   ④ _wclapPluginProcess for each active slot → localOut in host WASM
-//   ⑤ Mix localOut into master_output (in-place add)
+//   ⑤ Replace that track's dry contribution in master_output with localOut
 // Then always: copy master_output[_accumCount] slice → outputs[0].
 
 import { startHost, getWclap } from './wclap.mjs';
@@ -509,10 +509,12 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._workL.set(this._f32.subarray(srcBaseIdx, srcBaseIdx + eq));
         this._workR.set(this._f32.subarray(srcBaseIdx + eq, srcBaseIdx + eq * 2));
 
+        let processed = false;
         for (const slot of slotIds) {
             const info = this._slots.get(slot);
             if (!info || !info.active)
                 continue;
+            processed = true;
             this._replaceInputBuffer(info, this._workL, this._workR);
             exp._wclapPluginProcess(info.ptr, this._engineQuantum);
             const srcL = info.outLOff >> 2;
@@ -521,14 +523,18 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             this._workR.set(this._hostF32.subarray(srcR, srcR + eq));
         }
 
-        if (accumulateIntoMaster) {
+        if (accumulateIntoMaster && processed) {
             const dstL = this._masterOutIdx;
             const dstR = this._masterOutIdx + eq;
             for (let i = 0; i < eq; ++i) {
-                this._f32[dstL + i] += this._workL[i];
-                this._f32[dstR + i] += this._workR[i];
+                // The native engine has already mixed the dry track into the
+                // master buffer. Replace it, rather than adding the processed
+                // signal, so an effect is actually audible and never doubles
+                // the track's dry level.
+                this._f32[dstL + i] += this._workL[i] - this._f32[srcBaseIdx + i];
+                this._f32[dstR + i] += this._workR[i] - this._f32[srcBaseIdx + eq + i];
             }
-        } else {
+        } else if (!accumulateIntoMaster) {
             this._f32.set(this._workL, this._masterOutIdx);
             this._f32.set(this._workR, this._masterOutIdx + eq);
         }

@@ -58,6 +58,12 @@ namespace uapmd {
         uint32_t webclap_event_queue[kWebClapEventQueueCapacity * kWebClapEventRecordWords]{};
     };
 
+    // The WebCLAP DSP lives in the AudioWorklet, so it needs each track's
+    // post-native output in addition to the native master mix. These are RT-safe
+    // bounded copies made by the sequencer's audio thread.
+    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context);
+    void publishWebAudioTrackCount(uint32_t trackCount);
+
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
     //
     // Owns one pthread that waits for Web Audio quanta and invokes the device's
