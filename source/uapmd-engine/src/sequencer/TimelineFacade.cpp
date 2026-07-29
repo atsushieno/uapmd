@@ -218,6 +218,7 @@ namespace uapmd {
                 .name = clip.name,
                 .filepath = clip.filepath,
                 .position = clip.position,
+                .sampleRate = static_cast<double>(sampleRate_),
                 .durationSamples = clip.durationSamples,
                 .tickResolution = clip.tickResolution,
                 .clipTempo = clip.clipTempo,
@@ -272,6 +273,19 @@ namespace uapmd {
                     emitProjectDocumentEvent(std::move(sourceEvent));
                 }
             }
+        }
+
+        void emitClipChanged(TimelineTrack& track, const ClipData& clip, std::string type) {
+            ProjectDocumentEvent event(ProjectDocumentEventKind::ClipChanged, std::move(type));
+            event.setTrackId(track.referenceId())
+                .setClipId(clipObjectId(track, &clip, clip.clipId))
+                .setTrackIndex(trackIndexFor(track))
+                .setClipNumericId(clip.clipId)
+                .setDetail("source-node-id", static_cast<int64_t>(clip.sourceNodeInstanceId))
+                .setDetail("clip-type", std::string(clip.clipType == ClipType::Audio ? "audio" : "midi"));
+            if (!clip.filepath.empty())
+                event.setDetail("source.file", clip.filepath);
+            emitProjectDocumentEvent(std::move(event));
         }
 
         void emitMasterTrackChanged(std::string type = "master-track-changed") {
@@ -1214,6 +1228,24 @@ namespace uapmd {
                 notifyTimelineChanged();
             }
             return removed;
+        }
+
+        bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") override {
+            TimelineTrack* targetTrack = nullptr;
+            if (trackIndex == kMasterTrackIndex) {
+                targetTrack = master_timeline_track_.get();
+            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
+                targetTrack = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
+            }
+            if (!targetTrack)
+                return false;
+            auto* clip = targetTrack->clipManager().getClip(clipId);
+            if (!clip)
+                return false;
+            emitClipChanged(*targetTrack, *clip, std::move(type));
+            if (clip->clipType == ClipType::Midi)
+                emitMasterTrackChanged("master-track-content-changed");
+            return true;
         }
 
         void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {

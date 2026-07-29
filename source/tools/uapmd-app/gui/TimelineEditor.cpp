@@ -94,6 +94,13 @@ double sliderDbToLinearGain(float db) {
         8.0);
 }
 
+void notifyTimelineClipChanged(int32_t trackIndex, int32_t clipId, std::string type) {
+    auto* engine = uapmd::AppModel::instance().sequencer().engine();
+    if (!engine)
+        return;
+    engine->timeline().notifyClipChanged(trackIndex, clipId, std::move(type));
+}
+
 // Maps a dB value to a slider position in [0, 1].
 // Below 0 dB a power curve (exponent kSliderCurve) expands the region near
 // unity; above 0 dB the mapping is linear.  0 dB always lands at kSliderUnityPos.
@@ -2161,6 +2168,8 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         if (!posStr.empty() && posStr.back() == 's')
             posStr = posStr.substr(0, posStr.length() - 1);
         offsetSeconds = std::stod(posStr);
+        if (anchorReferenceId.empty())
+            offsetSeconds = std::max(0.0, offsetSeconds);
     } catch (const std::exception& e) {
         std::cerr << "Failed to parse position string: " << position << std::endl;
         return;
@@ -2187,6 +2196,7 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
     appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
+    notifyTimelineClipChanged(trackIndex, clipId, "clip-position-changed");
     refreshAllSequenceEditorTracks();
 }
 
@@ -2197,8 +2207,10 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    if (tracks[trackIndex]->clipManager().setClipName(clipId, name))
+    if (tracks[trackIndex]->clipManager().setClipName(clipId, name)) {
         appModel.markTrackDirty(trackIndex);
+        notifyTimelineClipChanged(trackIndex, clipId, "clip-name-changed");
+    }
     refreshSequenceEditorForTrack(trackIndex);
 }
 
@@ -2246,6 +2258,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
         tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
         tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
         appModel.markTrackDirty(trackIndex);
+        notifyTimelineClipChanged(trackIndex, clipId, "clip-content-changed");
         refreshSequenceEditorForTrack(trackIndex);
     };
 
@@ -2285,13 +2298,17 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         return;
 
     double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-    if (tracks[trackIndex]->clipManager().setClipAnchor(
+    seconds = std::max(0.0, seconds);
+    const bool changed = tracks[trackIndex]->clipManager().setClipAnchor(
         clipId,
         uapmd::TimeReference::fromContainerStart({}, seconds),
-        static_cast<int32_t>(sr)))
+        static_cast<int32_t>(sr));
+    if (changed)
         appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
+    if (changed)
+        notifyTimelineClipChanged(trackIndex, clipId, "clip-position-changed");
     refreshAllSequenceEditorTracks();
 }
 
@@ -2650,6 +2667,7 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
     }
 
     track->clipManager().resizeClip(clip->clipId, newDuration);
+    notifyTimelineClipChanged(payload.trackIndex, payload.clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(payload.trackIndex);
     return true;
 }
@@ -2726,6 +2744,7 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
 
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
+    notifyTimelineClipChanged(payload.trackIndex, payload.clipId, "clip-content-changed");
     refreshAllSequenceEditorTracks();
     return true;
 }
@@ -2772,6 +2791,7 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
         return false;
     }
     track->clipManager().resizeClip(clipId, newDuration);
+    notifyTimelineClipChanged(trackIndex, clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(trackIndex);
     return true;
 }
@@ -2876,8 +2896,10 @@ void TimelineEditor::addBlankMidiClipInRange(int32_t trackIndex, double startSec
     // Resize to the selected range's length (blank clips default to a small fixed length).
     const int64_t durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, endSeconds - startSeconds) * sampleRate));
     auto tracks = appModel.getTimelineTracks();
-    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex])
+    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
         tracks[trackIndex]->clipManager().resizeClip(result.clipId, std::max<int64_t>(1, durationSamples));
+        notifyTimelineClipChanged(trackIndex, result.clipId, "clip-duration-changed");
+    }
 
     refreshSequenceEditorForTrack(trackIndex);
 }

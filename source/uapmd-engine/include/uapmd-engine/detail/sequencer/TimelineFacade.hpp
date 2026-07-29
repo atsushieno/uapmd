@@ -78,6 +78,7 @@ public:
         const std::string& filepath = "") = 0;
 
     virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
+    virtual bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") = 0;
 
     // Project loading (synchronous; blocks until all plugin instantiations complete)
     struct ProjectResult {
