@@ -429,6 +429,10 @@ namespace uapmd {
                         snapshot.channelCount = info->channelCount;
                         snapshot.sampleRate = info->sampleRate;
                         snapshot.frameCount = info->frameCount;
+                    } else if (clip.filepath.empty()) {
+                        snapshot.channelCount = std::max<uint32_t>(1, track->channelCount());
+                        snapshot.sampleRate = static_cast<double>(sampleRate_);
+                        snapshot.frameCount = std::max<int64_t>(1, clip.durationSamples);
                     }
                     return snapshot;
                 }
@@ -481,6 +485,14 @@ namespace uapmd {
                         continue;
                     if (audioSourceObjectId(*track, clip) != audioSourceId)
                         continue;
+                    if (clip.filepath.empty()) {
+                        if (!destination || startFrame < 0 || frameCount < 0)
+                            return false;
+                        for (uint32_t ch = 0; ch < destinationChannels; ++ch)
+                            if (destination[ch])
+                                std::memset(destination[ch], 0, static_cast<size_t>(frameCount) * sizeof(float));
+                        return true;
+                    }
                     return audio_source_repository_->readAudioSourceSamples(
                         audioSourceId,
                         clip.filepath,
