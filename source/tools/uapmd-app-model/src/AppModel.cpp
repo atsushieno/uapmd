@@ -361,6 +361,25 @@ uapmd::AppModel::~AppModel() {
     }
     if (plugin_state_change_listener_id_ != 0)
         sequencer_.engine()->pluginHost()->removePluginStateChangeListener(plugin_state_change_listener_id_);
+
+    shutting_down_ = true;
+    audioEngineEnabled_.store(false, std::memory_order_release);
+    completeAudioEngineShutdown();
+
+    std::unordered_set<int32_t> removedInstanceIds;
+    if (auto* mt = sequencer_.engine()->masterTrack()) {
+        auto ids = mt->orderedInstanceIds();
+        for (int32_t instanceId : ids)
+            if (removedInstanceIds.insert(instanceId).second)
+                removePluginInstance(instanceId);
+    }
+    if (auto* host = sequencer_.engine()->pluginHost()) {
+        auto ids = host->instanceIds();
+        for (int32_t instanceId : ids)
+            if (removedInstanceIds.insert(instanceId).second)
+                removePluginInstance(instanceId);
+    }
+
     joinAudioShutdownWorker();
 }
 
@@ -1061,11 +1080,6 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         sequencer_.engine()->findTrackIndexForInstance(instanceId);
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
 
-#ifdef UAPMD_HAS_ARA
-    if (araSupport_)
-        araSupport_->detachPlugin(instanceId);
-#endif
-
     // Hide and destroy plugin UI before removing the instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (instance) {
@@ -1074,6 +1088,11 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         }
         instance->destroyUI();
     }
+
+#ifdef UAPMD_HAS_ARA
+    if (araSupport_)
+        araSupport_->detachPlugin(instanceId);
+#endif
 
     disableUmpDevice(instanceId);
 
@@ -1093,15 +1112,19 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     }
 
     sequencer_.engine()->removePluginInstance(instanceId);
-    if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
-        markTrackDirty(trackIndex);
-    else
-        markProjectDirty();
+    if (!shutting_down_) {
+        if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
+            markTrackDirty(trackIndex);
+        else
+            markProjectDirty();
+    }
     sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Notify all registered callbacks
-    for (auto& cb : instanceRemoved) {
-        cb(instanceId);
+    if (!shutting_down_) {
+        for (auto& cb : instanceRemoved) {
+            cb(instanceId);
+        }
     }
 
     resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
@@ -1260,8 +1283,10 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
 
     // Notify all registered callbacks (just for UI refresh)
-    for (auto& cb : disableDeviceCompleted) {
-        cb(result);
+    if (!shutting_down_) {
+        for (auto& cb : disableDeviceCompleted) {
+            cb(result);
+        }
     }
 }
 

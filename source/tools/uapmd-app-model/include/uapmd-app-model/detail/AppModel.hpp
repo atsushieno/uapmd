@@ -140,6 +140,7 @@ namespace uapmd {
         // Muted shutdown drain for the audio engine switch (see setAudioEngineEnabled).
         std::thread audioShutdownThread_{};
         std::atomic<bool> audioShutdownCancel_{false};
+        bool shutting_down_{false};
         bool pluginsProcessingStopped_{false}; // main-thread only
         std::atomic<bool> initialPluginScanStarted_{false};
         mutable std::mutex devicesMutex_;
