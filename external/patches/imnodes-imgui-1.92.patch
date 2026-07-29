@@ -1,0 +1,19 @@
+diff --git a/imnodes.cpp b/imnodes.cpp
+index 1b2d41a..a5b0d0d 100644
+--- a/imnodes.cpp
++++ b/imnodes.cpp
+@@ -1535,1 +1535,4 @@
+-    ImGui::SetCursorPos(node.Origin + editor.Panning);
++    ImGui::SetCursorPos(node.Origin + editor.Panning);
++    // Submit an item after moving the canvas cursor for Dear ImGui 1.92.
++    ImGui::Dummy(ImVec2(0.0f, 0.0f));
++
+@@ -1926,1 +1929,3 @@ static void MiniMapUpdate()
+-    ImGui::SetCursorScreenPos(editor.MiniMapRectScreenSpace.Min);
++    ImGui::SetCursorScreenPos(editor.MiniMapRectScreenSpace.Min);
++    ImGui::Dummy(ImVec2(0.0f, 0.0f));
++
+@@ -2678,1 +2683,2 @@ void EndNodeTitleBar()
+-    ImGui::SetCursorPos(GridSpaceToEditorSpace(editor, GetNodeContentOrigin(node)));
++    ImGui::SetCursorPos(GridSpaceToEditorSpace(editor, GetNodeContentOrigin(node)));
++    ImGui::Dummy(ImVec2(0.0f, 0.0f));
