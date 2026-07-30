@@ -224,6 +224,17 @@ namespace uapmd {
         return true;
     }
 
+    bool ClipManager::setClipEnabled(int32_t clipId, bool enabled) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.enabled = enabled;
+        rebuildSnapshotLocked();
+        return true;
+    }
+
     bool ClipManager::setClipName(int32_t clipId, const std::string& name) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);

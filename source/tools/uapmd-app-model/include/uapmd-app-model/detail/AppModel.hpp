@@ -29,6 +29,7 @@ namespace uapmd {
     }
     // Forward declarations
     class AppModel;
+    class ClipEnablementSerializationExtension;
 
     class TransportController {
         AppModel* appModel_;
@@ -568,5 +569,6 @@ namespace uapmd {
         RenderToFileStatus renderStatus_;
         mutable std::mutex renderJobMutex_;
         std::shared_ptr<RenderJobState> activeRenderJob_;
+        std::unique_ptr<ClipEnablementSerializationExtension> clip_enablement_extension_;
     };
 }

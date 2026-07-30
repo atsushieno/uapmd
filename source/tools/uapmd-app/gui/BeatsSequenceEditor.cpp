@@ -513,6 +513,13 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                     }
                     if (!canDelete) ImGui::EndDisabled();
 
+                    const bool enabled = !context.clipEnabled || context.clipEnabled(trackIndex, contextClip->clipId);
+                    if (contextActionMenuItem(enabled ? "Disable Clip" : "Enable Clip")) {
+                        if (context.setClipEnabled)
+                            context.setClipEnabled(trackIndex, contextClip->clipId, !enabled);
+                        ImGui::CloseCurrentPopup();
+                    }
+
                     if (!contextClip->isMasterTrack) {
                         ImGui::Separator();
                         if (contextActionMenuItem("Add an Empty MIDI2 Clip Here")) {

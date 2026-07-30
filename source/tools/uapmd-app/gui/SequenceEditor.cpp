@@ -423,6 +423,15 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         unified_.timeline->DrawTimeline();
 
+        // ImTimeline owns normal single-click selection. Mirror that selection
+        // into the transport-facing MIDI-record target on every frame, rather
+        // than requiring a context-menu double click.
+        if (const auto* selectedNode = unified_.timeline->GetSelectedNode()) {
+            const auto selectedIt = unified_.nodeToClip.find(selectedNode->GetID());
+            if (selectedIt != unified_.nodeToClip.end() && context.selectMidiClip)
+                context.selectMidiClip(selectedIt->second.trackIndex, selectedIt->second.clipId);
+        }
+
         if (shouldBlockInput) {
             for (int i = 0; i < 5; ++i) io.MouseDown[i] = savedMouseDown[i];
             io.MouseWheel = savedMouseWheel; io.MouseWheelH = savedMouseWheelH;
@@ -533,6 +542,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                 clipUnderMouse = isOverClipNode(hoveredTrackIndex, mousePos, scale, startFrame, &hitClipId);
                 if (clipUnderMouse) {
                     trackState.contextMenuClipId = hitClipId;
+                    if (context.selectMidiClip)
+                        context.selectMidiClip(hoveredTrackIndex, hitClipId);
                     requestedContextTrack = hoveredTrackIndex;
                 }
             }
@@ -650,6 +661,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                         ImGui::CloseCurrentPopup();
                     }
                     if (!canDelete) ImGui::EndDisabled();
+
+                    const bool enabled = !context.clipEnabled || context.clipEnabled(trackIndex, contextClip->clipId);
+                    if (contextActionMenuItem(enabled ? "Disable Clip" : "Enable Clip")) {
+                        if (context.setClipEnabled)
+                            context.setClipEnabled(trackIndex, contextClip->clipId, !enabled);
+                        ImGui::CloseCurrentPopup();
+                    }
 
                     if (!contextClip->isMasterTrack) {
                         ImGui::Separator();

@@ -253,6 +253,12 @@ namespace uapmd {
                 total_length_samples_ = static_cast<int64_t>(samples);
             }
         }
+
+        // Clip ranges are end-exclusive. Keep one sample after the last MIDI
+        // timestamp so an event exactly at the final timestamp (most notably a
+        // recorded note-off) still belongs to the render window.
+        if (!event_timestamps_samples_.empty())
+            ++total_length_samples_;
     }
 
     std::vector<uint64_t> MidiClipSourceNode::computeSampleTimeline(

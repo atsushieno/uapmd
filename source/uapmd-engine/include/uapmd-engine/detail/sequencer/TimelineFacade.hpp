@@ -79,6 +79,10 @@ public:
 
     virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
     virtual bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") = 0;
+    virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) = 0;
+    virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
+    virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
+        std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
 
     // Project loading (synchronous; blocks until all plugin instantiations complete)
     struct ProjectResult {

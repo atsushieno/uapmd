@@ -148,6 +148,8 @@ namespace uapmd {
         using PlatformMidiRoutes = std::vector<std::shared_ptr<PlatformMidiRoute>>;
         std::shared_ptr<const PlatformMidiRoutes> platform_midi_input_routes_;
         std::shared_ptr<const PlatformMidiRoutes> platform_midi_output_routes_;
+        std::unique_ptr<MidiRecorder> midi_recorder_;
+        std::vector<PlaybackEngineExtension*> playback_engine_extensions_;
         std::atomic<bool> platform_midi_output_worker_running_{true};
         std::thread platform_midi_output_worker_;
         UapmdFunctionBlockManager function_block_manager{};
@@ -372,6 +374,30 @@ namespace uapmd {
             std::atomic_store_explicit(
                 &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
         }
+        void addPlaybackEngineExtension(PlaybackEngineExtension& extension) override {
+            if (std::find(playback_engine_extensions_.begin(), playback_engine_extensions_.end(), &extension) ==
+                playback_engine_extensions_.end())
+                playback_engine_extensions_.push_back(&extension);
+        }
+        void removePlaybackEngineExtension(PlaybackEngineExtension& extension) override {
+            std::erase(playback_engine_extensions_, &extension);
+        }
+        PlaybackEngineExtension* findPlaybackEngineExtension(std::string_view extensionId) override {
+            for (auto* extension : playback_engine_extensions_)
+                if (extension && extension->extensionId() == extensionId)
+                    return extension;
+            return nullptr;
+        }
+        void notifyRecordingStarted() override {
+            for (auto* extension : playback_engine_extensions_)
+                if (extension)
+                    extension->recordingStarted();
+        }
+        void notifyRecordingStopped() override {
+            for (auto* extension : playback_engine_extensions_)
+                if (extension)
+                    extension->recordingStopped();
+        }
         void notifyTrackAudioContentChanged(uapmd_track_index_t trackIndex) {
             auto extensions = std::atomic_load_explicit(
                 &track_audio_processor_extensions_, std::memory_order_acquire);
@@ -400,6 +426,7 @@ namespace uapmd {
         bool isPlaybackActive() const override;
         void playbackPosition(int64_t samples) override;
         int64_t playbackPosition() const override;
+        int32_t currentSampleRate() const override { return sampleRate; }
         int64_t renderPlaybackPosition() const override;
         void jumpPlayback(double positionSeconds) override;
         void startPlayback() override;
@@ -523,6 +550,8 @@ namespace uapmd {
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         input_analyser_ = builtin::createAnalyserNode({.node_id = "engine-input-analyser"});
         timeline_ = TimelineFacade::create(*this);
+        midi_recorder_ = std::make_unique<MidiRecorder>(*this);
+        addPlaybackEngineExtension(*midi_recorder_);
         tail_process_manager_ = std::make_unique<TailProcessManagerImpl>(
             audio_buffer_size_in_frames,
             this->sampleRate,
@@ -2013,9 +2042,15 @@ namespace uapmd {
             latency_compensation_manager_->startPlayback();
         is_playback_active_.store(true, std::memory_order_release);
         timeline_->state().isPlaying = true;
+        for (auto* extension : playback_engine_extensions_)
+            if (extension)
+                extension->playbackStarted();
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
+        for (auto* extension : playback_engine_extensions_)
+            if (extension)
+                extension->playbackStopped();
         is_playback_active_.store(false, std::memory_order_release);
         // Establish the final public Stop position before tail draining. The
         // later transport-quiet event may start a deferred render, whose
@@ -2473,6 +2508,9 @@ namespace uapmd {
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
             if (!track)
                 continue;
+            // Recording state is owned exclusively by MidiRecorder. Transport
+            // play/pause must not arm or disarm MIDI capture.
+            midi_recorder_->record(target->track_id, ump, sizeInBytes, playbackPosition());
             for (const auto instanceId : track->orderedInstanceIds())
                 if (const auto node = track->graph().getPluginNode(instanceId))
                     node->scheduleEvents(timestamp, ump, sizeInBytes);

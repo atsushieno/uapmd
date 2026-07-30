@@ -443,6 +443,31 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
+            const bool recording = transport.isRecording();
+            if (recording)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88f, 0.20f, 0.20f, 1.0f));
+            if (ImGui::Button(icons::Record)) {
+                auto* engine = appModel.sequencer().engine();
+                auto* recorder = dynamic_cast<uapmd::MidiRecorder*>(
+                    engine->findPlaybackEngineExtension("midi-recorder"));
+                if (recorder && recording) {
+                    recorder->stop();
+                    transport.record();
+                } else if (const auto selected = timelineEditor_.selectedMidiClip(); recorder && selected) {
+                    const auto tracks = appModel.getTimelineTracks();
+                    const auto [trackIndex, clipId] = *selected;
+                    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) &&
+                        tracks[static_cast<size_t>(trackIndex)] &&
+                        recorder->start({tracks[static_cast<size_t>(trackIndex)]->referenceId(), clipId}))
+                        transport.record();
+                }
+            }
+            if (recording)
+                ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(recording ? "Stop recording" : "Record into the selected MIDI clip");
+            ImGui::SameLine();
+
             if (!transport.isPlaying())
                 ImGui::BeginDisabled();
             const char* pauseResumeLabel = transport.isPaused() ? icons::Play : icons::Pause;

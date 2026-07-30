@@ -52,6 +52,9 @@ public:
         std::function<void(int32_t trackIndex, double startSeconds, double endSeconds)> addBlankMidiClipInRange;
         std::function<void(int32_t trackIndex, double startSeconds, double endSeconds)> addEmptyAudioClipInRange;
         std::function<void(int32_t trackIndex, int32_t clipId)> removeClip;
+        std::function<void(int32_t trackIndex, int32_t clipId)> selectMidiClip;
+        std::function<bool(int32_t trackIndex, int32_t clipId)> clipEnabled;
+        std::function<void(int32_t trackIndex, int32_t clipId, bool enabled)> setClipEnabled;
         std::function<void(int32_t trackIndex)> clearAllClips;
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& anchorReferenceId, const std::string& origin, const std::string& position)> updateClip;
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& name)> updateClipName;

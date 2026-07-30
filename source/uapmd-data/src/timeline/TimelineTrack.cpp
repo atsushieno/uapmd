@@ -367,7 +367,7 @@ namespace uapmd {
 
             // Process audio source nodes — iterate all clips, skip inactive ones inline
             for (const auto& clip : clips) {
-                if (clip.clipType != ClipType::Audio || clip.muted)
+                if (clip.clipType != ClipType::Audio || clip.muted || !clip.enabled)
                     continue;
 
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
@@ -409,7 +409,7 @@ namespace uapmd {
 
             // Process MIDI clips
             for (const auto& clip : clips) {
-                if (clip.clipType != ClipType::Midi || clip.muted)
+                if (clip.clipType != ClipType::Midi || clip.muted || !clip.enabled)
                     continue;
 
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);

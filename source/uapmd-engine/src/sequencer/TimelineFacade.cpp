@@ -1260,6 +1260,90 @@ namespace uapmd {
             return true;
         }
 
+        bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) override {
+            TimelineTrack* targetTrack = trackIndex == kMasterTrackIndex
+                ? master_timeline_track_.get()
+                : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())
+                    ? timeline_tracks_[static_cast<size_t>(trackIndex)].get()
+                    : nullptr);
+            if (!targetTrack || !targetTrack->clipManager().setClipEnabled(clipId, enabled))
+                return false;
+            notifyClipChanged(trackIndex, clipId, "clip-enablement-changed");
+            notifyTimelineChanged();
+            return true;
+        }
+
+        bool clipEnabled(int32_t trackIndex, int32_t clipId) const override {
+            const TimelineTrack* targetTrack = trackIndex == kMasterTrackIndex
+                ? master_timeline_track_.get()
+                : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())
+                    ? timeline_tracks_[static_cast<size_t>(trackIndex)].get()
+                    : nullptr);
+            const auto* clip = targetTrack ? targetTrack->clipManager().getClip(clipId) : nullptr;
+            return clip ? clip->enabled : false;
+        }
+
+        bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
+            std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) override {
+            if (words.empty() || words.size() != ticks.size())
+                return false;
+            TimelineTrack* track = trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())
+                ? timeline_tracks_[static_cast<size_t>(trackIndex)].get() : nullptr;
+            auto* clip = track ? track->clipManager().getClip(clipId) : nullptr;
+            if (!clip || clip->clipType != ClipType::Midi)
+                return false;
+            auto source = track->getSourceNode(clip->sourceNodeInstanceId);
+            auto midi = std::dynamic_pointer_cast<MidiClipSourceNode>(source);
+            if (!midi)
+                return false;
+            struct TimedUmp {
+                uint64_t tick{};
+                std::vector<uapmd_ump_t> words;
+                bool recorded{};
+            };
+            std::vector<TimedUmp> events;
+            const auto appendEvents = [&events](const std::vector<uapmd_ump_t>& sourceWords,
+                                                const std::vector<uint64_t>& sourceTicks,
+                                                bool recorded) {
+                for (size_t offset = 0; offset < sourceWords.size();) {
+                    const auto wordCount = std::max<size_t>(1,
+                        umppi::umpSizeInInts(static_cast<uint8_t>(sourceWords[offset] >> 28)));
+                    if (offset + wordCount > sourceWords.size() || offset >= sourceTicks.size())
+                        return false;
+                    events.push_back({sourceTicks[offset],
+                        std::vector<uapmd_ump_t>(sourceWords.begin() + static_cast<std::ptrdiff_t>(offset),
+                                                 sourceWords.begin() + static_cast<std::ptrdiff_t>(offset + wordCount)),
+                        recorded});
+                    offset += wordCount;
+                }
+                return true;
+            };
+            if (!appendEvents(midi->umpEvents(), midi->eventTimestampsTicks(), false) ||
+                !appendEvents(words, ticks, true))
+                return false;
+            // At an identical tick preserve existing clip data before newly
+            // recorded input; stable_sort retains each stream's event order.
+            std::stable_sort(events.begin(), events.end(), [](const TimedUmp& a, const TimedUmp& b) {
+                if (a.tick != b.tick)
+                    return a.tick < b.tick;
+                return !a.recorded && b.recorded;
+            });
+            std::vector<uapmd_ump_t> allWords;
+            std::vector<uint64_t> allTicks;
+            for (const auto& event : events) {
+                allWords.insert(allWords.end(), event.words.begin(), event.words.end());
+                allTicks.insert(allTicks.end(), event.words.size(), event.tick);
+            }
+            auto replacement = std::make_unique<MidiClipSourceNode>(midi->instanceId(),
+                std::move(allWords), std::move(allTicks), midi->tickResolution(), midi->clipTempo(),
+                static_cast<double>(sampleRate_), midi->tempoChanges(), midi->timeSignatureChanges());
+            if (!track->replaceClipSourceNode(clipId, std::move(replacement)))
+                return false;
+            notifyClipChanged(trackIndex, clipId, "midi-recorded");
+            notifyTimelineChanged();
+            return true;
+        }
+
         void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {
             if (engine_.frozenTrackManager().hasBusyTrack()) {
                 callback({

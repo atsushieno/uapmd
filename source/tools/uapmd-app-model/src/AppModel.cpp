@@ -115,6 +115,73 @@ void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
 
 } // namespace
 
+class ClipEnablementSerializationExtension final : public ProjectSerializationExtension {
+public:
+    explicit ClipEnablementSerializationExtension(AppModel& appModel) : app_model_(appModel) {}
+
+    std::string_view extensionId() const override { return "clip-enablement"; }
+
+    bool saveProjectExtensionData(ProjectSerializationWriteContext& context, std::string& error) override {
+        std::string manifest{"uapmd-clip-enablement-v1\n"};
+        const auto appendTrack = [&manifest](const TimelineTrack* track) {
+            if (!track)
+                return;
+            const auto clips = track->clipManager().getAllClips();
+            bool wroteTrack = false;
+            for (const auto& clip : clips) {
+                if (clip.enabled)
+                    continue;
+                if (!wroteTrack) {
+                    manifest += "track " + track->referenceId() + "\n";
+                    wroteTrack = true;
+                }
+                manifest += "clip " + clip.referenceId + " disabled\n";
+            }
+        };
+        for (const auto* track : app_model_.getTimelineTracks())
+            appendTrack(track);
+        appendTrack(app_model_.getMasterTimelineTrack());
+        return context.writeExtensionFile(extensionId(), "clip-enablement.txt",
+            std::vector<uint8_t>(manifest.begin(), manifest.end()), error);
+    }
+
+    bool loadProjectExtensionData(ProjectSerializationReadContext& context, std::string& error) override {
+        std::string readError;
+        const auto bytes = context.readExtensionFile(extensionId(), "clip-enablement.txt", readError);
+        if (!bytes)
+            return true; // Projects created before clip enablement have every clip enabled.
+        std::istringstream input(std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
+        std::string line;
+        if (!std::getline(input, line) || line != "uapmd-clip-enablement-v1") {
+            error = "Unsupported clip enablement manifest version.";
+            return false;
+        }
+        TimelineTrack* currentTrack = nullptr;
+        while (std::getline(input, line)) {
+            if (line.rfind("track ", 0) == 0) {
+                const auto id = line.substr(6);
+                currentTrack = nullptr;
+                for (auto* track : app_model_.getTimelineTracks())
+                    if (track && track->referenceId() == id) currentTrack = track;
+                if (auto* master = app_model_.getMasterTimelineTrack(); master && master->referenceId() == id)
+                    currentTrack = master;
+            } else if (currentTrack && line.rfind("clip ", 0) == 0) {
+                const auto separator = line.rfind(" disabled");
+                if (separator == std::string::npos)
+                    continue;
+                const auto clipReference = line.substr(5, separator - 5);
+                for (const auto& clip : currentTrack->clipManager().getAllClips())
+                    if (clip.referenceId == clipReference)
+                        currentTrack->clipManager().setClipEnabled(clip.clipId, false);
+            }
+        }
+        return true;
+    }
+
+private:
+    AppModel& app_model_;
+};
+
 struct ScopedTempDir {
     explicit ScopedTempDir(std::filesystem::path dir)
         : path(std::move(dir)) {}
@@ -300,6 +367,8 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         sample_rate_(sampleRate),
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
         auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
+    clip_enablement_extension_ = std::make_unique<ClipEnablementSerializationExtension>(*this);
+    sequencer_.engine()->timeline().addProjectSerializationExtension(*clip_enablement_extension_);
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
     plugin_state_change_dispatch_->app_model = this;
     auto dispatch = plugin_state_change_dispatch_;
@@ -355,6 +424,8 @@ void uapmd::AppModel::maybeStartInitialPluginScan() {
 }
 
 uapmd::AppModel::~AppModel() {
+    if (clip_enablement_extension_)
+        sequencer_.engine()->timeline().removeProjectSerializationExtension(*clip_enablement_extension_);
     {
         std::lock_guard lock(plugin_state_change_dispatch_->mutex);
         plugin_state_change_dispatch_->app_model = nullptr;
@@ -1419,6 +1490,7 @@ void uapmd::TransportController::play() {
 }
 
 void uapmd::TransportController::stop() {
+    isRecording_ = false;
     sequencer_->engine()->stopPlayback();
     appModel_->timeline().isPlaying = false;
     appModel_->timeline().playheadPosition.samples = 0;
@@ -1448,11 +1520,6 @@ void uapmd::TransportController::jump(double positionSeconds) {
 
 void uapmd::TransportController::record() {
     isRecording_ = !isRecording_;
-
-    if (isRecording_)
-        std::cout << "Starting recording" << std::endl;
-    else
-        std::cout << "Stopping recording" << std::endl;
 }
 
 std::vector<uapmd::AppModel::DeviceEntry> uapmd::AppModel::getDevices() const {

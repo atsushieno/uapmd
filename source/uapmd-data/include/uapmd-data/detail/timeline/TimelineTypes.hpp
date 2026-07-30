@@ -405,6 +405,9 @@ namespace uapmd {
         // Playback properties
         double gain{1.0};
         bool muted{false};
+        // Persisted by the project's clip-enablement extension, rather than by
+        // the SMF2 container or the main project JSON.
+        bool enabled{true};
         std::string name;                   // User-editable clip name
         std::string filepath;               // Source audio file path
         bool needsFileSave{false};          // True when the source file must be copied into the project

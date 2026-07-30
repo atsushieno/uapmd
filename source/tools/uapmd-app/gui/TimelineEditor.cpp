@@ -758,6 +758,20 @@ TimelineEditor::TimelineEditor() {
     refreshAllSequenceEditorTracks();
 }
 
+void TimelineEditor::selectMidiClip(int32_t trackIndex, int32_t clipId) {
+    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
+        selected_midi_clip_.reset();
+        return;
+    }
+    const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip || clip->clipType != uapmd::ClipType::Midi) {
+        selected_midi_clip_.reset();
+        return;
+    }
+    selected_midi_clip_ = std::pair{trackIndex, clipId};
+}
+
 void TimelineEditor::setCallbacks(TimelineEditorCallbacks callbacks) {
     callbacks_ = std::move(callbacks);
 }
@@ -836,6 +850,16 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .removeClip = [this](int32_t trackIndex, int32_t clipId) {
             removeClipFromTrack(trackIndex, clipId);
         },
+        .selectMidiClip = [this](int32_t trackIndex, int32_t clipId) {
+            selectMidiClip(trackIndex, clipId);
+        },
+        .clipEnabled = [this](int32_t trackIndex, int32_t clipId) {
+            return uapmd::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
+        },
+        .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
+            if (uapmd::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
+                uapmd::AppModel::instance().markProjectDirty();
+        },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
         },
@@ -908,6 +932,13 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
         },
         .removeClip = [this](int32_t trackIndex, int32_t clipId) {
             removeClipFromTrack(trackIndex, clipId);
+        },
+        .clipEnabled = [this](int32_t trackIndex, int32_t clipId) {
+            return uapmd::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
+        },
+        .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
+            if (uapmd::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
+                uapmd::AppModel::instance().markProjectDirty();
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);

@@ -63,6 +63,8 @@ public:
     const char* timelineUnitsLabel() const { return timelineUnitsLabel_.c_str(); }
     const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();
+    std::optional<std::pair<int32_t, int32_t>> selectedMidiClip() const { return selected_midi_clip_; }
+    void selectMidiClip(int32_t trackIndex, int32_t clipId);
 
     // Zooms both editors so the entire loaded song's content fits within the visible area.
     // Call after a project finishes loading.
@@ -132,6 +134,7 @@ private:
     std::function<void(const std::string&)> updateChildWindowSizeState_;
 
     float currentUiScale_ = 1.0f;
+    std::optional<std::pair<int32_t, int32_t>> selected_midi_clip_;
 
     // Set by handleTrackLayoutChange(Removed) and applied at the top of the next render()
     // call, safely outside any ongoing ImTimeline::DrawTimeline() call stack.

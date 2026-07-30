@@ -36,6 +36,7 @@ namespace uapmd {
         bool resizeClip(int32_t clipId, int64_t newDuration);
         bool setClipGain(int32_t clipId, double gain);
         bool setClipMuted(int32_t clipId, bool muted);
+        bool setClipEnabled(int32_t clipId, bool enabled);
         bool setClipName(int32_t clipId, const std::string& name);
         bool setClipFilepath(int32_t clipId, const std::string& filepath);
         bool setClipNeedsFileSave(int32_t clipId, bool needsSave);

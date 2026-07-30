@@ -18,6 +18,8 @@ namespace uapmd {
     class SequencerEngine;
     class FrozenTrackManager;
     class TailProcessManager;
+    class MidiRecorder;
+    class PlaybackEngineExtension;
 
     struct MidiPortTrackConnection {
         std::string portId;
@@ -138,6 +140,11 @@ namespace uapmd {
         // extension before destroying it.
         virtual void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
         virtual void removeTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
+        virtual void addPlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
+        virtual void removePlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
+        virtual PlaybackEngineExtension* findPlaybackEngineExtension(std::string_view extensionId) = 0;
+        virtual void notifyRecordingStarted() = 0;
+        virtual void notifyRecordingStopped() = 0;
 
         // RT plugin chain: calls AudioPluginGraph::processAudio() for every track, mixes
         // outputs, and runs the master track. In single-threaded builds this is called
@@ -164,6 +171,7 @@ namespace uapmd {
         virtual bool isPlaybackActive() const = 0;
         virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;
+        virtual int32_t currentSampleRate() const = 0;
         virtual int64_t renderPlaybackPosition() const = 0;
         virtual void jumpPlayback(double positionSeconds) = 0;
         virtual void startPlayback() = 0;
