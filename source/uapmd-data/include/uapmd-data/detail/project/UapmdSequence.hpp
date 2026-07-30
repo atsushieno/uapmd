@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <vector>
-#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "../audio/AudioFileReader.hpp"
 #include "UapmdProjectFile.hpp"

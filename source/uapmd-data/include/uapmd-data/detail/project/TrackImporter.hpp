@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 
-#include <uapmd-midi-service/uapmd-midi-service.hpp>
-
 #include "../midi/MidiTimelineEvents.hpp"
 
 namespace uapmd::import {

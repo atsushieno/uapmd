@@ -7,7 +7,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "UapmdProjectFile.hpp"
 

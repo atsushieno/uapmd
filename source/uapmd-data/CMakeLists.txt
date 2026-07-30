@@ -135,7 +135,6 @@ target_include_directories(uapmd-data PRIVATE
         ${midicci_SOURCE_DIR}/include
         ${miniaudio_SOURCE_DIR}
         ../remidy/include
-        ../uapmd-midi-service/include
         ../uapmd-graph/include
         ../uapmd-plugin-hosting/include
         include
@@ -143,7 +142,6 @@ target_include_directories(uapmd-data PRIVATE
 
 target_link_libraries(uapmd-data
         PUBLIC
-        uapmd-midi-service
         uapmd-graph
         PRIVATE
         demucs-cpp
