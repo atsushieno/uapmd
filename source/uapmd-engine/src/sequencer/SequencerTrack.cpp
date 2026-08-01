@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -23,6 +24,8 @@ namespace uapmd {
     class SequencerTrackImpl : public SequencerTrack {
         bool bypass_{false};
         bool frozen_{false};
+        std::atomic_bool muted_{false};
+        std::atomic_bool solo_{false};
         std::unique_ptr<AudioPluginGraph> graph_;
         std::vector<int32_t> instance_ids{};
         std::unordered_map<int32_t, uint8_t> instance_groups_{}; // instanceId → UMP group
@@ -38,6 +41,10 @@ namespace uapmd {
         double tailLengthInSeconds() override { return graph_ ? graph_->mainOutputTailLengthInSeconds() : 0.0; }
         double trackGain() const override;
         bool trackGain(double value) override;
+        bool muted() const override { return muted_.load(std::memory_order_acquire); }
+        void muted(bool value) override { muted_.store(value, std::memory_order_release); }
+        bool solo() const override { return solo_.load(std::memory_order_acquire); }
+        void solo(bool value) override { solo_.store(value, std::memory_order_release); }
 
         std::vector<int32_t>& orderedInstanceIds() override {
             return instance_ids;

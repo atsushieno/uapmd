@@ -789,7 +789,8 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
-    // Row 1: Clips + Graph + Slider(1.5 slots) + Bypass = 4.5 icon slots, 3 gaps + left/right pad
+    // Row 1: Clips + Graph + Slider(1.5 slots) + Mute + Solo = 5.5 icon
+    // slots, 4 gaps, and left/right padding. Bypass is in the more menu.
     const float pad = 4.0f * uiScale;
     const float framePadX = ImGui::GetStyle().FramePadding.x;
     const float gap = ImGui::GetStyle().ItemSpacing.x;
@@ -799,7 +800,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         ImGui::CalcTextSize(icons::ToggleOn).x,
         ImGui::CalcTextSize(icons::DeleteTrack).x,
     }) + framePadX * 2.0f;
-    const float row1W = pad + 4.5f * iconBtnW + 3.0f * gap + pad;
+    const float row1W = pad + 5.5f * iconBtnW + 4.0f * gap + pad;
     // Row 2 must fit the master label, or the regular label plus its delete button.
     const std::string masterPluginLabel = std::format("{} Add Master Plugin", icons::ContextMenu);
     const std::string trackPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
@@ -1388,6 +1389,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
     std::string popupId = std::format("TrackActions##{}", trackIndex);
     std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
+    std::string miscPopupId = std::format("TrackMiscActions##{}", trackIndex);
 
     const float pad = 4.0f * currentUiScale_;
     const float legendWidth = legendArea.GetWidth();
@@ -1401,7 +1403,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         trackIndex != uapmd::kMasterTrackIndex &&
         frozenTrackManager.isTrackBusy(trackIndex);
 
-    // Row 1: Clips + Graph + Gain Slider + [Bypass]
+    // Row 1: Clips + Graph + Gain Slider + [Mute] + [Solo]
     if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
@@ -1422,6 +1424,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::CalcTextSize(icons::Graph).x,
             ImGui::CalcTextSize(icons::ToggleOn).x,
             ImGui::CalcTextSize(icons::DeleteTrack).x,
+            ImGui::CalcTextSize("M").x,
+            ImGui::CalcTextSize("S").x,
         }) + ImGui::GetStyle().FramePadding.x * 2.0f;
         const float sliderWidth = iconButtonWidth * 1.5f;
         const float gainDb = linearGainToSliderDb(track->trackGain());
@@ -1444,25 +1448,55 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 ImGui::SetTooltip("Track volume: %.1f dB (%.3fx)", linearGainToSliderDb(linearGain), linearGain);
         }
 
-        ImGui::SameLine();
-        bool bypassed = track->bypassed();
-        if (bypassed)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
-        if (contextActionButton(std::format("{}##LegByp{}", toggleIcon, trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                bypassed ? "Track bypassed (click to enable)" : "Bypass track")) {
-            track->bypassed(!bypassed);
-            uapmd::AppModel::instance().markTrackDirty(trackIndex);
+        if (trackIndex != uapmd::kMasterTrackIndex) {
+            ImGui::SameLine();
+            const bool muted = track->muted();
+            if (muted) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.16f, 0.16f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.22f, 0.22f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.54f, 0.10f, 0.10f, 1.0f));
+            }
+            if (contextActionButton(
+                    std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
+                    muted ? "Track muted (click to unmute)" : "Mute track")) {
+                track->muted(!muted);
+                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+            }
+            if (muted)
+                ImGui::PopStyleColor(3);
+
+            ImGui::SameLine();
+            const bool solo = track->solo();
+            if (solo) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.82f, 0.52f, 0.08f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.96f, 0.66f, 0.12f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.64f, 0.37f, 0.04f, 1.0f));
+            }
+            if (contextActionButton(
+                    std::format("S##LegSolo{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
+                    solo ? "Track soloed (click to clear)" : "Solo track")) {
+                const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
+                const bool enableSolo = !solo;
+                if (enableSolo && !additive) {
+                    for (size_t i = 0; i < tracksRef.size(); ++i)
+                        if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
+                            tracksRef[i]->solo(false);
+                            uapmd::AppModel::instance().markTrackDirty(static_cast<int32_t>(i));
+                        }
+                }
+                track->solo(enableSolo);
+                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+            }
+            if (solo)
+                ImGui::PopStyleColor(3);
         }
-        if (bypassed)
-            ImGui::PopStyleColor();
     }
-    // Row 2: Freeze switch + Plugin context button + Delete on the right
+    // Row 2: Freeze switch + Plugin context button + More menu on the right
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
-    float deleteButtonWidth = 0.0f;
+    float miscButtonWidth = 0.0f;
     if (track && trackIndex != uapmd::kMasterTrackIndex)
-        deleteButtonWidth = ImGui::CalcTextSize(icons::DeleteTrack).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        miscButtonWidth = ImGui::CalcTextSize(icons::ContextMenu).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
     const auto freezeBusyLabel = std::format("{} Busy", icons::Freeze);
     const auto freezeOffLabel = std::format("{} Off", icons::Freeze);
@@ -1476,9 +1510,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         : 0.0f;
     const float pluginButtonWidth = std::max(
         0.0f,
-        buttonWidth - freezePolicyWidth - deleteButtonWidth -
+        buttonWidth - freezePolicyWidth - miscButtonWidth -
             (freezePolicyWidth > 0.0f ? itemSpacing : 0.0f) -
-            (deleteButtonWidth > 0.0f ? itemSpacing : 0.0f));
+            (miscButtonWidth > 0.0f ? itemSpacing : 0.0f));
 
     if (track && trackIndex != uapmd::kMasterTrackIndex) {
         auto& appModel = uapmd::AppModel::instance();
@@ -1526,11 +1560,12 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         ImGui::BeginDisabled();
     if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
-    if (deleteButtonWidth > 0.0f) {
+    if (miscButtonWidth > 0.0f) {
         ImGui::SameLine();
-        if (contextActionButton(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str(), ImVec2(deleteButtonWidth, 0.0f),
-                "Delete track"))
-            deleteTrack(trackIndex);
+        if (contextActionButton(
+                std::format("{}##LegMore{}", icons::ContextMenu, trackIndex).c_str(),
+                ImVec2(miscButtonWidth, 0.0f), "More track actions"))
+            ImGui::OpenPopup(miscPopupId.c_str());
     }
     if (trackBusy)
         ImGui::EndDisabled();
@@ -1634,6 +1669,25 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         }
         if (trackBusy)
             ImGui::EndDisabled();
+        ImGui::EndPopup();
+    }
+
+    // Bypass and destructive operations are kept in the more menu; standard
+    // mixer controls stay directly accessible in the track header.
+    if (trackIndex != uapmd::kMasterTrackIndex && ImGui::BeginPopup(miscPopupId.c_str())) {
+        if (track) {
+            const bool bypassed = track->bypassed();
+            if (contextActionMenuItem(
+                    bypassed ? "Enable Track Processing" : "Bypass Track Processing",
+                    bypassed)) {
+                track->bypassed(!bypassed);
+                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+            }
+        }
+
+        ImGui::Separator();
+        if (contextActionMenuItem("Delete Track"))
+            deleteTrack(trackIndex);
         ImGui::EndPopup();
     }
 

@@ -27,6 +27,11 @@ namespace uapmd {
         virtual double tailLengthInSeconds() = 0;
         virtual double trackGain() const = 0;
         virtual bool trackGain(double value) = 0;
+        // These control admission to the main mix without stopping the graph.
+        virtual bool muted() const = 0;
+        virtual void muted(bool value) = 0;
+        virtual bool solo() const = 0;
+        virtual void solo(bool value) = 0;
         virtual std::vector<int32_t>& orderedInstanceIds() = 0;
 
         virtual bool bypassed() = 0;

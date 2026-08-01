@@ -1197,14 +1197,30 @@ namespace uapmd {
             masterCtx->clearAudioOutputs();
         }
 
+        // Solo is additive at the engine level: any number of tracks may be
+        // marked solo, and only soloed tracks are admitted when at least one is
+        // selected. Mute always wins. Gate after graph processing so plugin
+        // state, tails, meters, and timeline state remain continuous.
+        bool anySolo = false;
+        for (const auto& track : tracks_)
+            if (track && track->solo()) {
+                anySolo = true;
+                break;
+            }
+
         // Stage compensated track output buses into a dedicated mixer context so
         // downstream processing can still see per-bus structure before the final
         // master/device fold.
         for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
+            auto* track = tracks_[t].get();
             auto ctx = data.tracks[t];
+            if (!track || !ctx)
+                continue;
             ctx->eventIn().position(0); // clean up *in* events here.
+            if (track->muted() || (anySolo && !track->solo()))
+                continue;
 
             for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex) {
                 const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(t), busIndex);

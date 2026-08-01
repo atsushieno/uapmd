@@ -799,9 +799,15 @@ namespace uapmd {
                         : nullptr;
                     if (sequencerTrack)
                         projectTrack->volume(sequencerTrack->trackGain());
+                    if (sequencerTrack) {
+                        projectTrack->muted(sequencerTrack->muted());
+                        projectTrack->solo(sequencerTrack->solo());
+                    }
                     bool hasClips = !projectTrack->clips().empty();
                     bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
-                    if (!hasClips && !hasPlugins)
+                    bool hasMixerState = sequencerTrack &&
+                        (sequencerTrack->trackGain() != 1.0 || sequencerTrack->muted() || sequencerTrack->solo());
+                    if (!hasClips && !hasPlugins && !hasMixerState)
                         continue;
 
                     queueProjectGraphSerialization(
@@ -1826,10 +1832,13 @@ namespace uapmd {
                     for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
                         if (tracks[i] && engine_.tracks()[i]) {
                             engine_.tracks()[i]->trackGain(tracks[i]->volume());
+                            engine_.tracks()[i]->muted(tracks[i]->muted());
+                            engine_.tracks()[i]->solo(tracks[i]->solo());
                         }
                     }
-                    if (masterProjectTrack && engine_.masterTrack())
+                    if (masterProjectTrack && engine_.masterTrack()) {
                         engine_.masterTrack()->trackGain(masterProjectTrack->volume());
+                    }
 
                     ProjectDocumentEvent loadedEvent(ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
                     loadedEvent.setProjectId(projectFile.string())

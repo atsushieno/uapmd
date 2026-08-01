@@ -198,6 +198,10 @@ namespace uapmd {
         auto obj = choc::value::createObject("UapmdTrack");
 
         obj.addMember("volume", track->volume());
+        if (track->muted())
+            obj.addMember("muted", true);
+        if (track->solo())
+            obj.addMember("solo", true);
 
         // Serialize plugin graph (only if it has plugins or external file)
         if (track->graph()) {

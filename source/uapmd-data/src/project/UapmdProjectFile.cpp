@@ -112,6 +112,8 @@ namespace uapmd {
     class UapmdProjectTrackDataImpl : public UapmdProjectTrackData {
         std::unique_ptr<UapmdProjectPluginGraphData> graph_{};
         double volume_{1.0};
+        bool muted_{false};
+        bool solo_{false};
         std::vector<std::unique_ptr<UapmdProjectClipData>> clips_{};
         std::vector<ClipMarker> markers_{};
 
@@ -122,11 +124,15 @@ namespace uapmd {
 
         UapmdProjectPluginGraphData* graph() override { return graph_.get(); }
         double volume() override { return volume_; }
+        bool muted() override { return muted_; }
+        bool solo() override { return solo_; }
         std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() override { return clips_; }
         std::vector<ClipMarker> markers() override { return markers_; }
 
         void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) override { graph_ = std::move(g); }
         void volume(double value) override { volume_ = value; }
+        void muted(bool value) override { muted_ = value; }
+        void solo(bool value) override { solo_ = value; }
         void markers(std::vector<ClipMarker> values) override { markers_ = std::move(values); }
     };
 

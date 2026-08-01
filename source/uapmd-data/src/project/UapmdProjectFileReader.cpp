@@ -403,6 +403,10 @@ namespace uapmd {
 
         if (trackObj.hasObjectMember("volume"))
             track->volume(trackObj["volume"].getWithDefault<double>(1.0));
+        if (trackObj.hasObjectMember("muted"))
+            track->muted(trackObj["muted"].getWithDefault<bool>(false));
+        if (trackObj.hasObjectMember("solo"))
+            track->solo(trackObj["solo"].getWithDefault<bool>(false));
 
         if (trackObj.hasObjectMember("markers") && trackObj["markers"].isArray()) {
             std::vector<ClipMarker> markers;
