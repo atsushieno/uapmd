@@ -495,6 +495,73 @@ namespace uapmd {
                 (startWritePosition + static_cast<size_t>(trackFrameCount)) % delayLine.capacity_frames;
     }
 
+    void LatencyCompensationManagerImpl::afterTrackProcess(
+        const TrackAudioProcessingEvent& event) noexcept {
+        applyOutputAlignment(
+            event.track_index,
+            event.context,
+            event.frame_count);
+    }
+
+    void LatencyCompensationManagerImpl::trackAdded(uapmd_track_index_t) {
+        onTrackAdded();
+    }
+
+    void LatencyCompensationManagerImpl::trackRemoved(
+        uapmd_track_index_t trackIndex) {
+        onTrackRemoved(trackIndex);
+    }
+
+    void LatencyCompensationManagerImpl::pluginInstanceWillBeDestroyed(
+        int32_t instanceId) {
+        removePluginTimingListener(instanceId);
+    }
+
+    void LatencyCompensationManagerImpl::audioProcessingConfigurationChanged() {
+        reconfigureOutputAlignmentBuffers();
+    }
+
+    void LatencyCompensationManagerImpl::pluginGraphChanged() {
+        syncPluginTimingListeners();
+    }
+
+    void LatencyCompensationManagerImpl::graphTimingChanged(bool isPlaybackActive) {
+        applyLatencyCompensationTimingUpdate(isPlaybackActive);
+    }
+
+    void LatencyCompensationManagerImpl::trackProcessingStateReset(
+        uapmd_track_index_t trackIndex) {
+        resetTrackOutputAlignment(trackIndex);
+    }
+
+    void LatencyCompensationManagerImpl::processingStateReset() {
+        resetOutputAlignmentBuffers();
+    }
+
+    void LatencyCompensationManagerImpl::transportTransition(
+        SequencerTransportTransition transition,
+        int64_t audiblePositionSamples) {
+        switch (transition) {
+            case SequencerTransportTransition::PositionChanged:
+                setPlaybackPosition(
+                    audiblePositionSamples,
+                    is_playback_active_.load(std::memory_order_acquire));
+                break;
+            case SequencerTransportTransition::Started:
+                startPlayback();
+                break;
+            case SequencerTransportTransition::Stopped:
+                stopPlayback();
+                break;
+            case SequencerTransportTransition::Paused:
+                pausePlayback();
+                break;
+            case SequencerTransportTransition::Resumed:
+                resumePlayback();
+                break;
+        }
+    }
+
     int64_t LatencyCompensationManagerImpl::stopDrainInSamples() const {
         return maxStopDrainInSamples();
     }

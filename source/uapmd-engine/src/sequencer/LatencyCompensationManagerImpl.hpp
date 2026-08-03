@@ -10,13 +10,18 @@
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <uapmd-engine/detail/sequencer/LatencyCompensationManager.hpp>
+#include <uapmd-engine/detail/sequencer/AudioProcessingEventHandler.hpp>
+#include <uapmd-engine/detail/sequencer/SequencerProcessingLifecycleListener.hpp>
 
 namespace uapmd {
     class TrackRoutingManager;
     class SequenceProcessContext;
     class SequencerTrack;
 
-    class LatencyCompensationManagerImpl final : public LatencyCompensationManager {
+    class LatencyCompensationManagerImpl final
+        : public LatencyCompensationManager
+        , public AudioProcessingEventHandler
+        , public SequencerProcessingLifecycleListener {
         struct OutputAlignmentDelayLine {
             std::vector<std::vector<std::vector<float>>> buses;
             size_t write_position{0};
@@ -113,6 +118,19 @@ namespace uapmd {
             uapmd_track_index_t trackIndex,
             AudioProcessContext& ctx,
             int32_t trackFrameCount);
+
+        void afterTrackProcess(const TrackAudioProcessingEvent& event) noexcept override;
+        void trackAdded(uapmd_track_index_t trackIndex) override;
+        void trackRemoved(uapmd_track_index_t trackIndex) override;
+        void pluginInstanceWillBeDestroyed(int32_t instanceId) override;
+        void audioProcessingConfigurationChanged() override;
+        void pluginGraphChanged() override;
+        void graphTimingChanged(bool isPlaybackActive) override;
+        void trackProcessingStateReset(uapmd_track_index_t trackIndex) override;
+        void processingStateReset() override;
+        void transportTransition(
+            SequencerTransportTransition transition,
+            int64_t audiblePositionSamples) override;
 
         int64_t stopDrainInSamples() const;
         int64_t playbackPosition() const;

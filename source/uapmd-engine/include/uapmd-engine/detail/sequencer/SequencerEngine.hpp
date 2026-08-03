@@ -9,6 +9,8 @@
 #include <uapmd-data/detail/project/LatencyCompensationTypes.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "TrackAudioProcessorExtension.hpp"
+#include "AudioProcessingEventHandler.hpp"
+#include "SequencerProcessingLifecycleListener.hpp"
 #include "LatencyCompensationManager.hpp"
 #include "OfflineRenderer.hpp"
 #include "TimelineFacade.hpp"
@@ -140,6 +142,10 @@ namespace uapmd {
         // extension before destroying it.
         virtual void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
         virtual void removeTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) = 0;
+        virtual void addAudioProcessingEventHandler(AudioProcessingEventHandler& handler) = 0;
+        virtual void removeAudioProcessingEventHandler(AudioProcessingEventHandler& handler) = 0;
+        virtual void addProcessingLifecycleListener(SequencerProcessingLifecycleListener& listener) = 0;
+        virtual void removeProcessingLifecycleListener(SequencerProcessingLifecycleListener& listener) = 0;
         virtual void addPlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
         virtual void removePlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
         virtual PlaybackEngineExtension* findPlaybackEngineExtension(std::string_view extensionId) = 0;

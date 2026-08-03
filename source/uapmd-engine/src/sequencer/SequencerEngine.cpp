@@ -198,6 +198,10 @@ namespace uapmd {
         using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
         std::shared_ptr<const TrackAudioProcessorExtensions> track_audio_processor_extensions_{
             std::make_shared<const TrackAudioProcessorExtensions>()};
+        using AudioProcessingEventHandlers = std::vector<AudioProcessingEventHandler*>;
+        std::shared_ptr<const AudioProcessingEventHandlers> audio_processing_event_handlers_{
+            std::make_shared<const AudioProcessingEventHandlers>()};
+        std::vector<SequencerProcessingLifecycleListener*> processing_lifecycle_listeners_;
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
         // Starts inactive so that no plugin code runs before the user explicitly enables the
         // audio engine (important on Emscripten where AudioWorklet fires immediately after
@@ -374,6 +378,41 @@ namespace uapmd {
             std::atomic_store_explicit(
                 &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
         }
+        void addAudioProcessingEventHandler(AudioProcessingEventHandler& handler) override {
+            auto current = std::atomic_load_explicit(
+                &audio_processing_event_handlers_, std::memory_order_acquire);
+            if (current && std::find(current->begin(), current->end(), &handler) != current->end())
+                return;
+            auto updated = std::make_shared<AudioProcessingEventHandlers>(
+                current ? *current : AudioProcessingEventHandlers{});
+            updated->push_back(&handler);
+            std::shared_ptr<const AudioProcessingEventHandlers> published = std::move(updated);
+            std::atomic_store_explicit(
+                &audio_processing_event_handlers_, std::move(published), std::memory_order_release);
+        }
+        void removeAudioProcessingEventHandler(AudioProcessingEventHandler& handler) override {
+            auto current = std::atomic_load_explicit(
+                &audio_processing_event_handlers_, std::memory_order_acquire);
+            if (!current)
+                return;
+            auto updated = std::make_shared<AudioProcessingEventHandlers>(*current);
+            std::erase(*updated, &handler);
+            std::shared_ptr<const AudioProcessingEventHandlers> published = std::move(updated);
+            std::atomic_store_explicit(
+                &audio_processing_event_handlers_, std::move(published), std::memory_order_release);
+        }
+        void addProcessingLifecycleListener(
+            SequencerProcessingLifecycleListener& listener) override {
+            if (std::find(
+                    processing_lifecycle_listeners_.begin(),
+                    processing_lifecycle_listeners_.end(),
+                    &listener) == processing_lifecycle_listeners_.end())
+                processing_lifecycle_listeners_.push_back(&listener);
+        }
+        void removeProcessingLifecycleListener(
+            SequencerProcessingLifecycleListener& listener) override {
+            std::erase(processing_lifecycle_listeners_, &listener);
+        }
         void addPlaybackEngineExtension(PlaybackEngineExtension& extension) override {
             if (std::find(playback_engine_extensions_.begin(), playback_engine_extensions_.end(), &extension) ==
                 playback_engine_extensions_.end())
@@ -522,6 +561,15 @@ namespace uapmd {
         void reconfigureMixBusContext();
         void reconfigureOutputAlignmentBuffers();
         void resetOutputAlignmentBuffers();
+        void notifyAudioProcessingConfigurationChanged();
+        void notifyPluginGraphChanged();
+        void notifyGraphTimingChanged();
+        void notifyPluginInstanceWillBeDestroyed(int32_t instanceId);
+        void notifyTrackProcessingStateReset(uapmd_track_index_t trackIndex);
+        void notifyProcessingStateReset();
+        void notifyTransportTransition(
+            SequencerTransportTransition transition,
+            int64_t audiblePositionSamples);
         void clearTrackProcessingState(
             uapmd_track_index_t trackIndex,
             bool resetPlugins);
@@ -617,6 +665,8 @@ namespace uapmd {
             timeline_.get(),
             *latency_compensation_manager_);
         latency_compensation_manager_->attachTrackRoutingManager(*track_routing_manager_);
+        addAudioProcessingEventHandler(*latency_compensation_manager_);
+        addProcessingLifecycleListener(*latency_compensation_manager_);
         reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
         platform_midi_output_worker_ = std::thread([this] { runPlatformMidiOutputWorker(); });
@@ -626,7 +676,7 @@ namespace uapmd {
         audio_preprocess_callback_ = [this](AudioProcessContext& process) {
             timeline_->processTracksAudio(process, pump_sequence_);
         };
-        reconfigureOutputAlignmentBuffers();
+        notifyAudioProcessingConfigurationChanged();
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
@@ -642,6 +692,10 @@ namespace uapmd {
         }
         if (latency_compensation_manager_)
             latency_compensation_manager_->clearPluginTimingListeners();
+        if (latency_compensation_manager_) {
+            removeAudioProcessingEventHandler(*latency_compensation_manager_);
+            removeProcessingLifecycleListener(*latency_compensation_manager_);
+        }
         tail_process_manager_.reset();
         // Detach output mappers while plugin instances are still alive. This is a separate
         // step from clearAllDevices() because AppModel::DeviceState holds shared_ptrs to
@@ -661,9 +715,55 @@ namespace uapmd {
         transport_generation_.fetch_add(1, std::memory_order_release);
         if (track_routing_manager_)
             track_routing_manager_->rebuildRoutingCaches();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->applyLatencyCompensationTimingUpdate(
-                is_playback_active_.load(std::memory_order_acquire));
+        notifyGraphTimingChanged();
+    }
+
+    void SequencerEngineImpl::notifyAudioProcessingConfigurationChanged() {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->audioProcessingConfigurationChanged();
+    }
+
+    void SequencerEngineImpl::notifyPluginGraphChanged() {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->pluginGraphChanged();
+    }
+
+    void SequencerEngineImpl::notifyGraphTimingChanged() {
+        const bool isPlaybackActive =
+            is_playback_active_.load(std::memory_order_acquire);
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->graphTimingChanged(isPlaybackActive);
+    }
+
+    void SequencerEngineImpl::notifyPluginInstanceWillBeDestroyed(
+        int32_t instanceId) {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->pluginInstanceWillBeDestroyed(instanceId);
+    }
+
+    void SequencerEngineImpl::notifyTrackProcessingStateReset(
+        uapmd_track_index_t trackIndex) {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->trackProcessingStateReset(trackIndex);
+    }
+
+    void SequencerEngineImpl::notifyProcessingStateReset() {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->processingStateReset();
+    }
+
+    void SequencerEngineImpl::notifyTransportTransition(
+        SequencerTransportTransition transition,
+        int64_t audiblePositionSamples) {
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->transportTransition(transition, audiblePositionSamples);
     }
 
     std::vector<remidy::AudioBusSpec> SequencerEngineImpl::mergeBusSpecs(
@@ -848,13 +948,11 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->reconfigureOutputAlignmentBuffers();
+        notifyAudioProcessingConfigurationChanged();
     }
 
     void SequencerEngineImpl::resetOutputAlignmentBuffers() {
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->resetOutputAlignmentBuffers();
+        notifyProcessingStateReset();
     }
 
     void SequencerEngineImpl::resetProcessingState() {
@@ -934,8 +1032,7 @@ namespace uapmd {
         if (index < pump_rings_.size() && pump_rings_[index])
             for (auto& slot : pump_rings_[index]->slots)
                 clearContext(slot.ctx.get());
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->resetTrackOutputAlignment(trackIndex);
+        notifyTrackProcessingStateReset(trackIndex);
 
         if (!resetPlugins || !tracks_[index])
             return;
@@ -959,8 +1056,9 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->setPlaybackPosition(samples, true);
+        notifyTransportTransition(
+            SequencerTransportTransition::PositionChanged,
+            samples);
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
@@ -1120,6 +1218,18 @@ namespace uapmd {
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
             auto& tp = *sequence.tracks[i];
+            const TrackAudioProcessingEvent event{
+                static_cast<uapmd_track_index_t>(i),
+                *tracks_[i],
+                tp,
+                trackFrameCount,
+            };
+            auto eventHandlers = std::atomic_load_explicit(
+                &audio_processing_event_handlers_, std::memory_order_acquire);
+            if (eventHandlers)
+                for (auto* handler : *eventHandlers)
+                    if (handler)
+                        handler->beforeTrackProcess(event);
             bool processedByExtension = false;
             auto extensions = std::atomic_load_explicit(
                 &track_audio_processor_extensions_, std::memory_order_acquire);
@@ -1144,6 +1254,11 @@ namespace uapmd {
                 tracks_[i]->graph().processAudio(tp);
             else if (!processedByExtension)
                 tp.clearAudioOutputs();
+
+            if (eventHandlers)
+                for (auto* handler : *eventHandlers)
+                    if (handler)
+                        handler->afterTrackProcess(event);
             tp.eventIn().position(0); // reset
 
             // Clear processing flag AFTER we're done with the track context
@@ -1159,11 +1274,6 @@ namespace uapmd {
             auto* ctx = sequence.tracks[i];
             if (!track || !ctx)
                 continue;
-            if (latency_compensation_manager_)
-                latency_compensation_manager_->applyOutputAlignment(
-                    static_cast<uapmd_track_index_t>(i),
-                    *ctx,
-                    trackFrameCount);
 #ifdef __EMSCRIPTEN__
             // Publish the latency-aligned signal. The AudioWorklet replaces this
             // exact dry contribution in the native master mix with WebCLAP DSP.
@@ -1680,8 +1790,10 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::setSampleRate(int32_t newSampleRate) {
-        if (newSampleRate > 0)
+        if (newSampleRate > 0) {
             sampleRate = newSampleRate;
+            notifyAudioProcessingConfigurationChanged();
+        }
     }
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
@@ -1693,8 +1805,9 @@ namespace uapmd {
         tracks_.emplace_back(std::move(tr));
         sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
         track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->onTrackAdded();
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->trackAdded(static_cast<uapmd_track_index_t>(tracks_.size() - 1));
         auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
 
         // Configure main bus (moved from RealtimeSequencer)
@@ -1724,8 +1837,7 @@ namespace uapmd {
             static_cast<double>(sampleRate),
             static_cast<uint32_t>(audio_buffer_size_in_frames)
         );
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->syncPluginTimingListeners();
+        notifyPluginGraphChanged();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
 
@@ -1743,8 +1855,7 @@ namespace uapmd {
         if (tracks_[index]) {
             std::lock_guard<std::mutex> lock(instance_map_mutex_);
             for (const auto instanceId : tracks_[index]->orderedInstanceIds()) {
-                if (latency_compensation_manager_)
-                    latency_compensation_manager_->removePluginTimingListener(instanceId);
+                notifyPluginInstanceWillBeDestroyed(instanceId);
                 plugin_instances_.erase(instanceId);
             }
         }
@@ -1756,14 +1867,14 @@ namespace uapmd {
             pump_rings_.erase(pump_rings_.begin() + static_cast<long>(index));
         if (static_cast<size_t>(index) < pump_sequence_.tracks.size())
             pump_sequence_.tracks.erase(pump_sequence_.tracks.begin() + static_cast<long>(index));
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->onTrackRemoved(index);
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->trackRemoved(index);
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
         refreshPlatformMidiTrackIndices();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->syncPluginTimingListeners();
+        notifyPluginGraphChanged();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
         return true;
@@ -1800,8 +1911,7 @@ namespace uapmd {
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
         timeline_->onTrackGraphChanged(trackIndex);
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->syncPluginTimingListeners();
+        notifyPluginGraphChanged();
         return true;
     }
 
@@ -1891,8 +2001,7 @@ namespace uapmd {
                     std::lock_guard<std::mutex> lock(instance_map_mutex_);
                     plugin_instances_[instanceId] = instance;
                 }
-                if (latency_compensation_manager_)
-                    latency_compensation_manager_->syncPluginTimingListeners();
+                notifyPluginGraphChanged();
 
                 // Parameter metadata change events are now handled in AudioPluginNode directly
 
@@ -1935,8 +2044,7 @@ namespace uapmd {
         // Plugin instance cleanup
         {
             std::lock_guard<std::mutex> lock(instance_map_mutex_);
-            if (latency_compensation_manager_)
-                latency_compensation_manager_->removePluginTimingListener(instanceId);
+            notifyPluginInstanceWillBeDestroyed(instanceId);
             plugin_instances_.erase(instanceId);
         }
 
@@ -1951,8 +2059,7 @@ namespace uapmd {
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
                 refreshFunctionBlockMappings();
-                if (latency_compensation_manager_)
-                    latency_compensation_manager_->syncPluginTimingListeners();
+                notifyPluginGraphChanged();
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 timeline_->onTrackGraphChanged(static_cast<int32_t>(i));
@@ -1962,8 +2069,7 @@ namespace uapmd {
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
             master_track_->removeInstance(instanceId);
             refreshFunctionBlockMappings();
-            if (latency_compensation_manager_)
-                latency_compensation_manager_->syncPluginTimingListeners();
+            notifyPluginGraphChanged();
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
             timeline_->onTrackGraphChanged(kMasterTrackIndex);
@@ -1986,10 +2092,12 @@ namespace uapmd {
             delete ctx;
         }
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->trackRemoved(static_cast<uapmd_track_index_t>(index));
         timeline_->onTrackRemoved(index);
         refreshPlatformMidiTrackIndices();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->syncPluginTimingListeners();
+        notifyPluginGraphChanged();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
     }
@@ -2001,10 +2109,9 @@ namespace uapmd {
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
         tail_process_manager_->cancelTailProcessing();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->setPlaybackPosition(
-                samples,
-                is_playback_active_.load(std::memory_order_acquire));
+        notifyTransportTransition(
+            SequencerTransportTransition::PositionChanged,
+            samples);
     }
 
     int64_t SequencerEngineImpl::playbackPosition() const {
@@ -2054,8 +2161,7 @@ namespace uapmd {
             return;
         tail_process_manager_->transportStarted();
         frozen_track_manager_->transportPlaybackStarted();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->startPlayback();
+        notifyTransportTransition(SequencerTransportTransition::Started, 0);
         is_playback_active_.store(true, std::memory_order_release);
         timeline_->state().isPlaying = true;
         for (auto* extension : playback_engine_extensions_)
@@ -2074,8 +2180,7 @@ namespace uapmd {
         timeline_->state().isPlaying = false;
         timeline_->state().playheadPosition.samples = 0;
         timeline_->state().playheadPosition.legacy_beats = 0.0;
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->stopPlayback();
+        notifyTransportTransition(SequencerTransportTransition::Stopped, 0);
         tail_process_manager_->beginStoppedTransport(
             latency_compensation_manager_
                 ? latency_compensation_manager_->stopDrainInSamples()
@@ -2087,8 +2192,9 @@ namespace uapmd {
     void uapmd::SequencerEngineImpl::pausePlayback() {
         is_playback_active_.store(false, std::memory_order_release);
         timeline_->state().isPlaying = false;
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->pausePlayback();
+        notifyTransportTransition(
+            SequencerTransportTransition::Paused,
+            playback_position_samples_.load(std::memory_order_acquire));
         tail_process_manager_->beginStoppedTransport(
             latency_compensation_manager_
                 ? latency_compensation_manager_->stopDrainInSamples()
@@ -2103,8 +2209,9 @@ namespace uapmd {
             return;
         tail_process_manager_->transportStarted();
         frozen_track_manager_->transportPlaybackStarted();
-        if (latency_compensation_manager_)
-            latency_compensation_manager_->resumePlayback();
+        notifyTransportTransition(
+            SequencerTransportTransition::Resumed,
+            playback_position_samples_.load(std::memory_order_acquire));
         is_playback_active_.store(true, std::memory_order_release);
         timeline_->state().isPlaying = true;
     }
