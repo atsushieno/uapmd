@@ -42,6 +42,46 @@ This split is important:
 - graph APIs summarize graph-local timing
 - the sequencer decides transport behavior
 
+## Engine processing extension boundary
+
+`LatencyCompensationManagerImpl` is attached to `SequencerEngine` through two
+generic extension points instead of being called directly from the engine's
+track-processing and lifecycle code:
+
+- `AudioProcessingEventHandler`
+  - runs on the audio thread around each track's normal processing;
+  - receives a `TrackAudioProcessingEvent` containing the track index, track,
+    mutable process context, and block frame count;
+  - provides `beforeTrackProcess()` for input-side processing and
+    `afterTrackProcess()` for output-side processing.
+- `SequencerProcessingLifecycleListener`
+  - runs outside the audio callback;
+  - receives track, plugin-graph, timing, transport, and processing-reset
+    notifications used to build, resize, reset, or otherwise maintain the
+    state consumed by the realtime handler.
+
+The per-track order is:
+
+1. the pump fills the track input context;
+2. `beforeTrackProcess()` handlers run;
+3. a `TrackAudioProcessorExtension` may substitute normal graph processing
+   (this is how frozen-track playback works), otherwise the normal graph runs;
+4. `afterTrackProcess()` handlers run;
+5. the resulting outputs are published or routed to the master/main mix path.
+
+Latency compensation currently uses only `afterTrackProcess()`: its output
+alignment delay is therefore applied consistently to both live graph output
+and frozen-track output, before either is mixed. The input-side hook exists
+for future compensation work and must not be used to perform non-realtime
+state changes.
+
+Audio processing handlers must not allocate, lock, perform I/O, or mutate
+graph or engine structure. Handler registration uses an atomically published
+immutable handler list, so registration changes do not modify a list being
+walked by the audio thread. Any lifecycle notification that changes storage
+used by the realtime handler must be emitted only while that storage is
+excluded from the audio callback.
+
 ## Timing primitives
 
 ### Plugin layer
@@ -183,7 +223,9 @@ The current implementation provides:
 - preallocated delay lines outside the audio-thread hot path
 - per-track and per-bus inspection APIs
 
-The holdback is applied before track outputs are mixed into master or main mix.
+The holdback is applied by the manager's `afterTrackProcess()` handler, after
+either normal or frozen track processing and before track outputs are published
+or mixed into master or main mix.
 
 This is currently implemented with the routing model that exists today:
 
@@ -420,8 +462,10 @@ depend on debug transport behavior.
 
 Track-routing interpretation lives in the routing manager.
 Latency policy state lives in the latency-compensation manager.
-Sequencer transport uses both, but the newer design direction is to keep policy
-and routing details out of `SequencerEngine` as much as practical.
+Sequencer transport uses both, but communicates compensation-relevant changes
+through `SequencerProcessingLifecycleListener` notifications. `SequencerEngine`
+does not invoke latency-manager-specific processing, output-alignment, or
+transport methods directly.
 
 ### Shared stop-drain computation
 
