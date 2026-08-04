@@ -261,21 +261,25 @@ install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)
 
-set(UAPMD_ARA_SIBLING_DIR "${UAPMD_REPO_ROOT}/../uapmd-ara" CACHE PATH "Optional sibling uapmd-ara source directory")
-option(UAPMD_ENABLE_ARA "Build optional uapmd-ara sibling integration when available" ON)
+option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" OFF)
 if(EMSCRIPTEN)
-    set(UAPMD_ENABLE_ARA OFF CACHE BOOL "Build optional uapmd-ara sibling integration when available" FORCE)
+    set(UAPMD_ENABLE_ARA OFF CACHE BOOL "Build the optional ARA host integration" FORCE)
 endif()
-set(UAPMD_HAS_ARA OFF)
-if(NOT EMSCRIPTEN AND UAPMD_ENABLE_ARA AND EXISTS "${UAPMD_ARA_SIBLING_DIR}/CMakeLists.txt")
-    set(UAPMD_HAS_ARA ON)
+if(UAPMD_ENABLE_ARA)
+    CPMAddPackage(
+            NAME           ARA_SDK
+            GIT_REPOSITORY https://github.com/Celemony/ARA_SDK.git
+            GIT_TAG        25e830b7ee7a4877d7e9725c949b15622b7c9e84
+            DOWNLOAD_ONLY  YES
+    )
+
     add_library(uapmd-ara-api INTERFACE)
     add_library(uapmd::ara-api ALIAS uapmd-ara-api)
     target_compile_definitions(uapmd-ara-api INTERFACE UAPMD_HAS_ARA=1)
     target_include_directories(uapmd-ara-api INTERFACE
-            "${UAPMD_ARA_SIBLING_DIR}/include"
-            "${UAPMD_ARA_SIBLING_DIR}/external/ARA_SDK"
-            "${UAPMD_ARA_SIBLING_DIR}/external/ARA_SDK/ARA_API"
+            "${CMAKE_CURRENT_SOURCE_DIR}/uapmd-ara/include"
+            "${ARA_SDK_SOURCE_DIR}"
+            "${ARA_SDK_SOURCE_DIR}/ARA_API"
     )
 endif()
 
@@ -287,8 +291,8 @@ add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
-if(UAPMD_HAS_ARA)
-    add_subdirectory("${UAPMD_ARA_SIBLING_DIR}" "${CMAKE_BINARY_DIR}/uapmd-ara")
+if(UAPMD_ENABLE_ARA)
+    add_subdirectory(uapmd-ara)
 endif()
 if(EMSCRIPTEN AND TARGET liblocate)
     target_compile_definitions(liblocate PRIVATE LIBLOCATE_DISABLE_DLOPEN)

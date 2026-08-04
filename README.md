@@ -177,9 +177,14 @@ It likely works with MIDI 1.0 inputs (translated, depending on the platform) to 
 
 ## License and Dependencies
 
-Sources in this repository are released under the MIT license.
+We have two distinct component sets for different licenses.
+
+- `uapmd-ara` is released under the Apache V2 license: [LICENSE.APACHE-2.0.txt](LICENSE.APACHE-2.0.txt)
+- Anything else in this repository are released under the MIT license. [LICENSE](LICENSE)
 
 There are third-party (and first-party) dependency libraries (git submodules, CMake FetchContent, or directly included):
+
+MIT/ISC/whatever compatible with them:
 
 - [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
 - [free-audio/clap](https://github.com/free-audio/clap) - MIT
@@ -225,5 +230,9 @@ Fonts used:
 - [Roboto font](https://fonts.google.com/specimen/Roboto) - the SIL Open Font License v1.1
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
+
+Apache V2 or compatible:
+
+- [Celemony/ARA_SDK](https://github.com/Celemony/ARA_SDK) - Apache V2
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.
