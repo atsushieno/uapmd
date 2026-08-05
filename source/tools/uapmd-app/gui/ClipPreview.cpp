@@ -4,6 +4,7 @@
 #include <limits>
 #include <cmath>
 #include <format>
+#include <numeric>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -42,69 +43,6 @@ double samplesToSeconds(int64_t samples, double sampleRate) {
     if (sampleRate <= 0.0)
         return 0.0;
     return static_cast<double>(samples) / sampleRate;
-}
-
-std::string markerDisplayName(const uapmd::ClipMarker& marker, size_t index) {
-    if (!marker.name.empty())
-        return marker.name;
-    if (!marker.markerId.empty())
-        return marker.markerId;
-    return std::format("Marker {}", index + 1);
-}
-
-std::optional<std::string> buildWarpReferenceLabel(
-    const uapmd::ClipData& clipData,
-    const uapmd::AudioWarpPoint& warp
-) {
-    auto& appModel = uapmd::AppModel::instance();
-    const auto tracks = appModel.getTimelineTracks();
-
-    auto findClipByReferenceId = [&](std::string_view referenceId) -> std::optional<uapmd::ClipData> {
-        if (referenceId.empty())
-            return clipData;
-        for (auto* track : tracks) {
-            if (!track)
-                continue;
-            const auto clips = track->clipManager().getAllClips();
-            auto it = std::find_if(clips.begin(), clips.end(), [referenceId](const auto& candidate) {
-                return candidate.referenceId == referenceId;
-            });
-            if (it != clips.end())
-                return *it;
-        }
-        return std::nullopt;
-    };
-
-    switch (warp.referenceType) {
-        case uapmd::AudioWarpReferenceType::Manual:
-            return std::nullopt;
-        case uapmd::AudioWarpReferenceType::ClipStart:
-            return std::string("Start");
-        case uapmd::AudioWarpReferenceType::ClipEnd:
-            return std::string("End");
-        case uapmd::AudioWarpReferenceType::ClipMarker: {
-            const auto refClip = findClipByReferenceId(warp.referenceClipId);
-            if (!refClip)
-                return std::nullopt;
-            for (size_t i = 0; i < refClip->markers.size(); ++i) {
-                const auto& marker = refClip->markers[i];
-                if (marker.markerId == warp.referenceMarkerId)
-                    return markerDisplayName(marker, i);
-            }
-            return std::nullopt;
-        }
-        case uapmd::AudioWarpReferenceType::MasterMarker: {
-            const auto& masterMarkers = appModel.masterTrackMarkers();
-            for (size_t i = 0; i < masterMarkers.size(); ++i) {
-                const auto& marker = masterMarkers[i];
-                if (marker.markerId == warp.referenceMarkerId)
-                    return markerDisplayName(marker, i);
-            }
-            return std::nullopt;
-        }
-    }
-
-    return std::nullopt;
 }
 
 std::unordered_map<std::string, uapmd::ClipData> buildClipLookup() {
@@ -421,7 +359,6 @@ private:
         const float labelYOffset = 3.0f * uiScale_;
         const float textLineHeight = ImGui::GetTextLineHeight();
         const float markerLabelY = rect.Min.y + labelYOffset;
-        const float warpLabelY = markerLabelY + textLineHeight + labelYOffset;
 
         auto drawClipLine = [&](double clipPositionSeconds, ImU32 color, const char* label, float labelY) {
             double normalized = std::clamp(clipPositionSeconds / safeDurationSeconds, 0.0, 1.0);
@@ -437,14 +374,86 @@ private:
             drawClipLine(marker.clipPositionOffset, kMarkerColor, label, markerLabelY);
         }
 
-        for (size_t i = 0; i < preview_->audioWarps.size(); ++i) {
-            const auto& warp = preview_->audioWarps[i];
-            const char* referenceLabel = nullptr;
-            if (i < preview_->audioWarpReferenceLabels.size() && !preview_->audioWarpReferenceLabels[i].empty())
-                referenceLabel = preview_->audioWarpReferenceLabels[i].c_str();
-            drawClipLine(warp.clipPositionOffset, kWarpColor, referenceLabel, markerLabelY);
-            std::string label = std::format("{:.3f}x", warp.speedRatio);
-            drawClipLine(warp.clipPositionOffset, kWarpColor, label.c_str(), warpLabelY);
+        // A warp point is an edit point for the audio-speed envelope.  Draw that
+        // envelope only when it has edit points, so ordinary audio clips keep an
+        // unobscured waveform.
+        if (!preview_->audioWarps.empty()) {
+            std::vector<size_t> warpIndices(preview_->audioWarps.size());
+            std::iota(warpIndices.begin(), warpIndices.end(), 0);
+            warpIndices.erase(std::remove_if(warpIndices.begin(), warpIndices.end(), [&](size_t index) {
+                const auto& warp = preview_->audioWarps[index];
+                return !std::isfinite(warp.clipPositionOffset) ||
+                       !std::isfinite(warp.speedRatio) ||
+                       warp.speedRatio <= 0.0;
+            }), warpIndices.end());
+            if (warpIndices.empty()) {
+                drawList->PopClipRect();
+                return;
+            }
+            std::stable_sort(warpIndices.begin(), warpIndices.end(), [&](size_t lhs, size_t rhs) {
+                return preview_->audioWarps[lhs].clipPositionOffset < preview_->audioWarps[rhs].clipPositionOffset;
+            });
+
+            // Display speed as an octave scale. This keeps the unwarped 1.0x
+            // baseline centered, with reciprocal ratios (0.5x / 2.0x, for
+            // example) equally far from it. The default view spans one octave
+            // in either direction and grows symmetrically when necessary.
+            double logRatioExtent = 1.0;
+            for (size_t index : warpIndices) {
+                const double ratio = preview_->audioWarps[index].speedRatio;
+                logRatioExtent = std::max(logRatioExtent, std::abs(std::log2(ratio)));
+            }
+            const double logRatioRange = std::ceil(logRatioExtent);
+            const float warpTop = rect.Min.y + labelYOffset;
+            const float warpBottom = rect.Max.y - labelYOffset;
+            const float warpHeight = std::max(1.0f, warpBottom - warpTop);
+            auto warpX = [&](double seconds) {
+                const double normalized = std::clamp(seconds / safeDurationSeconds, 0.0, 1.0);
+                return rect.Min.x + static_cast<float>(normalized) * width;
+            };
+            auto warpY = [&](double ratio) {
+                const double normalized = std::clamp(
+                    (std::log2(ratio) + logRatioRange) / (2.0 * logRatioRange), 0.0, 1.0);
+                return warpBottom - static_cast<float>(normalized) * warpHeight;
+            };
+
+            const float warpStroke = 2.0f * uiScale_;
+            const auto& firstWarp = preview_->audioWarps[warpIndices.front()];
+            const float firstWarpX = warpX(firstWarp.clipPositionOffset);
+            const float initialWarpY = warpY(1.0);
+            if (firstWarpX > rect.Min.x)
+                drawList->AddLine(ImVec2(rect.Min.x, initialWarpY), ImVec2(firstWarpX, initialWarpY), kWarpColor, warpStroke);
+            if (firstWarp.speedRatio > 0.0) {
+                const float firstWarpY = warpY(firstWarp.speedRatio);
+                drawList->AddLine(ImVec2(firstWarpX, initialWarpY), ImVec2(firstWarpX, firstWarpY), kWarpColor, warpStroke);
+            }
+
+            for (size_t position = 0; position < warpIndices.size(); ++position) {
+                const size_t index = warpIndices[position];
+                const auto& warp = preview_->audioWarps[index];
+                if (warp.speedRatio <= 0.0)
+                    continue;
+
+                const float startX = warpX(warp.clipPositionOffset);
+                const float y = warpY(warp.speedRatio);
+                float endX = rect.Max.x;
+                if (position + 1 < warpIndices.size())
+                    endX = warpX(preview_->audioWarps[warpIndices[position + 1]].clipPositionOffset);
+                if (endX > startX)
+                    drawList->AddLine(ImVec2(startX, y), ImVec2(endX, y), kWarpColor, warpStroke);
+                drawList->AddCircleFilled(ImVec2(startX, y), 3.0f * uiScale_, kWarpColor);
+
+                std::string ratioLabel = std::format("{:.3f}x", warp.speedRatio);
+                const float ratioLabelY = std::max(warpTop, y - textLineHeight - labelYOffset);
+                drawList->AddText(ImVec2(startX + labelXOffset, ratioLabelY), kWarpColor, ratioLabel.c_str());
+                if (position + 1 < warpIndices.size()) {
+                    const auto& nextWarp = preview_->audioWarps[warpIndices[position + 1]];
+                    if (nextWarp.speedRatio > 0.0) {
+                        const float nextY = warpY(nextWarp.speedRatio);
+                        drawList->AddLine(ImVec2(endX, y), ImVec2(endX, nextY), kWarpColor, warpStroke);
+                    }
+                }
+            }
         }
 
         drawList->PopClipRect();
@@ -631,10 +640,7 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
             preview->clipMarkers.push_back(std::move(marker));
         }
         preview->audioWarps.reserve(clipData->audioWarps.size());
-        preview->audioWarpReferenceLabels.reserve(clipData->audioWarps.size());
         for (auto warp : clipData->audioWarps) {
-            auto label = buildWarpReferenceLabel(*clipData, warp);
-            preview->audioWarpReferenceLabels.push_back(label.value_or(std::string{}));
             if (auto resolved = resolveWarpClipPosition(*clipData, warp, clipLookup, masterTrackMarkers))
                 warp.clipPositionOffset = samplesToSeconds(*resolved, sampleRate);
             preview->audioWarps.push_back(std::move(warp));
