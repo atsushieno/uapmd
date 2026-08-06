@@ -7,7 +7,7 @@
 #include "uapmd-plugin-hosting/detail/CommonTypes.hpp"
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     class UapmdFunctionBlock;
 
     // Handles UAPMD-specific MIDI-CI messages. Namely, it registers property getter and setter for

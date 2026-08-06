@@ -3,7 +3,7 @@
 #include <remidy/remidy.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
-namespace uapmd {
+namespace uapmd_midi_service {
     // Process UAPMD-intrinsic UMP mappings, in particular:
     // - assignable controllers (NRPNs) to plugin parameters
     // - program/bank change to plugin presets (by index)

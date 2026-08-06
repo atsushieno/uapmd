@@ -15,7 +15,7 @@ namespace uapmd {
         std::string displayName;
     };
 
-    class MidiIODevice : public MidiIOFeature {
+    class MidiIODevice : public uapmd_midi_service::MidiIOFeature {
 
     protected:
         MidiIODevice() = default;
@@ -43,8 +43,8 @@ namespace uapmd {
         const std::vector<std::string>& excludedPortIds = {});
     std::vector<MidiPortInfo> getMidiOutputPorts(
         const std::vector<std::string>& excludedPortIds = {});
-    std::shared_ptr<MidiIOFeature> openLibreMidiInputPort(const std::string& portId);
-    std::shared_ptr<MidiIOFeature> openLibreMidiOutputPort(const std::string& portId);
+    std::shared_ptr<uapmd_midi_service::MidiIOFeature> openLibreMidiInputPort(const std::string& portId);
+    std::shared_ptr<uapmd_midi_service::MidiIOFeature> openLibreMidiOutputPort(const std::string& portId);
 
     bool midiApiSupportsDynamicUmpEndpoints(const std::string& apiName);
 }

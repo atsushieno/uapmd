@@ -13,7 +13,7 @@
 
 using namespace uapmd_plugin_hosting;
 
-namespace uapmd {
+namespace uapmd_midi_service {
     namespace {
         class UapmdMidiCISessionImpl : public UapmdMidiCISession {
             UapmdFunctionBlock* device;

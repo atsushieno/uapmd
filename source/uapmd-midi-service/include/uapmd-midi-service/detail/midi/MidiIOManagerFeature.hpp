@@ -2,7 +2,7 @@
 #include <memory>
 #include "MidiIOFeature.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     class MidiIOManagerFeature {
     public:
         virtual ~MidiIOManagerFeature() = default;

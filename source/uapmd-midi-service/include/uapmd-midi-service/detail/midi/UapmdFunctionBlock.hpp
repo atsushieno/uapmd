@@ -9,12 +9,12 @@
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     class UapmdMidiCISession;
     class UapmdNodeUmpOutputMapper;
 
     class UapmdFunctionBlock {
-        AudioPluginNodeFeature* plugin_node_feature;
+        uapmd::AudioPluginNodeFeature* plugin_node_feature;
         uint8_t ump_group{0xFF}; // invalid
 
         std::shared_ptr<MidiIOFeature> midi_device{};
@@ -27,7 +27,7 @@ namespace uapmd {
 
     public:
         UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
-                        AudioPluginNodeFeature* pluginNodeFeature,
+                        uapmd::AudioPluginNodeFeature* pluginNodeFeature,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version);

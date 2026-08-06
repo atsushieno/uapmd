@@ -13,8 +13,9 @@
 #include "UapmdNodeUmpMapper.hpp"
 
 using namespace midicci::commonproperties;
+using namespace uapmd;
 
-namespace uapmd {
+namespace uapmd_midi_service {
 
     std::vector<UapmdFunctionBlock*> UapmdFunctionDevice::devices() {
         std::vector<UapmdFunctionBlock*> result{};

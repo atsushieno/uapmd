@@ -23,6 +23,8 @@
 #include "../devices/WebAudioWorkletIODevice.hpp"
 #endif
 
+using namespace uapmd_midi_service;
+
 namespace uapmd {
 
     // ── Pump / RT ring-buffer structures ─────────────────────────────────────

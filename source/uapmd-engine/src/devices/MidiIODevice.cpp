@@ -20,6 +20,8 @@
 #include <windows.h>
 #endif
 
+using namespace uapmd_midi_service;
+
 namespace {
 
 #ifdef _WIN32
@@ -129,7 +131,7 @@ libremidi::observer makeObserver() {
     return libremidi::observer(configuration);
 }
 
-class LibreMidiInputPort final : public uapmd::MidiIOFeature {
+class LibreMidiInputPort final : public MidiIOFeature {
     std::vector<uapmd::ump_receiver_t> receivers_;
     std::vector<void*> receiver_user_data_;
     std::unique_ptr<libremidi::midi_in> midi_in_;
@@ -172,7 +174,7 @@ public:
     void send(uapmd_ump_t*, size_t, uapmd_timestamp_t) override {}
 };
 
-class LibreMidiOutputPort final : public uapmd::MidiIOFeature {
+class LibreMidiOutputPort final : public MidiIOFeature {
     std::unique_ptr<libremidi::midi_out> midi_out_;
 
 public:
@@ -277,7 +279,7 @@ std::vector<uapmd::MidiPortInfo> uapmd::getMidiOutputPorts(const std::vector<std
     return result;
 }
 
-std::shared_ptr<uapmd::MidiIOFeature> uapmd::openLibreMidiInputPort(const std::string& requestedPortId) {
+std::shared_ptr<MidiIOFeature> uapmd::openLibreMidiInputPort(const std::string& requestedPortId) {
     auto observer = makeObserver();
     for (const auto& port : observer.get_input_ports())
         if (portId(port) == requestedPortId)
@@ -285,7 +287,7 @@ std::shared_ptr<uapmd::MidiIOFeature> uapmd::openLibreMidiInputPort(const std::s
     return nullptr;
 }
 
-std::shared_ptr<uapmd::MidiIOFeature> uapmd::openLibreMidiOutputPort(const std::string& requestedPortId) {
+std::shared_ptr<MidiIOFeature> uapmd::openLibreMidiOutputPort(const std::string& requestedPortId) {
     auto observer = makeObserver();
     for (const auto& port : observer.get_output_ports())
         if (portId(port) == requestedPortId)

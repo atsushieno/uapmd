@@ -1,8 +1,8 @@
 
 # Audio Graph abstraction
 
-`AudioPluginGraph` is designed to customizable enough to allow external implementation while being decoupled from other 
-UAPMD components.
+`AudioPluginGraph` implements the actual audio node connections.
+It is designed to be customizable enough to allow external implementation while being decoupled from other UAPMD components.
 
 Currently there are two graph implementations:
 
@@ -11,6 +11,7 @@ Currently there are two graph implementations:
 
 `AudioPluginGraph` implementation classes must provide realtime-safe `processAudio()` implementation that might be in 
 an isolated process such as Web `AudioWorklet` or AUv3 audio processor.
+Modifying its node connections must not affect realtime safety either.
 
 uapmd-graph also features `AudioGraph` and `AudioGraphNode` interfaces, that provide implementation-agnostic ways to process custom audio nodes such as gain or splitter, so that basic audio track operation can be performed.
 The graph node API also involves saving and loading to the UAPMD project data.

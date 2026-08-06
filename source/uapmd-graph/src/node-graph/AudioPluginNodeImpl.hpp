@@ -31,7 +31,7 @@ namespace uapmd {
         remidy::EventListenerId parameter_listener_token_{0};
         remidy::EventListenerId metadata_listener_token_{0};
         std::atomic<bool> stop_flush_requested_{false};
-        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper_{};
+        std::unique_ptr<uapmd_midi_service::UapmdUmpInputMapper> ump_input_mapper_{};
         // Active-note bitmask, indexed [group][channel][note / 64]. RT-thread only.
         // Used by prepareStopFlush() to emit genuine note-offs: formats like VST3 have
         // no All Sound Off event, so CC 120 alone cannot silence held voices.
@@ -52,7 +52,7 @@ namespace uapmd {
             on_delete_(std::move(onDelete)) {
             pending_events_.reserve(eventBufferSizeInBytes / sizeof(umppi::Ump));
             if (instance_)
-                ump_input_mapper_ = UapmdUmpInputMapper::create(instance_);
+                ump_input_mapper_ = uapmd_midi_service::UapmdUmpInputMapper::create(instance_);
             // Register parameter change listeners directly with the plugin
             if (instance_ && instance_->parameterSupport()) {
                 parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(

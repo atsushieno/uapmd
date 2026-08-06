@@ -321,7 +321,7 @@ uapmd::TransportController::TransportController(AppModel* appModel, RealtimeSequ
     : appModel_(appModel), sequencer_(sequencer) {
 }
 
-std::shared_ptr<uapmd::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
+std::shared_ptr<uapmd_midi_service::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
     std::string apiName, std::string deviceName, std::string manufacturer, std::string version) {
     return createLibreMidiIODevice(apiName, deviceName, manufacturer, version);
 }

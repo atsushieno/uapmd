@@ -6,7 +6,7 @@
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "UapmdNodeUmpMapper.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin)
       : UapmdUmpInputMapper(),
         plugin(plugin) {

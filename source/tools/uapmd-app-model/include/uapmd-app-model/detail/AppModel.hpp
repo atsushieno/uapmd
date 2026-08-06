@@ -60,8 +60,8 @@ namespace uapmd {
         void record();
     };
 
-    class AppModel : MidiIOManagerFeature {
-        std::shared_ptr<MidiIOFeature> createMidiIOFeature(
+    class AppModel : uapmd_midi_service::MidiIOManagerFeature {
+        std::shared_ptr<uapmd_midi_service::MidiIOFeature> createMidiIOFeature(
             std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
 
     public:
@@ -84,7 +84,7 @@ namespace uapmd {
         // Device state containing MIDI device and associated plugin instances
         struct DeviceState {
             std::mutex mutex;
-            std::shared_ptr<UapmdFunctionBlock> device;
+            std::shared_ptr<uapmd_midi_service::UapmdFunctionBlock> device;
             std::string label;
             std::string apiName;
             std::string statusMessage;
@@ -237,7 +237,7 @@ namespace uapmd {
         // Result from plugin instance creation
         struct PluginInstanceResult {
             int32_t instanceId = -1;
-            std::shared_ptr<UapmdFunctionBlock> device;
+            std::shared_ptr<uapmd_midi_service::UapmdFunctionBlock> device;
             std::string pluginName;
             std::string error;
         };

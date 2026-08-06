@@ -60,7 +60,7 @@ namespace uapmd {
         virtual FrozenTrackManager& frozenTrackManager() = 0;
         virtual TailProcessManager& tailProcessManager() = 0;
         virtual uapmd_plugin_hosting::AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
-        virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
+        virtual uapmd_midi_service::UapmdFunctionBlockManager* functionBlockManager() = 0;
         // FIXME: we should probably remove this at some stage
         virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
 

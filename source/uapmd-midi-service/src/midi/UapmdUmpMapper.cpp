@@ -3,7 +3,7 @@
 #include "UapmdNodeUmpMapper.hpp"
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     void UapmdUmpInputMapper::process(remidy::AudioProcessContext& src) {
         auto& inEvents = src.eventIn();
         auto* bytes = static_cast<uint8_t*>(inEvents.getMessages());

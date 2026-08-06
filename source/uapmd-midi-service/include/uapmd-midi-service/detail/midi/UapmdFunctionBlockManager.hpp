@@ -1,7 +1,7 @@
 #pragma once
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 
-namespace uapmd {
+namespace uapmd_midi_service {
     // It is a "MIDI 2.0 Device" which contains zero or more Function Blocks indicated by a span of groups.
     // A UapmdFunctionBlock corresponds to a plugin instance.
     class UapmdFunctionDevice {
@@ -14,7 +14,7 @@ namespace uapmd {
         std::vector<UapmdFunctionBlock*> devices();
 
         bool createFunctionBlock(const std::string& apiName,
-                AudioPluginNodeFeature* pluginNodeFeature,
+                uapmd::AudioPluginNodeFeature* pluginNodeFeature,
                 int32_t instanceId,
                 std::string deviceName,
                 std::string manufacturer,
