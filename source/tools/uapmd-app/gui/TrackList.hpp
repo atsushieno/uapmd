@@ -8,7 +8,7 @@
 #include <map>
 #include <imgui.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 struct TrackInstance {
     int32_t instanceId;

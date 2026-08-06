@@ -5,7 +5,8 @@
 #include <iostream>
 #include <map>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 TrackList::TrackList() {
 }
@@ -23,7 +24,7 @@ void TrackList::update() {
         return;
     }
 
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto instanceIds = sequencer.engine()->pluginHost()->instanceIds();
 
     instances_.clear();

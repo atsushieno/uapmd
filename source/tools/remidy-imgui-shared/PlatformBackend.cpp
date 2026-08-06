@@ -2,8 +2,8 @@
 
 #include <stdexcept>
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 #ifdef USE_WIN32_BACKEND
 std::unique_ptr<WindowingBackend> createWin32WindowingBackend();
@@ -88,5 +88,4 @@ std::unique_ptr<ImGuiRenderer> ImGuiRenderer::create() {
 #endif
 }
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui

@@ -4,7 +4,7 @@
 #include <vector>
 #include <functional>
 
-namespace uapmd::gui {
+namespace remidy_imgui {
     class MidiKeyboard {
     public:
         struct KeyPress {

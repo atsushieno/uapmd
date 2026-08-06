@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // 1 ImTimeline "frame" on the beats timeline represents 1/kTicksPerBeatDisplay of a
 // quarter-note beat. This gives sub-beat placement precision while keeping node start/end
@@ -30,4 +30,4 @@ inline int32_t toBeatFrame(double beats) {
     return static_cast<int32_t>(std::llround(clamped * kTicksPerBeatDisplay));
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

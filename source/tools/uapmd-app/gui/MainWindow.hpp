@@ -38,7 +38,7 @@
 struct SDL_Window;
 struct GLFWwindow;
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 struct GuiDefaults {
     std::string pluginName;
@@ -64,7 +64,7 @@ class MainWindow {
         std::string midi_output_port_id_;
 
 #ifdef UAPMD_HAS_MCP_SERVER
-        std::unique_ptr<McpServer> mcpServer_;
+        std::unique_ptr<uapmd_app::McpServer> mcpServer_;
         // 0 = Server (desktop only), 1 = Client
         int  mcpMode_          = UAPMD_MCP_DEFAULT_MODE;
         int  mcpPort_          = 37373;
@@ -104,7 +104,7 @@ class MainWindow {
         ImGuiStyle baseStyle_{};
         float uiScale_ = 1.0f;
         bool uiScaleDirty_ = false;
-        ThemeMode currentTheme_ = ThemeMode::Dark;
+        remidy_imgui::ThemeMode currentTheme_ = remidy_imgui::ThemeMode::Dark;
         ImVec2 baseWindowSize_ = ImVec2(800.0f, 800.0f);
         ImVec2 lastWindowSize_ = ImVec2(0.0f, 0.0f);
         // Safe area insets (left, top, right, bottom) in logical points.
@@ -148,7 +148,7 @@ class MainWindow {
         // Track UI
         void renderAudioGraphEditorWindow();
         void refreshInstances();
-        void handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change);
+        void handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);
@@ -184,7 +184,7 @@ class MainWindow {
         void setNextChildWindowSize(const std::string& id, ImVec2 defaultBaseSize);
         void updateChildWindowSizeState(const std::string& id);
         void toggleTheme();
-        void applyTheme(ThemeMode mode);
+        void applyTheme(remidy_imgui::ThemeMode mode);
         void renderUnsavedProjectDialog();
     };
 }

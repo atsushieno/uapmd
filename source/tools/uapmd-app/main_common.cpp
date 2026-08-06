@@ -76,7 +76,9 @@
 #endif
 #endif // !USE_DIRECTX11_RENDERER
 
-namespace uapmd {
+using namespace uapmd;
+
+namespace uapmd_app {
 
 int runMainLoop(int argc, char** argv) {
     std::vector<std::string> args;
@@ -178,7 +180,7 @@ int runMainLoop(int argc, char** argv) {
     }
 
     // Create windowing backend with priority: SDL3 > SDL2 > GLFW
-    auto windowingBackend = uapmd::gui::WindowingBackend::create();
+    auto windowingBackend = remidy_imgui::WindowingBackend::create();
     if (!windowingBackend) {
         std::cerr << "Error: No suitable windowing backend found" << std::endl;
         return EXIT_FAILURE;
@@ -200,7 +202,7 @@ int runMainLoop(int argc, char** argv) {
     constexpr int kInitialWindowWidth = 1000;
     constexpr int kInitialWindowHeight = 640;
 #endif
-    uapmd::gui::WindowHandle* window = windowingBackend->createWindow(
+    remidy_imgui::WindowHandle* window = windowingBackend->createWindow(
         "UAPMD: Audio Plugin MIDI 2.0 Devices",
         kInitialWindowWidth,
         kInitialWindowHeight);
@@ -226,7 +228,7 @@ int runMainLoop(int argc, char** argv) {
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    auto recommendUiScale = [](uapmd::gui::WindowHandle* handle) -> float {
+    auto recommendUiScale = [](remidy_imgui::WindowHandle* handle) -> float {
 #if defined(__ANDROID__) && defined(USE_SDL3_BACKEND)
         if (handle && handle->sdlWindow) {
             float displayScale = SDL_GetWindowDisplayScale(handle->sdlWindow);
@@ -244,11 +246,11 @@ int runMainLoop(int argc, char** argv) {
 
     // Load application font BEFORE initializing renderer
     // The renderer initialization builds and uploads the font atlas to GPU
-    uapmd::gui::ensureApplicationFont();
+    uapmd_app_gui::ensureApplicationFont();
 
     // Create ImGui platform and renderer backends
-    auto imguiPlatformBackend = uapmd::gui::ImGuiPlatformBackend::create(window);
-    auto imguiRenderer = uapmd::gui::ImGuiRenderer::create();
+    auto imguiPlatformBackend = remidy_imgui::ImGuiPlatformBackend::create(window);
+    auto imguiRenderer = remidy_imgui::ImGuiRenderer::create();
 
     if (!imguiPlatformBackend || !imguiRenderer) {
         std::cerr << "Error: Failed to create ImGui backends" << std::endl;
@@ -270,13 +272,13 @@ int runMainLoop(int argc, char** argv) {
     // backends ready
 
     // Initialize Remidy event loop for ImGui
-    auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
+    auto eventLoop = std::make_unique<remidy_imgui::ImGuiEventLoop>();
     auto* eventLoopPtr = eventLoop.get();
     remidy::setEventLoop(eventLoop.release());
     remidy::EventLoop::initializeOnUIThread();
 
     // Initialize application model
-    uapmd::AppModel::instantiate();
+    uapmd_app::AppModel::instantiate();
 
     // Initialize audio device manager
     auto audioManager = uapmd::AudioIODeviceManager::instance();
@@ -284,7 +286,7 @@ int runMainLoop(int argc, char** argv) {
     audioManager->initialize(audioConfig);
 
     // Prepare GUI defaults from command line arguments
-    uapmd::gui::GuiDefaults defaults;
+    uapmd_app_gui::GuiDefaults defaults;
     if (!positional.empty()) defaults.pluginName = positional[0];
     if (positional.size() > 1) defaults.formatName = positional[1];
     if (positional.size() > 2) defaults.apiName = positional[2];
@@ -293,16 +295,16 @@ int runMainLoop(int argc, char** argv) {
     defaults.noConfirmOnQuit = cliOptions.noConfirmOnQuit;
 
     // Create main window controller
-    uapmd::gui::MainWindow mainWindow(defaults);
-    uapmd::AppModel::instance().notifyUiReady();
-    uapmd::AppModel::instance().notifyPersistentStorageReady();
+    uapmd_app_gui::MainWindow mainWindow(defaults);
+    uapmd_app::AppModel::instance().notifyUiReady();
+    uapmd_app::AppModel::instance().notifyPersistentStorageReady();
     float suggestedUiScale = recommendUiScale(window);
     if (suggestedUiScale > 1.01f) {
         mainWindow.applySystemUiScale(suggestedUiScale);
     }
 
     // Start audio
-    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+    uapmd_app::AppModel::instance().setAudioEngineEnabled(true);
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -458,7 +460,7 @@ int runMainLoop(int argc, char** argv) {
     }
 
     // Final guard: ensure audio is stopped before teardown
-    uapmd::AppModel::instance().setAudioEngineEnabled(false);
+    uapmd_app::AppModel::instance().setAudioEngineEnabled(false);
 
     // Cleanup
     imguiRenderer->shutdown();
@@ -468,9 +470,9 @@ int runMainLoop(int argc, char** argv) {
     windowingBackend->destroyWindow(window);
     windowingBackend->shutdown();
 
-    uapmd::AppModel::cleanupInstance();
+    uapmd_app::AppModel::cleanupInstance();
 
     return EXIT_SUCCESS;
 }
 
-} // namespace uapmd
+} // namespace uapmd_app

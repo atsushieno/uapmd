@@ -12,7 +12,7 @@
 
 #include "ClipPreview.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // Extended note type used inside the piano-roll editor.
 // Inherits all display fields from ClipPreview::MidiNote and adds the
@@ -167,4 +167,4 @@ private:
     static uint64_t secondsToTicks(double seconds, uint32_t tickRes, double bpm) noexcept;
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

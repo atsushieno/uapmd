@@ -31,8 +31,8 @@ struct WasmContext {
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
     ImGuiContext* imguiContext = nullptr;
-    uapmd::gui::ImGuiEventLoop* eventLoop = nullptr;
-    uapmd::gui::MainWindow* mainWindow = nullptr;
+    remidy_imgui::ImGuiEventLoop* eventLoop = nullptr;
+    uapmd_app_gui::MainWindow* mainWindow = nullptr;
     bool quit = false;
 };
 
@@ -276,26 +276,26 @@ static int runWasmApp() {
     io.IniFilename = nullptr;
     ImGui::LoadIniSettingsFromMemory("", 0);
     ImGui::StyleColorsDark();
-    uapmd::gui::ensureApplicationFont();
+    uapmd_app_gui::ensureApplicationFont();
 
     ImGui_ImplSDL3_InitForOpenGL(g_ctx.window, g_ctx.glContext);
     ImGui_ImplOpenGL3_Init("#version 300 es");
 
-    g_ctx.eventLoop = new uapmd::gui::ImGuiEventLoop();
+    g_ctx.eventLoop = new remidy_imgui::ImGuiEventLoop();
     remidy::setEventLoop(g_ctx.eventLoop);
     remidy::EventLoop::initializeOnUIThread();
 
-    uapmd::AppModel::instantiate();
-    uapmd::gui::GuiDefaults defaults;
-    g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    uapmd::AppModel::instance().notifyUiReady();
+    uapmd_app::AppModel::instantiate();
+    uapmd_app_gui::GuiDefaults defaults;
+    g_ctx.mainWindow = new uapmd_app_gui::MainWindow(defaults);
+    uapmd_app::AppModel::instance().notifyUiReady();
     maybeScheduleAutoImport();
-    uapmd::AppModel::instance().setAudioEngineEnabled(false);
+    uapmd_app::AppModel::instance().setAudioEngineEnabled(false);
 
     uapmd_init_browser_storage();
     emscripten_set_main_loop(mainLoopIteration, 0, 1);
     cleanup();
-    uapmd::AppModel::cleanupInstance();
+    uapmd_app::AppModel::cleanupInstance();
     return EXIT_SUCCESS;
 }
 
@@ -308,7 +308,7 @@ void uapmd_debug_import_audio(const char* path) {
     }
 
     const std::string filepath(path);
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (tracks.empty()) {
         auto trackIndex = appModel.addTrack();
@@ -343,9 +343,9 @@ void uapmd_debug_load_project(const char* path) {
         std::cout << "[wasm-debug] load_project: empty path\n";
         return;
     }
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     appModel.loadProjectFromResolvedPath(std::filesystem::path(path),
-        [](uapmd::AppModel::ProjectResult result) {
+        [](uapmd_app::AppModel::ProjectResult result) {
             if (!result.success)
                 std::cout << "[wasm-debug] load_project: failed: " << result.error << "\n";
             else
@@ -355,14 +355,14 @@ void uapmd_debug_load_project(const char* path) {
 
 EMSCRIPTEN_KEEPALIVE
 void uapmd_debug_enable_audio_engine(int enable) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     appModel.setAudioEngineEnabled(enable != 0);
     std::cout << "[wasm-debug] audio_engine: " << (enable ? "ON" : "OFF") << "\n";
 }
 
 EMSCRIPTEN_KEEPALIVE
 void uapmd_debug_start_playback() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     appModel.transport().play();
     std::cout << "[wasm-debug] start_playback called, isPlaying="
               << appModel.transport().isPlaying() << "\n";
@@ -370,7 +370,7 @@ void uapmd_debug_start_playback() {
 
 EMSCRIPTEN_KEEPALIVE
 double uapmd_debug_get_playback_position_samples() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     return static_cast<double>(appModel.timeline().playheadPosition.samples);
 }
 
@@ -380,7 +380,7 @@ void uapmd_web_storage_ready(int ok) {
         std::cerr << "[uapmd] Browser storage sync failed; continuing without persistent cache." << std::endl;
         return;
     }
-    uapmd::AppModel::instance().notifyPersistentStorageReady();
+    uapmd_app::AppModel::instance().notifyPersistentStorageReady();
 }
 }
 

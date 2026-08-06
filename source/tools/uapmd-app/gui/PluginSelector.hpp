@@ -8,14 +8,14 @@
 #include <imgui.h>
 #include "PluginList.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class PluginSelector {
 public:
     PluginSelector();
 
     void render();
-    void setPlugins(const std::vector<PluginEntry>& plugins);
+    void setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugins);
 
     // Callbacks
     void setOnInstantiatePlugin(std::function<void(const std::string& format, const std::string& pluginId, int32_t trackIndex)> callback);

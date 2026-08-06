@@ -6,7 +6,8 @@
 #include <imgui.h>
 #include <ImTimeline.h>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZoom,
                              float uiScale, float barStartScreenX,
@@ -154,4 +155,4 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
     ImGui::PopID();
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

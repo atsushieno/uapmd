@@ -9,7 +9,7 @@
 #include <ImTimeline.h>
 #include <uapmd-data/uapmd-data.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 struct ClipPreview {
     struct WaveformPoint {
@@ -114,4 +114,4 @@ std::shared_ptr<ClipPreview> createMasterMetaPreview(
     double durationSeconds
 );
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

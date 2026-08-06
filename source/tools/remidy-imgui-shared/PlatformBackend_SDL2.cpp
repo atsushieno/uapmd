@@ -11,8 +11,8 @@
 #include <choc/platform/choc_ObjectiveCHelpers.h>
 #endif
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 // Global quit flag for SDL2
 static bool g_SDL2_QuitRequested = false;
@@ -207,7 +207,6 @@ std::unique_ptr<ImGuiPlatformBackend> createSDL2ImGuiBackend() {
     return std::make_unique<SDL2ImGuiBackend>();
 }
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui
 
 #endif // USE_SDL2_BACKEND

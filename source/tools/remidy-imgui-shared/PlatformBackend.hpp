@@ -12,8 +12,7 @@ struct HWND__;
 typedef HWND__* HWND;
 #endif
 
-namespace uapmd {
-namespace gui {
+namespace remidy_imgui {
 
 /**
  * Window handle that can contain different types of windows
@@ -201,5 +200,4 @@ public:
     static std::unique_ptr<ImGuiRenderer> create();
 };
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui

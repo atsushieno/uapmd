@@ -3,13 +3,14 @@
 #include <iostream>
 #include <cfloat>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 PluginList::PluginList() {
     std::fill(std::begin(searchFilter_), std::end(searchFilter_), '\0');
 }
 
-void PluginList::setPlugins(const std::vector<PluginEntry>& plugins) {
+void PluginList::setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugins) {
     availablePlugins_ = plugins;
 }
 

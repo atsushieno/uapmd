@@ -4,7 +4,7 @@
 #include <vector>
 #include <functional>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
     class SpectrumAnalyzer {
     public:
         static constexpr int kDefaultBars = 32;

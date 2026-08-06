@@ -1,6 +1,6 @@
 #pragma once
 
-namespace uapmd::gui {
+namespace remidy_imgui {
 
 enum class ThemeMode {
 	Dark,

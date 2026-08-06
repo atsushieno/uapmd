@@ -1,7 +1,8 @@
 #include "AudioDeviceSettings.hpp"
 #include "ContextActions.hpp"
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 AudioDeviceSettings::AudioDeviceSettings() {
 }

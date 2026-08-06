@@ -10,7 +10,7 @@
 #include <imgui.h>
 #include <uapmd-data/uapmd-data.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class AudioEventListEditor {
 public:
@@ -98,4 +98,4 @@ private:
     void renderWindow(WindowState& state, const RenderContext& context);
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

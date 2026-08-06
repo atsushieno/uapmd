@@ -7,7 +7,8 @@
 #include <imgui.h>
 #include <cstdio>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -98,4 +99,4 @@ void ensureApplicationFont() {
     mergeFontaudioIconFont(io, kBaseFontSize);
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

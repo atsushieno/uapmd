@@ -30,5 +30,5 @@ int main(int argc, char** argv) {
 #endif
     // Run the shared main application loop
     // SDL3 handles all Android lifecycle, windowing, and input
-    return uapmd::runMainLoop(argc, argv);
+    return uapmd_app::runMainLoop(argc, argv);
 }

@@ -5,7 +5,7 @@
 #include <vector>
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class ScriptEditor {
     struct ScriptPreset {
@@ -22,7 +22,7 @@ class ScriptEditor {
     bool isOpen_ = false;
     std::string errorMessage_;
     std::string resultMessage_;
-    uapmd::UapmdJSRuntime jsRuntime_;
+    uapmd_app::UapmdJSRuntime jsRuntime_;
     std::vector<ScriptPreset> presets_;
     std::vector<ScriptFileEntry> fileHistory_;
 
@@ -47,4 +47,4 @@ private:
     static std::string getSettingsFilePath();
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

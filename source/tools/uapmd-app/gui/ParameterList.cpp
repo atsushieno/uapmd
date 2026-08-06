@@ -7,7 +7,8 @@
 
 using namespace uapmd_plugin_hosting;
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 static std::string escapeSliderFormatLiteral(const std::string& text) {
     if (text.find('%') == std::string::npos)

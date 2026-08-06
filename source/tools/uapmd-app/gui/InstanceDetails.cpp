@@ -16,14 +16,14 @@
 using namespace uapmd_plugin_hosting;
 
 namespace {
-using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
+using ParameterContext = uapmd_app_gui::ParameterList::ParameterContext;
 
 struct PerNoteSelection {
     remidy::PerNoteControllerContextTypes type{remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_NONE};
     remidy::PerNoteControllerContext context{};
 };
 
-std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd::gui::ParameterList& list) {
+std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd_app_gui::ParameterList& list) {
     PerNoteSelection selection{};
     selection.context = remidy::PerNoteControllerContext{};
     switch (list.context()) {
@@ -78,7 +78,9 @@ std::vector<ParameterMetadata> toParameterMetadata(const std::vector<remidy::Plu
 }
 }
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 void InstanceDetails::showWindow(int32_t instanceId) {
     auto it = windows_.find(instanceId);
@@ -87,7 +89,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
 
         state.midiKeyboard.setOctaveRange(3, 4);
         state.midiKeyboard.setKeyEventCallback([this, instanceId](int note, int, bool isPressed) {
-            auto& seq = uapmd::AppModel::instance().sequencer();
+            auto& seq = uapmd_app::AppModel::instance().sequencer();
             if (isPressed) {
                 seq.engine()->sendNoteOn(instanceId, note);
             } else {
@@ -96,7 +98,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         });
 
         state.parameterList.setOnParameterChanged([this, instanceId](uint32_t parameterIndex, float value) {
-            auto& appModel = uapmd::AppModel::instance();
+            auto& appModel = uapmd_app::AppModel::instance();
             auto& seq = appModel.sequencer();
             auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
                 auto windowIt = windows_.find(instanceId);
@@ -131,7 +133,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
-            auto& seq = uapmd::AppModel::instance().sequencer();
+            auto& seq = uapmd_app::AppModel::instance().sequencer();
             auto* pal = seq.engine()->getPluginInstance(instanceId);
             if (pal) {
                 auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
@@ -165,7 +167,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         refreshPresets(instanceId, state);
 
         // Register parameter update listener
-        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto& seq = uapmd_app::AppModel::instance().sequencer();
         auto attachListeners = [this, instanceId, &state](SequencerTrack* track) -> bool {
             if (!track)
                 return false;
@@ -181,7 +183,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
                 if (detailsState.parameterList.context() != ParameterList::ParameterContext::Global)
                     return;
 
-                auto& seq = uapmd::AppModel::instance().sequencer();
+                auto& seq = uapmd_app::AppModel::instance().sequencer();
                 auto* pal = seq.engine()->getPluginInstance(instanceId);
                 if (!pal)
                     return;
@@ -230,7 +232,7 @@ void InstanceDetails::removeInstance(int32_t instanceId) {
     // Unregister parameter and metadata listeners
     auto it = windows_.find(instanceId);
     if (it != windows_.end() && (it->second.parameterListenerId != 0 || it->second.metadataListenerId != 0)) {
-        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto& seq = uapmd_app::AppModel::instance().sequencer();
         auto detachListeners = [this, &it, instanceId](SequencerTrack* track) -> bool {
             if (!track)
                 return false;
@@ -282,7 +284,7 @@ void InstanceDetails::refreshParametersForInstance(int32_t instanceId) {
 }
 
 void InstanceDetails::render(const RenderContext& context) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
 
     std::vector<int32_t> detailIds;
     detailIds.reserve(windows_.size());
@@ -343,9 +345,9 @@ void InstanceDetails::render(const RenderContext& context) {
                         const char* uiButtonText = trackInstance->uiVisible ? "Hide UI" : "Show UI";
                         if (ImGui::Button(uiButtonText)) {
                             if (trackInstance->uiVisible) {
-                                uapmd::AppModel::instance().hidePluginUI(instanceId);
+                                uapmd_app::AppModel::instance().hidePluginUI(instanceId);
                             } else {
-                                uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                                uapmd_app::AppModel::instance().requestShowPluginUI(instanceId);
                             }
                         }
                         if (disableShowUIButton) {
@@ -357,7 +359,7 @@ void InstanceDetails::render(const RenderContext& context) {
                         bool pluginBypassed = instance->bypassed();
                         if (pluginBypassed)
                             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                        const char* toggleIcon = pluginBypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
+                        const char* toggleIcon = pluginBypassed ? uapmd_app_gui::icons::ToggleOff : uapmd_app_gui::icons::ToggleOn;
                         std::string toggleLabel = std::format("{}##InstanceBypass{}", toggleIcon, instanceId);
                         if (ImGui::Button(toggleLabel.c_str()))
                             instance->bypassed(!pluginBypassed);
@@ -457,7 +459,7 @@ void InstanceDetails::render(const RenderContext& context) {
                 ImGui::TextUnformatted("UMP Group:");
                 ImGui::SameLine();
                 {
-                    auto& appModel = uapmd::AppModel::instance();
+                    auto& appModel = uapmd_app::AppModel::instance();
                     const uint8_t currentGroup = appModel.getInstanceGroup(instanceId);
 
                     // Collect groups used by other instances on the same track.
@@ -525,14 +527,14 @@ void InstanceDetails::render(const RenderContext& context) {
             if (context.removeInstance) {
                 context.removeInstance(instanceId);
             } else {
-                uapmd::AppModel::instance().removePluginInstance(instanceId);
+                uapmd_app::AppModel::instance().removePluginInstance(instanceId);
             }
         }
     }
 }
 
 void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
+    auto* pal = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
@@ -585,7 +587,7 @@ void InstanceDetails::refreshPresets(int32_t instanceId, DetailsWindowState& sta
     state.presets.clear();
     state.selectedPreset = -1;
 
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
+    auto* pal = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
@@ -598,14 +600,14 @@ void InstanceDetails::loadSelectedPreset(int32_t instanceId, DetailsWindowState&
         return;
     }
 
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
+    auto* pal = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
 
     const auto& preset = state.presets[state.selectedPreset];
     pal->loadPreset(preset.index);
-    uapmd::AppModel::instance().markPluginInstanceTrackDirty(instanceId);
+    uapmd_app::AppModel::instance().markPluginInstanceTrackDirty(instanceId);
     std::cout << "Loading preset " << preset.name << " for instance " << instanceId << std::endl;
 
     refreshParameters(instanceId, state);

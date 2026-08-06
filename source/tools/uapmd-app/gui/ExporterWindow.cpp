@@ -5,7 +5,9 @@
 #include "PlatformDialogs.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 ExporterWindow::ExporterWindow(Callbacks callbacks)
     : callbacks_(std::move(callbacks)) {}
@@ -42,7 +44,7 @@ void ExporterWindow::render(float uiScale) {
     if (ImGui::IsWindowAppearing())
         refreshBounds();
 
-    auto& app = uapmd::AppModel::instance();
+    auto& app = uapmd_app::AppModel::instance();
     auto bounds = app.timelineContentBounds();
     auto status = app.getRenderToFileStatus();
 
@@ -63,7 +65,7 @@ void ExporterWindow::render(float uiScale) {
             {"All Files", {}, {"*"}}
         };
 
-        if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
             provider->pickSaveDocument(
                 "render.wav",
                 filters,
@@ -156,7 +158,7 @@ void ExporterWindow::render(float uiScale) {
     if (!canStart)
         ImGui::BeginDisabled();
     if (ImGui::Button("Start Render")) {
-        uapmd::AppModel::RenderToFileSettings settings{};
+        uapmd_app::AppModel::RenderToFileSettings settings{};
         settings.outputPath = std::filesystem::path(state_.outputPath.data());
         settings.outputHandle = state_.outputHandle;
         settings.tailSeconds = state_.guardSeconds;
@@ -210,7 +212,7 @@ void ExporterWindow::render(float uiScale) {
 void ExporterWindow::refreshBounds() {
     ensureDefaultPath();
 
-    auto& app = uapmd::AppModel::instance();
+    auto& app = uapmd_app::AppModel::instance();
     auto bounds = app.timelineContentBounds();
     if (bounds.hasContent) {
         state_.customStartSeconds = bounds.startSeconds;
@@ -241,4 +243,4 @@ void ExporterWindow::ensureDefaultPath() {
     state_.outputHandle.reset();
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

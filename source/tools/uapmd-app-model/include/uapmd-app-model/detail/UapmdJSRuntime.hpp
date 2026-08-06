@@ -13,7 +13,7 @@
 
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 
-namespace uapmd {
+namespace uapmd_app {
 
 struct ParameterUpdate {
     int32_t parameterIndex;
@@ -33,12 +33,12 @@ class UapmdJSRuntime {
     // Parameter update queue for JavaScript polling
     std::unordered_map<int32_t, std::vector<ParameterUpdate>> js_parameter_updates_;
     std::mutex js_parameter_mutex_;
-    std::map<int32_t, EventListenerId> js_parameter_listener_ids_; // std::map for deterministic cleanup order
+    std::map<int32_t, uapmd::EventListenerId> js_parameter_listener_ids_; // std::map for deterministic cleanup order
 
     // Parameter metadata refresh queue for JavaScript polling
     std::unordered_set<int32_t> js_metadata_refresh_;
     std::mutex js_metadata_mutex_;
-    std::map<int32_t, EventListenerId> js_metadata_listener_ids_; // std::map for deterministic cleanup order
+    std::map<int32_t, uapmd::EventListenerId> js_metadata_listener_ids_; // std::map for deterministic cleanup order
 
 public:
     UapmdJSRuntime();
@@ -134,4 +134,4 @@ private:
     void registerRenderAPI();
 };
 
-} // namespace uapmd
+} // namespace uapmd_app

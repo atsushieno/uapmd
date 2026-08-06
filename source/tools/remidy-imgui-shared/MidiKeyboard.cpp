@@ -3,7 +3,8 @@
 #include <cmath>
 #include <cstdio>
 
-namespace uapmd::gui {
+
+namespace remidy_imgui {
 
 MidiKeyboard::MidiKeyboard() {
     pressedKeys_.resize(128, false);

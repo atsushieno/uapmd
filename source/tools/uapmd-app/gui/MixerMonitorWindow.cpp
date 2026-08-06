@@ -8,7 +8,9 @@
 
 using namespace uapmd_graph;
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -59,7 +61,7 @@ void MixerMonitorWindow::render(float uiScale) {
     if (callbacks_.updateChildSizeState)
         callbacks_.updateChildSizeState(windowId);
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto* engine = appModel.sequencer().engine();
     if (!engine) {
         ImGui::TextDisabled("Sequencer engine is not available.");
@@ -237,4 +239,4 @@ void MixerMonitorWindow::render(float uiScale) {
     ImGui::End();
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

@@ -13,7 +13,7 @@
 #include <remidy/detail/event-loop.hpp>
 #include <remidy-gui/remidy-gui.hpp>
 
-namespace uapmd::gui {
+namespace remidy_imgui {
 
 /**
  * ImGui-compatible event loop for Remidy.
@@ -94,4 +94,4 @@ public:
     }
 };
 
-} // namespace uapmd::gui
+} // namespace remidy_imgui

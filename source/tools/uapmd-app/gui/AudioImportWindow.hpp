@@ -10,7 +10,7 @@
 #include <imgui.h>
 #include <uapmd-data/uapmd-data.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class AudioImportWindow {
 public:
@@ -81,4 +81,4 @@ private:
     void processCompletedResult(const ImportJobStatus& statusSnapshot);
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

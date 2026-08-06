@@ -3,7 +3,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 inline bool contextActionButton(const char* label, const ImVec2& size = ImVec2(0.0f, 0.0f), const char* tooltip = nullptr)
 {
@@ -40,4 +40,4 @@ inline bool contextActionMenuItem(const char* label, bool selected = false)
     return clicked;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

@@ -11,7 +11,7 @@
 
 #include "../../remidy-imgui-shared/MidiKeyboard.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class ParameterList {
 public:
@@ -38,7 +38,7 @@ private:
 
     ParameterContext context_ = ParameterContext::Global;
     int contextValue_ = 64;
-    MidiKeyboard perNoteKeyboard_;
+    remidy_imgui::MidiKeyboard perNoteKeyboard_;
     std::array<std::string, 128> contextValueLabels_{};
 
 public:

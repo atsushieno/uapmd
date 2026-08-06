@@ -10,7 +10,7 @@
 #include <uapmd-file/IDocumentProvider.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class ExporterWindow {
 public:
@@ -63,4 +63,4 @@ private:
     void ensureDefaultPath();
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

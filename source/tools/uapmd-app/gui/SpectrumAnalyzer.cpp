@@ -2,7 +2,8 @@
 #include <algorithm>
 #include <cmath>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 SpectrumAnalyzer::SpectrumAnalyzer(int numBars)
     : numBars_(numBars), size_(ImVec2(200.0f, 64.0f)) {

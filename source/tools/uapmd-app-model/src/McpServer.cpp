@@ -22,7 +22,9 @@
 
 using namespace uapmd_graph;
 
-namespace uapmd {
+using namespace uapmd;
+
+namespace uapmd_app {
 
 // ─────────────────────────────────────────────────
 //  JSON-RPC 2.0 helpers
@@ -1785,4 +1787,4 @@ const char* uapmd_eval(const char* code)
 
 #endif // __EMSCRIPTEN__
 
-} // namespace uapmd
+} // namespace uapmd_app

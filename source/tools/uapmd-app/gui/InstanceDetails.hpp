@@ -15,7 +15,7 @@
 #include "ParameterList.hpp"
 #include "TrackList.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class InstanceDetails {
 public:
@@ -40,7 +40,7 @@ public:
 
 private:
     struct DetailsWindowState {
-        MidiKeyboard midiKeyboard;
+        remidy_imgui::MidiKeyboard midiKeyboard;
         ParameterList parameterList;
         bool visible = false;
         std::vector<uapmd_plugin_hosting::PresetsMetadata> presets;

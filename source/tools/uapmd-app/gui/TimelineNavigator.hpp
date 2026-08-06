@@ -8,7 +8,7 @@ namespace ImTimeline {
     class Timeline;
 }
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // One clip in the navigator's whole-song overview: which track lane it sits on (0-based, top
 // to bottom, in the same order the timeline lists its sections) and its extent in the active
@@ -68,4 +68,4 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
                              const std::vector<NavigatorClip>& clips, int rowCount,
                              const std::optional<NavigatorRenderProgress>& renderProgress);
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

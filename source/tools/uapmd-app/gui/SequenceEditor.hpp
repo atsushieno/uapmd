@@ -15,7 +15,7 @@
 #include "TimelineRangeSelection.hpp"
 #include "TimelineNavigator.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class SequenceEditor {
 public:

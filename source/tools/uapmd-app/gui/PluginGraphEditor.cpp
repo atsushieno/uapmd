@@ -12,7 +12,9 @@
 
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -24,7 +26,7 @@ struct TrackAccess {
 };
 
 TrackAccess getTrackAccess(int32_t trackIndex) {
-    auto& sequencer = AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     if (trackIndex == kMasterEditorTrack)
         return {sequencer.engine()->masterTrack(), "Master Track Graph"};
     auto tracks = sequencer.engine()->tracks();
@@ -127,7 +129,7 @@ int PluginGraphEditor::linkIdForConnection(WindowState& window, int64_t connecti
 }
 
 void PluginGraphEditor::showTrack(int32_t trackIndex) {
-    if (!AppModel::instance().ensureTrackUsesEditorGraph(trackIndex))
+    if (!uapmd_app::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex))
         return;
     auto& window = ensureWindow(trackIndex);
     window.request_focus = true;
@@ -237,7 +239,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     }
 
     if (ImGui::Button("Revert to Simple Graph")) {
-        if (AppModel::instance().revertTrackToSimpleGraph(window.track_index)) {
+        if (uapmd_app::AppModel::instance().revertTrackToSimpleGraph(window.track_index)) {
             destroyWindow(window.track_index);
             return;
         }
@@ -493,7 +495,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
                 std::swap(source, target);
             if (!source.is_input && target.is_input && source.bus_type == target.bus_type) {
                 std::string error;
-                const bool connected = AppModel::instance().connectTrackGraph(
+                const bool connected = uapmd_app::AppModel::instance().connectTrackGraph(
                     window.track_index,
                     AudioPluginGraphConnection{
                         .id = 0,
@@ -512,7 +514,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         auto it = links.find(hoveredLinkId);
         if (it != links.end()) {
             std::string error;
-            if (!AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
+            if (!uapmd_app::AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
                 window.status_message = error;
             else
                 window.status_message.clear();
@@ -525,7 +527,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         auto it = links.find(destroyedLinkId);
         if (it != links.end()) {
             std::string error;
-            if (!AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
+            if (!uapmd_app::AppModel::instance().disconnectTrackGraphConnection(window.track_index, it->second, error))
                 window.status_message = error;
             else
                 window.status_message.clear();

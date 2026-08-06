@@ -9,7 +9,7 @@
 #include <portable-file-dialogs.h>
 #endif
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 enum class PlatformDialogIcon {
     Info,
@@ -50,4 +50,4 @@ inline void platformError(const std::string& title, const std::string& message) 
     showPlatformDialog(title, message, PlatformDialogIcon::Error);
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

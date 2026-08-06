@@ -3,7 +3,7 @@
 #include <IconsFontaudio.h>
 #include <IconsFontAwesome7.h>
 
-namespace uapmd::gui::icons {
+namespace uapmd_app_gui::icons {
 
 inline const char* LightDarkSwitch = ICON_FA_CIRCLE_HALF_STROKE;
 inline const char* Plus = ICON_FA_PLUS;
@@ -20,4 +20,4 @@ inline const char* ToggleOn = ICON_FA_TOGGLE_ON;
 inline const char* ContextMenu = ICON_FA_ELLIPSIS_VERTICAL;
 inline const char* Dropdown = ICON_FA_CARET_DOWN;
 
-} // namespace uapmd::gui::icons
+} // namespace uapmd_app_gui::icons

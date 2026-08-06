@@ -98,10 +98,11 @@ std::vector<ParsedScanReportRow> parseScanReportMarkdown(const std::string& mark
 }
 }
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 PluginSelector::PluginSelector() {
-    uapmd::AppModel::instance().scanReportReady.push_back([this](const std::string& text) {
+    uapmd_app::AppModel::instance().scanReportReady.push_back([this](const std::string& text) {
         scanReportText_ = text;
         refreshReportBuffer();
     });
@@ -122,7 +123,7 @@ void PluginSelector::render() {
         std::cout << "Starting plugin scanning" << std::endl;
     }
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto scanState = appModel.slowScanProgress();
     auto lastError = appModel.lastPluginScanError();
 
@@ -187,7 +188,7 @@ void PluginSelector::render() {
         if (ImGui::Button("Show scan report")) {
             reportWindowOpen_ = true;
             if (scanReportText_.empty()) {
-                scanReportText_ = uapmd::AppModel::instance().generateScanReport();
+                scanReportText_ = uapmd_app::AppModel::instance().generateScanReport();
                 refreshReportBuffer();
             } else if (scanReportBuffer_.size() <= 1) {
                 refreshReportBuffer();
@@ -334,7 +335,7 @@ void PluginSelector::render() {
     }
 }
 
-void PluginSelector::setPlugins(const std::vector<PluginEntry>& plugins) {
+void PluginSelector::setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugins) {
     pluginList_.setPlugins(plugins);
 }
 

@@ -12,7 +12,8 @@
 #include <imgui.h>
 #include <umppi/umppi.hpp>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -1969,4 +1970,4 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     ImGui::End();
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

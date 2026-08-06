@@ -48,7 +48,7 @@ using namespace uapmd_graph;
 
 namespace {
 
-std::unique_ptr<uapmd::AppModel> appModelInstance;
+std::unique_ptr<uapmd_app::AppModel> appModelInstance;
 
 }
 
@@ -77,7 +77,9 @@ std::string bundleDisplayName(const std::filesystem::path& bundlePath) {
     return bundlePath.string();
 }
 
-namespace uapmd {
+using namespace uapmd;
+
+namespace uapmd_app {
 
 namespace {
 
@@ -202,7 +204,7 @@ private:
     std::filesystem::path path;
 };
 
-} // namespace uapmd
+} // namespace uapmd_app
 
 std::optional<std::filesystem::path> createTempProjectDirectory(std::string& error)
 {
@@ -228,7 +230,7 @@ std::optional<std::filesystem::path> createTempProjectDirectory(std::string& err
     }
 }
 
-std::vector<umppi::Ump> buildMasterTrackSmf2Clip(const uapmd::AppModel::MasterTrackSnapshot& snapshot) {
+std::vector<umppi::Ump> buildMasterTrackSmf2Clip(const uapmd_app::AppModel::MasterTrackSnapshot& snapshot) {
     std::vector<umppi::Ump> clip;
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::dctpq(kDefaultDctpq)));
@@ -318,16 +320,16 @@ bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed
     return true;
 }
 
-uapmd::TransportController::TransportController(AppModel* appModel, RealtimeSequencer* sequencer)
+uapmd_app::TransportController::TransportController(AppModel* appModel, RealtimeSequencer* sequencer)
     : appModel_(appModel), sequencer_(sequencer) {
 }
 
-std::shared_ptr<uapmd_midi_service::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
+std::shared_ptr<uapmd_midi_service::MidiIOFeature> uapmd_app::AppModel::createMidiIOFeature(
     std::string apiName, std::string deviceName, std::string manufacturer, std::string version) {
     return createLibreMidiIODevice(apiName, deviceName, manufacturer, version);
 }
 
-std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiInputPorts() const {
+std::vector<uapmd::MidiPortInfo> uapmd_app::AppModel::getMidiInputPorts() const {
     auto ports = uapmd::getMidiInputPorts();
     const auto devices = getDevices();
     std::erase_if(ports, [&devices](const MidiPortInfo& port) {
@@ -338,7 +340,7 @@ std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiInputPorts() const {
     return ports;
 }
 
-std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiOutputPorts() const {
+std::vector<uapmd::MidiPortInfo> uapmd_app::AppModel::getMidiOutputPorts() const {
     auto ports = uapmd::getMidiOutputPorts();
     const auto devices = getDevices();
     std::erase_if(ports, [&devices](const MidiPortInfo& port) {
@@ -350,19 +352,19 @@ std::vector<uapmd::MidiPortInfo> uapmd::AppModel::getMidiOutputPorts() const {
 }
 
 
-void uapmd::AppModel::instantiate() {
-    appModelInstance = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
+void uapmd_app::AppModel::instantiate() {
+    appModelInstance = std::make_unique<uapmd_app::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
 }
 
-uapmd::AppModel& uapmd::AppModel::instance() {
+uapmd_app::AppModel& uapmd_app::AppModel::instance() {
     return *appModelInstance;
 }
 
-void uapmd::AppModel::cleanupInstance() {
+void uapmd_app::AppModel::cleanupInstance() {
     appModelInstance.reset();
 }
 
-uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
+uapmd_app::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         ump_buffer_size_in_bytes_(umpBufferSizeInBytes),
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
         pluginScanTool_(uapmd_plugin_hosting::PluginScanTool::create()),
@@ -401,7 +403,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     clearProjectDirtyState();
 }
 
-void uapmd::AppModel::notifyUiReady() {
+void uapmd_app::AppModel::notifyUiReady() {
     {
         std::lock_guard<std::mutex> lock(startupScanMutex_);
         uiReady_ = true;
@@ -409,7 +411,7 @@ void uapmd::AppModel::notifyUiReady() {
     maybeStartInitialPluginScan();
 }
 
-void uapmd::AppModel::notifyPersistentStorageReady() {
+void uapmd_app::AppModel::notifyPersistentStorageReady() {
     {
         std::lock_guard<std::mutex> lock(startupScanMutex_);
         persistentStorageReady_ = true;
@@ -417,7 +419,7 @@ void uapmd::AppModel::notifyPersistentStorageReady() {
     maybeStartInitialPluginScan();
 }
 
-void uapmd::AppModel::maybeStartInitialPluginScan() {
+void uapmd_app::AppModel::maybeStartInitialPluginScan() {
     std::lock_guard<std::mutex> lock(startupScanMutex_);
     if (!uiReady_ || !persistentStorageReady_)
         return;
@@ -426,7 +428,7 @@ void uapmd::AppModel::maybeStartInitialPluginScan() {
     performPluginScanning(false, PluginScanRequest::InProcess, 0.0, true);
 }
 
-uapmd::AppModel::~AppModel() {
+uapmd_app::AppModel::~AppModel() {
     if (clip_enablement_extension_)
         sequencer_.engine()->timeline().removeProjectSerializationExtension(*clip_enablement_extension_);
     {
@@ -457,7 +459,7 @@ uapmd::AppModel::~AppModel() {
     joinAudioShutdownWorker();
 }
 
-bool uapmd::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
+bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     SequencerTrack* track = trackIndex == kMasterTrackIndex
         ? sequencer_.engine()->masterTrack()
         : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
@@ -475,7 +477,7 @@ bool uapmd::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     return changed;
 }
 
-bool uapmd::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
+bool uapmd_app::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
     const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
         trackIndex, "", ump_buffer_size_in_bytes_);
     if (changed)
@@ -483,7 +485,7 @@ bool uapmd::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
     return changed;
 }
 
-bool uapmd::AppModel::getTrackGraphConnections(
+bool uapmd_app::AppModel::getTrackGraphConnections(
     int32_t trackIndex,
     std::vector<AudioPluginGraphConnection>& connections,
     std::string& error) const {
@@ -509,7 +511,7 @@ bool uapmd::AppModel::getTrackGraphConnections(
     return true;
 }
 
-bool uapmd::AppModel::connectTrackGraph(
+bool uapmd_app::AppModel::connectTrackGraph(
     int32_t trackIndex,
     const AudioPluginGraphConnection& connection,
     std::string& error) {
@@ -545,7 +547,7 @@ bool uapmd::AppModel::connectTrackGraph(
     return true;
 }
 
-bool uapmd::AppModel::disconnectTrackGraphConnection(
+bool uapmd_app::AppModel::disconnectTrackGraphConnection(
     int32_t trackIndex,
     int64_t connectionId,
     std::string& error) {
@@ -573,7 +575,7 @@ bool uapmd::AppModel::disconnectTrackGraphConnection(
     return true;
 }
 
-uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
+uapmd::IDocumentProvider* uapmd_app::AppModel::documentProvider() {
     if (!documentProvider_) {
         documentProvider_ = createDocumentProvider();
         if (!documentProvider_) {
@@ -583,13 +585,13 @@ uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
     return documentProvider_.get();
 }
 
-void uapmd::AppModel::cancelPluginScanning() {
+void uapmd_app::AppModel::cancelPluginScanning() {
     if (!isScanning_)
         return;
     scanCancelRequested_.store(true, std::memory_order_release);
 }
 
-void uapmd::AppModel::performPluginScanning(bool forceRescan,
+void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
                                             PluginScanRequest request,
                                             double remoteTimeoutSeconds,
                                             bool requireFastScanning) {
@@ -742,35 +744,35 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan,
     scanningThread.detach();
 }
 
-uapmd::AppModel::SlowScanProgressState uapmd::AppModel::slowScanProgress() const {
+uapmd_app::AppModel::SlowScanProgressState uapmd_app::AppModel::slowScanProgress() const {
     std::lock_guard<std::mutex> lock(slowScanMutex_);
     return slowScanProgress_;
 }
 
-std::vector<uapmd_plugin_hosting::BlocklistEntry> uapmd::AppModel::pluginBlocklist() const {
+std::vector<uapmd_plugin_hosting::BlocklistEntry> uapmd_app::AppModel::pluginBlocklist() const {
     return pluginScanTool_->blocklistEntries();
 }
 
-bool uapmd::AppModel::unblockPluginFromBlocklist(const std::string& entryId) {
+bool uapmd_app::AppModel::unblockPluginFromBlocklist(const std::string& entryId) {
     return pluginScanTool_->unblockBundle(entryId);
 }
 
-void uapmd::AppModel::clearPluginBlocklist() {
+void uapmd_app::AppModel::clearPluginBlocklist() {
     pluginScanTool_->clearBlocklist();
 }
 
-std::string uapmd::AppModel::lastPluginScanError() const {
+std::string uapmd_app::AppModel::lastPluginScanError() const {
     return pluginScanTool_->lastScanError();
 }
 
-uint8_t uapmd::AppModel::getInstanceGroup(int32_t instanceId) const {
+uint8_t uapmd_app::AppModel::getInstanceGroup(int32_t instanceId) const {
     auto* engine = sequencer_.engine();
     if (!engine)
         return 0xFF;
     return engine->getInstanceGroup(instanceId);
 }
 
-bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
+bool uapmd_app::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
     auto* engine = sequencer_.engine();
     if (!engine)
         return false;
@@ -782,7 +784,7 @@ bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
 
 // Cancel and reap any in-flight muted shutdown drain. Safe to call from the main
 // thread: the worker never blocks on main-thread tasks (it only enqueues them).
-void uapmd::AppModel::joinAudioShutdownWorker() {
+void uapmd_app::AppModel::joinAudioShutdownWorker() {
     if (audioShutdownThread_.joinable()) {
         audioShutdownCancel_.store(true, std::memory_order_release);
         audioShutdownThread_.join();
@@ -791,7 +793,7 @@ void uapmd::AppModel::joinAudioShutdownWorker() {
 
 // Final phase of the engine-off sequence. Runs on the main thread, after the muted
 // drain has let plugin release/reverb tails render out.
-void uapmd::AppModel::completeAudioEngineShutdown() {
+void uapmd_app::AppModel::completeAudioEngineShutdown() {
     // Bail out if the engine was re-enabled while draining, or if an earlier queued
     // completion already performed the shutdown.
     if (isAudioEngineEnabled() || pluginsProcessingStopped_)
@@ -817,7 +819,7 @@ void uapmd::AppModel::completeAudioEngineShutdown() {
     sequencer_.engine()->setOutputMuted(false);
 }
 
-void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
+void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
     joinAudioShutdownWorker();
 
     if (enabled && isAudioEngineEnabled())
@@ -885,12 +887,12 @@ void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
     }
 }
 
-void uapmd::AppModel::toggleAudioEngine() {
+void uapmd_app::AppModel::toggleAudioEngine() {
     bool desired = !audioEngineEnabled_.load(std::memory_order_acquire);
     setAudioEngineEnabled(desired);
 }
 
-void uapmd::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize) {
+void uapmd_app::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize) {
     // These UI settings are forwarded to RealtimeSequencer -> DeviceIODispatcher,
     // which ultimately sets OboeAudioIODevice::preferred_callback_frames_.  That
     // value is the block size the sequencer renders for every plugin regardless
@@ -901,12 +903,12 @@ void uapmd::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t buf
         audio_buffer_size_ = bufferSize;
 }
 
-void uapmd::AppModel::setAutoBufferSizeEnabled(bool enabled) {
+void uapmd_app::AppModel::setAutoBufferSizeEnabled(bool enabled) {
     sequencer_.setUseAutoBufferSize(enabled);
     auto_buffer_size_enabled_ = sequencer_.useAutoBufferSize();
 }
 
-bool uapmd::AppModel::pauseTransportForPluginMutation() {
+bool uapmd_app::AppModel::pauseTransportForPluginMutation() {
     if (!transportController_ || !transportController_->isPlaying())
         return false;
 
@@ -914,29 +916,29 @@ bool uapmd::AppModel::pauseTransportForPluginMutation() {
     return true;
 }
 
-void uapmd::AppModel::resumeTransportAfterPluginMutation(bool resumeTransport) {
+void uapmd_app::AppModel::resumeTransportAfterPluginMutation(bool resumeTransport) {
     if (!resumeTransport || !transportController_ || !transportController_->isPaused())
         return;
 
     transportController_->resume();
 }
 
-bool uapmd::AppModel::isProjectDirty() const {
+bool uapmd_app::AppModel::isProjectDirty() const {
     std::lock_guard lock(dirtyStateMutex_);
     return project_structure_dirty_ || !dirty_tracks_.empty();
 }
 
-bool uapmd::AppModel::isTrackDirty(int32_t trackIndex) const {
+bool uapmd_app::AppModel::isTrackDirty(int32_t trackIndex) const {
     std::lock_guard lock(dirtyStateMutex_);
     return dirty_tracks_.contains(trackIndex);
 }
 
-void uapmd::AppModel::markProjectDirty() {
+void uapmd_app::AppModel::markProjectDirty() {
     std::lock_guard lock(dirtyStateMutex_);
     project_structure_dirty_ = true;
 }
 
-void uapmd::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
+void uapmd_app::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
     {
         std::lock_guard lock(dirtyStateMutex_);
         if (dirty)
@@ -952,13 +954,13 @@ void uapmd::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
             .projectTrackBecameDirty(trackIndex);
 }
 
-void uapmd::AppModel::markPluginInstanceTrackDirty(int32_t instanceId) {
+void uapmd_app::AppModel::markPluginInstanceTrackDirty(int32_t instanceId) {
     const auto trackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
     if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
         markTrackDirty(trackIndex);
 }
 
-void uapmd::AppModel::handlePluginStateChange(int32_t instanceId) {
+void uapmd_app::AppModel::handlePluginStateChange(int32_t instanceId) {
     // State restoration while a frozen track is rendering can make the plugin
     // report a change. It is not a document edit and must not cancel or loop a
     // freeze render.
@@ -967,7 +969,7 @@ void uapmd::AppModel::handlePluginStateChange(int32_t instanceId) {
     markPluginInstanceTrackDirty(instanceId);
 }
 
-void uapmd::AppModel::clearProjectDirtyState() {
+void uapmd_app::AppModel::clearProjectDirtyState() {
     {
         std::lock_guard lock(dirtyStateMutex_);
         project_structure_dirty_ = false;
@@ -975,7 +977,7 @@ void uapmd::AppModel::clearProjectDirtyState() {
     }
 }
 
-void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
+void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
                                                  const PluginInstanceConfig& config,
@@ -1051,7 +1053,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     sequencer_.engine()->addPluginToTrack(targetMasterTrack ? kMasterTrackIndex : trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
 }
 
-uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInternal(
+uapmd_app::AppModel::PluginInstanceResult uapmd_app::AppModel::registerPluginInstanceInternal(
     int32_t instanceId,
     const std::optional<PluginInstanceConfig>& configOverride) {
     PluginInstanceResult result;
@@ -1141,13 +1143,13 @@ uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInt
     return result;
 }
 
-void uapmd::AppModel::clearDeviceEntries() {
+void uapmd_app::AppModel::clearDeviceEntries() {
     std::lock_guard lock(devicesMutex_);
     devices_.clear();
     nextDeviceId_ = 1;
 }
 
-void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
+void uapmd_app::AppModel::removePluginInstance(int32_t instanceId) {
     if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
         return;
     const auto trackIndex =
@@ -1204,7 +1206,7 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
 }
 
-void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& deviceName) {
+void uapmd_app::AppModel::enableUmpDevice(int32_t instanceId, const std::string& deviceName) {
     DeviceStateResult result;
     result.instanceId = instanceId;
 
@@ -1307,7 +1309,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     }
 }
 
-void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
+void uapmd_app::AppModel::disableUmpDevice(int32_t instanceId) {
     DeviceStateResult result;
     result.instanceId = instanceId;
 
@@ -1364,7 +1366,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     }
 }
 
-void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
+void uapmd_app::AppModel::requestShowPluginUI(int32_t instanceId) {
     if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
         return;
     // Trigger callbacks - MainWindow will handle preparing window and calling showPluginUI()
@@ -1373,21 +1375,21 @@ void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
     }
 }
 
-void uapmd::AppModel::requestShowInstanceDetails(int32_t instanceId) {
+void uapmd_app::AppModel::requestShowInstanceDetails(int32_t instanceId) {
     if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
         return;
     for (auto& cb : instanceDetailsShowRequested)
         cb(instanceId);
 }
 
-void uapmd::AppModel::requestShowTrackGraph(int32_t trackIndex) {
+void uapmd_app::AppModel::requestShowTrackGraph(int32_t trackIndex) {
     if (sequencer_.engine()->frozenTrackManager().isTrackBusy(trackIndex))
         return;
     for (auto& cb : trackGraphShowRequested)
         cb(trackIndex);
 }
 
-void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
+void uapmd_app::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
     UIStateResult result;
     result.instanceId = instanceId;
 
@@ -1450,7 +1452,7 @@ void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool is
     }
 }
 
-void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
+void uapmd_app::AppModel::hidePluginUI(int32_t instanceId) {
     UIStateResult result;
     result.instanceId = instanceId;
 
@@ -1478,11 +1480,11 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
     }
 }
 
-bool uapmd::TransportController::isPlaying() const {
+bool uapmd_app::TransportController::isPlaying() const {
     return sequencer_ && sequencer_->engine()->isPlaybackActive();
 }
 
-void uapmd::TransportController::play() {
+void uapmd_app::TransportController::play() {
     if (!appModel_->isAudioEngineEnabled())
         return;
     sequencer_->engine()->startPlayback();
@@ -1492,7 +1494,7 @@ void uapmd::TransportController::play() {
     isPaused_ = false;
 }
 
-void uapmd::TransportController::stop() {
+void uapmd_app::TransportController::stop() {
     isRecording_ = false;
     sequencer_->engine()->stopPlayback();
     appModel_->timeline().isPlaying = false;
@@ -1502,13 +1504,13 @@ void uapmd::TransportController::stop() {
     isPaused_ = false;
 }
 
-void uapmd::TransportController::pause() {
+void uapmd_app::TransportController::pause() {
     sequencer_->engine()->pausePlayback();
     appModel_->timeline().isPlaying = false;
     isPaused_ = true;
 }
 
-void uapmd::TransportController::resume() {
+void uapmd_app::TransportController::resume() {
     if (!appModel_->isAudioEngineEnabled())
         return;
     sequencer_->engine()->resumePlayback();
@@ -1517,20 +1519,20 @@ void uapmd::TransportController::resume() {
     isPaused_ = false;
 }
 
-void uapmd::TransportController::jump(double positionSeconds) {
+void uapmd_app::TransportController::jump(double positionSeconds) {
     sequencer_->engine()->jumpPlayback(positionSeconds);
 }
 
-void uapmd::TransportController::record() {
+void uapmd_app::TransportController::record() {
     isRecording_ = !isRecording_;
 }
 
-std::vector<uapmd::AppModel::DeviceEntry> uapmd::AppModel::getDevices() const {
+std::vector<uapmd_app::AppModel::DeviceEntry> uapmd_app::AppModel::getDevices() const {
     std::lock_guard lock(devicesMutex_);
     return devices_;  // Return copy
 }
 
-std::optional<std::shared_ptr<uapmd::AppModel::DeviceState>> uapmd::AppModel::getDeviceForInstance(int32_t instanceId) const {
+std::optional<std::shared_ptr<uapmd_app::AppModel::DeviceState>> uapmd_app::AppModel::getDeviceForInstance(int32_t instanceId) const {
     std::lock_guard lock(devicesMutex_);
     for (const auto& entry : devices_) {
         auto state = entry.state;
@@ -1541,7 +1543,7 @@ std::optional<std::shared_ptr<uapmd::AppModel::DeviceState>> uapmd::AppModel::ge
     return std::nullopt;
 }
 
-void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& label) {
+void uapmd_app::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& label) {
     bool updated = false;
     {
         std::lock_guard lock(devicesMutex_);
@@ -1562,7 +1564,7 @@ void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& l
     markPluginInstanceTrackDirty(instanceId);
 }
 
-void uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
+void uapmd_app::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = filepath;
@@ -1614,7 +1616,7 @@ void uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& fil
                         });
 }
 
-void uapmd::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
+void uapmd_app::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = handle.display_name.empty() ? handle.id : handle.display_name;
@@ -1668,7 +1670,7 @@ void uapmd::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle,
                            });
 }
 
-uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginStateSync(int32_t instanceId, const std::string& filepath) {
+uapmd_app::AppModel::PluginStateResult uapmd_app::AppModel::loadPluginStateSync(int32_t instanceId, const std::string& filepath) {
     auto promise = std::make_shared<std::promise<PluginStateResult>>();
     auto future = promise->get_future();
     loadPluginState(instanceId, filepath,
@@ -1678,7 +1680,7 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginStateSync(int32_t 
     return future.get();
 }
 
-void uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
+void uapmd_app::AppModel::savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = filepath;
@@ -1724,7 +1726,7 @@ void uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& fil
                            });
 }
 
-void uapmd::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
+void uapmd_app::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = handle.display_name.empty() ? handle.id : handle.display_name;
@@ -1760,7 +1762,7 @@ void uapmd::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle,
                                    return;
                                }
 
-                               auto* provider = uapmd::AppModel::instance().documentProvider();
+                               auto* provider = uapmd_app::AppModel::instance().documentProvider();
                                if (!provider) {
                                    completed.success = false;
                                    completed.error = "Document provider unavailable";
@@ -1786,7 +1788,7 @@ void uapmd::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle,
                            });
 }
 
-uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginStateSync(int32_t instanceId, const std::string& filepath) {
+uapmd_app::AppModel::PluginStateResult uapmd_app::AppModel::savePluginStateSync(int32_t instanceId, const std::string& filepath) {
     auto promise = std::make_shared<std::promise<PluginStateResult>>();
     auto future = promise->get_future();
     savePluginState(instanceId, filepath,
@@ -1798,7 +1800,7 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginStateSync(int32_t 
 
 // Timeline and clip management
 
-uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
+uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addClipToTrack(
     int32_t trackIndex,
     const uapmd::TimelinePosition& position,
     std::unique_ptr<uapmd::AudioFileReader> reader,
@@ -1828,7 +1830,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
     return result;
 }
 
-uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
+uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     int32_t trackIndex,
     const uapmd::TimelinePosition& position,
     const std::string& filepath
@@ -1890,7 +1892,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     return result;
 }
 
-uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
+uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     int32_t trackIndex,
     const uapmd::TimelinePosition& position,
     std::vector<uapmd_ump_t> umpEvents,
@@ -1930,7 +1932,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     return result;
 }
 
-uapmd::AppModel::ClipAddResult uapmd::AppModel::addMasterMidiClip(
+uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMasterMidiClip(
     const uapmd::TimelinePosition& position,
     std::vector<uapmd_ump_t> umpEvents,
     std::vector<uint64_t> umpTickTimestamps,
@@ -1960,7 +1962,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMasterMidiClip(
     return result;
 }
 
-bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
+bool uapmd_app::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
     const bool removed = sequencer_.engine()->timeline().removeClipFromTrack(trackIndex, clipId);
     if (removed)
         markTrackDirty(trackIndex);
@@ -2129,7 +2131,7 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
 
     std::optional<int64_t> resolved;
     if (absoluteReferenceSample) {
-        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
         resolved = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
     }
 
@@ -2156,7 +2158,7 @@ std::optional<int64_t> resolveAudioWarpClipPosition(
         resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     const int64_t absoluteSample = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate);
     const int64_t clipPosition = absoluteSample - targetClip.position.samples;
     if (clipPosition < 0 || clipPosition > targetClip.durationSamples)
@@ -2170,7 +2172,7 @@ std::vector<uapmd::AudioWarpPoint> resolveAudioWarpPoints(
     const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
     const std::vector<uapmd::ClipMarker>& masterTrackMarkers
 ) {
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     std::vector<uapmd::AudioWarpPoint> resolved;
     resolved.reserve(audioWarps.size());
     for (auto warp : audioWarps) {
@@ -2229,7 +2231,7 @@ bool validateMarkerGraphAcyclic(
     return true;
 }
 
-void resolveAllClipAnchorsInAppModel(uapmd::AppModel& appModel) {
+void resolveAllClipAnchorsInAppModel(uapmd_app::AppModel& appModel) {
     auto tracks = appModel.getTimelineTracks();
 
     struct ClipRecord {
@@ -2306,7 +2308,7 @@ static bool modifyMidiClipUmp(
                              std::string&)>& modifier,
     std::string& error)
 {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
         error = "Track not found";
@@ -2341,7 +2343,7 @@ static bool modifyMidiClipUmp(
     return true;
 }
 
-choc::value::Value uapmd::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId)
+choc::value::Value uapmd_app::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId)
 {
     auto tracks = getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
@@ -2381,7 +2383,7 @@ choc::value::Value uapmd::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int
     return result;
 }
 
-bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
+bool uapmd_app::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
                                          uint64_t tick,
                                          std::vector<uint32_t> wordsIn,
                                          std::string& error)
@@ -2415,7 +2417,7 @@ bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
     return changed;
 }
 
-bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
+bool uapmd_app::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
                                              int32_t eventIndex, std::string& error)
 {
     if (eventIndex < 0) { error = "eventIndex must be >= 0"; return false; }
@@ -2453,7 +2455,7 @@ bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
     return changed;
 }
 
-bool uapmd::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
+bool uapmd_app::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
                                          std::vector<uapmd::ClipMarker>& markers,
                                          std::vector<uapmd::AudioWarpPoint>& audioWarps,
                                          std::string& error) const
@@ -2481,7 +2483,7 @@ bool uapmd::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
     return true;
 }
 
-bool uapmd::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error)
+bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error)
 {
     std::unordered_set<std::string> ids;
     for (size_t i = 0; i < markers.size(); ++i) {
@@ -2504,7 +2506,7 @@ bool uapmd::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::Cli
     return true;
 }
 
-bool uapmd::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
+bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
                                          std::vector<uapmd::ClipMarker> markers,
                                          std::vector<uapmd::AudioWarpPoint> audioWarps,
                                          std::string& error)
@@ -2615,7 +2617,7 @@ bool uapmd::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
     return true;
 }
 
-uapmd::AppModel::ClipAddResult uapmd::AppModel::createEmptyMidiClip(
+uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::createEmptyMidiClip(
     int32_t trackIndex, int64_t positionSamples,
     uint32_t tickResolution, double bpm)
 {
@@ -2624,7 +2626,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::createEmptyMidiClip(
     return addMidiClipToTrack(trackIndex, pos, {}, {}, tickResolution, bpm, {}, {});
 }
 
-uapmd::AppModel::MidiTracksImportResult uapmd::AppModel::importMidiTracksFromFile(const std::string& filepath) {
+uapmd_app::AppModel::MidiTracksImportResult uapmd_app::AppModel::importMidiTracksFromFile(const std::string& filepath) {
     MidiTracksImportResult result;
 
     auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
@@ -2720,7 +2722,7 @@ uapmd::AppModel::MidiTracksImportResult uapmd::AppModel::importMidiTracksFromFil
     return result;
 }
 
-int32_t uapmd::AppModel::addDeviceInputToTrack(
+int32_t uapmd_app::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
 ) {
@@ -2747,15 +2749,15 @@ int32_t uapmd::AppModel::addDeviceInputToTrack(
     return -1;
 }
 
-std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
+std::vector<uapmd::TimelineTrack*> uapmd_app::AppModel::getTimelineTracks() {
     return sequencer_.engine()->timeline().tracks();
 }
 
-uapmd::TimelineTrack* uapmd::AppModel::getMasterTimelineTrack() {
+uapmd::TimelineTrack* uapmd_app::AppModel::getMasterTimelineTrack() {
     return sequencer_.engine()->timeline().masterTimelineTrack();
 }
 
-uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot() {
+uapmd_app::AppModel::MasterTrackSnapshot uapmd_app::AppModel::buildMasterTrackSnapshot() {
     auto engineSnapshot = sequencer_.engine()->timeline().buildMasterTrackSnapshot();
     MasterTrackSnapshot snapshot;
     snapshot.maxTimeSeconds = engineSnapshot.maxTimeSeconds;
@@ -2776,7 +2778,7 @@ uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot()
     return snapshot;
 }
 
-uapmd::AppModel::TimelineContentBounds uapmd::AppModel::timelineContentBounds() const {
+uapmd_app::AppModel::TimelineContentBounds uapmd_app::AppModel::timelineContentBounds() const {
     TimelineContentBounds bounds;
     auto engineBounds = sequencer_.engine()->timeline().calculateContentBounds();
     bounds.hasContent = engineBounds.hasContent;
@@ -2786,13 +2788,13 @@ uapmd::AppModel::TimelineContentBounds uapmd::AppModel::timelineContentBounds() 
     return bounds;
 }
 
-void uapmd::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& change) {
+void uapmd_app::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& change) {
     for (auto& cb : trackLayoutChanged) {
         cb(change);
     }
 }
 
-int32_t uapmd::AppModel::addTrack() {
+int32_t uapmd_app::AppModel::addTrack() {
     if (!hidden_tracks_.empty()) {
         auto it = hidden_tracks_.begin();
         int32_t reusedIndex = *it;
@@ -2811,7 +2813,7 @@ int32_t uapmd::AppModel::addTrack() {
     return trackIndex;
 }
 
-bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
+bool uapmd_app::AppModel::removeTrack(int32_t trackIndex) {
     auto& uapmdTracks = sequencer_.engine()->tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(uapmdTracks.size()))
         return false;
@@ -2834,7 +2836,7 @@ bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
     return true;
 }
 
-void uapmd::AppModel::removeAllTracks() {
+void uapmd_app::AppModel::removeAllTracks() {
     auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
     for (int32_t i = 0; i < trackCount; ++i) {
         removeTrack(i);
@@ -2842,7 +2844,7 @@ void uapmd::AppModel::removeAllTracks() {
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
 }
 
-void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
+void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
                                             IDocumentProvider::WriteCallback callback)
 {
     auto* provider = documentProvider();
@@ -2891,7 +2893,7 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
                 });
 }
 
-void uapmd::AppModel::loadProjectFromResolvedPath(
+void uapmd_app::AppModel::loadProjectFromResolvedPath(
     const std::filesystem::path& projectFile,
     std::function<void(ProjectResult)> callback)
 {
@@ -2951,7 +2953,7 @@ void uapmd::AppModel::loadProjectFromResolvedPath(
         });
 }
 
-uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromHandleToken(const std::string& token)
+uapmd_app::AppModel::ProjectResult uapmd_app::AppModel::loadProjectFromHandleToken(const std::string& token)
 {
     ProjectResult failureResult;
     if (token.empty()) {
@@ -2987,7 +2989,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromHandleToken(const
     return future.get();
 }
 
-uapmd::AppModel::ProjectResult uapmd::AppModel::saveProjectSync(const std::filesystem::path& projectFile) {
+uapmd_app::AppModel::ProjectResult uapmd_app::AppModel::saveProjectSync(const std::filesystem::path& projectFile) {
     auto promise = std::make_shared<std::promise<ProjectResult>>();
     auto future = promise->get_future();
     saveProject(projectFile,
@@ -3005,7 +3007,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProjectSync(const std::files
     return future.get();
 }
 
-void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, ProjectSaveCallback callback) {
+void uapmd_app::AppModel::saveProject(const std::filesystem::path& projectFile, ProjectSaveCallback callback) {
     auto* engine = sequencer_.engine();
     if (!engine) {
         if (callback)
@@ -3028,7 +3030,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
         });
 }
 
-void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
+void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
     // Validate before replacing the current project: removePluginInstance() is
     // destructive, while TimelineFacade::loadProject() otherwise performs this
     // validation internally before touching the existing timeline.
@@ -3098,7 +3100,7 @@ void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std:
         });
 }
 
-bool uapmd::AppModel::startRenderToFile(const RenderToFileSettings& settings) {
+bool uapmd_app::AppModel::startRenderToFile(const RenderToFileSettings& settings) {
     if (settings.outputPath.empty() && !settings.outputHandle)
         return false;
 
@@ -3125,7 +3127,7 @@ bool uapmd::AppModel::startRenderToFile(const RenderToFileSettings& settings) {
     return true;
 }
 
-void uapmd::AppModel::cancelRenderToFile() {
+void uapmd_app::AppModel::cancelRenderToFile() {
     std::shared_ptr<RenderJobState> job;
     {
         std::scoped_lock jobLock(renderJobMutex_);
@@ -3135,12 +3137,12 @@ void uapmd::AppModel::cancelRenderToFile() {
         job->cancel.store(true, std::memory_order_release);
 }
 
-uapmd::AppModel::RenderToFileStatus uapmd::AppModel::getRenderToFileStatus() const {
+uapmd_app::AppModel::RenderToFileStatus uapmd_app::AppModel::getRenderToFileStatus() const {
     std::scoped_lock statusLock(renderStatusMutex_);
     return renderStatus_;
 }
 
-void uapmd::AppModel::clearCompletedRenderStatus() {
+void uapmd_app::AppModel::clearCompletedRenderStatus() {
     std::scoped_lock statusLock(renderStatusMutex_);
     if (renderStatus_.completed && !renderStatus_.running) {
         renderStatus_.completed = false;
@@ -3152,7 +3154,7 @@ void uapmd::AppModel::clearCompletedRenderStatus() {
     }
 }
 
-void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared_ptr<RenderJobState> job) {
+void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared_ptr<RenderJobState> job) {
     auto releaseJob = [this, &job]() {
         std::scoped_lock jobLock(renderJobMutex_);
         if (activeRenderJob_ == job)
@@ -3339,7 +3341,7 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         fail(e.what());
     }
 }
-std::string uapmd::AppModel::generateScanReport() {
+std::string uapmd_app::AppModel::generateScanReport() {
     auto& scanner = *pluginScanTool_;
     std::unordered_map<std::string, double> bundleDurations;
     {

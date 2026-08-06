@@ -14,7 +14,7 @@
 
 using namespace uapmd_graph;
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class PluginGraphEditor {
 public:

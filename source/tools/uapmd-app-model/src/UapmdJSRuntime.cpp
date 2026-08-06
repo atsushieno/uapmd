@@ -20,7 +20,9 @@
 
 using namespace uapmd_graph;
 
-namespace uapmd {
+using namespace uapmd;
+
+namespace uapmd_app {
 
 UapmdJSRuntime::UapmdJSRuntime()
 {
@@ -134,7 +136,7 @@ void UapmdJSRuntime::registerProjectAPI()
             return result;
         }
 
-        auto projectResult = uapmd::AppModel::instance().saveProjectSync(filepath);
+        auto projectResult = uapmd_app::AppModel::instance().saveProjectSync(filepath);
         result.setMember ("success", projectResult.success);
         result.setMember ("error", projectResult.error);
         return result;
@@ -151,10 +153,10 @@ void UapmdJSRuntime::registerProjectAPI()
             return result;
         }
 
-        auto loadPromise = std::make_shared<std::promise<uapmd::AppModel::ProjectResult>>();
+        auto loadPromise = std::make_shared<std::promise<uapmd_app::AppModel::ProjectResult>>();
         auto loadFuture = loadPromise->get_future();
-        uapmd::AppModel::instance().loadProjectFromResolvedPath(filepath,
-            [loadPromise](uapmd::AppModel::ProjectResult r) mutable {
+        uapmd_app::AppModel::instance().loadProjectFromResolvedPath(filepath,
+            [loadPromise](uapmd_app::AppModel::ProjectResult r) mutable {
                 loadPromise->set_value(std::move(r));
             });
         // loadProjectFromResolvedPath instantiates plugins asynchronously, posting each
@@ -182,7 +184,7 @@ void UapmdJSRuntime::registerProjectAPI()
             return result;
         }
 
-        auto projectResult = uapmd::AppModel::instance().loadProjectFromHandleToken(token);
+        auto projectResult = uapmd_app::AppModel::instance().loadProjectFromHandleToken(token);
         result.setMember ("success", projectResult.success);
         result.setMember ("error", projectResult.error);
         return result;
@@ -193,7 +195,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
 {
     jsContext_.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        const auto& sequencer = uapmd::AppModel::instance().sequencer();
+        const auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         const auto plugins = sequencer.engine()->pluginHost()->pluginCatalogEntries();
         return choc::value::createInt32 (static_cast<int32_t>(plugins.size()));
     });
@@ -204,7 +206,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
         if (index < 0)
             return choc::value::Value();
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto plugins = sequencer.engine()->pluginHost()->pluginCatalogEntries();
 
         if (index >= static_cast<int32_t>(plugins.size()))
@@ -231,7 +233,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::createBool (false);
 
         std::filesystem::path path (pathStr);
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->pluginHost()->savePluginCatalogToFile(path);
         return choc::value::createBool (true);
     });
@@ -241,13 +243,13 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
 {
     jsContext_.registerFunction ("__remidy_scan_tool_perform_scanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd::AppModel::instance().performPluginScanning (false);
+        uapmd_app::AppModel::instance().performPluginScanning (false);
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_scan_tool_get_formats", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& scanTool = uapmd::AppModel::instance().pluginScanTool();
+        auto& scanTool = uapmd_app::AppModel::instance().pluginScanTool();
         auto formats = scanTool.formats();
 
         auto arr = choc::value::createEmptyArray();
@@ -263,7 +265,7 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
         auto pathStr = args.get<std::string> (0, "");
         if (! pathStr.empty())
         {
-            auto& scanTool = uapmd::AppModel::instance().pluginScanTool();
+            auto& scanTool = uapmd_app::AppModel::instance().pluginScanTool();
             std::filesystem::path path (pathStr);
             scanTool.savePluginListCache (path);
         }
@@ -275,7 +277,7 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
         auto pathStr = args.get<std::string> (0, "");
         if (! pathStr.empty())
         {
-            auto& scanTool = uapmd::AppModel::instance().pluginScanTool();
+            auto& scanTool = uapmd_app::AppModel::instance().pluginScanTool();
             scanTool.pluginListCacheFile() = std::filesystem::path (pathStr);
         }
         return choc::value::Value();
@@ -295,16 +297,16 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         // Use the unified AppModel API which calls global callbacks
         // However, JavaScript needs synchronous return, so we still need to wait
-        auto& model = uapmd::AppModel::instance();
+        auto& model = uapmd_app::AppModel::instance();
 
-        uapmd::AppModel::PluginInstanceConfig config;
+        uapmd_app::AppModel::PluginInstanceConfig config;
         // config uses defaults: apiName="default", auto-generated device name, etc.
 
         std::atomic<int32_t> resultInstanceId{-1};
         std::atomic<bool> completed{false};
 
         // Register a temporary callback to capture the result for this specific call
-        auto callback = [&resultInstanceId, &completed](const uapmd::AppModel::PluginInstanceResult& result) {
+        auto callback = [&resultInstanceId, &completed](const uapmd_app::AppModel::PluginInstanceResult& result) {
             if (!result.error.empty() || result.instanceId < 0) {
                 std::cerr << "[JS] Failed to create plugin instance: " << result.error << std::endl;
                 resultInstanceId = -1;
@@ -349,7 +351,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         if (instanceId < 0)
             return choc::value::createEmptyArray();
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (! instance)
@@ -382,7 +384,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         if (instanceId < 0 || paramId < 0)
             return choc::value::createFloat64 (0.0);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (! instance)
@@ -401,7 +403,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         if (instanceId < 0 || paramId < 0)
             return choc::value::Value();
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (instance)
@@ -417,7 +419,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().removePluginInstance (instanceId);
+            uapmd_app::AppModel::instance().removePluginInstance (instanceId);
         }
         return choc::value::Value();
     });
@@ -447,7 +449,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().enableUmpDevice (instanceId, deviceName);
+            uapmd_app::AppModel::instance().enableUmpDevice (instanceId, deviceName);
         }
         return choc::value::Value();
     });
@@ -458,7 +460,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().disableUmpDevice (instanceId);
+            uapmd_app::AppModel::instance().disableUmpDevice (instanceId);
         }
         return choc::value::Value();
     });
@@ -469,7 +471,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().requestShowPluginUI (instanceId);
+            uapmd_app::AppModel::instance().requestShowPluginUI (instanceId);
         }
         return choc::value::Value();
     });
@@ -480,7 +482,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().hidePluginUI (instanceId);
+            uapmd_app::AppModel::instance().hidePluginUI (instanceId);
         }
         return choc::value::Value();
     });
@@ -489,7 +491,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId >= 0)
-            uapmd::AppModel::instance().requestShowInstanceDetails(instanceId);
+            uapmd_app::AppModel::instance().requestShowInstanceDetails(instanceId);
         return choc::value::Value();
     });
 
@@ -506,7 +508,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return result;
         }
 
-        auto result = uapmd::AppModel::instance().savePluginStateSync (instanceId, filepath);
+        auto result = uapmd_app::AppModel::instance().savePluginStateSync (instanceId, filepath);
 
         auto obj = choc::value::createObject ("PluginStateResult");
         obj.setMember ("success", result.success);
@@ -529,7 +531,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return result;
         }
 
-        auto result = uapmd::AppModel::instance().loadPluginStateSync (instanceId, filepath);
+        auto result = uapmd_app::AppModel::instance().loadPluginStateSync (instanceId, filepath);
 
         auto obj = choc::value::createObject ("PluginStateResult");
         obj.setMember ("success", result.success);
@@ -545,7 +547,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         if (instanceId < 0)
             return choc::value::createEmptyArray();
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (! instance)
@@ -574,7 +576,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         if (instanceId < 0 || presetIndex < 0)
             return choc::value::createBool (false);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (instance)
@@ -596,7 +598,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
 
         if (instanceId >= 0 && note >= 0 && note < 128)
         {
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             sequencer.engine()->sendNoteOn (instanceId, note);
         }
         return choc::value::Value();
@@ -609,7 +611,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
 
         if (instanceId >= 0 && note >= 0 && note < 128)
         {
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             sequencer.engine()->sendNoteOff (instanceId, note);
         }
         return choc::value::Value();
@@ -623,7 +625,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
 
         if (instanceId >= 0 && paramIndex >= 0)
         {
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             // FIXME: it must not invoke this function from this non-RT-safe context.
             sequencer.engine()->setParameterValue (instanceId, paramIndex, value);
         }
@@ -635,42 +637,42 @@ void UapmdJSRuntime::registerSequencerTransportAPI()
 {
     jsContext_.registerFunction ("__remidy_sequencer_startPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->startPlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_stopPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->stopPlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_pausePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->pausePlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_resumePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->resumePlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_getPlaybackPosition", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto position = sequencer.engine()->playbackPosition();
         return choc::value::createInt64 (position);
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_jumpPlayback", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        uapmd::AppModel::instance().transport().jump (args.get<double> (0, std::numeric_limits<double>::quiet_NaN()));
+        uapmd_app::AppModel::instance().transport().jump (args.get<double> (0, std::numeric_limits<double>::quiet_NaN()));
         return choc::value::Value();
     });
 }
@@ -679,7 +681,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 {
     jsContext_.registerFunction ("__remidy_sequencer_getInstanceIds", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto instanceIds = sequencer.engine()->pluginHost()->instanceIds();
 
         auto arr = choc::value::createEmptyArray();
@@ -696,7 +698,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId < 0)
             return choc::value::createString ("");
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto instance = sequencer.engine()->getPluginInstance (instanceId);
         return choc::value::createString (instance->displayName());
     });
@@ -707,7 +709,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId < 0)
             return choc::value::createString ("");
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto format = sequencer.getPluginFormat (instanceId);
         return choc::value::createString (format);
     });
@@ -718,7 +720,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId < 0)
             return choc::value::createBool (false);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto* instance = sequencer.engine()->getPluginInstance (instanceId);
         return choc::value::createBool (instance ? instance->bypassed() : false);
     });
@@ -730,7 +732,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
         if (instanceId >= 0)
         {
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             if (auto* instance = sequencer.engine()->getPluginInstance (instanceId))
                 instance->bypassed (bypassed);
         }
@@ -739,7 +741,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
     jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto tracks = sequencer.engine()->tracks();
 
         auto arr = choc::value::createEmptyArray();
@@ -783,7 +785,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
     jsContext_.registerFunction ("__remidy_sequencer_add_track", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto index = uapmd::AppModel::instance().addTrack();
+        auto index = uapmd_app::AppModel::instance().addTrack();
         return choc::value::createInt32(index);
     });
 
@@ -792,14 +794,14 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         auto trackIndex = args.get<int32_t> (0, -1);
         bool removed = false;
         if (trackIndex >= 0) {
-            removed = uapmd::AppModel::instance().removeTrack(trackIndex);
+            removed = uapmd_app::AppModel::instance().removeTrack(trackIndex);
         }
         return choc::value::createBool(removed);
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd::AppModel::instance().removeAllTracks();
+        uapmd_app::AppModel::instance().removeAllTracks();
         return choc::value::Value();
     });
 
@@ -855,7 +857,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         if (numBars <= 0 || numBars > 256)
             numBars = 32;
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         std::vector<float> values (static_cast<size_t>(numBars));
         if (auto* analyser = sequencer.engine()->inputAnalyser())
             analyser->getFloatTimeDomainData(values.data(), static_cast<uint32_t>(numBars));
@@ -874,7 +876,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         if (numBars <= 0 || numBars > 256)
             numBars = 32;
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         std::vector<float> values (static_cast<size_t>(numBars));
         if (auto* analyser = sequencer.engine()->outputAnalyser())
             analyser->getFloatTimeDomainData(values.data(), static_cast<uint32_t>(numBars));
@@ -893,7 +895,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         if (binCount <= 0 || binCount > 2048)
             binCount = 128;
         std::vector<float> values (static_cast<size_t>(binCount));
-        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->inputAnalyser())
+        if (auto* analyser = uapmd_app::AppModel::instance().sequencer().engine()->inputAnalyser())
             analyser->getFloatFrequencyData(values.data(), static_cast<uint32_t>(binCount));
         auto arr = choc::value::createEmptyArray();
         for (auto value : values)
@@ -907,7 +909,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         if (binCount <= 0 || binCount > 2048)
             binCount = 128;
         std::vector<float> values (static_cast<size_t>(binCount));
-        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->outputAnalyser())
+        if (auto* analyser = uapmd_app::AppModel::instance().sequencer().engine()->outputAnalyser())
             analyser->getFloatFrequencyData(values.data(), static_cast<uint32_t>(binCount));
         auto arr = choc::value::createEmptyArray();
         for (auto value : values)
@@ -920,7 +922,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
 {
     jsContext_.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto sampleRate = sequencer.sampleRate();
         return choc::value::createInt32 (sampleRate);
     });
@@ -931,7 +933,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         if (sampleRate <= 0)
             return choc::value::createBool (false);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto success = sequencer.sampleRate (sampleRate);
         return choc::value::createBool (success);
     });
@@ -945,18 +947,18 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         if (sampleRate < 0 || bufferSize < 0)
             return choc::value::createBool (false);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         if (!sequencer.reconfigureAudioDevice (inputIndex, outputIndex,
                                                static_cast<uint32_t> (sampleRate),
                                                static_cast<uint32_t> (bufferSize)))
             return choc::value::createBool (false);
-        uapmd::AppModel::instance().updateAudioDeviceSettings (sequencer.sampleRate(), static_cast<uint32_t> (bufferSize));
+        uapmd_app::AppModel::instance().updateAudioDeviceSettings (sequencer.sampleRate(), static_cast<uint32_t> (bufferSize));
         return choc::value::createBool (true);
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_isScanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto isScanning = uapmd::AppModel::instance().isScanning();
+        auto isScanning = uapmd_app::AppModel::instance().isScanning();
         return choc::value::createBool (isScanning);
     });
 
@@ -966,13 +968,13 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
     jsContext_.registerFunction ("__remidy_set_audio_engine_enabled", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto enabled = args.get<bool> (0, true);
-        uapmd::AppModel::instance().setAudioEngineEnabled (enabled);
-        return choc::value::createBool (uapmd::AppModel::instance().isAudioEngineEnabled());
+        uapmd_app::AppModel::instance().setAudioEngineEnabled (enabled);
+        return choc::value::createBool (uapmd_app::AppModel::instance().isAudioEngineEnabled());
     });
 
     jsContext_.registerFunction ("__remidy_is_audio_engine_enabled", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        return choc::value::createBool (uapmd::AppModel::instance().isAudioEngineEnabled());
+        return choc::value::createBool (uapmd_app::AppModel::instance().isAudioEngineEnabled());
     });
 }
 
@@ -1443,7 +1445,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 {
     jsContext_.registerFunction ("__remidy_timeline_get_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        const auto& state = uapmd::AppModel::instance().timeline();
+        const auto& state = uapmd_app::AppModel::instance().timeline();
         auto obj = choc::value::createObject ("TimelineState");
         obj.setMember ("tempo", state.tempo);
         obj.setMember ("timeSignatureNumerator", state.timeSignatureNumerator);
@@ -1458,7 +1460,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
         if (!engine || !engine->latencyCompensationManager())
             return choc::value::createObject("LatencyCompensationState");
@@ -1475,7 +1477,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return result;
         }
 
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
         auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
         if (!manager) {
@@ -1539,7 +1541,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_debug_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
         if (!engine || !engine->latencyCompensationManager())
             return choc::value::createObject("LatencyCompensationDebugState");
@@ -1555,7 +1557,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return result;
         }
 
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
         auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
         if (!manager) {
@@ -1584,14 +1586,14 @@ void UapmdJSRuntime::registerTimelineAPI()
     {
         auto bpm = args.get<double> (0, 120.0);
         if (bpm > 0.0)
-            uapmd::AppModel::instance().timeline().tempo = bpm;
+            uapmd_app::AppModel::instance().timeline().tempo = bpm;
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
 
         uapmd::TimelineTrack* track = nullptr;
         if (trackIndex < 0) {
@@ -1629,20 +1631,20 @@ void UapmdJSRuntime::registerTimelineAPI()
     jsContext_.registerFunction ("__remidy_timeline_ensure_dag_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        return choc::value::createBool(uapmd::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
+        return choc::value::createBool(uapmd_app::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
     });
 
     jsContext_.registerFunction ("__remidy_timeline_show_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        uapmd::AppModel::instance().requestShowTrackGraph(trackIndex);
+        uapmd_app::AppModel::instance().requestShowTrackGraph(trackIndex);
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        return choc::value::createBool(uapmd::AppModel::instance().revertTrackToSimpleGraph(trackIndex));
+        return choc::value::createBool(uapmd_app::AppModel::instance().revertTrackToSimpleGraph(trackIndex));
     });
 
     jsContext_.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1652,7 +1654,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         std::string error;
 
         auto result = choc::value::createObject ("TrackGraphConnections");
-        if (!uapmd::AppModel::instance().getTrackGraphConnections(trackIndex, connections, error)) {
+        if (!uapmd_app::AppModel::instance().getTrackGraphConnections(trackIndex, connections, error)) {
             result.setMember("success", false);
             result.setMember("error", error);
             result.setMember("connections", choc::value::createEmptyArray());
@@ -1694,7 +1696,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         }
 
         std::string error;
-        const bool ok = uapmd::AppModel::instance().connectTrackGraph(
+        const bool ok = uapmd_app::AppModel::instance().connectTrackGraph(
             trackIndex,
             AudioPluginGraphConnection{
                 .id = 0,
@@ -1713,7 +1715,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto trackIndex = args.get<int32_t>(0, -1);
         auto connectionId = args.get<int64_t>(1, 0);
         std::string error;
-        const bool ok = uapmd::AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
+        const bool ok = uapmd_app::AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
         auto result = choc::value::createObject("TrackGraphMutation");
         result.setMember("success", ok);
         result.setMember("error", error);
@@ -1728,7 +1730,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         std::vector<uapmd::AudioWarpPoint> warps;
         std::string error;
         auto result = choc::value::createObject ("ClipAudioEvents");
-        if (!uapmd::AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error)) {
+        if (!uapmd_app::AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error)) {
             result.setMember ("success", false);
             result.setMember ("error", error);
             return result;
@@ -1736,7 +1738,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
         std::string ownerReferenceId = kMasterMarkerReferenceId.data();
         if (trackIndex != uapmd::kMasterTrackIndex) {
-            auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+            auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
             if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
                 if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
                     ownerReferenceId = clip->referenceId;
@@ -1767,7 +1769,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return result;
         }
 
-        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
         std::string ownerReferenceId = kMasterMarkerReferenceId.data();
         if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
             if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
@@ -1782,7 +1784,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto warpsView = payload.hasObjectMember("audioWarps") ? std::optional(payload["audioWarps"]) : std::nullopt;
         if (!parseMarkersValue(markersView ? &*markersView : nullptr, ownerReferenceId, markers, error) ||
             !parseWarpsValue(warpsView ? &*warpsView : nullptr, ownerReferenceId, warps, error) ||
-            !uapmd::AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
+            !uapmd_app::AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
             result.setMember ("success", false);
             result.setMember ("error", error);
             return result;
@@ -1795,7 +1797,7 @@ void UapmdJSRuntime::registerTimelineAPI()
     jsContext_.registerFunction ("__remidy_timeline_get_master_markers", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto array = choc::value::createEmptyArray();
-        for (const auto& marker : uapmd::AppModel::instance().masterTrackMarkers())
+        for (const auto& marker : uapmd_app::AppModel::instance().masterTrackMarkers())
             array.addArrayElement(serializeMarker(marker, kMasterMarkerReferenceId));
         return array;
     });
@@ -1807,7 +1809,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         std::string error;
         auto markersView = (args.size() > 0 && args[0] != nullptr) ? std::optional(args[0]->getView()) : std::nullopt;
         if (!parseMarkersValue(markersView ? &*markersView : nullptr, kMasterMarkerReferenceId, markers, error) ||
-            !uapmd::AppModel::instance().setMasterTrackMarkersWithValidation(std::move(markers), error)) {
+            !uapmd_app::AppModel::instance().setMasterTrackMarkersWithValidation(std::move(markers), error)) {
             result.setMember ("success", false);
             result.setMember ("error", error);
             return result;
@@ -1833,7 +1835,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         if (trackIndex < 0 || filepath.empty())
             return makeError ("invalid arguments");
 
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         uapmd::TimelinePosition pos{};
         pos.samples = positionSamples;
         auto result = appModel.addMidiClipToTrack (trackIndex, pos, filepath);
@@ -1858,7 +1860,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return obj;
         }
 
-        auto result = uapmd::AppModel::instance().importMidiTracksFromFile (filepath);
+        auto result = uapmd_app::AppModel::instance().importMidiTracksFromFile (filepath);
 
         obj.setMember ("success", result.success);
         obj.setMember ("error", result.error);
@@ -1888,7 +1890,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto clipId = args.get<int32_t> (1, -1);
         if (trackIndex < 0 || clipId < 0)
             return choc::value::createBool (false);
-        return choc::value::createBool (uapmd::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
+        return choc::value::createBool (uapmd_app::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
     });
 
     jsContext_.registerFunction ("__remidy_timeline_get_clip_ump_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1897,7 +1899,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto clipId     = args.get<int32_t> (1, -1);
         if (trackIndex < 0 || clipId < 0)
             return choc::value::createObject ("");
-        return uapmd::AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
+        return uapmd_app::AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
     });
 
     jsContext_.registerFunction ("__remidy_timeline_add_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1918,7 +1920,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         if (words.empty()) return choc::value::createBool (false);
         std::string error;
         return choc::value::createBool (
-            uapmd::AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error));
+            uapmd_app::AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error));
     });
 
     jsContext_.registerFunction ("__remidy_timeline_remove_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1930,7 +1932,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return choc::value::createBool (false);
         std::string error;
         return choc::value::createBool (
-            uapmd::AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error));
+            uapmd_app::AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error));
     });
 
     jsContext_.registerFunction ("__remidy_timeline_create_empty_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1940,7 +1942,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto positionSamples = args.get<int64_t>  (1, 0);
         auto tickResolution  = static_cast<uint32_t>(std::max (1, args.get<int32_t> (2, 480)));
         auto bpm             = args.get<double>   (3, 120.0);
-        auto r = uapmd::AppModel::instance().createEmptyMidiClip (
+        auto r = uapmd_app::AppModel::instance().createEmptyMidiClip (
             trackIndex, positionSamples, tickResolution, bpm);
         return choc::value::createInt32 (r.clipId);
     });
@@ -1954,7 +1956,7 @@ void UapmdJSRuntime::registerRenderAPI()
         if (outputPath.empty())
             return choc::value::createBool (false);
 
-        uapmd::AppModel::RenderToFileSettings settings;
+        uapmd_app::AppModel::RenderToFileSettings settings;
         settings.outputPath = outputPath;
         settings.startSeconds = std::max (0.0, args.get<double> (1, 0.0));
 
@@ -1965,17 +1967,17 @@ void UapmdJSRuntime::registerRenderAPI()
         settings.tailSeconds = std::max (0.0, args.get<double> (3, 2.0));
         settings.useContentFallback = args.get<bool> (4, true);
 
-        auto bounds = uapmd::AppModel::instance().timelineContentBounds();
+        auto bounds = uapmd_app::AppModel::instance().timelineContentBounds();
         settings.contentBoundsValid = bounds.hasContent;
         settings.contentStartSeconds = bounds.startSeconds;
         settings.contentEndSeconds = bounds.endSeconds;
 
-        return choc::value::createBool (uapmd::AppModel::instance().startRenderToFile (settings));
+        return choc::value::createBool (uapmd_app::AppModel::instance().startRenderToFile (settings));
     });
 
     jsContext_.registerFunction ("__remidy_render_get_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto status = uapmd::AppModel::instance().getRenderToFileStatus();
+        auto status = uapmd_app::AppModel::instance().getRenderToFileStatus();
         auto obj = choc::value::createObject ("RenderToFileStatus");
         obj.setMember ("running", status.running);
         obj.setMember ("completed", status.completed);
@@ -1989,15 +1991,15 @@ void UapmdJSRuntime::registerRenderAPI()
 
     jsContext_.registerFunction ("__remidy_render_clear_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd::AppModel::instance().clearCompletedRenderStatus();
+        uapmd_app::AppModel::instance().clearCompletedRenderStatus();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_render_cancel", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd::AppModel::instance().cancelRenderToFile();
+        uapmd_app::AppModel::instance().cancelRenderToFile();
         return choc::value::Value();
     });
 }
 
-} // namespace uapmd
+} // namespace uapmd_app

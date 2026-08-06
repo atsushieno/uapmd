@@ -11,7 +11,7 @@ inline void resolveDocumentHandle(
     std::function<void(const std::filesystem::path&)> onSuccess,
     std::function<void(const std::string&)> onError = {})
 {
-    auto* provider = uapmd::AppModel::instance().documentProvider();
+    auto* provider = uapmd_app::AppModel::instance().documentProvider();
     if (!provider) {
         if (onError)
             onError("Document provider unavailable");

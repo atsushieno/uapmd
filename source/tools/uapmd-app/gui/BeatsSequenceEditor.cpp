@@ -20,7 +20,9 @@
 #include "ClipPreview.hpp"
 #include "ContextActions.hpp"
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -171,7 +173,7 @@ void BeatsSequenceEditor::renderNavigator(const RenderContext& context, float ba
     if (!unified_.timeline)
         return;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const auto bounds = appModel.timelineContentBounds();
     const int32_t sampleRate = appModel.sampleRate();
     const double contentBeats = bounds.hasContent
@@ -296,7 +298,7 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                 const double displayTicks =
                     static_cast<double>(unified_.timeline->GetStartTimestamp()) +
                     static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
-                uapmd::AppModel::instance().transport().jump(
+                uapmd_app::AppModel::instance().transport().jump(
                     beatsToSeconds(context, displayTicks / kTicksPerBeatDisplay));
             }
         }
@@ -903,7 +905,7 @@ void BeatsSequenceEditor::drawPlayheadIndicator(
     if (!unified_.timeline)
         return;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const int32_t sampleRate = appModel.sampleRate();
     if (sampleRate <= 0)
         return;
@@ -974,7 +976,7 @@ void BeatsSequenceEditor::pruneClipPreviewCache(TrackState& state) {
 }
 
 const uapmd::ClipData* BeatsSequenceEditor::findClipData(int32_t trackIndex, int32_t clipId) const {
-    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return nullptr;
     }
@@ -1001,7 +1003,7 @@ std::string BeatsSequenceEditor::buildClipSignature(int32_t trackIndex, const Cl
     uint64_t midiHash = 0;
     uint64_t warpHash = 0;
     if (clipData && clip.isMidiClip) {
-        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
         if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
             auto sourceNode = tracks[trackIndex]->getSourceNode(sourceNodeId);
             if (auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get()))
@@ -1043,7 +1045,7 @@ std::shared_ptr<ClipPreview> BeatsSequenceEditor::ensureClipPreview(
     // waveform/piano-roll preview actually needs -- no need to reconstruct it from the node's
     // beat-domain width (which, for audio clips, is a tempo-integrated *display* quantity, not a
     // 1:1 seconds measurement).
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     const double fallbackDurationSeconds = clipData
         ? static_cast<double>(clipData->durationSamples) / sampleRate
         : 0.0;

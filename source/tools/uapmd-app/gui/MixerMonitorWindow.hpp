@@ -5,7 +5,7 @@
 
 #include <imgui.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class MixerMonitorWindow {
 public:
@@ -30,4 +30,4 @@ private:
     bool visible_{false};
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

@@ -16,7 +16,9 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include <imgui.h>
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 namespace {
 
 constexpr size_t kWaveformResolution = 512;
@@ -47,7 +49,7 @@ double samplesToSeconds(int64_t samples, double sampleRate) {
 
 std::unordered_map<std::string, uapmd::ClipData> buildClipLookup() {
     std::unordered_map<std::string, uapmd::ClipData> clipLookup;
-    for (auto* track : uapmd::AppModel::instance().getTimelineTracks()) {
+    for (auto* track : uapmd_app::AppModel::instance().getTimelineTracks()) {
         if (!track)
             continue;
         auto clips = track->clipManager().getAllClips();
@@ -174,7 +176,7 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
         cache[key] = std::nullopt;
         return std::nullopt;
     }
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     cache[key] = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
     return cache[key];
 }
@@ -208,7 +210,7 @@ std::optional<int64_t> resolveWarpClipPosition(
         warp.timeReference(clipData.referenceId, kMasterMarkerReferenceId), clipLookup, masterTrackMarkers, cache, resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     const int64_t clipPosition = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate) - clipData.position.samples;
     if (clipPosition < 0 || clipPosition > clipData.durationSamples)
         return std::nullopt;
@@ -605,7 +607,7 @@ inline double computeDurationFromClip(const uapmd::ClipData* clipData) {
         return 0.0;
     }
 
-    const double sampleRate = static_cast<double>(uapmd::AppModel::instance().sampleRate());
+    const double sampleRate = static_cast<double>(uapmd_app::AppModel::instance().sampleRate());
     if (sampleRate <= 0.0) {
         return 0.0;
     }
@@ -631,9 +633,9 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
     preview->sourceDurationSamples = clipData ? std::max<int64_t>(0, clipData->durationSamples) : 0;
     if (clipData) {
         const auto clipLookup = buildClipLookup();
-        const auto& masterTrackMarkers = uapmd::AppModel::instance().masterTrackMarkers();
+        const auto& masterTrackMarkers = uapmd_app::AppModel::instance().masterTrackMarkers();
         preview->clipMarkers.reserve(clipData->markers.size());
-        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
         for (auto marker : clipData->markers) {
             if (auto resolved = resolveMarkerClipPosition(*clipData, marker, clipLookup, masterTrackMarkers))
                 marker.clipPositionOffset = samplesToSeconds(*resolved, sampleRate);
@@ -735,7 +737,7 @@ std::shared_ptr<ClipPreview> createMidiClipPreview(
     }
     preview->clipDurationSeconds = std::max(0.01, durationSeconds);
 
-    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         preview->hasError = true;
         preview->errorMessage = "Track unavailable";
@@ -774,7 +776,7 @@ std::shared_ptr<ClipPreview> createMidiClipPreview(
         return preview;
     }
 
-    const double safeSampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double safeSampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     const size_t eventCount = std::min(events.size(), timestamps.size());
     // Maps (group<<12|channel<<7|note) -> index in preview->midiNotes for in-flight notes.
     std::unordered_map<uint32_t, size_t> activeNoteIndices;
@@ -904,4 +906,4 @@ std::shared_ptr<ClipPreview> createMasterMetaPreview(
     return preview;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 struct LaneAssignmentInput {
     int32_t id;
@@ -51,4 +51,4 @@ inline std::unordered_map<int32_t, int> assignLanes(
     return laneByClipId;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

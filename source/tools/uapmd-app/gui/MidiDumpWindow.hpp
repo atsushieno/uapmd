@@ -9,7 +9,7 @@
 
 #include <imgui.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class MidiDumpWindow {
 public:
@@ -97,4 +97,4 @@ private:
     void renderWindow(WindowState& state, const RenderContext& context);
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

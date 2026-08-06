@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // Tracks a drag-to-select-a-range gesture within a single track's clip lane. Unit-agnostic
 // (frame ints, same convention as TimelineLaneAssignment.hpp) -- the caller supplies frame
@@ -59,4 +59,4 @@ inline bool finishRangeSelectionDrag(
     return isRange;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

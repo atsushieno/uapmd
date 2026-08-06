@@ -25,7 +25,7 @@ constexpr const char* kLogTag = "uapmd-adb";
 // this lock for the whole bootstrap+evaluate sequence since UapmdJSRuntime
 // itself is not thread-safe for concurrent use.
 std::mutex g_js_runtime_mutex;
-std::unique_ptr<uapmd::UapmdJSRuntime> g_js_runtime;
+std::unique_ptr<uapmd_app::UapmdJSRuntime> g_js_runtime;
 
 struct AutomationJob {
     std::string job_id;
@@ -40,7 +40,7 @@ std::atomic<uint64_t> g_next_job_id{1};
 std::string evaluateScriptNow(const std::string& code) {
     std::lock_guard lock(g_js_runtime_mutex);
     if (!g_js_runtime)
-        g_js_runtime = std::make_unique<uapmd::UapmdJSRuntime>();
+        g_js_runtime = std::make_unique<uapmd_app::UapmdJSRuntime>();
     g_js_runtime->ensureApiBootstrapped();
     return g_js_runtime->evaluateScript(code);
 }

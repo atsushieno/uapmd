@@ -19,7 +19,9 @@
 #include "ClipPreview.hpp"
 #include "ContextActions.hpp"
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -317,7 +319,7 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     if (!unified_.timeline)
         return;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const auto bounds = appModel.timelineContentBounds();
     const int32_t sampleRate = appModel.sampleRate();
     const double playheadSeconds = sampleRate > 0
@@ -450,7 +452,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                 const double positionSeconds =
                     static_cast<double>(unified_.timeline->GetStartTimestamp()) +
                     static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
-                uapmd::AppModel::instance().transport().jump(positionSeconds);
+                uapmd_app::AppModel::instance().transport().jump(positionSeconds);
             }
         }
 
@@ -1153,7 +1155,7 @@ void SequenceEditor::drawPlayheadIndicator(
     if (!unified_.timeline)
         return;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const int32_t sampleRate = appModel.sampleRate();
     if (sampleRate <= 0)
         return;
@@ -1222,7 +1224,7 @@ void SequenceEditor::pruneClipPreviewCache(SequenceEditorState& state) {
 }
 
 const uapmd::ClipData* SequenceEditor::findClipData(int32_t trackIndex, int32_t clipId) const {
-    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return nullptr;
     }
@@ -1249,7 +1251,7 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
     uint64_t midiHash = 0;
     uint64_t warpHash = 0;
     if (clipData && clip.isMidiClip) {
-        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
         if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
             auto sourceNode = tracks[trackIndex]->getSourceNode(sourceNodeId);
             if (auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get()))

@@ -19,8 +19,8 @@
 #include <android/log.h>
 #endif
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 // Global quit flag for SDL3
 static bool g_SDL3_QuitRequested = false;
@@ -367,7 +367,6 @@ std::unique_ptr<ImGuiRenderer> createSDLRendererRenderer() {
 
 #endif // USE_SDL_RENDERER
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui
 
 #endif // USE_SDL3_BACKEND

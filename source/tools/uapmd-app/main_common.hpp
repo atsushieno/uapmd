@@ -1,6 +1,6 @@
 #pragma once
 
-namespace uapmd {
+namespace uapmd_app {
     /**
      * Main application loop - called by both desktop and Android entrypoints.
      *
@@ -10,4 +10,4 @@ namespace uapmd {
      */
     int runMainLoop(int argc, char** argv);
 
-} // namespace uapmd
+} // namespace uapmd_app

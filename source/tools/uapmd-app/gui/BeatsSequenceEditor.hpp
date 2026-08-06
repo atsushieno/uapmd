@@ -15,7 +15,7 @@
 #include "TimelineRangeSelection.hpp"
 #include "TimelineNavigator.hpp"
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // Beats/ticks-based counterpart to SequenceEditor's unified timeline. Renders the same track
 // list using the same ImTimeline widget, ClipPreview content, and TrackLegendNodeView legend,

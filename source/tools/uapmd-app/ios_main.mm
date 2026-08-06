@@ -9,5 +9,5 @@
 // SDL3 automatically redirects main() to SDL_main on iOS and provides
 // UIApplicationDelegate. We define main() here and SDL3 handles the rest.
 int main(int argc, char** argv) {
-    return uapmd::runMainLoop(argc, argv);
+    return uapmd_app::runMainLoop(argc, argv);
 }

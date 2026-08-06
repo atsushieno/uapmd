@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace uapmd::gui {
+namespace remidy_imgui {
 
 /**
  * Represents a plugin available for loading.
@@ -79,4 +79,4 @@ namespace PluginFiltering {
 
 } // namespace PluginFiltering
 
-} // namespace uapmd::gui
+} // namespace remidy_imgui

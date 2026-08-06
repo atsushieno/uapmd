@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <cstring>
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 ScriptEditor::ScriptEditor()
 {
@@ -213,7 +215,7 @@ void ScriptEditor::setDefaultScript()
 
 void ScriptEditor::loadScriptFromFile()
 {
-    auto* provider = uapmd::AppModel::instance().documentProvider();
+    auto* provider = uapmd_app::AppModel::instance().documentProvider();
     if (! provider)
         return;
 
@@ -258,7 +260,7 @@ void ScriptEditor::loadScriptFromHistoryEntry (size_t index)
 
     auto token = fileHistory_[index].token;
 
-    auto* provider = uapmd::AppModel::instance().documentProvider();
+    auto* provider = uapmd_app::AppModel::instance().documentProvider();
     if (! provider)
         return;
 
@@ -436,4 +438,4 @@ std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const
     return "";
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

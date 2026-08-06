@@ -16,7 +16,8 @@
 #include "FontIcons.hpp"
 #include <imgui.h>
 
-namespace uapmd::gui {
+
+namespace uapmd_app_gui {
 
 constexpr float kDefaultWindowWidth = 620.0f;
 constexpr float kDefaultWindowHeight = 420.0f;
@@ -959,4 +960,4 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
     state.visible = windowOpen;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

@@ -28,7 +28,9 @@
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
@@ -95,7 +97,7 @@ double sliderDbToLinearGain(float db) {
 }
 
 void notifyTimelineClipChanged(int32_t trackIndex, int32_t clipId, std::string type) {
-    auto* engine = uapmd::AppModel::instance().sequencer().engine();
+    auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     if (!engine)
         return;
     engine->timeline().notifyClipChanged(trackIndex, clipId, std::move(type));
@@ -222,7 +224,7 @@ bool wouldCreateClipAnchorCycle(
         if (it == clipsByReferenceId.end())
             return false;
 
-        currentReferenceId = it->second.timeReference(uapmd::AppModel::instance().sampleRate()).referenceId;
+        currentReferenceId = it->second.timeReference(uapmd_app::AppModel::instance().sampleRate()).referenceId;
     }
     return false;
 }
@@ -449,7 +451,7 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
 
     std::optional<int64_t> resolved;
     if (absoluteReferenceSample) {
-        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
         resolved = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
     }
 
@@ -493,7 +495,7 @@ std::optional<int64_t> resolveAudioWarpClipPosition(
         resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     const int64_t absoluteSample = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate);
     const int64_t clipPosition = absoluteSample - targetClip.position.samples;
     if (clipPosition < 0 || clipPosition > targetClip.durationSamples)
@@ -507,7 +509,7 @@ std::vector<uapmd::AudioWarpPoint> resolveAudioWarpPoints(
     const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
     const std::vector<uapmd::ClipMarker>& masterTrackMarkers
 ) {
-    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
     std::vector<uapmd::AudioWarpPoint> resolved;
     resolved.reserve(audioWarps.size());
     for (auto warp : audioWarps) {
@@ -740,18 +742,18 @@ TimelineEditor::TimelineEditor() {
     // Set up PluginSelector callbacks
     pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
         // Create plugin instance through AppModel
-        auto& appModel = uapmd::AppModel::instance();
-        uapmd::AppModel::PluginInstanceConfig config;
+        auto& appModel = uapmd_app::AppModel::instance();
+        uapmd_app::AppModel::PluginInstanceConfig config;
         appModel.createPluginInstanceAsync(format, pluginId, trackIndex, config);
         showPluginSelectorWindow_ = false;
     });
 
     pluginSelector_.setOnScanPlugins([](bool forceRescan, bool useRemoteProcess, double remoteTimeoutSeconds) {
-        uapmd::AppModel::instance().performPluginScanning(
+        uapmd_app::AppModel::instance().performPluginScanning(
             forceRescan,
             useRemoteProcess
-                ? uapmd::AppModel::PluginScanRequest::RemoteProcess
-                : uapmd::AppModel::PluginScanRequest::InProcess,
+                ? uapmd_app::AppModel::PluginScanRequest::RemoteProcess
+                : uapmd_app::AppModel::PluginScanRequest::InProcess,
             remoteTimeoutSeconds);
     });
 
@@ -759,7 +761,7 @@ TimelineEditor::TimelineEditor() {
 }
 
 void TimelineEditor::selectMidiClip(int32_t trackIndex, int32_t clipId) {
-    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
         selected_midi_clip_.reset();
         return;
@@ -855,11 +857,11 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
             selectMidiClip(trackIndex, clipId);
         },
         .clipEnabled = [this](int32_t trackIndex, int32_t clipId) {
-            return uapmd::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
+            return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            if (uapmd::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
-                uapmd::AppModel::instance().markProjectDirty();
+            if (uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
+                uapmd_app::AppModel::instance().markProjectDirty();
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -935,11 +937,11 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
             removeClipFromTrack(trackIndex, clipId);
         },
         .clipEnabled = [this](int32_t trackIndex, int32_t clipId) {
-            return uapmd::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
+            return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            if (uapmd::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
-                uapmd::AppModel::instance().markProjectDirty();
+            if (uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
+                uapmd_app::AppModel::instance().markProjectDirty();
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -1058,8 +1060,8 @@ void TimelineEditor::render(float uiScale) {
             return buildAudioEventListData(trackIndex, clipId);
         },
         .buildExternalReferenceOptions = [this](int32_t trackIndex, int32_t clipId) {
-            auto& appModel = uapmd::AppModel::instance();
-            return ::uapmd::gui::buildExternalReferenceOptions(
+            auto& appModel = uapmd_app::AppModel::instance();
+            return ::uapmd_app_gui::buildExternalReferenceOptions(
                 trackIndex,
                 clipId,
                 audioEventListEditor_,
@@ -1069,8 +1071,8 @@ void TimelineEditor::render(float uiScale) {
         },
         .validateMarkerReference = [this](int32_t trackIndex, int32_t clipId, const std::string& markerId,
             uapmd::AudioWarpReferenceType referenceType, const std::string& referenceClipId, const std::string& referenceMarkerId) {
-            auto& appModel = uapmd::AppModel::instance();
-            return ::uapmd::gui::validateMarkerReferenceSelection(
+            auto& appModel = uapmd_app::AppModel::instance();
+            return ::uapmd_app_gui::validateMarkerReferenceSelection(
                 trackIndex,
                 clipId,
                 markerId,
@@ -1107,7 +1109,7 @@ void TimelineEditor::render(float uiScale) {
                                    std::move(newEvents), std::move(newTicks), error);
     };
     pianoCtx.reloadPreview = [](int32_t trackIndex, int32_t clipId) -> std::shared_ptr<ClipPreview> {
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto tracks = appModel.getTimelineTracks();
         if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
                 !tracks[trackIndex])
@@ -1117,7 +1119,7 @@ void TimelineEditor::render(float uiScale) {
         return createMidiClipPreview(trackIndex, *clip, 0.0);
     };
     pianoCtx.previewNoteOn = [](int32_t trackIndex, int midiNote) {
-        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto& seq = uapmd_app::AppModel::instance().sequencer();
         auto tracksRef = seq.engine()->tracks();
         if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size())) return;
         auto* track = tracksRef[trackIndex];
@@ -1127,7 +1129,7 @@ void TimelineEditor::render(float uiScale) {
                 seq.engine()->sendNoteOn(instanceId, midiNote);
     };
     pianoCtx.previewNoteOff = [](int32_t trackIndex, int midiNote) {
-        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto& seq = uapmd_app::AppModel::instance().sequencer();
         auto tracksRef = seq.engine()->tracks();
         if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size())) return;
         auto* track = tracksRef[trackIndex];
@@ -1153,7 +1155,7 @@ void TimelineEditor::renderPluginSelectorWindow(float uiScale) {
         if (updateChildWindowSizeState_)
             updateChildWindowSizeState_(windowId);
 
-        pluginSelector_.setScanning(uapmd::AppModel::instance().isScanning());
+        pluginSelector_.setScanning(uapmd_app::AppModel::instance().isScanning());
         pluginSelector_.render();
     }
     ImGui::End();
@@ -1164,7 +1166,7 @@ void TimelineEditor::renderPluginGraphWindow(float uiScale) {
 }
 
 void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     // Toolbar row: view switcher + navigation controls (zoom slider, position controller).
     // Rendered outside TrackListScroll so they stay visible regardless of track scrolling;
     // the button is vertically centered against the taller navigator row. The position
@@ -1225,10 +1227,10 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
 }
 
 void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
 
     // Always keep the merged snapshot current for tempo-segment conversion.
-    auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+    auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
         appModel.buildMasterTrackSnapshot());
     masterTrackSnapshot_ = snapshot;
 
@@ -1363,7 +1365,7 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
 }
 
 void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto tracksRef = sequencer.engine()->tracks();
     SequencerTrack* track = nullptr;
     if (trackIndex == uapmd::kMasterTrackIndex)
@@ -1438,7 +1440,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 sliderPos <= 0.0f ? "Mute" : "",
                 ImGuiSliderFlags_NoInput)) {
             track->trackGain(sliderDbToLinearGain(sliderPosToDb(sliderPos)));
-            uapmd::AppModel::instance().markTrackDirty(trackIndex);
+            uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
         }
         if (ImGui::IsItemHovered()) {
             const double linearGain = track->trackGain();
@@ -1460,7 +1462,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
                     muted ? "Track muted (click to unmute)" : "Mute track")) {
                 track->muted(!muted);
-                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
             }
             if (muted)
                 ImGui::PopStyleColor(3);
@@ -1481,11 +1483,11 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     for (size_t i = 0; i < tracksRef.size(); ++i)
                         if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
                             tracksRef[i]->solo(false);
-                            uapmd::AppModel::instance().markTrackDirty(static_cast<int32_t>(i));
+                            uapmd_app::AppModel::instance().markTrackDirty(static_cast<int32_t>(i));
                         }
                 }
                 track->solo(enableSolo);
-                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
             }
             if (solo)
                 ImGui::PopStyleColor(3);
@@ -1515,7 +1517,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             (miscButtonWidth > 0.0f ? itemSpacing : 0.0f));
 
     if (track && trackIndex != uapmd::kMasterTrackIndex) {
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         const auto currentPolicy = frozenTrackManager.freezePolicyForTrack(trackIndex);
         const auto runtimeState =
             frozenTrackManager.runtimeStateForTrack(trackIndex);
@@ -1628,9 +1630,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                             ImGui::BeginDisabled();
                         if (contextActionMenuItem(std::format("{} {} GUI##gui{}", trackInstance->uiVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
                             if (trackInstance->uiVisible)
-                                uapmd::AppModel::instance().hidePluginUI(instanceId);
+                                uapmd_app::AppModel::instance().hidePluginUI(instanceId);
                             else
-                                uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                                uapmd_app::AppModel::instance().requestShowPluginUI(instanceId);
                             ImGui::CloseCurrentPopup();
                         }
                         if (disableShowUIButton)
@@ -1681,7 +1683,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     bypassed ? "Enable Track Processing" : "Bypass Track Processing",
                     bypassed)) {
                 track->bypassed(!bypassed);
-                uapmd::AppModel::instance().markTrackDirty(trackIndex);
+                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
             }
         }
 
@@ -1700,11 +1702,11 @@ void TimelineEditor::renderTrackRow(int32_t /*trackIndex*/, const SequenceEditor
 }
 
 void TimelineEditor::deleteTrack(int32_t trackIndex) {
-    uapmd::AppModel::instance().removeTrack(trackIndex);
+    uapmd_app::AppModel::instance().removeTrack(trackIndex);
 }
 
 void TimelineEditor::refreshAllSequenceEditorTracks() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
         if (appModel.isTrackHidden(i))
@@ -1714,7 +1716,7 @@ void TimelineEditor::refreshAllSequenceEditorTracks() {
 }
 
 void TimelineEditor::syncExternalTimelineChanges() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     for (auto it = trackContentSignatures_.begin(); it != trackContentSignatures_.end();) {
@@ -1735,18 +1737,18 @@ void TimelineEditor::syncExternalTimelineChanges() {
     }
 }
 
-void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change) {
+void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change) {
     switch (change.type) {
-        case uapmd::AppModel::TrackLayoutChange::Type::Added:
+        case uapmd_app::AppModel::TrackLayoutChange::Type::Added:
             refreshSequenceEditorForTrack(change.trackIndex);
             break;
-        case uapmd::AppModel::TrackLayoutChange::Type::Removed:
+        case uapmd_app::AppModel::TrackLayoutChange::Type::Removed:
             // Defer the reset to the start of the next render() call. Resetting here
             // would destroy unified_.timeline while DrawTimeline() may still be on the
             // call stack (deletion can be triggered from within the legend callback).
             pendingFullReset_ = true;
             break;
-        case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
+        case uapmd_app::AppModel::TrackLayoutChange::Type::Cleared:
             sequenceEditor_.reset();
             beatsSequenceEditor_.reset();
             trackContentSignatures_.clear();
@@ -1756,7 +1758,7 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutC
     }
 }
 
-void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot) {
+void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot>& snapshot) {
     if (!snapshot || snapshot->tempoPoints.empty()) {
         tempoMap_.clear();
         timelineUnitsLabel_ = "seconds";
@@ -1781,7 +1783,7 @@ void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel:
 }
 
 void TimelineEditor::fitTimelineToContent(float uiScale) {
-    auto bounds = uapmd::AppModel::instance().timelineContentBounds();
+    auto bounds = uapmd_app::AppModel::instance().timelineContentBounds();
     if (!bounds.hasContent || bounds.durationSeconds <= 0.0)
         return;
 
@@ -1808,11 +1810,11 @@ void TimelineEditor::invalidateMasterTrackSnapshot() {
 void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
     if (trackIndex < 0)
         return;
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
 
     // Ensure the tempo map is built before computing clip positions
     if (tempoMap_.empty()) {
-        auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+        auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
             appModel.buildMasterTrackSnapshot());
         rebuildTempoSegments(snapshot);
     }
@@ -1888,11 +1890,11 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
 void TimelineEditor::refreshBeatsSequenceEditorForTrack(int32_t trackIndex) {
     if (trackIndex < 0)
         return;
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
 
     // Ensure the tempo map is built before computing clip positions
     if (tempoMap_.empty()) {
-        auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+        auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
             appModel.buildMasterTrackSnapshot());
         rebuildTempoSegments(snapshot);
     }
@@ -1948,7 +1950,7 @@ void TimelineEditor::refreshBeatsSequenceEditorForTrack(int32_t trackIndex) {
 }
 
 std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const {
-    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
         return {};
 
@@ -1973,9 +1975,9 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
             clip.durationSamples,
             clip.sourceNodeInstanceId,
             std::hash<std::string>{}(clip.referenceId),
-            std::hash<std::string>{}(clip.timeReference(uapmd::AppModel::instance().sampleRate()).referenceId),
-            static_cast<int>(clip.timeReference(uapmd::AppModel::instance().sampleRate()).type),
-            std::bit_cast<uint64_t>(clip.timeReference(uapmd::AppModel::instance().sampleRate()).offset),
+            std::hash<std::string>{}(clip.timeReference(uapmd_app::AppModel::instance().sampleRate()).referenceId),
+            static_cast<int>(clip.timeReference(uapmd_app::AppModel::instance().sampleRate()).type),
+            std::bit_cast<uint64_t>(clip.timeReference(uapmd_app::AppModel::instance().sampleRate()).offset),
             clip.tickResolution,
             clip.name,
             midiHash);
@@ -1984,7 +1986,7 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
 }
 
 void TimelineEditor::resolveAllClipAnchors() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     struct ClipRecord {
@@ -2068,7 +2070,7 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
             position.samples = 0;
             position.legacy_beats = 0.0;
 
-            auto& appModel = uapmd::AppModel::instance();
+            auto& appModel = uapmd_app::AppModel::instance();
             auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
 
             if (!result.success) {
@@ -2092,7 +2094,7 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
         position.samples = 0;
         position.legacy_beats = 0.0;
 
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
 
         if (!result.success) {
@@ -2119,7 +2121,7 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
         {"All Files",     {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -2145,7 +2147,7 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
 
         uapmd::TimelinePosition position;
@@ -2196,7 +2198,7 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
         {"All Files",     {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -2217,7 +2219,7 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
 }
 
 void TimelineEditor::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     if (trackIndex == uapmd::kMasterTrackIndex && clipId == kMasterTrackClipId) {
         return;
     }
@@ -2228,7 +2230,7 @@ void TimelineEditor::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
 }
 
 void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2244,7 +2246,7 @@ void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
 }
 
 void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::string& anchorReferenceId, const std::string& origin, const std::string& position) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     double offsetSeconds = 0.0;
@@ -2286,7 +2288,7 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
 }
 
 void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2301,7 +2303,7 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
 
 void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
     auto requestChange = [this, trackIndex, clipId](const std::string& selectedFile) {
-        auto& appModel = uapmd::AppModel::instance();
+        auto& appModel = uapmd_app::AppModel::instance();
         auto tracks = appModel.getTimelineTracks();
 
         if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2355,7 +2357,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
         {"All Files",   {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -2376,7 +2378,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
 }
 
 void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2410,7 +2412,7 @@ void TimelineEditor::showMasterMarkerEditor() {
 }
 
 void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
@@ -2441,7 +2443,7 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMidiClipDumpData(int32_t track
     dump.trackIndex = trackIndex;
     dump.clipId = clipId;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         dump.error = "Invalid track index";
@@ -2512,10 +2514,10 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
     dump.clipName = "Master Track Meta Events";
     dump.fileLabel = "Aggregated SMF meta events";
 
-    std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> snapshot = masterTrackSnapshot_;
+    std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot> snapshot = masterTrackSnapshot_;
     if (!snapshot) {
-        snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
-            uapmd::AppModel::instance().buildMasterTrackSnapshot());
+        snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
+            uapmd_app::AppModel::instance().buildMasterTrackSnapshot());
     }
 
     if (!snapshot || snapshot->empty()) {
@@ -2604,7 +2606,7 @@ AudioEventListEditor::ClipData TimelineEditor::buildAudioEventListData(int32_t t
     data.trackIndex = trackIndex;
     data.clipId = clipId;
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex == uapmd::kMasterTrackIndex) {
         data.markerOnly = true;
@@ -2653,7 +2655,7 @@ AudioEventListEditor::ClipData TimelineEditor::buildAudioEventListData(int32_t t
     const auto draftMarkers = audioEventListEditor_.draftMarkersByClipReference();
     if (auto it = draftMarkers.find(clip->referenceId); it != draftMarkers.end())
         data.markers = it->second;
-    data.externalReferenceOptions = ::uapmd::gui::buildExternalReferenceOptions(
+    data.externalReferenceOptions = ::uapmd_app_gui::buildExternalReferenceOptions(
         trackIndex,
         clipId,
         audioEventListEditor_,
@@ -2679,7 +2681,7 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
         return false;
     }
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (payload.trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[payload.trackIndex]) {
         error = "Track is unavailable.";
@@ -2758,7 +2760,7 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
 }
 
 bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload& payload, std::string& error) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     if (payload.trackIndex == uapmd::kMasterTrackIndex) {
         appModel.setMasterTrackMarkers(payload.markers);
         invalidateMasterTrackSnapshot();
@@ -2838,7 +2840,7 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
                                           std::vector<uapmd_ump_t> newUmpEvents,
                                           std::vector<uint64_t>    newTickTimestamps,
                                           std::string&             error) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
             !tracks[trackIndex]) {
@@ -2886,7 +2888,7 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
 std::vector<PianoRollEditor::PluginParamEntry>
 TimelineEditor::getPluginParametersForTrack(int32_t trackIndex) const {
     std::vector<PianoRollEditor::PluginParamEntry> result;
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto tracksRef = sequencer.engine()->tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size()) || !tracksRef[trackIndex])
         return result;
@@ -2919,7 +2921,7 @@ void TimelineEditor::addBlankMidi2ClipToTrack(int32_t trackIndex) {
     uapmd::TimelinePosition position;
     position.samples      = 0;
     position.legacy_beats = 0.0;
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto result = appModel.addMidiClipToTrack(
         trackIndex, position,
         {},        // empty UMP events
@@ -2937,7 +2939,7 @@ void TimelineEditor::addBlankMidi2ClipToTrack(int32_t trackIndex) {
 }
 
 void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, double positionSeconds) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
     uapmd::TimelinePosition position;
     position.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sampleRate));
@@ -2959,7 +2961,7 @@ void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, doub
 }
 
 void TimelineEditor::addBlankMidiClipInRange(int32_t trackIndex, double startSeconds, double endSeconds) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
     uapmd::TimelinePosition position;
     position.samples = static_cast<int64_t>(std::llround(std::max(0.0, startSeconds) * sampleRate));
@@ -2994,7 +2996,7 @@ void TimelineEditor::addEmptyAudioClipInRange(int32_t trackIndex, double startSe
         platformError("Unsupported", "The master track only accepts MIDI/SMF clips.");
         return;
     }
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
         return;
@@ -3032,7 +3034,7 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeco
         {"OGG Files",   {}, {"*.ogg"}},
         {"All Files",   {}, {"*"}}
     };
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
             [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
@@ -3040,7 +3042,7 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeco
                 resolveDocumentHandle(
                     result.handles[0],
                     [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
-                        auto& appModel = uapmd::AppModel::instance();
+                        auto& appModel = uapmd_app::AppModel::instance();
                         const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         auto reader = uapmd::createAudioFileReaderFromPath(resolved.string());
                         if (!reader) {
@@ -3068,7 +3070,7 @@ void TimelineEditor::addSmfClipToTrack(int32_t trackIndex, double positionSecond
         {"SMF Files", {}, {"*.mid", "*.midi", "*.smf"}},
         {"All Files", {}, {"*"}}
     };
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
             [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
@@ -3076,7 +3078,7 @@ void TimelineEditor::addSmfClipToTrack(int32_t trackIndex, double positionSecond
                 resolveDocumentHandle(
                     result.handles[0],
                     [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
-                        auto& appModel = uapmd::AppModel::instance();
+                        auto& appModel = uapmd_app::AppModel::instance();
                         const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         uapmd::TimelinePosition pos;
                         pos.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sr));
@@ -3098,7 +3100,7 @@ void TimelineEditor::addSmf2ClipToTrack(int32_t trackIndex) {
         {"MIDI 2.0 Files", {}, {"*.midi2"}},
         {"All Files",      {}, {"*"}}
     };
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
             [this, trackIndex](uapmd::DocumentPickResult result) {
@@ -3109,7 +3111,7 @@ void TimelineEditor::addSmf2ClipToTrack(int32_t trackIndex) {
                         uapmd::TimelinePosition pos;
                         pos.samples = 0;
                         pos.legacy_beats = 0.0;
-                        auto r = uapmd::AppModel::instance().addClipToTrack(
+                        auto r = uapmd_app::AppModel::instance().addClipToTrack(
                             trackIndex, pos, nullptr, resolved.string());
                         if (!r.success)
                             platformError("Add Clip Failed", r.error);
@@ -3128,7 +3130,7 @@ void TimelineEditor::importMidiTracksWithPicker() {
         {"All Files",  {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -3149,7 +3151,7 @@ void TimelineEditor::importMidiTracksWithPicker() {
 }
 
 void TimelineEditor::importMidiTracks(const std::string& filepath) {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto result = appModel.importMidiTracksFromFile(filepath);
 
     for (const auto& track : result.importedTracks)
@@ -3186,7 +3188,7 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
         return;
     }
 
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     size_t importedCount = 0;
 
     for (const auto& stem : result.stems) {
@@ -3240,4 +3242,4 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
     }
 }
 
-}  // namespace uapmd::gui
+}  // namespace uapmd_app_gui

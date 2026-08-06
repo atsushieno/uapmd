@@ -36,7 +36,7 @@
 #define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
 #endif
 
-namespace uapmd::gui {
+namespace remidy_imgui {
 
 /**
  * Configuration for ImGui application
@@ -239,4 +239,4 @@ private:
     }
 };
 
-} // namespace uapmd::gui
+} // namespace remidy_imgui

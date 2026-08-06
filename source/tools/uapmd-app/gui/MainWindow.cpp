@@ -39,10 +39,12 @@ float snapScaleToOption(float scale) {
 }
 } // namespace
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 MainWindow::MainWindow(GuiDefaults defaults) {
-    SetupImGuiStyle();
+    remidy_imgui::SetupImGuiStyle();
     // Font is already loaded in main_common.cpp before renderer initialization
     baseStyle_ = ImGui::GetStyle();
     captureFontScales();
@@ -54,11 +56,11 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     // Set up spectrum analyzer data providers
     inputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->inputAnalyser())
+        if (auto* analyser = uapmd_app::AppModel::instance().sequencer().engine()->inputAnalyser())
             analyser->getFloatTimeDomainData(data, static_cast<uint32_t>(dataSize));
     });
     outputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        if (auto* analyser = uapmd::AppModel::instance().sequencer().engine()->outputAnalyser())
+        if (auto* analyser = uapmd_app::AppModel::instance().sequencer().engine()->outputAnalyser())
             analyser->getFloatTimeDomainData(data, static_cast<uint32_t>(dataSize));
     });
 
@@ -71,12 +73,12 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 #ifdef UAPMD_HAS_MCP_SERVER
 #ifdef __EMSCRIPTEN__
     // On Wasm, MCP is always active — auto-start immediately (no port/URL needed).
-    mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+    mcpServer_ = std::make_unique<uapmd_app::McpServer>(mcpPort_);
     mcpServer_->start();
 #else
     if (defaults.mcpServerPort > 0) {
         mcpPort_ = defaults.mcpServerPort;
-        mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+        mcpServer_ = std::make_unique<uapmd_app::McpServer>(mcpPort_);
         mcpServer_->start();
     }
 #endif
@@ -86,7 +88,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     // NOTE: this callback fires from the background scanning thread, so the UI
     // update must be dispatched to the main thread to avoid a data race with
     // render() reading availablePlugins_ at the same time.
-    uapmd::AppModel::instance().scanningCompleted.push_back(
+    uapmd_app::AppModel::instance().scanningCompleted.push_back(
         [this](bool success, std::string error) {
             if (success) {
                 remidy::EventLoop::runTaskOnMainThread([this]() {
@@ -99,15 +101,15 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when plugin instances are created (GUI or script)
-    uapmd::AppModel::instance().instanceCreated.push_back(
-        [this](const uapmd::AppModel::PluginInstanceResult& result) {
+    uapmd_app::AppModel::instance().instanceCreated.push_back(
+        [this](const uapmd_app::AppModel::PluginInstanceResult& result) {
             if (!result.error.empty() || result.instanceId < 0) {
                 return;  // Error already logged elsewhere
             }
 
             // AppModel now creates DeviceState, we just initialize GUI-specific state
             // Initialize UMP device name buffer
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             std::string pluginFormat = sequencer.getPluginFormat(result.instanceId);
             std::string deviceLabel = result.device ? std::format("{} [{}]", result.pluginName, pluginFormat) : "";
             umpDeviceNameBuffers_[result.instanceId] = {};
@@ -121,7 +123,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when plugin instances are removed (GUI or script)
-    uapmd::AppModel::instance().instanceRemoved.push_back(
+    uapmd_app::AppModel::instance().instanceRemoved.push_back(
         [this](int32_t instanceId) {
             // Cleanup plugin UI windows
             auto windowIt = pluginWindows_.find(instanceId);
@@ -142,35 +144,35 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when devices are enabled
-    uapmd::AppModel::instance().enableDeviceCompleted.push_back(
-        [this](const uapmd::AppModel::DeviceStateResult& result) {
+    uapmd_app::AppModel::instance().enableDeviceCompleted.push_back(
+        [this](const uapmd_app::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();
             trackList_.markDirty();
         });
 
     // Register callback for when devices are disabled
-    uapmd::AppModel::instance().disableDeviceCompleted.push_back(
-        [this](const uapmd::AppModel::DeviceStateResult& result) {
+    uapmd_app::AppModel::instance().disableDeviceCompleted.push_back(
+        [this](const uapmd_app::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();
             trackList_.markDirty();
         });
 
     // Register callback for when scripts request to show UI
-    uapmd::AppModel::instance().uiShowRequested.push_back(
+    uapmd_app::AppModel::instance().uiShowRequested.push_back(
         [this](int32_t instanceId) {
             // Handle the request by calling our handleShowUI method
             handleShowUI(instanceId);
         });
 
-    uapmd::AppModel::instance().instanceDetailsShowRequested.push_back(
+    uapmd_app::AppModel::instance().instanceDetailsShowRequested.push_back(
         [this](int32_t instanceId) {
             timelineEditor_.instanceDetails().showWindow(instanceId);
             trackList_.markDirty();
         });
 
-    uapmd::AppModel::instance().trackGraphShowRequested.push_back(
+    uapmd_app::AppModel::instance().trackGraphShowRequested.push_back(
         [this](int32_t trackIndex) {
             if (trackIndex == uapmd::kMasterTrackIndex)
                 timelineEditor_.pluginGraphEditor().showMasterTrack();
@@ -179,8 +181,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when plugin UIs are shown (from scripts or GUI)
-    uapmd::AppModel::instance().uiShown.push_back(
-        [this](const uapmd::AppModel::UIStateResult& result) {
+    uapmd_app::AppModel::instance().uiShown.push_back(
+        [this](const uapmd_app::AppModel::UIStateResult& result) {
             if (!result.success) {
                 // Show error, hide container window if it was created
                 std::cout << "Failed to show plugin UI: " << result.error << std::endl;
@@ -193,7 +195,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 return;
             }
 
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
             auto* instance = sequencer.engine()->getPluginInstance(result.instanceId);
             if (!instance) return;
 
@@ -212,8 +214,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when plugin UIs are hidden (from scripts or GUI)
-    uapmd::AppModel::instance().uiHidden.push_back(
-        [this](const uapmd::AppModel::UIStateResult& result) {
+    uapmd_app::AppModel::instance().uiHidden.push_back(
+        [this](const uapmd_app::AppModel::UIStateResult& result) {
             if (!result.success) return;
 
             // Call handleHideUI to process the window state changes
@@ -266,13 +268,13 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     });
 
     // Track layout change notifications
-    uapmd::AppModel::instance().trackLayoutChanged.push_back(
-        [this](const uapmd::AppModel::TrackLayoutChange& change) {
+    uapmd_app::AppModel::instance().trackLayoutChanged.push_back(
+        [this](const uapmd_app::AppModel::TrackLayoutChange& change) {
             handleTrackLayoutChange(change);
         });
 
     // Project-loaded notifications (fires for any successful load, GUI-initiated or scripted)
-    uapmd::AppModel::instance().projectLoaded.push_back(
+    uapmd_app::AppModel::instance().projectLoaded.push_back(
         [this]() {
             timelineEditor_.refreshAllSequenceEditorTracks();
             // Must run before invalidateMasterTrackSnapshot(), which clears the tempo map
@@ -290,7 +292,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     // Register device change listener with AudioIODeviceManager
     auto audioManager = uapmd::AudioIODeviceManager::instance();
     audioDeviceSettings_.setPlatformProvidesAutoBufferSize(audioManager->platformProvidesAutoBufferSize());
-    audioDeviceSettings_.setUseAutoBufferSize(uapmd::AppModel::instance().autoBufferSizeEnabled());
+    audioDeviceSettings_.setUseAutoBufferSize(uapmd_app::AppModel::instance().autoBufferSizeEnabled());
     // Fires on miniaudio's device worker thread; enqueue (a blocking dispatch
     // here deadlocks against the main thread reopening the device).
     audioManager->setDeviceChangeCallback([this](int32_t deviceId, AudioIODeviceChange change) {
@@ -392,7 +394,7 @@ void MainWindow::render(void* window) {
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
-            auto& appModel = uapmd::AppModel::instance();
+            auto& appModel = uapmd_app::AppModel::instance();
             const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
             const char* audioEngineLabel = audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off";
             const ImVec4 onColor(0.25f, 0.58f, 0.33f, 1.0f);
@@ -553,12 +555,12 @@ void MainWindow::render(void* window) {
                 // Button colour reflects connection state.
                 const auto mcpState = mcpServer_
                     ? mcpServer_->connectionState()
-                    : McpConnectionState::Idle;
+                    : uapmd_app::McpConnectionState::Idle;
                 ImVec4 mcpColor;
                 switch (mcpState) {
-                case McpConnectionState::Connected:   mcpColor = ImVec4(0.20f, 0.55f, 0.28f, 1.0f); break;
-                case McpConnectionState::Connecting:  mcpColor = ImVec4(0.55f, 0.50f, 0.10f, 1.0f); break;
-                case McpConnectionState::Error:       mcpColor = ImVec4(0.55f, 0.20f, 0.20f, 1.0f); break;
+                case uapmd_app::McpConnectionState::Connected:   mcpColor = ImVec4(0.20f, 0.55f, 0.28f, 1.0f); break;
+                case uapmd_app::McpConnectionState::Connecting:  mcpColor = ImVec4(0.55f, 0.50f, 0.10f, 1.0f); break;
+                case uapmd_app::McpConnectionState::Error:       mcpColor = ImVec4(0.55f, 0.20f, 0.20f, 1.0f); break;
                 default:                              mcpColor = ImVec4(0.35f, 0.35f, 0.35f, 1.0f); break;
                 }
                 ImGui::PushStyleColor(ImGuiCol_Button, mcpColor);
@@ -609,10 +611,10 @@ void MainWindow::render(void* window) {
                         } else {
                             if (mcpMode_ == 0) {
 #ifdef UAPMD_MCP_HAS_HTTP_SERVER
-                                mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+                                mcpServer_ = std::make_unique<uapmd_app::McpServer>(mcpPort_);
 #endif
                             } else {
-                                mcpServer_ = std::make_unique<McpServer>(
+                                mcpServer_ = std::make_unique<uapmd_app::McpServer>(
                                     std::string(mcpRelayUrl_), mcpAutoReconnect_);
                             }
                             if (mcpServer_)
@@ -703,7 +705,7 @@ void MainWindow::render(void* window) {
 }
 
 bool MainWindow::requestClose() {
-    if (noConfirmOnQuit_ || !uapmd::AppModel::instance().isProjectDirty()) {
+    if (noConfirmOnQuit_ || !uapmd_app::AppModel::instance().isProjectDirty()) {
         isOpen_ = false;
         return true;
     }
@@ -731,7 +733,7 @@ void MainWindow::renderUnsavedProjectDialog() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard", ImVec2(100.0f * uiScale_, 0.0f))) {
-            uapmd::AppModel::instance().clearProjectDirtyState();
+            uapmd_app::AppModel::instance().clearProjectDirtyState();
             closeRequested_ = false;
             isOpen_ = false;
             ImGui::CloseCurrentPopup();
@@ -766,7 +768,7 @@ void MainWindow::renderDeviceSettingsWindow() {
 }
 
 void MainWindow::renderPlatformMidiConnections() {
-    auto& appModel = uapmd::AppModel::instance();
+    auto& appModel = uapmd_app::AppModel::instance();
     auto* engine = appModel.sequencer().engine();
     if (!engine)
         return;
@@ -917,12 +919,12 @@ void MainWindow::renderAudioGraphEditorWindow() {
     ImGui::End();
 }
 
-void MainWindow::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change) {
+void MainWindow::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change) {
     timelineEditor_.handleTrackLayoutChange(change);
     trackList_.markDirty();
 }
 void MainWindow::update() {
-    if (auto* provider = uapmd::AppModel::instance().documentProvider())
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider())
         provider->tick();
 }
 
@@ -1054,7 +1056,7 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
 
     pluginWindowResizeIgnore_.insert(instanceId);
 
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     bool success = true;
     remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success]() {
         if (!window) {
@@ -1105,7 +1107,7 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
 
     remidy::gui::Bounds currentBounds = pluginWindowBounds_[instanceId];
 
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     pluginWindowBounds_[instanceId] = currentBounds;
 
     const uint32_t currentWidth = static_cast<uint32_t>(std::max(currentBounds.width, 0));
@@ -1137,11 +1139,11 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
 void MainWindow::onPluginWindowClosed(int32_t instanceId) {
     // Route the close request through AppModel so that all hide callbacks run
     // and our ContainerWindow visibility state stays in sync with the overlay.
-    uapmd::AppModel::instance().hidePluginUI(instanceId);
+    uapmd_app::AppModel::instance().hidePluginUI(instanceId);
 }
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance->hasUISupport())
         return false;
@@ -1151,7 +1153,7 @@ bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t
 void MainWindow::updateAudioDeviceSettingsData() {
     // Update sample rates for the selected devices
     auto manager = uapmd::AudioIODeviceManager::instance();
-    audioDeviceSettings_.setUseAutoBufferSize(uapmd::AppModel::instance().autoBufferSizeEnabled());
+    audioDeviceSettings_.setUseAutoBufferSize(uapmd_app::AppModel::instance().autoBufferSizeEnabled());
 
     // Get selected device indices
     int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
@@ -1200,7 +1202,7 @@ void MainWindow::updateAudioDeviceSettingsData() {
 
 
 std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance) {
         return std::nullopt;
@@ -1215,7 +1217,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
         std::string initialName;
         bool labelFound = false;
 
-        auto deviceState = uapmd::AppModel::instance().getDeviceForInstance(instanceId);
+        auto deviceState = uapmd_app::AppModel::instance().getDeviceForInstance(instanceId);
         if (deviceState && *deviceState) {
             std::lock_guard guard((*deviceState)->mutex);
             if (!(*deviceState)->label.empty()) {
@@ -1239,7 +1241,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     bool deviceInstantiating = false;
     bool deviceSupported = false;
 
-    auto deviceState = uapmd::AppModel::instance().getDeviceForInstance(instanceId);
+    auto deviceState = uapmd_app::AppModel::instance().getDeviceForInstance(instanceId);
     if (deviceState && *deviceState) {
         std::lock_guard guard((*deviceState)->mutex);
         deviceExists = true;
@@ -1311,7 +1313,7 @@ void MainWindow::handleAudioDeviceChange() {
     uint32_t sampleRate = static_cast<uint32_t>(audioDeviceSettings_.getOutputSampleRate());
 
     const bool useAutoBuffer = audioDeviceSettings_.isAutoBufferSizeEnabled();
-    uapmd::AppModel::instance().setAutoBufferSizeEnabled(useAutoBuffer);
+    uapmd_app::AppModel::instance().setAutoBufferSizeEnabled(useAutoBuffer);
 
     // Get selected buffer size (ignored when auto buffer mode is enabled)
     uint32_t bufferSize = useAutoBuffer
@@ -1322,7 +1324,7 @@ void MainWindow::handleAudioDeviceChange() {
     updateAudioDeviceSettingsData();
 
     // Reconfigure the audio device in the sequencer with the selected device indices, sample rate, and buffer size
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     if (!sequencer.reconfigureAudioDevice(selectedInput, selectedOutput, sampleRate, bufferSize)) {
         std::cerr << "Failed to reconfigure audio device" << std::endl;
     } else {
@@ -1331,7 +1333,7 @@ void MainWindow::handleAudioDeviceChange() {
                                 selectedOutput,
                                 sampleRate,
                                 bufferSize) << std::endl;
-        uapmd::AppModel::instance().updateAudioDeviceSettings(static_cast<int32_t>(sampleRate), bufferSize);
+        uapmd_app::AppModel::instance().updateAudioDeviceSettings(static_cast<int32_t>(sampleRate), bufferSize);
     }
 }
 
@@ -1352,7 +1354,7 @@ void MainWindow::applyDeviceSettings() {
 
 void MainWindow::refreshInstances() {
     // Get actual instance list from sequencer
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto instances = sequencer.engine()->pluginHost()->instanceIds();
 
     for (auto it = pluginWindows_.begin(); it != pluginWindows_.end();) {
@@ -1389,9 +1391,9 @@ void MainWindow::refreshInstances() {
 }
 
 void MainWindow::refreshPluginList() {
-    std::vector<PluginEntry> plugins;
+    std::vector<remidy_imgui::PluginEntry> plugins;
 
-    auto* host = uapmd::AppModel::instance().sequencer().engine()->pluginHost();
+    auto* host = uapmd_app::AppModel::instance().sequencer().engine()->pluginHost();
     if (!host) {
         timelineEditor_.pluginSelector().setPlugins(plugins);
         return;
@@ -1412,7 +1414,7 @@ void MainWindow::refreshPluginList() {
 }
 
 void MainWindow::savePluginState(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto instance = sequencer.engine()->getPluginInstance(instanceId);
 
     std::string defaultFilename = std::format("{}.{}.state",
@@ -1425,15 +1427,15 @@ void MainWindow::savePluginState(int32_t instanceId) {
         {"All Files", {}, {"*"}}
     };
 
-    uapmd::AppModel::instance().documentProvider()->pickSaveDocument(
+    uapmd_app::AppModel::instance().documentProvider()->pickSaveDocument(
         defaultFilename,
         filters,
         [instanceId](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty())
                 return;
-            uapmd::AppModel::instance().savePluginState(
+            uapmd_app::AppModel::instance().savePluginState(
                 instanceId, pickResult.handles[0],
-                [](uapmd::AppModel::PluginStateResult result) {
+                [](uapmd_app::AppModel::PluginStateResult result) {
                     if (!result.success)
                         platformError("Save Failed",
                                       std::format("Failed to save plugin state:\n{}", result.error));
@@ -1448,15 +1450,15 @@ void MainWindow::loadPluginState(int32_t instanceId) {
         {"All Files", {}, {"*"}}
     };
 
-    uapmd::AppModel::instance().documentProvider()->pickOpenDocuments(
+    uapmd_app::AppModel::instance().documentProvider()->pickOpenDocuments(
         filters,
         false,
         [this, instanceId](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty())
                 return;
-            uapmd::AppModel::instance().loadPluginState(
+            uapmd_app::AppModel::instance().loadPluginState(
                 instanceId, pickResult.handles[0],
-                [this, instanceId](uapmd::AppModel::PluginStateResult result) {
+                [this, instanceId](uapmd_app::AppModel::PluginStateResult result) {
                     if (!result.success) {
                         platformError("Load Failed",
                                       std::format("Failed to load plugin state:\n{}", result.error));
@@ -1470,7 +1472,7 @@ void MainWindow::loadPluginState(int32_t instanceId) {
 
 void MainWindow::createPluginInstance(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
     // Prepare configuration
-    uapmd::AppModel::PluginInstanceConfig config;
+    uapmd_app::AppModel::PluginInstanceConfig config;
     config.apiName = std::string(timelineEditor_.pluginSelector().getApiInput());
     if (config.apiName.empty()) {
         config.apiName = "default";
@@ -1479,8 +1481,8 @@ void MainWindow::createPluginInstance(const std::string& format, const std::stri
 
     // Use AppModel's unified creation method with a completion callback
     // to show details window for GUI-initiated creation
-    uapmd::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config,
-        [this](const uapmd::AppModel::PluginInstanceResult& result) {
+    uapmd_app::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config,
+        [this](const uapmd_app::AppModel::PluginInstanceResult& result) {
             // Only show details on successful creation
             if (result.error.empty() && result.instanceId >= 0) {
                 timelineEditor_.instanceDetails().showWindow(result.instanceId);
@@ -1490,7 +1492,7 @@ void MainWindow::createPluginInstance(const std::string& format, const std::stri
 
 
 void MainWindow::handleShowUI(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& sequencer = uapmd_app::AppModel::instance().sequencer();
     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance) return;
 
@@ -1530,7 +1532,7 @@ void MainWindow::handleShowUI(int32_t instanceId) {
     bool needsCreate = (pluginWindowEmbedded_.find(instanceId) == pluginWindowEmbedded_.end());
 
     // Call AppModel to create/show the UI - it will handle createUI() (if needed) and showUI()
-    uapmd::AppModel::instance().showPluginUI(instanceId, needsCreate, false, parentHandle,
+    uapmd_app::AppModel::instance().showPluginUI(instanceId, needsCreate, false, parentHandle,
         [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
 
     // UI visibility is updated from AppModel::uiShown after create/show succeeds.
@@ -1554,15 +1556,15 @@ void MainWindow::handleHideUI(int32_t instanceId) {
 
 void MainWindow::handleEnableDevice(int32_t instanceId, const std::string& deviceName) {
     // Update device label in AppModel
-    uapmd::AppModel::instance().updateDeviceLabel(instanceId, deviceName);
+    uapmd_app::AppModel::instance().updateDeviceLabel(instanceId, deviceName);
 
     // Enable device (AppModel will update state and trigger callback for UI refresh)
-    uapmd::AppModel::instance().enableUmpDevice(instanceId, deviceName);
+    uapmd_app::AppModel::instance().enableUmpDevice(instanceId, deviceName);
 }
 
 void MainWindow::handleDisableDevice(int32_t instanceId) {
     // Disable device (AppModel will update state and trigger callback for UI refresh)
-    uapmd::AppModel::instance().disableUmpDevice(instanceId);
+    uapmd_app::AppModel::instance().disableUmpDevice(instanceId);
 }
 
 void MainWindow::handleRemoveInstance(int32_t instanceId) {
@@ -1572,7 +1574,7 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
     // 2. Remove virtual MIDI device (in AppModel)
     // 3. Remove from sequencer (in AppModel)
     // 4. Trigger instanceRemoved callback which cleans up UI windows and devices list
-    uapmd::AppModel::instance().removePluginInstance(instanceId);
+    uapmd_app::AppModel::instance().removePluginInstance(instanceId);
 
     std::cout << "Removed plugin instance: " << instanceId << std::endl;
 }
@@ -1584,7 +1586,7 @@ void MainWindow::handleSaveProject() {
         {"All Files", {}, {"*"}}
     };
 
-    uapmd::AppModel::instance().documentProvider()->pickSaveDocument(
+    uapmd_app::AppModel::instance().documentProvider()->pickSaveDocument(
         "project.uapmdz",
         filters,
         [this](uapmd::DocumentPickResult pickResult) {
@@ -1595,7 +1597,7 @@ void MainWindow::handleSaveProject() {
 
             auto handle = pickResult.handles[0];
 
-            uapmd::AppModel::instance().saveProjectToDocument(
+            uapmd_app::AppModel::instance().saveProjectToDocument(
                 std::move(handle),
                 [this](uapmd::DocumentIOResult ioResult) {
                     if (!ioResult.success) {
@@ -1620,7 +1622,7 @@ void MainWindow::handleLoadProject() {
         {"All Files", {}, {"*"}}
     };
 
-    uapmd::AppModel::instance().documentProvider()->pickOpenDocuments(
+    uapmd_app::AppModel::instance().documentProvider()->pickOpenDocuments(
         filters,
         false,
         [this](uapmd::DocumentPickResult pickResult) {
@@ -1629,14 +1631,14 @@ void MainWindow::handleLoadProject() {
             resolveDocumentHandle(
                 pickResult.handles[0],
                 [this](const std::filesystem::path& projectPath) {
-                    auto& appModel = uapmd::AppModel::instance();
+                    auto& appModel = uapmd_app::AppModel::instance();
                     const bool wasEnabled = appModel.isAudioEngineEnabled();
                     if (wasEnabled)
                         appModel.setAudioEngineEnabled(false);
                     appModel.loadProjectFromResolvedPath(projectPath,
-                        [this, wasEnabled](uapmd::AppModel::ProjectResult result) {
+                        [this, wasEnabled](uapmd_app::AppModel::ProjectResult result) {
                             if (wasEnabled)
-                                uapmd::AppModel::instance().setAudioEngineEnabled(true);
+                                uapmd_app::AppModel::instance().setAudioEngineEnabled(true);
                             if (!result.success) {
                                 platformError("Load Failed", result.error);
                                 return;
@@ -1654,16 +1656,16 @@ void MainWindow::handleLoadProject() {
 }
 
 void MainWindow::toggleTheme() {
-    currentTheme_ = (currentTheme_ == ThemeMode::Dark) ? ThemeMode::Light : ThemeMode::Dark;
+    currentTheme_ = (currentTheme_ == remidy_imgui::ThemeMode::Dark) ? remidy_imgui::ThemeMode::Light : remidy_imgui::ThemeMode::Dark;
     applyTheme(currentTheme_);
 }
 
-void MainWindow::applyTheme(ThemeMode mode) {
+void MainWindow::applyTheme(remidy_imgui::ThemeMode mode) {
     currentTheme_ = mode;
-    SetupImGuiStyle(mode);
+    remidy_imgui::SetupImGuiStyle(mode);
     baseStyle_ = ImGui::GetStyle();
     applyUiScale(uiScale_);
     timelineEditor_.sequenceEditor().invalidateTimeline();
 }
 
-}  // namespace uapmd::gui
+}  // namespace uapmd_app_gui

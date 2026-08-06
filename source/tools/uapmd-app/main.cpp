@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
         uapmd_plugin_hosting::RemotePluginScannerProcess remoteScanner(argcIn, argvIn);
         if (remoteScanner.matches())
             return remoteScanner.process();
-        return uapmd::runMainLoop(argcIn, argvIn);
+        return uapmd_app::runMainLoop(argcIn, argvIn);
     };
 #if UAPMD_HAS_CPPTRACE
     cpptrace::register_terminate_handler();

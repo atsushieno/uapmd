@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-namespace uapmd {
+namespace uapmd_app {
 
 enum class McpConnectionMode {
     Server,   ///< Embedded HTTP server (desktop only, UAPMD_MCP_HAS_HTTP_SERVER)
@@ -56,4 +56,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace uapmd
+} // namespace uapmd_app

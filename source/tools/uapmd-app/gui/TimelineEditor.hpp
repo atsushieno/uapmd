@@ -19,7 +19,7 @@
 #include "InstanceDetails.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 // Callbacks to parent window for plugin-related UI operations
 struct TimelineEditorCallbacks {
@@ -97,7 +97,7 @@ public:
     void applyAudioImportResult(uapmd::import::AudioImportResult result);
 
     // Track layout change handler
-    void handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change);
+    void handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change);
 
     // Child window size management (forwarded from MainWindow)
     void setChildWindowSizeHelper(std::function<void(const std::string&, ImVec2)> setSize,
@@ -117,7 +117,7 @@ private:
     bool showPluginSelectorWindow_ = false;
 
     // Master track snapshot and signature for change detection
-    std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
+    std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
     std::string masterTrackSignature_;
     bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
@@ -151,7 +151,7 @@ private:
     void resolveAllClipAnchors();
 
     // Tempo management
-    void rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot);
+    void rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot>& snapshot);
 
     // MIDI dump helpers
     MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
@@ -188,4 +188,4 @@ private:
     BeatsSequenceEditor::RenderContext buildBeatsRenderContext(float uiScale, float legendWidth);
 };
 
-}  // namespace uapmd::gui
+}  // namespace uapmd_app_gui

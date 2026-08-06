@@ -11,7 +11,9 @@
 #include <set>
 #include <string_view>
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -760,4 +762,4 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
         state.visible = false;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

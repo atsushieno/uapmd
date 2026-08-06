@@ -6,7 +6,7 @@
 #include <imgui.h>
 #include <PluginUIHelpers.hpp>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class PluginList {
 public:
@@ -17,7 +17,7 @@ public:
     };
 
 private:
-    std::vector<PluginEntry> availablePlugins_{};
+    std::vector<remidy_imgui::PluginEntry> availablePlugins_{};
     std::string selectedPluginFormat_;
     std::string selectedPluginId_;
     char searchFilter_[256] = "";
@@ -27,7 +27,7 @@ private:
 public:
     PluginList();
 
-    void setPlugins(const std::vector<PluginEntry>& plugins);
+    void setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugins);
     void render();
 
     void setOnPluginSelected(std::function<void(const std::string& format, const std::string& pluginId, const std::string& name)> callback);

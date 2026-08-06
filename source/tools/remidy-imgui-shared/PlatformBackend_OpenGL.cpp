@@ -5,8 +5,8 @@
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 class OpenGL3Renderer : public ImGuiRenderer {
 public:
@@ -46,7 +46,6 @@ std::unique_ptr<ImGuiRenderer> createOpenGL3Renderer() {
     return std::make_unique<OpenGL3Renderer>();
 }
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui
 
 #endif // !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)

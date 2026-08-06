@@ -22,25 +22,26 @@
 #include <uapmd-engine/uapmd-engine.hpp>
 #include <uapmd-file/IDocumentProvider.hpp>
 
-namespace uapmd {
+namespace uapmd::ara {
+    class AraSupport;
+}
+
+namespace uapmd_app {
     struct ScopedTempDir;
-    namespace ara {
-        class AraSupport;
-    }
     // Forward declarations
     class AppModel;
     class ClipEnablementSerializationExtension;
 
     class TransportController {
         AppModel* appModel_;
-        RealtimeSequencer* sequencer_;
+        uapmd::RealtimeSequencer* sequencer_;
         bool isPlaying_ = false;
         bool isPaused_ = false;
         bool isRecording_ = false;
         float volume_ = 0.8f;
 
     public:
-        explicit TransportController(AppModel* appModel, RealtimeSequencer* sequencer);
+        explicit TransportController(AppModel* appModel, uapmd::RealtimeSequencer* sequencer);
 
         // State getters
         bool isPlaying() const;
@@ -130,11 +131,11 @@ namespace uapmd {
         // FIXME: currently there is little to no chance of changing this size at runtime, so we should probably remove this
         //  and define some system global constant somewhere in the core.
         size_t ump_buffer_size_in_bytes_;
-        RealtimeSequencer sequencer_;
+        uapmd::RealtimeSequencer sequencer_;
         std::unique_ptr<uapmd_plugin_hosting::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
 #ifdef UAPMD_HAS_ARA
-        std::unique_ptr<ara::AraSupport> araSupport_;
+        std::unique_ptr<uapmd::ara::AraSupport> araSupport_;
 #endif
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
@@ -152,7 +153,7 @@ namespace uapmd {
         uint32_t audio_buffer_size_;
         bool auto_buffer_size_enabled_{false};
         std::vector<uapmd::ClipMarker> master_track_markers_;
-        std::unique_ptr<IDocumentProvider> documentProvider_;
+        std::unique_ptr<uapmd::IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
         mutable std::mutex dirtyStateMutex_;
@@ -189,16 +190,16 @@ namespace uapmd {
         static void instantiate();
         static AppModel& instance();
         static void cleanupInstance();
-        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
+        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, uapmd::DeviceIODispatcher* dispatcher);
         ~AppModel() override;
 
-        RealtimeSequencer& sequencer() { return sequencer_; }
-        std::vector<MidiPortInfo> getMidiInputPorts() const;
-        std::vector<MidiPortInfo> getMidiOutputPorts() const;
+        uapmd::RealtimeSequencer& sequencer() { return sequencer_; }
+        std::vector<uapmd::MidiPortInfo> getMidiInputPorts() const;
+        std::vector<uapmd::MidiPortInfo> getMidiOutputPorts() const;
         uapmd_plugin_hosting::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }
         const uapmd_plugin_hosting::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
-        IDocumentProvider* documentProvider();
+        uapmd::IDocumentProvider* documentProvider();
         bool isScanning() const { return isScanning_; }
         bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire); }
         void setAudioEngineEnabled(bool enabled);
@@ -358,13 +359,13 @@ namespace uapmd {
 
         // Load plugin state from a file.
         void loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
-        void loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback);
+        void loadPluginState(int32_t instanceId, uapmd::DocumentHandle handle, PluginStateCallback callback);
         // OBSOLETE: use `loadPluginState()` with callback instead.
         PluginStateResult loadPluginStateSync(int32_t instanceId, const std::string& filepath);
 
         // Save plugin state to a file.
         void savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
-        void savePluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback);
+        void savePluginState(int32_t instanceId, uapmd::DocumentHandle handle, PluginStateCallback callback);
         // OBSOLETE: use `savePluginState()` with callback instead.
         PluginStateResult savePluginStateSync(int32_t instanceId, const std::string& filepath);
 
@@ -401,8 +402,8 @@ namespace uapmd {
             std::vector<uint64_t> umpTickTimestamps,
             uint32_t tickResolution,
             double clipTempo,
-            std::vector<MidiTempoChange> tempoChanges,
-            std::vector<MidiTimeSignatureChange> timeSignatureChanges,
+            std::vector<uapmd::MidiTempoChange> tempoChanges,
+            std::vector<uapmd::MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName = "",
             bool needsFileSave = false
         );
@@ -413,8 +414,8 @@ namespace uapmd {
             std::vector<uint64_t> umpTickTimestamps,
             uint32_t tickResolution,
             double clipTempo,
-            std::vector<MidiTempoChange> tempoChanges,
-            std::vector<MidiTimeSignatureChange> timeSignatureChanges,
+            std::vector<uapmd::MidiTempoChange> tempoChanges,
+            std::vector<uapmd::MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName = "",
             bool needsFileSave = false,
             const std::string& filepath = ""
@@ -492,7 +493,7 @@ namespace uapmd {
         // OBSOLETE: use `saveProject()` with callback instead.
         ProjectResult saveProjectSync(const std::filesystem::path& file);
         void loadProject(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
-        void saveProjectToDocument(DocumentHandle handle, IDocumentProvider::WriteCallback callback);
+        void saveProjectToDocument(uapmd::DocumentHandle handle, uapmd::IDocumentProvider::WriteCallback callback);
         void loadProjectFromResolvedPath(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
         ProjectResult loadProjectFromHandleToken(const std::string& token);
 
@@ -505,7 +506,7 @@ namespace uapmd {
             struct TimeSignaturePoint {
                 double timeSeconds{0.0};
                 uint64_t tickPosition{0};
-                MidiTimeSignatureChange signature{};
+                uapmd::MidiTimeSignatureChange signature{};
             };
 
             std::vector<TempoPoint> tempoPoints;
@@ -529,7 +530,7 @@ namespace uapmd {
 
         struct RenderToFileSettings {
             std::filesystem::path outputPath;
-            std::optional<DocumentHandle> outputHandle;
+            std::optional<uapmd::DocumentHandle> outputHandle;
             double startSeconds{0.0};
             std::optional<double> endSeconds;
             bool useContentFallback{false};
@@ -540,7 +541,7 @@ namespace uapmd {
             bool enableSilenceStop{false};
             double silenceDurationSeconds{5.0};
             double silenceThresholdDb{-80.0};
-            OfflineInfiniteTailPolicy infiniteTailPolicy{OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};
+            uapmd::OfflineInfiniteTailPolicy infiniteTailPolicy{uapmd::OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};
         };
 
         struct RenderToFileStatus {

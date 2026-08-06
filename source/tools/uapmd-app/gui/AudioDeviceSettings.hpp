@@ -6,7 +6,7 @@
 #include <functional>
 #include <imgui.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class AudioDeviceSettings {
 public:

@@ -7,8 +7,8 @@
 #include <imgui_impl_glfw.h>
 #include <iostream>
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 static bool g_GLFW_QuitRequested = false;
 
@@ -157,7 +157,6 @@ std::unique_ptr<ImGuiPlatformBackend> createGLFWImGuiBackend() {
     return std::make_unique<GLFWImGuiBackend>();
 }
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui
 
 #endif // USE_GLFW_BACKEND

@@ -10,7 +10,9 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "PlatformDialogs.hpp"
 
-namespace uapmd::gui {
+using namespace uapmd;
+
+namespace uapmd_app_gui {
 
 namespace {
 
@@ -128,7 +130,7 @@ void AudioImportWindow::browseForAudioFile() {
         {"All Files",   {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -156,7 +158,7 @@ void AudioImportWindow::browseForModelFile() {
         {"All Files", {}, {"*"}}
     };
 
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+    if (auto* provider = uapmd_app::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
@@ -325,4 +327,4 @@ void AudioImportWindow::processCompletedResult(const ImportJobStatus& statusSnap
     visible_ = false;
 }
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui

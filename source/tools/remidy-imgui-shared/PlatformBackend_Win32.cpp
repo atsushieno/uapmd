@@ -18,8 +18,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 #include <imgui_impl_dx11.h>
 #endif
 
-namespace uapmd {
-namespace gui {
+
+namespace remidy_imgui {
 
 #ifdef USE_WIN32_BACKEND
 
@@ -435,7 +435,6 @@ std::unique_ptr<ImGuiRenderer> createDirectX11Renderer() {
 
 #endif // USE_DIRECTX11_RENDERER
 
-} // namespace gui
-} // namespace uapmd
+} // namespace remidy_imgui
 
 #endif // defined(USE_WIN32_BACKEND) || defined(USE_DIRECTX11_RENDERER)

@@ -5,7 +5,7 @@
 #include <imgui_internal.h>
 #include <HorizontalNodeView.h>
 
-namespace uapmd::gui {
+namespace uapmd_app_gui {
 
 class TrackLegendNodeView : public HorizontalNodeView {
 public:
@@ -20,4 +20,4 @@ public:
     }
 };
 
-} // namespace uapmd::gui
+} // namespace uapmd_app_gui
