@@ -655,6 +655,7 @@ namespace uapmd {
                 requestAllNotesOff();
                 transport_generation_.fetch_add(1, std::memory_order_release);
             });
+        timeline_->addProjectSerializationExtension(*latency_compensation_manager_);
         track_routing_manager_ = std::make_unique<TrackRoutingManager>(
             audio_buffer_size_in_frames,
             sampleRate,
@@ -697,6 +698,7 @@ namespace uapmd {
         if (latency_compensation_manager_) {
             removeAudioProcessingEventHandler(*latency_compensation_manager_);
             removeProcessingLifecycleListener(*latency_compensation_manager_);
+            timeline_->removeProjectSerializationExtension(*latency_compensation_manager_);
         }
         tail_process_manager_.reset();
         // Detach output mappers while plugin instances are still alive. This is a separate

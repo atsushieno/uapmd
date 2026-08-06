@@ -9,6 +9,8 @@
 
 namespace uapmd {
 
+    class UapmdProjectData;
+
     class ProjectSerializationWriteContext {
     public:
         virtual ~ProjectSerializationWriteContext() = default;
@@ -42,13 +44,24 @@ namespace uapmd {
 
         virtual std::string_view extensionId() const = 0;
 
+        // These hooks own feature-specific data embedded in the main project
+        // document. They are invoked before the document is written and after
+        // it is read, respectively.
+        virtual bool saveProjectData(
+            UapmdProjectData&,
+            std::string&) { return true; }
+
+        virtual bool loadProjectData(
+            UapmdProjectData&,
+            std::string&) { return true; }
+
         virtual bool saveProjectExtensionData(
             ProjectSerializationWriteContext& context,
-            std::string& error) = 0;
+            std::string& error) { return true; }
 
         virtual bool loadProjectExtensionData(
             ProjectSerializationReadContext& context,
-            std::string& error) = 0;
+            std::string& error) { return true; }
     };
 
 } // namespace uapmd

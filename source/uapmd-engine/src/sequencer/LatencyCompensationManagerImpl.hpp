@@ -99,6 +99,8 @@ namespace uapmd {
         void inputMonitoringPolicy(InputMonitoringPolicy policy) override;
         LatencyCompensationProjectSettings projectSettings() const override;
         bool applyProjectSettings(const LatencyCompensationProjectSettings& settings, std::string& error) override;
+        bool saveProjectData(UapmdProjectData& project, std::string& error) override;
+        bool loadProjectData(UapmdProjectData& project, std::string& error) override;
         OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
         void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
         RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const override;

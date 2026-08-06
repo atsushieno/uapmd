@@ -2,7 +2,9 @@
 
 #include <string>
 
-#include <uapmd-data/detail/project/LatencyCompensationTypes.hpp>
+#include <uapmd-data/uapmd-data.hpp>
+
+#include "LatencyCompensationTypes.hpp"
 
 namespace uapmd {
     typedef int32_t uapmd_track_index_t;
@@ -17,9 +19,13 @@ namespace uapmd {
         IMMEDIATE_STOP = 1,
     };
 
-    class LatencyCompensationManager {
+    class LatencyCompensationManager : public ProjectSerializationExtension {
     public:
         virtual ~LatencyCompensationManager() = default;
+
+        std::string_view extensionId() const override {
+            return "org.uapmd.engine.latency-compensation";
+        }
 
         virtual bool trackRecordArmed(uapmd_track_index_t trackIndex) const = 0;
         virtual void trackRecordArmed(uapmd_track_index_t trackIndex, bool armed) = 0;

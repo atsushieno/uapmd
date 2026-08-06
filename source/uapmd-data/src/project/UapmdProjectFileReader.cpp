@@ -43,20 +43,6 @@ namespace uapmd {
             return std::string(value);
         }
 
-        PlaybackCompensationMode parsePlaybackCompensationMode(std::string_view value) {
-            if (value == "low_latency")
-                return PlaybackCompensationMode::LOW_LATENCY;
-            return PlaybackCompensationMode::COMPENSATED;
-        }
-
-        InputMonitoringPolicy parseInputMonitoringPolicy(std::string_view value) {
-            if (value == "tape_style")
-                return InputMonitoringPolicy::TAPE_STYLE;
-            if (value == "off")
-                return InputMonitoringPolicy::OFF;
-            return InputMonitoringPolicy::AUTO;
-        }
-
         double legacyOffsetSamplesToSeconds(int64_t samples) {
             return static_cast<double>(samples) / kLegacyOffsetSampleRate;
         }
@@ -465,43 +451,10 @@ namespace uapmd {
 
         if (root.hasObjectMember("settings") && root["settings"].isObject()) {
             auto settingsObj = root["settings"];
-            if (settingsObj.hasObjectMember("latency_compensation") &&
-                settingsObj["latency_compensation"].isObject()) {
-                auto latencyObj = settingsObj["latency_compensation"];
-                LatencyCompensationProjectSettings settings;
-                if (latencyObj.hasObjectMember("implementation"))
-                    settings.implementation_id = std::string(latencyObj["implementation"].getString());
-                if (latencyObj.hasObjectMember("playback_compensation_mode"))
-                    settings.playback_compensation_mode =
-                        parsePlaybackCompensationMode(latencyObj["playback_compensation_mode"].getString());
-                if (latencyObj.hasObjectMember("input_monitoring_policy"))
-                    settings.input_monitoring_policy =
-                        parseInputMonitoringPolicy(latencyObj["input_monitoring_policy"].getString());
-                if (latencyObj.hasObjectMember("monitored_tracks") &&
-                    latencyObj["monitored_tracks"].isArray()) {
-                    for (const auto& trackValue : latencyObj["monitored_tracks"])
-                        settings.monitored_track_indexes.push_back(trackValue.getWithDefault<int32_t>(-1));
-                    std::erase_if(settings.monitored_track_indexes, [](int32_t index) { return index < 0; });
-                }
-                if (latencyObj.hasObjectMember("record_armed_tracks") &&
-                    latencyObj["record_armed_tracks"].isArray()) {
-                    for (const auto& trackValue : latencyObj["record_armed_tracks"])
-                        settings.record_armed_track_indexes.push_back(trackValue.getWithDefault<int32_t>(-1));
-                    std::erase_if(settings.record_armed_track_indexes, [](int32_t index) { return index < 0; });
-                }
-                if (latencyObj.hasObjectMember("properties") && latencyObj["properties"].isObject()) {
-                    auto propertiesObj = latencyObj["properties"];
-                    for (uint32_t i = 0; i < propertiesObj.size(); ++i) {
-                        auto member = propertiesObj[i];
-                        if (!member.isString())
-                            continue;
-                        settings.implementation_properties.emplace(
-                            std::string(propertiesObj.getObjectMemberAt(i).name),
-                            std::string(member.getString()));
-                    }
-                }
-                project->latencyCompensationSettings(std::move(settings));
-            }
+            for (uint32_t i = 0; i < settingsObj.size(); ++i)
+                project->settings().emplace(
+                    std::string(settingsObj.getObjectMemberAt(i).name),
+                    choc::json::toString(settingsObj[i], false));
         }
 
         // Parse tracks

@@ -130,6 +130,12 @@ public:
     // extension before destroying it.
     virtual void addProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
     virtual void removeProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
+    virtual bool saveProjectDataExtensions(
+        UapmdProjectData& project,
+        std::string& error) = 0;
+    virtual bool loadProjectDataExtensions(
+        UapmdProjectData& project,
+        std::string& error) = 0;
     virtual bool saveProjectExtensionData(
         const std::filesystem::path& projectFile,
         const std::filesystem::path& projectDir,

@@ -619,6 +619,48 @@ namespace uapmd {
             std::erase(project_serialization_extensions_, &extension);
         }
 
+        bool saveProjectDataExtensions(
+            UapmdProjectData& project,
+            std::string& error) override {
+            std::vector<ProjectSerializationExtension*> extensions;
+            {
+                std::lock_guard<std::mutex> lock(project_serialization_extensions_mutex_);
+                extensions = project_serialization_extensions_;
+            }
+            for (auto* extension : extensions) {
+                if (!extension)
+                    continue;
+                std::string extensionError;
+                if (!extension->saveProjectData(project, extensionError)) {
+                    error = std::format("Failed to save project data for extension {}: {}",
+                                        extension->extensionId(), extensionError);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool loadProjectDataExtensions(
+            UapmdProjectData& project,
+            std::string& error) override {
+            std::vector<ProjectSerializationExtension*> extensions;
+            {
+                std::lock_guard<std::mutex> lock(project_serialization_extensions_mutex_);
+                extensions = project_serialization_extensions_;
+            }
+            for (auto* extension : extensions) {
+                if (!extension)
+                    continue;
+                std::string extensionError;
+                if (!extension->loadProjectData(project, extensionError)) {
+                    error = std::format("Failed to load project data for extension {}: {}",
+                                        extension->extensionId(), extensionError);
+                    return false;
+                }
+            }
+            return true;
+        }
+
         bool saveProjectExtensionData(
             const std::filesystem::path& projectFile,
             const std::filesystem::path& projectDir,
@@ -745,9 +787,6 @@ namespace uapmd {
                 operation->plugin_state_dir = operation->project_dir / "plugin_states";
                 operation->graph_dir = operation->project_dir / "graphs";
                 operation->project = UapmdProjectData::create();
-                if (auto* latencyManager = engine_.latencyCompensationManager())
-                    operation->project->latencyCompensationSettings(latencyManager->projectSettings());
-
                 std::unordered_set<int32_t> excludedTrackIndexes(
                     options.excludedTrackIndexes.begin(),
                     options.excludedTrackIndexes.end());
@@ -907,6 +946,11 @@ namespace uapmd {
                             complete(ProjectResult{false, std::move(graphWriteError)});
                             return;
                         }
+                    }
+                    std::string projectDataError;
+                    if (!saveProjectDataExtensions(*operation->project, projectDataError)) {
+                        complete(ProjectResult{false, std::move(projectDataError)});
+                        return;
                     }
                     if (!UapmdProjectDataWriter::write(operation->project.get(), operation->project_file)) {
                         complete(ProjectResult{false, "Failed to write project file"});
@@ -1821,14 +1865,10 @@ namespace uapmd {
                     if (masterProjectTrack)
                         applyGraphConnections(masterProjectTrack, engine_.masterTrack());
 
-                    if (auto* latencyManager = engine_.latencyCompensationManager()) {
-                        std::string latencySettingsError;
-                        if (!latencyManager->applyProjectSettings(
-                                sharedProject->latencyCompensationSettings(),
-                                latencySettingsError)) {
-                            callback({false, std::move(latencySettingsError)});
-                            return;
-                        }
+                    std::string projectDataError;
+                    if (!loadProjectDataExtensions(*sharedProject, projectDataError)) {
+                        callback({false, std::move(projectDataError)});
+                        return;
                     }
 
                     for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {

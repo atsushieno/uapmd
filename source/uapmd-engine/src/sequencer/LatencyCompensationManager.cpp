@@ -1,12 +1,46 @@
 #include "LatencyCompensationManagerImpl.hpp"
 
 #include <algorithm>
+#include <choc/text/choc_JSON.h>
 #include <format>
 #include <unordered_set>
 
 #include "TrackRoutingManager.hpp"
 
 namespace uapmd {
+
+    namespace {
+        constexpr std::string_view kProjectSettingsKey{"latency_compensation"};
+
+        std::string playbackCompensationModeToString(PlaybackCompensationMode mode) {
+            return mode == PlaybackCompensationMode::LOW_LATENCY
+                ? "low_latency"
+                : "compensated";
+        }
+
+        PlaybackCompensationMode parsePlaybackCompensationMode(std::string_view value) {
+            return value == "low_latency"
+                ? PlaybackCompensationMode::LOW_LATENCY
+                : PlaybackCompensationMode::COMPENSATED;
+        }
+
+        std::string inputMonitoringPolicyToString(InputMonitoringPolicy policy) {
+            switch (policy) {
+                case InputMonitoringPolicy::TAPE_STYLE: return "tape_style";
+                case InputMonitoringPolicy::OFF: return "off";
+                case InputMonitoringPolicy::AUTO: return "auto";
+            }
+            return "auto";
+        }
+
+        InputMonitoringPolicy parseInputMonitoringPolicy(std::string_view value) {
+            if (value == "tape_style")
+                return InputMonitoringPolicy::TAPE_STYLE;
+            if (value == "off")
+                return InputMonitoringPolicy::OFF;
+            return InputMonitoringPolicy::AUTO;
+        }
+    }
 
     void LatencyCompensationManagerImpl::OutputAlignmentDelayLine::reset() {
         write_position = 0;
@@ -308,6 +342,84 @@ namespace uapmd {
             applyStateChange();
         });
         return true;
+    }
+
+    bool LatencyCompensationManagerImpl::saveProjectData(
+        UapmdProjectData& project,
+        std::string&) {
+        const auto settings = projectSettings();
+        auto value = choc::value::createObject("LatencyCompensationSettings");
+        value.addMember("implementation", settings.implementation_id);
+        value.addMember("playback_compensation_mode",
+                        playbackCompensationModeToString(settings.playback_compensation_mode));
+        value.addMember("input_monitoring_policy",
+                        inputMonitoringPolicyToString(settings.input_monitoring_policy));
+        if (!settings.monitored_track_indexes.empty()) {
+            auto indexes = choc::value::createEmptyArray();
+            for (const auto index : settings.monitored_track_indexes)
+                indexes.addArrayElement(index);
+            value.addMember("monitored_tracks", indexes);
+        }
+        if (!settings.record_armed_track_indexes.empty()) {
+            auto indexes = choc::value::createEmptyArray();
+            for (const auto index : settings.record_armed_track_indexes)
+                indexes.addArrayElement(index);
+            value.addMember("record_armed_tracks", indexes);
+        }
+        if (!settings.implementation_properties.empty()) {
+            auto properties = choc::value::createObject("LatencyCompensationProperties");
+            for (const auto& [key, value] : settings.implementation_properties)
+                properties.addMember(key, value);
+            value.addMember("properties", properties);
+        }
+        project.settings()[std::string(kProjectSettingsKey)] =
+            choc::json::toString(value, false);
+        return true;
+    }
+
+    bool LatencyCompensationManagerImpl::loadProjectData(
+        UapmdProjectData& project,
+        std::string& error) {
+        const auto it = project.settings().find(std::string(kProjectSettingsKey));
+        if (it == project.settings().end())
+            return true;
+
+        try {
+            const auto value = choc::json::parse(it->second);
+            if (!value.isObject()) {
+                error = "Latency compensation settings must be an object.";
+                return false;
+            }
+            LatencyCompensationProjectSettings settings;
+            if (value.hasObjectMember("implementation"))
+                settings.implementation_id = std::string(value["implementation"].getString());
+            if (value.hasObjectMember("playback_compensation_mode"))
+                settings.playback_compensation_mode =
+                    parsePlaybackCompensationMode(value["playback_compensation_mode"].getString());
+            if (value.hasObjectMember("input_monitoring_policy"))
+                settings.input_monitoring_policy =
+                    parseInputMonitoringPolicy(value["input_monitoring_policy"].getString());
+            if (value.hasObjectMember("monitored_tracks") && value["monitored_tracks"].isArray())
+                for (const auto& index : value["monitored_tracks"])
+                    if (const auto parsed = index.getWithDefault<int32_t>(-1); parsed >= 0)
+                        settings.monitored_track_indexes.push_back(parsed);
+            if (value.hasObjectMember("record_armed_tracks") && value["record_armed_tracks"].isArray())
+                for (const auto& index : value["record_armed_tracks"])
+                    if (const auto parsed = index.getWithDefault<int32_t>(-1); parsed >= 0)
+                        settings.record_armed_track_indexes.push_back(parsed);
+            if (value.hasObjectMember("properties") && value["properties"].isObject()) {
+                const auto properties = value["properties"];
+                for (uint32_t i = 0; i < properties.size(); ++i)
+                    if (properties[i].isString())
+                        settings.implementation_properties.emplace(
+                            std::string(properties.getObjectMemberAt(i).name),
+                            std::string(properties[i].getString()));
+            }
+            return applyProjectSettings(settings, error);
+        } catch (const std::exception& exception) {
+            error = exception.what();
+            return false;
+        }
     }
 
     OutputAlignmentMonitoringPolicy LatencyCompensationManagerImpl::outputAlignmentMonitoringPolicy() const {

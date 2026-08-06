@@ -5,8 +5,6 @@
 #include <filesystem>
 #include <map>
 
-#include "LatencyCompensationTypes.hpp"
-
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {
@@ -124,11 +122,9 @@ namespace uapmd {
         virtual bool removeTrack(size_t trackIndex) = 0;
         virtual std::vector<UapmdProjectTrackData*>& tracks() = 0;
         virtual UapmdProjectTrackData* masterTrack() = 0;
-        // FIXME: we should define project data item extensibility mechanism,
-        //  register latency compensation data extension type, and let it handle serialization.
-        virtual LatencyCompensationProjectSettings latencyCompensationSettings() = 0;
-        virtual void latencyCompensationSettings(LatencyCompensationProjectSettings settings) = 0;
-
+        // JSON values keyed by their member name in the project's "settings"
+        // object. Feature owners register serialization hooks to manage these.
+        virtual std::map<std::string, std::string>& settings() = 0;
         static std::unique_ptr<UapmdProjectData> create();
     };
 
