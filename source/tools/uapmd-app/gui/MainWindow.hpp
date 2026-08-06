@@ -20,6 +20,7 @@
 #include "ScriptEditor.hpp"
 #include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
+#include "MixerMonitorWindow.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 #include <uapmd-app-model/uapmd-app-model.hpp>
@@ -72,7 +73,6 @@ class MainWindow {
 #endif
 
         bool showAudioGraphWindow_ = false;
-        bool showMixerMonitorWindow_ = false;
 
         // Spectrum analyzers
         SpectrumAnalyzer inputSpectrumAnalyzer_;
@@ -81,6 +81,7 @@ class MainWindow {
         TrackList trackList_;
         ExporterWindow exporterWindow_;
         AudioImportWindow audioImportWindow_;
+        MixerMonitorWindow mixerMonitorWindow_;
 
         // Plugin selection
 
@@ -184,7 +185,6 @@ class MainWindow {
         void updateChildWindowSizeState(const std::string& id);
         void toggleTheme();
         void applyTheme(ThemeMode mode);
-        void renderMixerMonitorWindow();
         void renderUnsavedProjectDialog();
     };
 }

@@ -553,7 +553,6 @@ namespace uapmd {
         void removePlatformMidiTrackConnections(std::string_view trackId);
         void refreshPlatformMidiTrackIndices();
         void requestAllNotesOff();
-        void schedulePrerollFromAudiblePosition(int64_t samples);
         void applyLatencyCompensationTimingUpdateLocked();
         TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
@@ -1055,12 +1054,6 @@ namespace uapmd {
         clearTrackProcessingState(trackIndex, resetPlugins);
         if (transition)
             transition();
-    }
-
-    void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
-        notifyTransportTransition(
-            SequencerTransportTransition::PositionChanged,
-            samples);
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {

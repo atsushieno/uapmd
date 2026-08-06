@@ -36,6 +36,7 @@ endif()
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
         gui/MainWindow.cpp
+        gui/MixerMonitorWindow.cpp
         gui/PluginList.cpp
         gui/InstanceDetails.cpp
         gui/PluginSelector.cpp
