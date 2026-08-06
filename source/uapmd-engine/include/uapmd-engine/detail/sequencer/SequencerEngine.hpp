@@ -75,11 +75,11 @@ namespace uapmd {
         virtual LatencyCompensationManager* latencyCompensationManager() = 0;
         virtual uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
-        virtual TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
-        virtual std::vector<TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) = 0;
+        virtual uapmd_graph::TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
+        virtual std::vector<uapmd_graph::TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) = 0;
         virtual void setTrackOutputRoutingRules(
             uapmd_track_index_t trackIndex,
-            const std::vector<TrackOutputRoutingRule>& rules) = 0;
+            const std::vector<uapmd_graph::TrackOutputRoutingRule>& rules) = 0;
         virtual bool isOutputAlignmentActive() = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
@@ -87,7 +87,7 @@ namespace uapmd {
         virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
         virtual bool removePluginInstance(int32_t instanceId) = 0;
         virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
-        virtual bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) = 0;
+        virtual bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<uapmd_graph::AudioPluginGraph>&& graph) = 0;
 
         // UMP group assignment helpers — search all tracks for the given instanceId.
         // getInstanceGroup returns 0xFF if the instance is not found.
@@ -187,8 +187,8 @@ namespace uapmd {
         // Audio analysis. The analyser nodes can also be reused directly in an
         // AudioPluginGraph. Consumers select time- or frequency-domain data from
         // the node instead of using engine-specific analysis adapters.
-        virtual builtin::AnalyserNode* inputAnalyser() = 0;
-        virtual builtin::AnalyserNode* outputAnalyser() = 0;
+        virtual uapmd_graph::builtin::AnalyserNode* inputAnalyser() = 0;
+        virtual uapmd_graph::builtin::AnalyserNode* outputAnalyser() = 0;
 
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;

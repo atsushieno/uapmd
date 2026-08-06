@@ -4,9 +4,9 @@
 #include <optional>
 #include <string_view>
 
-namespace uapmd {
+using namespace uapmd_graph;
 
-namespace {
+namespace uapmd {
 
 constexpr std::string_view kGraphInputNodeId = "graph:input";
 constexpr std::string_view kGraphOutputNodeId = "graph:output";
@@ -49,8 +49,6 @@ std::optional<AudioPluginGraphEndpoint> toRuntimeEndpoint(
     }
     return result;
 }
-
-} // namespace
 
 bool UapmdAudioPluginFullDAGraphBuilder::build(
     UapmdProjectPluginGraphData* data,

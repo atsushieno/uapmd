@@ -5,7 +5,7 @@
 
 #include "AudioGraphExtension.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     enum class TrackOutputRoutingTargetType {
         DISABLED = 0,

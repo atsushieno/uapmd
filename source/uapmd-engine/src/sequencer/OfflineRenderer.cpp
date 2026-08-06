@@ -14,6 +14,8 @@
 
 #include "StopDrainUtilities.hpp"
 
+using namespace uapmd_graph;
+
 namespace uapmd {
 namespace {
 

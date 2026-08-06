@@ -12,7 +12,7 @@
 #include "AudioGraphRegistry.hpp"
 #include "AudioPluginNode.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
     // AudioPluginGraph is supposed to abstract away how it internally routes audio plugin instances.
     // It is supposed to `process()` audio and UMP inputs. In that sense, it is a track on a DAW alike.
     //

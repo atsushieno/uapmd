@@ -25,10 +25,10 @@ public:
     virtual const std::string& label() const = 0;
     // FIXME: we should remove the argument and use some global value instead.
     // Having separate sizes for every single graph here makes things unstable.
-    virtual std::unique_ptr<AudioPluginGraph> createGraph(size_t eventBufferSizeInBytes) const = 0;
+    virtual std::unique_ptr<uapmd_graph::AudioPluginGraph> createGraph(size_t eventBufferSizeInBytes) const = 0;
     virtual bool deserializeRuntimeGraph(
         UapmdProjectPluginGraphData* data,
-        AudioPluginGraph& graph,
+        uapmd_graph::AudioPluginGraph& graph,
         const std::vector<int32_t>& orderedInstanceIds) const = 0;
     virtual bool loadProjectGraph(
         UapmdProjectPluginGraphData* data,
@@ -37,7 +37,7 @@ public:
         UapmdProjectPluginGraphData* data) const = 0;
     virtual void serializeRuntimeGraph(
         UapmdProjectPluginGraphData* graphData,
-        AudioPluginGraph& runtimeGraph,
+        uapmd_graph::AudioPluginGraph& runtimeGraph,
         const std::unordered_map<int32_t, int32_t>& instanceToIndex) const = 0;
     virtual bool saveProjectGraph(
         UapmdProjectPluginGraphData* graphData,
@@ -47,7 +47,7 @@ public:
 std::unique_ptr<UapmdProjectPluginGraphData> createSerializedProjectGraph(
     const AudioGraphProvider& provider,
     const std::vector<int32_t>& orderedInstanceIds,
-    AudioPluginGraph& runtimeGraph,
+    uapmd_graph::AudioPluginGraph& runtimeGraph,
     const std::function<uapmd_plugin_hosting::AudioPluginInstanceAPI*(int32_t instanceId)>& resolveInstance,
     const AudioGraphProvider::PluginStateFileCallback& pluginStateFileCallback = {});
 std::unique_ptr<UapmdProjectPluginGraphData> loadSerializedProjectGraph(
@@ -63,8 +63,8 @@ public:
     bool remove(AudioGraphProvider* provider);
     void clear();
     const AudioGraphProvider* get(const std::string& graphTypeId) const;
-    const AudioGraphProvider* get(const AudioPluginGraph& graph) const;
-    std::unique_ptr<AudioPluginGraph> createGraph(
+    const AudioGraphProvider* get(const uapmd_graph::AudioPluginGraph& graph) const;
+    std::unique_ptr<uapmd_graph::AudioPluginGraph> createGraph(
         const std::string& graphTypeId,
         size_t eventBufferSizeInBytes) const;
 

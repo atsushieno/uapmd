@@ -7,7 +7,7 @@
 #include <variant>
 #include <vector>
 
-namespace uapmd {
+namespace uapmd_graph {
 
     using AudioGraphScalarValue = std::variant<bool, int64_t, double, std::string>;
 

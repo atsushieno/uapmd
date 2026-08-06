@@ -82,13 +82,13 @@ namespace uapmd {
 
         virtual std::string graphType() = 0;
         virtual std::filesystem::path externalFile() = 0;
-        virtual std::vector<AudioGraphNodeDescriptor> genericNodes() = 0;
+        virtual std::vector<uapmd_graph::AudioGraphNodeDescriptor> genericNodes() = 0;
         virtual std::map<std::string, std::string> properties() = 0;
 
         virtual void graphType(const std::string& type) = 0;
         virtual void externalFile(const std::filesystem::path& f) = 0;
-        virtual void addGenericNode(AudioGraphNodeDescriptor node) = 0;
-        virtual void setGenericNodes(std::vector<AudioGraphNodeDescriptor> nodes) = 0;
+        virtual void addGenericNode(uapmd_graph::AudioGraphNodeDescriptor node) = 0;
+        virtual void setGenericNodes(std::vector<uapmd_graph::AudioGraphNodeDescriptor> nodes) = 0;
         virtual void clearGenericNodes() = 0;
         virtual void properties(std::map<std::string, std::string> values) = 0;
 

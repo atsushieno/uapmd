@@ -2,9 +2,9 @@
 
 #include "AudioGraphNode.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
-    class AudioPluginNode : public AudioGraphNode, public AudioPluginNodeFeature {
+    class AudioPluginNode : public AudioGraphNode, public uapmd::AudioPluginNodeFeature {
     public:
         ~AudioPluginNode() override = default;
 

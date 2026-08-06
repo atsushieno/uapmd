@@ -6,7 +6,7 @@
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "uapmd-data/detail/project/UapmdProjectFile.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
 struct UapmdProjectPluginGraphEndpointData {
     AudioPluginGraphEndpointType type{AudioPluginGraphEndpointType::Plugin};
@@ -22,11 +22,11 @@ struct UapmdProjectPluginGraphConnectionData {
     UapmdProjectPluginGraphEndpointData target{};
 };
 
-class UapmdAudioPluginFullDAGraphData : public UapmdProjectPluginGraphData {
+class UapmdAudioPluginFullDAGraphData : public uapmd::UapmdProjectPluginGraphData {
 public:
-    virtual std::vector<UapmdProjectPluginNodeData> plugins() = 0;
-    virtual void addPlugin(UapmdProjectPluginNodeData node) = 0;
-    virtual void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) = 0;
+    virtual std::vector<uapmd::UapmdProjectPluginNodeData> plugins() = 0;
+    virtual void addPlugin(uapmd::UapmdProjectPluginNodeData node) = 0;
+    virtual void setPlugins(std::vector<uapmd::UapmdProjectPluginNodeData> nodes) = 0;
     virtual void clearPlugins() = 0;
 
     virtual std::vector<UapmdProjectPluginGraphConnectionData> connections() = 0;

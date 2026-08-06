@@ -13,6 +13,8 @@
 #include "uapmd-engine/uapmd-engine.hpp"
 #include "uapmd-graph/uapmd-graph.hpp"
 
+using namespace uapmd_graph;
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -305,9 +307,9 @@ TEST_F(SequencerEngineOutputTest, FullDAGraphRefreshesRuntimeTimingInfo) {
     MutableTimingPlugin plugin;
     plugin.latencyInSamples(64);
 
-    auto graph = uapmd::AudioPluginFullDAGraph::create(4096);
+    auto graph = AudioPluginFullDAGraph::create(4096);
     ASSERT_NE(graph, nullptr);
-    auto* busesLayout = graph->getExtension<uapmd::AudioBusesLayoutExtension>();
+    auto* busesLayout = graph->getExtension<AudioBusesLayoutExtension>();
     ASSERT_NE(busesLayout, nullptr);
     busesLayout->applyBusesLayout({1, 1, 1, 1});
 

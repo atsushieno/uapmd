@@ -12,6 +12,8 @@
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 
+using namespace uapmd_graph;
+
 namespace uapmd::gui {
 
 class PluginGraphEditor {

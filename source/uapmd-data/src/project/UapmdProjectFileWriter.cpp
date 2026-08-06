@@ -3,6 +3,8 @@
 #include <map>
 #include "uapmd-data/uapmd-data.hpp"
 
+using namespace uapmd_graph;
+
 namespace uapmd {
     namespace {
         std::string graphEndpointTypeToString(AudioPluginGraphEndpointType type) {

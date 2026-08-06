@@ -4,7 +4,7 @@
 
 #include "uapmd-graph/uapmd-graph.hpp"
 
-namespace uapmd::builtin {
+namespace uapmd_graph::builtin {
 
     class AnalyserNode : public AudioGraphNode {
     public:

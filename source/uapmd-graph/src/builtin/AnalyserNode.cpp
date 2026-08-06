@@ -11,7 +11,9 @@
 #include <string>
 #include <type_traits>
 
-namespace uapmd::builtin {
+using namespace uapmd;
+
+namespace uapmd_graph::builtin {
 
     namespace {
 

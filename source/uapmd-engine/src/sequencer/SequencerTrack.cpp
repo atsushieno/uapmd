@@ -7,18 +7,18 @@
 #include <vector>
 #include "uapmd-engine/uapmd-engine.hpp"
 
-namespace uapmd {
-    namespace {
-        constexpr std::string_view kTrackGainNodeId = "builtin:track_gain";
+using namespace uapmd_graph;
 
-        AudioGraphNodeDescriptor createTrackGainNodeDescriptor() {
-            AudioGraphNodeDescriptor gainNode;
-            gainNode.node_id = std::string(kTrackGainNodeId);
-            gainNode.node_type = std::string(builtin::kGainNodeType);
-            gainNode.display_name = "Track Volume";
-            gainNode.parameters.emplace("gain", 1.0);
-            return gainNode;
-        }
+namespace uapmd {
+    constexpr std::string_view kTrackGainNodeId = "builtin:track_gain";
+
+    AudioGraphNodeDescriptor createTrackGainNodeDescriptor() {
+        AudioGraphNodeDescriptor gainNode;
+        gainNode.node_id = std::string(kTrackGainNodeId);
+        gainNode.node_type = std::string(builtin::kGainNodeType);
+        gainNode.display_name = "Track Volume";
+        gainNode.parameters.emplace("gain", 1.0);
+        return gainNode;
     }
 
     class SequencerTrackImpl : public SequencerTrack {

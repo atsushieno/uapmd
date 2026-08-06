@@ -6,7 +6,7 @@
 #include "AudioGraphDescriptor.hpp"
 #include "AudioGraphNode.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     class AudioGraphBuiltInNodeFactory {
     public:

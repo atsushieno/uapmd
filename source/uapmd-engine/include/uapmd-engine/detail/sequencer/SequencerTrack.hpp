@@ -20,8 +20,8 @@ namespace uapmd {
             size_t eventBufferSizeInBytes,
             const std::string& graphProviderId);
 
-        virtual AudioPluginGraph& graph() = 0;
-        virtual bool replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) = 0;
+        virtual uapmd_graph::AudioPluginGraph& graph() = 0;
+        virtual bool replaceGraph(std::unique_ptr<uapmd_graph::AudioPluginGraph>&& graph) = 0;
         virtual uint32_t latencyInSamples() = 0;
         virtual uint32_t renderLeadInSamples() = 0;
         virtual double tailLengthInSeconds() = 0;

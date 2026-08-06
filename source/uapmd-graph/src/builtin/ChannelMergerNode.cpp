@@ -8,7 +8,9 @@
 #include <memory>
 #include <string>
 
-namespace uapmd::builtin {
+using namespace uapmd;
+
+namespace uapmd_graph::builtin {
 
     namespace {
 

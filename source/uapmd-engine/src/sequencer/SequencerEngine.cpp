@@ -24,6 +24,7 @@
 #endif
 
 using namespace uapmd_midi_service;
+using namespace uapmd_graph;
 
 namespace uapmd {
 

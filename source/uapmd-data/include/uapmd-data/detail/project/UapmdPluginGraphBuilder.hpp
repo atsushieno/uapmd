@@ -9,7 +9,7 @@ namespace uapmd {
     public:
         static bool build(
             UapmdProjectPluginGraphData* data,
-            AudioPluginGraph& graph,
+            uapmd_graph::AudioPluginGraph& graph,
             const std::vector<int32_t>& orderedInstanceIds);
     };
 
@@ -17,7 +17,7 @@ namespace uapmd {
     public:
         static bool build(
             UapmdProjectPluginGraphData* data,
-            AudioPluginGraph& graph,
+            uapmd_graph::AudioPluginGraph& graph,
             const std::vector<int32_t>& orderedInstanceIds);
     };
 

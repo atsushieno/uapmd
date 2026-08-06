@@ -6,6 +6,8 @@
 
 #include <uapmd-app-model/uapmd-app-model.hpp>
 
+using namespace uapmd_graph;
+
 namespace uapmd::gui {
 
 namespace {
@@ -199,13 +201,13 @@ void MixerMonitorWindow::render(float uiScale) {
                     if (trackIndex >= 0) {
                         const auto routeTarget = engine->trackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
                         switch (routeTarget.type) {
-                        case uapmd::TrackOutputRoutingTargetType::MASTER_INPUT_BUS:
+                        case TrackOutputRoutingTargetType::MASTER_INPUT_BUS:
                             routeSummary = std::format("master in {}", routeTarget.bus_index);
                             break;
-                        case uapmd::TrackOutputRoutingTargetType::MAIN_MIX_BUS:
+                        case TrackOutputRoutingTargetType::MAIN_MIX_BUS:
                             routeSummary = std::format("main mix {}", routeTarget.bus_index);
                             break;
-                        case uapmd::TrackOutputRoutingTargetType::DISABLED:
+                        case TrackOutputRoutingTargetType::DISABLED:
                         default:
                             routeSummary = "disabled";
                             break;

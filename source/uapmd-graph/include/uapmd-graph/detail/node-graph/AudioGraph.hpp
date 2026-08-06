@@ -9,7 +9,7 @@
 #include "AudioGraphExtension.hpp"
 #include "AudioGraphNode.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     class AudioGraph {
     protected:
@@ -32,7 +32,7 @@ namespace uapmd {
         virtual void setGroupResolver(std::function<uint8_t(int32_t)> resolver) = 0;
         virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
-        virtual int32_t processAudio(AudioProcessContext& process) = 0;
+        virtual int32_t processAudio(uapmd::AudioProcessContext& process) = 0;
         virtual uint32_t outputBusCount() = 0;
         virtual uint32_t outputLatencyInSamples(uint32_t outputBusIndex) = 0;
         virtual double outputTailLengthInSeconds(uint32_t outputBusIndex) = 0;

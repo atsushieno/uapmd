@@ -17,7 +17,7 @@ namespace uapmd_plugin_hosting {
 }
 #endif
 
-namespace uapmd {
+namespace uapmd_graph {
     class AudioPluginNodeImpl : public AudioPluginNode {
         int32_t instance_id_;
         std::string node_id_;
@@ -110,7 +110,7 @@ namespace uapmd {
             return instance_;
         }
 
-        int32_t processAudio(AudioProcessContext& process) override {
+        int32_t processAudio(uapmd::AudioProcessContext& process) override {
             if (!instance_)
                 return 0;
             // Keep the active-note bitmask in sync with what the plugin actually
@@ -194,7 +194,7 @@ namespace uapmd {
         // was requested via requestStopFlush()) or the pending events for `group`.
         // Every graph implementation must call this exactly once per node per cycle so
         // the stop-flush contract cannot be missed.
-        size_t prepareEventInput(EventSequence& eventIn, uint8_t group) {
+        size_t prepareEventInput(uapmd::EventSequence& eventIn, uint8_t group) {
             drainQueueToPending();
             if (consumeStopFlushRequest()) {
                 prepareStopFlush(eventIn, group);
@@ -214,7 +214,7 @@ namespace uapmd {
                 ump_input_mapper_->drainPresetRequests();
         }
 
-        void processInputMapping(AudioProcessContext& process) {
+        void processInputMapping(uapmd::AudioProcessContext& process) {
             if (auto* mapper = ump_input_mapper_.get())
                 mapper->process(process);
         }
@@ -223,7 +223,7 @@ namespace uapmd {
             return stop_flush_requested_.exchange(false, std::memory_order_acq_rel);
         }
 
-        size_t fillEventBufferForGroup(EventSequence& eventIn, uint8_t group) {
+        size_t fillEventBufferForGroup(uapmd::EventSequence& eventIn, uint8_t group) {
             auto* messages = static_cast<uint8_t*>(eventIn.getMessages());
             size_t position = eventIn.position();
             const auto capacity = eventIn.maxMessagesInBytes();
@@ -257,7 +257,7 @@ namespace uapmd {
 
         // Scan the finalized per-cycle input event buffer and keep the active-note
         // bitmask in sync. Called from the RT thread right before the plugin processes.
-        void trackInputEvents(EventSequence& eventIn) {
+        void trackInputEvents(uapmd::EventSequence& eventIn) {
             const auto* words = static_cast<const uint32_t*>(eventIn.getMessages());
             const size_t count = eventIn.position() / sizeof(uint32_t);
             size_t i = 0;
@@ -292,7 +292,7 @@ namespace uapmd {
             }
         }
 
-        void prepareStopFlush(EventSequence& eventIn, uint8_t group) {
+        void prepareStopFlush(uapmd::EventSequence& eventIn, uint8_t group) {
             clearQueuedEvents();
             eventIn.position(0);
             bool flushComplete = true;
@@ -347,7 +347,7 @@ namespace uapmd {
         friend class AudioPluginGraphImpl;
 
     private:
-        static bool appendUmpToEventBuffer(EventSequence& eventIn, const uapmd_ump_t* words, size_t wordCount) {
+        static bool appendUmpToEventBuffer(uapmd::EventSequence& eventIn, const uapmd_ump_t* words, size_t wordCount) {
             auto* messages = static_cast<uint8_t*>(eventIn.getMessages());
             size_t position = eventIn.position();
             const auto capacity = eventIn.maxMessagesInBytes();

@@ -10,7 +10,9 @@
 #include <string>
 #include <utility>
 
-namespace uapmd::builtin {
+using namespace uapmd;
+
+namespace uapmd_graph::builtin {
 
     namespace {
 

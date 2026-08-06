@@ -6,7 +6,7 @@
 
 #include "AudioPluginGraph.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     enum class AudioPluginGraphEndpointType {
         GraphInput,

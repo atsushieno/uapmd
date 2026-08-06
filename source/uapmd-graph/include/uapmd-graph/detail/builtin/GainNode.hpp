@@ -4,7 +4,7 @@
 
 #include "uapmd-graph/uapmd-graph.hpp"
 
-namespace uapmd::builtin {
+namespace uapmd_graph::builtin {
 
     class GainNode : public AudioGraphNode {
     public:
@@ -15,7 +15,7 @@ namespace uapmd::builtin {
 
         // Apply the gain ramp to the existing output buffers of `process` without
         // touching the input buffers.  Used when the GainNode lives outside a graph.
-        virtual void applyToOutputs(AudioProcessContext& process) = 0;
+        virtual void applyToOutputs(uapmd::AudioProcessContext& process) = 0;
     };
 
     std::unique_ptr<AudioGraphBuiltInNodeFactory> createGainNodeFactory();

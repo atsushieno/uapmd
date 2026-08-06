@@ -4,6 +4,8 @@
 #include "uapmd-data/uapmd-data.hpp"
 #include "UapmdProjectPluginListGraphData.hpp"
 
+using namespace uapmd_graph;
+
 namespace uapmd {
     // Concrete implementation of UapmdProjectClipData
     class UapmdProjectClipDataImpl : public UapmdProjectClipData {

@@ -6,6 +6,7 @@
 #include "../uapmd-data/src/project/UapmdAudioPluginFullDAGraphData.hpp"
 
 namespace fs = std::filesystem;
+using namespace uapmd_graph;
 
 class UapmdProjectFileTest : public ::testing::Test {
 protected:
@@ -438,7 +439,7 @@ TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesNodeIdEndpoints) {
     ASSERT_NE(project, nullptr);
     ASSERT_EQ(project->tracks().size(), 1);
 
-    auto* graph = dynamic_cast<uapmd::UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
+    auto* graph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
     ASSERT_NE(graph, nullptr);
 
     auto genericNodes = graph->genericNodes();
@@ -452,7 +453,7 @@ TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesNodeIdEndpoints) {
     EXPECT_EQ(connections[0].target.node_id, "builtin:graph_gain");
     EXPECT_EQ(connections[1].source.node_id, "builtin:graph_gain");
     EXPECT_EQ(connections[1].target.node_id, "graph:output");
-    EXPECT_EQ(connections[1].target.type, uapmd::AudioPluginGraphEndpointType::GraphOutput);
+    EXPECT_EQ(connections[1].target.type, AudioPluginGraphEndpointType::GraphOutput);
 }
 
 TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesLegacyPluginIndexEndpoints) {
@@ -487,14 +488,14 @@ TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesLegacyPluginIndexEndpoints) {
     ASSERT_NE(project, nullptr);
     ASSERT_EQ(project->tracks().size(), 1);
 
-    auto* graph = dynamic_cast<uapmd::UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
+    auto* graph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
     ASSERT_NE(graph, nullptr);
 
     auto connections = graph->connections();
     ASSERT_EQ(connections.size(), 1);
     EXPECT_EQ(connections[0].source.plugin_index, 0);
     EXPECT_TRUE(connections[0].source.node_id.empty());
-    EXPECT_EQ(connections[0].target.type, uapmd::AudioPluginGraphEndpointType::GraphOutput);
+    EXPECT_EQ(connections[0].target.type, AudioPluginGraphEndpointType::GraphOutput);
 }
 
 // Test: Invalid anchor - not found

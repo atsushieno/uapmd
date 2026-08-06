@@ -44,7 +44,7 @@ namespace uapmd {
     public:
         virtual ~UapmdSequenceTrack() = default;
 
-        virtual AudioPluginGraph* graph();
+        virtual uapmd_graph::AudioPluginGraph* graph();
 
         virtual std::vector<std::unique_ptr<UapmdProjectClipData>>& clips();
     };

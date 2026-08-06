@@ -6,7 +6,7 @@
 #include <cmath>
 #include <limits>
 
-namespace uapmd {
+namespace uapmd_graph {
 
     using NodeList = std::vector<std::shared_ptr<AudioGraphNode>>;
     using RTNodeList = farbot::RealtimeObject<NodeList, farbot::RealtimeObjectOptions::nonRealtimeMutatable>;
@@ -38,7 +38,7 @@ namespace uapmd {
         bool removeNodeSimple(int32_t instanceId) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
-        int32_t processAudio(AudioProcessContext& process) override;
+        int32_t processAudio(uapmd::AudioProcessContext& process) override;
         uint32_t outputBusCount() override;
         uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
         double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
@@ -79,7 +79,7 @@ namespace uapmd {
         // timing state to rebuild here.
     }
 
-    int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {
+    int32_t AudioPluginGraphImpl::processAudio(uapmd::AudioProcessContext& process) {
         RTNodeList::ScopedAccess<farbot::ThreadType::realtime> access(nodes_);
         auto& nodes = *access;
 

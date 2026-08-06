@@ -4,7 +4,7 @@
 
 #include "AudioGraphExtension.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     struct AudioGraphBusesLayout {
         uint32_t audio_input_bus_count{1};

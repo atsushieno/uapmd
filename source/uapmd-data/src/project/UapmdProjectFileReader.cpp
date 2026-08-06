@@ -9,6 +9,8 @@
 #include "UapmdAudioPluginFullDAGraphData.hpp"
 #include "UapmdProjectPluginListGraphData.hpp"
 
+using namespace uapmd_graph;
+
 namespace uapmd {
     namespace {
         constexpr double kLegacyOffsetSampleRate = 48000.0;

@@ -1,6 +1,8 @@
 #include "UapmdAudioPluginFullDAGraphData.hpp"
 
-namespace uapmd {
+using namespace uapmd;
+
+namespace uapmd_graph {
 
 class UapmdAudioPluginFullDAGraphDataImpl : public UapmdAudioPluginFullDAGraphData {
     std::string graph_type_{};

@@ -18,7 +18,7 @@
 
 using namespace uapmd_plugin_hosting;
 
-namespace uapmd {
+namespace uapmd_graph {
 
     namespace {
 

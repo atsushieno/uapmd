@@ -10,6 +10,7 @@
 
 using namespace uapmd;
 using namespace uapmd_plugin_hosting;
+using namespace uapmd_graph;
 
 constexpr std::string_view kGraphInputNodeId = "graph:input";
 constexpr std::string_view kGraphOutputNodeId = "graph:output";

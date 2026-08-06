@@ -10,7 +10,7 @@
 
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     template<typename ...TArgs>
     class EventBase {
@@ -18,12 +18,12 @@ namespace uapmd {
         using EventListener = std::function<void(TArgs...)>;
 
     private:
-        std::atomic<EventListenerId> listener_id_counter_{1};
-        std::map<EventListenerId, EventListener> listeners_;
+        std::atomic<uapmd::EventListenerId> listener_id_counter_{1};
+        std::map<uapmd::EventListenerId, EventListener> listeners_;
         std::mutex listener_mutex_;
 
     public:
-        EventListenerId addListener(EventListener listener) {
+        uapmd::EventListenerId addListener(EventListener listener) {
             if (!listener)
                 return 0;
             std::lock_guard<std::mutex> lock(listener_mutex_);
@@ -32,7 +32,7 @@ namespace uapmd {
             return id;
         }
 
-        void removeListener(EventListenerId id) {
+        void removeListener(uapmd::EventListenerId id) {
             if (id == 0)
                 return;
             std::lock_guard<std::mutex> lock(listener_mutex_);
@@ -67,7 +67,7 @@ namespace uapmd {
         virtual bool bypassed() const = 0;
         virtual void bypassed(bool value) = 0;
 
-        virtual int32_t processAudio(AudioProcessContext& process) = 0;
+        virtual int32_t processAudio(uapmd::AudioProcessContext& process) = 0;
         virtual uint32_t latencyInSamples() const = 0;
         virtual double tailLengthInSeconds() const = 0;
         virtual remidy::PluginAudioBuses* audioBuses() = 0;

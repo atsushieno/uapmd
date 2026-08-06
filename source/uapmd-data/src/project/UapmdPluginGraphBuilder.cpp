@@ -2,13 +2,11 @@
 
 #include <string_view>
 
+using namespace uapmd_graph;
+
 namespace uapmd {
 
-namespace {
-
 constexpr std::string_view kImplicitTrackGainNodeId = "builtin:track_gain";
-
-}
 
 bool UapmdPluginGraphBuilder::build(
     UapmdProjectPluginGraphData* data,

@@ -11,7 +11,7 @@ namespace uapmd {
 
     class TrackRoutingManager {
         struct TrackRoutingCache {
-            std::vector<TrackOutputRoutingTarget> effective_targets{};
+            std::vector<uapmd_graph::TrackOutputRoutingTarget> effective_targets{};
             std::vector<uint32_t> path_latencies_in_samples{};
             std::vector<uint32_t> output_alignment_holdbacks_in_samples{};
             uint32_t audible_render_lead_in_samples{0};
@@ -33,17 +33,19 @@ namespace uapmd {
         uint32_t max_output_alignment_holdback_in_samples_{0};
         bool output_alignment_active_{false};
 
-        TrackOutputRoutingTarget authoredTrackOutputBusRoutingTarget(
+        uapmd_graph::TrackOutputRoutingTarget authoredTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        TrackOutputRoutingTarget resolveEffectiveTrackOutputBusRoutingTargetUncached(
+
+        uapmd_graph::TrackOutputRoutingTarget resolveEffectiveTrackOutputBusRoutingTargetUncached(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(
+
+        uapmd_graph::TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        uint32_t downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const;
-        double downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const;
+        uint32_t downstreamLatencyInSamplesForTarget(const uapmd_graph::TrackOutputRoutingTarget& target) const;
+        double downstreamTailLengthInSecondsForTarget(const uapmd_graph::TrackOutputRoutingTarget& target) const;
         uint32_t cachedTrackOutputBusPathLatencyInSamples(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
@@ -69,12 +71,14 @@ namespace uapmd {
             LatencyCompensationManager& latencyCompensationManager);
 
         void rebuildRoutingCaches();
-        OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
-        std::vector<TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) const;
+
+        uapmd_graph::OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
+        std::vector<uapmd_graph::TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) const;
         void setTrackOutputRoutingRules(
             uapmd_track_index_t trackIndex,
-            const std::vector<TrackOutputRoutingRule>& rules);
-        TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
+            const std::vector<uapmd_graph::TrackOutputRoutingRule>& rules);
+
+        uapmd_graph::TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
         bool trackUsesLowLatencyMonitoring(uapmd_track_index_t trackIndex) const;

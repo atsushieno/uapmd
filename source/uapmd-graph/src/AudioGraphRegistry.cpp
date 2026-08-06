@@ -7,7 +7,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace uapmd {
+namespace uapmd_graph {
 
     namespace {
 

@@ -5,7 +5,7 @@
 
 #include "uapmd-graph/uapmd-graph.hpp"
 
-namespace uapmd::builtin {
+namespace uapmd_graph::builtin {
 
     // Mirrors Web Audio's ChannelSplitterNode: a single input bus is split into
     // numberOfOutputs mono output buses (output bus i, channel 0 = input channel i;

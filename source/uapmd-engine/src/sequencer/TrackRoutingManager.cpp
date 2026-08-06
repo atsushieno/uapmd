@@ -6,6 +6,8 @@
 #include "LatencyCompensationManagerImpl.hpp"
 #include "StopDrainUtilities.hpp"
 
+using namespace uapmd_graph;
+
 namespace uapmd {
 
     namespace {

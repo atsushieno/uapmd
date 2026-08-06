@@ -1,6 +1,6 @@
 #pragma once
 
-namespace uapmd {
+namespace uapmd_graph {
 
     class AudioGraphExtension {
     public:

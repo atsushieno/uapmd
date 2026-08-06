@@ -18,6 +18,8 @@
 #include <limits>
 #include <stdexcept>
 
+using namespace uapmd_graph;
+
 namespace uapmd {
 
 UapmdJSRuntime::UapmdJSRuntime()
@@ -754,7 +756,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
                 nodeObj.setMember ("nodeId", nodeId);
                 nodeObj.setMember ("nodeType", graphNode->nodeType());
                 nodeObj.setMember ("displayName", graphNode->displayName());
-                if (auto* pluginNode = dynamic_cast<uapmd::AudioPluginNode*>(graphNode)) {
+                if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(graphNode)) {
                     auto* instance = pluginNode->instance();
                     nodeObj.setMember ("isPlugin", true);
                     nodeObj.setMember ("instanceId", pluginNode->instanceId());
@@ -1270,48 +1272,48 @@ bool parseWarpsValue(const choc::value::ValueView* value,
     return true;
 }
 
-std::string graphEndpointTypeToString(uapmd::AudioPluginGraphEndpointType type) {
+std::string graphEndpointTypeToString(AudioPluginGraphEndpointType type) {
     switch (type) {
-        case uapmd::AudioPluginGraphEndpointType::GraphInput: return "graphInput";
-        case uapmd::AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
-        case uapmd::AudioPluginGraphEndpointType::Plugin: return "plugin";
+        case AudioPluginGraphEndpointType::GraphInput: return "graphInput";
+        case AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
+        case AudioPluginGraphEndpointType::Plugin: return "plugin";
     }
     return "plugin";
 }
 
-bool parseGraphEndpointType(std::string_view text, uapmd::AudioPluginGraphEndpointType& type) {
+bool parseGraphEndpointType(std::string_view text, AudioPluginGraphEndpointType& type) {
     if (text == "graphInput") {
-        type = uapmd::AudioPluginGraphEndpointType::GraphInput;
+        type = AudioPluginGraphEndpointType::GraphInput;
         return true;
     }
     if (text == "graphOutput") {
-        type = uapmd::AudioPluginGraphEndpointType::GraphOutput;
+        type = AudioPluginGraphEndpointType::GraphOutput;
         return true;
     }
     if (text == "plugin") {
-        type = uapmd::AudioPluginGraphEndpointType::Plugin;
+        type = AudioPluginGraphEndpointType::Plugin;
         return true;
     }
     return false;
 }
 
-std::string graphBusTypeToString(uapmd::AudioPluginGraphBusType type) {
-    return type == uapmd::AudioPluginGraphBusType::Event ? "event" : "audio";
+std::string graphBusTypeToString(AudioPluginGraphBusType type) {
+    return type == AudioPluginGraphBusType::Event ? "event" : "audio";
 }
 
-bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& type) {
+bool parseGraphBusType(std::string_view text, AudioPluginGraphBusType& type) {
     if (text == "audio") {
-        type = uapmd::AudioPluginGraphBusType::Audio;
+        type = AudioPluginGraphBusType::Audio;
         return true;
     }
     if (text == "event") {
-        type = uapmd::AudioPluginGraphBusType::Event;
+        type = AudioPluginGraphBusType::Event;
         return true;
     }
     return false;
 }
 
-choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint) {
+choc::value::Value serializeGraphEndpoint(const AudioPluginGraphEndpoint& endpoint) {
     auto obj = choc::value::createObject("GraphEndpoint");
     obj.setMember("type", graphEndpointTypeToString(endpoint.type));
     if (!endpoint.node_id.empty())
@@ -1321,7 +1323,7 @@ choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint&
     return obj;
 }
 
-choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnection& connection) {
+choc::value::Value serializeGraphConnection(const AudioPluginGraphConnection& connection) {
     auto obj = choc::value::createObject("GraphConnection");
     obj.setMember("id", connection.id);
     obj.setMember("busType", graphBusTypeToString(connection.bus_type));
@@ -1330,13 +1332,13 @@ choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnect
     return obj;
 }
 
-uapmd::AudioPluginGraphEndpoint makeGraphEndpoint(
-    uapmd::AudioPluginGraphEndpointType type,
+AudioPluginGraphEndpoint makeGraphEndpoint(
+    AudioPluginGraphEndpointType type,
     std::string nodeId,
     int32_t instanceId,
     int32_t busIndex
 ) {
-    return uapmd::AudioPluginGraphEndpoint{
+    return AudioPluginGraphEndpoint{
         .type = type,
         .node_id = std::move(nodeId),
         .instance_id = instanceId,
@@ -1646,7 +1648,7 @@ void UapmdJSRuntime::registerTimelineAPI()
     jsContext_.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        std::vector<uapmd::AudioPluginGraphConnection> connections;
+        std::vector<AudioPluginGraphConnection> connections;
         std::string error;
 
         auto result = choc::value::createObject ("TrackGraphConnections");
@@ -1681,8 +1683,8 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto targetNodeId = args.get<std::string>(9, "");
 
         auto result = choc::value::createObject("TrackGraphMutation");
-        uapmd::AudioPluginGraphBusType busType;
-        uapmd::AudioPluginGraphEndpointType sourceType, targetType;
+        AudioPluginGraphBusType busType;
+        AudioPluginGraphEndpointType sourceType, targetType;
         if (!parseGraphBusType(busTypeText, busType) ||
             !parseGraphEndpointType(sourceTypeText, sourceType) ||
             !parseGraphEndpointType(targetTypeText, targetType)) {
@@ -1694,7 +1696,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         std::string error;
         const bool ok = uapmd::AppModel::instance().connectTrackGraph(
             trackIndex,
-            uapmd::AudioPluginGraphConnection{
+            AudioPluginGraphConnection{
                 .id = 0,
                 .bus_type = busType,
                 .source = makeGraphEndpoint(sourceType, sourceNodeId, sourceInstanceId, sourceBusIndex),

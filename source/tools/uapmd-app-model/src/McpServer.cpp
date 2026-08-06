@@ -20,6 +20,8 @@
 #include <optional>
 #include <queue>
 
+using namespace uapmd_graph;
+
 namespace uapmd {
 
 // ─────────────────────────────────────────────────
@@ -205,33 +207,33 @@ bool parseWarpsArg(const choc::value::Value& args, const char* key, std::string_
     return true;
 }
 
-std::string graphEndpointTypeToString(uapmd::AudioPluginGraphEndpointType type)
+std::string graphEndpointTypeToString(AudioPluginGraphEndpointType type)
 {
     switch (type) {
-        case uapmd::AudioPluginGraphEndpointType::GraphInput: return "graphInput";
-        case uapmd::AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
-        case uapmd::AudioPluginGraphEndpointType::Plugin: return "plugin";
+        case AudioPluginGraphEndpointType::GraphInput: return "graphInput";
+        case AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
+        case AudioPluginGraphEndpointType::Plugin: return "plugin";
     }
     return "plugin";
 }
 
-bool parseGraphEndpointType(std::string_view text, uapmd::AudioPluginGraphEndpointType& type)
+bool parseGraphEndpointType(std::string_view text, AudioPluginGraphEndpointType& type)
 {
-    if (text == "graphInput") { type = uapmd::AudioPluginGraphEndpointType::GraphInput; return true; }
-    if (text == "graphOutput") { type = uapmd::AudioPluginGraphEndpointType::GraphOutput; return true; }
-    if (text == "plugin") { type = uapmd::AudioPluginGraphEndpointType::Plugin; return true; }
+    if (text == "graphInput") { type = AudioPluginGraphEndpointType::GraphInput; return true; }
+    if (text == "graphOutput") { type = AudioPluginGraphEndpointType::GraphOutput; return true; }
+    if (text == "plugin") { type = AudioPluginGraphEndpointType::Plugin; return true; }
     return false;
 }
 
-std::string graphBusTypeToString(uapmd::AudioPluginGraphBusType type)
+std::string graphBusTypeToString(AudioPluginGraphBusType type)
 {
-    return type == uapmd::AudioPluginGraphBusType::Event ? "event" : "audio";
+    return type == AudioPluginGraphBusType::Event ? "event" : "audio";
 }
 
-bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& type)
+bool parseGraphBusType(std::string_view text, AudioPluginGraphBusType& type)
 {
-    if (text == "audio") { type = uapmd::AudioPluginGraphBusType::Audio; return true; }
-    if (text == "event") { type = uapmd::AudioPluginGraphBusType::Event; return true; }
+    if (text == "audio") { type = AudioPluginGraphBusType::Audio; return true; }
+    if (text == "event") { type = AudioPluginGraphBusType::Event; return true; }
     return false;
 }
 
@@ -313,7 +315,7 @@ choc::value::Value serializeLatencyCompensationDebugState(uapmd::LatencyCompensa
     return result;
 }
 
-choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint)
+choc::value::Value serializeGraphEndpoint(const AudioPluginGraphEndpoint& endpoint)
 {
     auto obj = choc::value::createObject ("");
     obj.setMember ("type", graphEndpointTypeToString(endpoint.type));
@@ -324,7 +326,7 @@ choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint&
     return obj;
 }
 
-choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnection& connection)
+choc::value::Value serializeGraphConnection(const AudioPluginGraphConnection& connection)
 {
     auto obj = choc::value::createObject ("");
     obj.setMember ("id", connection.id);
@@ -334,7 +336,7 @@ choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnect
     return obj;
 }
 
-bool parseGraphEndpointValue(const choc::value::ValueView& value, uapmd::AudioPluginGraphEndpoint& endpoint, std::string& error)
+bool parseGraphEndpointValue(const choc::value::ValueView& value, AudioPluginGraphEndpoint& endpoint, std::string& error)
 {
     if (!value.isObject()) {
         error = "graph endpoint must be an object";
@@ -621,7 +623,7 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
             nodeObj.setMember ("nodeId", nodeId);
             nodeObj.setMember ("nodeType", graphNode->nodeType());
             nodeObj.setMember ("displayName", graphNode->displayName());
-            if (auto* pluginNode = dynamic_cast<uapmd::AudioPluginNode*>(graphNode)) {
+            if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(graphNode)) {
                 nodeObj.setMember ("isPlugin", true);
                 nodeObj.setMember ("instanceId", pluginNode->instanceId());
                 auto* pluginInst = engine.getPluginInstance (pluginNode->instanceId());
@@ -831,7 +833,7 @@ static choc::value::Value toolGetTrackGraphConnections(const choc::value::Value&
 {
     auto result = choc::value::createObject ("");
     const auto trackIndex = getIntArg(args, "trackIndex", -1);
-    std::vector<uapmd::AudioPluginGraphConnection> connections;
+    std::vector<AudioPluginGraphConnection> connections;
     std::string error;
     const bool success = AppModel::instance().getTrackGraphConnections(trackIndex, connections, error);
     result.setMember("success", success);
@@ -851,12 +853,12 @@ static choc::value::Value toolConnectTrackGraph(const choc::value::Value& args)
     if (!args.isObject() || !args.hasObjectMember("source") || !args.hasObjectMember("target"))
         throw std::invalid_argument("source and target are required");
 
-    uapmd::AudioPluginGraphBusType busType;
+    AudioPluginGraphBusType busType;
     if (!parseGraphBusType(getStringArg(args, "busType"), busType))
         throw std::invalid_argument("busType must be 'audio' or 'event'");
 
-    uapmd::AudioPluginGraphEndpoint source;
-    uapmd::AudioPluginGraphEndpoint target;
+    AudioPluginGraphEndpoint source;
+    AudioPluginGraphEndpoint target;
     std::string error;
     if (!parseGraphEndpointValue(args["source"], source, error) ||
         !parseGraphEndpointValue(args["target"], target, error))
@@ -864,7 +866,7 @@ static choc::value::Value toolConnectTrackGraph(const choc::value::Value& args)
 
     const bool success = AppModel::instance().connectTrackGraph(
         trackIndex,
-        uapmd::AudioPluginGraphConnection{
+        AudioPluginGraphConnection{
             .id = 0,
             .bus_type = busType,
             .source = source,

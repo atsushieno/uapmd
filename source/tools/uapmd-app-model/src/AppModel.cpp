@@ -44,6 +44,7 @@ constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
 
 using namespace uapmd_plugin_hosting;
+using namespace uapmd_graph;
 
 namespace {
 

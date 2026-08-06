@@ -212,8 +212,8 @@ namespace uapmd {
         void notifyPersistentStorageReady();
         bool ensureTrackUsesEditorGraph(int32_t trackIndex);
         bool revertTrackToSimpleGraph(int32_t trackIndex);
-        bool getTrackGraphConnections(int32_t trackIndex, std::vector<AudioPluginGraphConnection>& connections, std::string& error) const;
-        bool connectTrackGraph(int32_t trackIndex, const AudioPluginGraphConnection& connection, std::string& error);
+        bool getTrackGraphConnections(int32_t trackIndex, std::vector<uapmd_graph::AudioPluginGraphConnection>& connections, std::string& error) const;
+        bool connectTrackGraph(int32_t trackIndex, const uapmd_graph::AudioPluginGraphConnection& connection, std::string& error);
         bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
         bool isProjectDirty() const;
         bool isTrackDirty(int32_t trackIndex) const;

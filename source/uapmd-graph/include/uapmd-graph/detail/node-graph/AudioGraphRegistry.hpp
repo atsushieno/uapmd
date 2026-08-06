@@ -5,7 +5,7 @@
 
 #include "AudioGraphBuiltInNodeFactory.hpp"
 
-namespace uapmd {
+namespace uapmd_graph {
 
     class AudioGraphRegistry {
     public:
