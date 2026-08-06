@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace uapmd_graph::builtin {
+namespace uapmd_graph::webaudio_compat {
 
     inline constexpr std::string_view kGainNodeType = "webaudio:GainNode";
     inline constexpr std::string_view kAnalyserNodeType = "webaudio:AnalyserNode";

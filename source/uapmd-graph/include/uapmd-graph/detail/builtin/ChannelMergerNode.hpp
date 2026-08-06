@@ -5,7 +5,7 @@
 
 #include "uapmd-graph/uapmd-graph.hpp"
 
-namespace uapmd_graph::builtin {
+namespace uapmd_graph::webaudio_compat {
 
     // Mirrors Web Audio's ChannelMergerNode: numberOfInputs mono buses are combined
     // into a single output bus with numberOfInputs channels (output channel i = input

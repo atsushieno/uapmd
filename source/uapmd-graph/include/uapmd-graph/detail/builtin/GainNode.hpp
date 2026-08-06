@@ -4,7 +4,7 @@
 
 #include "uapmd-graph/uapmd-graph.hpp"
 
-namespace uapmd_graph::builtin {
+namespace uapmd_graph::webaudio_compat {
 
     class GainNode : public AudioGraphNode {
     public:

@@ -12,7 +12,7 @@
 
 using namespace uapmd;
 
-namespace uapmd_graph::builtin {
+namespace uapmd_graph::webaudio_compat {
 
     namespace {
 

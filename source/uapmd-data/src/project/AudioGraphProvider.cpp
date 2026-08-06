@@ -617,7 +617,7 @@ void populateProjectGraphGenericNodes(
         descriptor.node_type = node->nodeType();
         descriptor.display_name = node->displayName();
 
-        if (auto* gainNode = dynamic_cast<builtin::GainNode*>(node))
+        if (auto* gainNode = dynamic_cast<webaudio_compat::GainNode*>(node))
             descriptor.parameters.emplace("gain", gainNode->gain());
 
         graphData.addGenericNode(std::move(descriptor));

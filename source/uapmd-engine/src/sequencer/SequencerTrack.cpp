@@ -15,7 +15,7 @@ namespace uapmd {
     AudioGraphNodeDescriptor createTrackGainNodeDescriptor() {
         AudioGraphNodeDescriptor gainNode;
         gainNode.node_id = std::string(kTrackGainNodeId);
-        gainNode.node_type = std::string(builtin::kGainNodeType);
+        gainNode.node_type = std::string(webaudio_compat::kGainNodeType);
         gainNode.display_name = "Track Volume";
         gainNode.parameters.emplace("gain", 1.0);
         return gainNode;
@@ -80,8 +80,8 @@ namespace uapmd {
         }
 
     private:
-        builtin::GainNode* findTrackGainNode() const;
-        builtin::GainNode* ensureTrackGainNode();
+        webaudio_compat::GainNode* findTrackGainNode() const;
+        webaudio_compat::GainNode* ensureTrackGainNode();
     };
 
     SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph) :
@@ -110,14 +110,14 @@ namespace uapmd {
         return true;
     }
 
-    builtin::GainNode* SequencerTrackImpl::findTrackGainNode() const {
+    webaudio_compat::GainNode* SequencerTrackImpl::findTrackGainNode() const {
         if (!graph_)
             return nullptr;
         auto* node = graph_->getNode(std::string(kTrackGainNodeId));
-        return dynamic_cast<builtin::GainNode*>(node);
+        return dynamic_cast<webaudio_compat::GainNode*>(node);
     }
 
-    builtin::GainNode* SequencerTrackImpl::ensureTrackGainNode() {
+    webaudio_compat::GainNode* SequencerTrackImpl::ensureTrackGainNode() {
         if (auto* gain = findTrackGainNode())
             return gain;
         if (!graph_)

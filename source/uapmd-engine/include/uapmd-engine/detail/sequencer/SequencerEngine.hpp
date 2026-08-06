@@ -187,8 +187,8 @@ namespace uapmd {
         // Audio analysis. The analyser nodes can also be reused directly in an
         // AudioPluginGraph. Consumers select time- or frequency-domain data from
         // the node instead of using engine-specific analysis adapters.
-        virtual uapmd_graph::builtin::AnalyserNode* inputAnalyser() = 0;
-        virtual uapmd_graph::builtin::AnalyserNode* outputAnalyser() = 0;
+        virtual uapmd_graph::webaudio_compat::AnalyserNode* inputAnalyser() = 0;
+        virtual uapmd_graph::webaudio_compat::AnalyserNode* outputAnalyser() = 0;
 
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;

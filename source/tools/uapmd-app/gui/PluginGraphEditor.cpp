@@ -343,7 +343,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         if (!node)
             continue;
         auto* pluginNode = dynamic_cast<AudioPluginNode*>(node);
-        auto* gainNode = dynamic_cast<builtin::GainNode*>(node);
+        auto* gainNode = dynamic_cast<webaudio_compat::GainNode*>(node);
         auto* instance = pluginNode ? pluginNode->instance() : nullptr;
         const auto nodeId = nodeIdForTrackEndpoint(window, AudioPluginGraphEndpointType::Plugin, node->nodeId());
         ImNodes::BeginNode(nodeId);

@@ -168,8 +168,8 @@ namespace uapmd {
 
         // These are ordinary graph nodes, kept at the device boundaries for the
         // engine's input/output analysis APIs.
-        std::unique_ptr<builtin::AnalyserNode> input_analyser_;
-        builtin::AnalyserNode* output_analyser_{nullptr}; // owned by master_track_ graph
+        std::unique_ptr<webaudio_compat::AnalyserNode> input_analyser_;
+        webaudio_compat::AnalyserNode* output_analyser_{nullptr}; // owned by master_track_ graph
 
         // UMP output processing
         std::vector<uapmd_ump_t> plugin_output_scratch_;
@@ -477,8 +477,8 @@ namespace uapmd {
         void resumePlayback() override;
 
         // Audio analysis
-        builtin::AnalyserNode* inputAnalyser() override;
-        builtin::AnalyserNode* outputAnalyser() override;
+        webaudio_compat::AnalyserNode* inputAnalyser() override;
+        webaudio_compat::AnalyserNode* outputAnalyser() override;
 
         // Plugin instance queries
         AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) override;
@@ -598,7 +598,7 @@ namespace uapmd {
         ump_buffer_size_in_ints(umpBufferSizeInInts),
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
-        input_analyser_ = builtin::createAnalyserNode({.node_id = "engine-input-analyser"});
+        input_analyser_ = webaudio_compat::createAnalyserNode({.node_id = "engine-input-analyser"});
         timeline_ = TimelineFacade::create(*this);
         midi_recorder_ = std::make_unique<MidiRecorder>(*this);
         addPlaybackEngineExtension(*midi_recorder_);
@@ -618,10 +618,10 @@ namespace uapmd {
         if (master_track_) {
             AudioGraphNodeDescriptor outputAnalyserDescriptor;
             outputAnalyserDescriptor.node_id = "engine-output-analyser";
-            outputAnalyserDescriptor.node_type = std::string(builtin::kAnalyserNodeType);
+            outputAnalyserDescriptor.node_type = std::string(webaudio_compat::kAnalyserNodeType);
             outputAnalyserDescriptor.display_name = "Output Analyser";
             if (master_track_->graph().appendBuiltInNodeSimple(outputAnalyserDescriptor) == 0)
-                output_analyser_ = dynamic_cast<builtin::AnalyserNode*>(
+                output_analyser_ = dynamic_cast<webaudio_compat::AnalyserNode*>(
                     master_track_->graph().getNode(outputAnalyserDescriptor.node_id));
         }
         master_track_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
@@ -2212,11 +2212,11 @@ namespace uapmd {
         timeline_->state().isPlaying = true;
     }
 
-    builtin::AnalyserNode* SequencerEngineImpl::inputAnalyser() {
+    webaudio_compat::AnalyserNode* SequencerEngineImpl::inputAnalyser() {
         return input_analyser_.get();
     }
 
-    builtin::AnalyserNode* SequencerEngineImpl::outputAnalyser() {
+    webaudio_compat::AnalyserNode* SequencerEngineImpl::outputAnalyser() {
         return output_analyser_;
     }
 

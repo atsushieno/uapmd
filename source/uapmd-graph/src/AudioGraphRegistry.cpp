@@ -31,10 +31,10 @@ namespace uapmd_graph {
 
     std::unique_ptr<AudioGraphRegistry> AudioGraphRegistry::createDefault() {
         auto registry = std::make_unique<AudioGraphRegistryImpl>();
-        registry->registerBuiltInFactory(builtin::createGainNodeFactory());
-        registry->registerBuiltInFactory(builtin::createAnalyserNodeFactory());
-        registry->registerBuiltInFactory(builtin::createChannelMergerNodeFactory());
-        registry->registerBuiltInFactory(builtin::createChannelSplitterNodeFactory());
+        registry->registerBuiltInFactory(webaudio_compat::createGainNodeFactory());
+        registry->registerBuiltInFactory(webaudio_compat::createAnalyserNodeFactory());
+        registry->registerBuiltInFactory(webaudio_compat::createChannelMergerNodeFactory());
+        registry->registerBuiltInFactory(webaudio_compat::createChannelSplitterNodeFactory());
         return registry;
     }
 
