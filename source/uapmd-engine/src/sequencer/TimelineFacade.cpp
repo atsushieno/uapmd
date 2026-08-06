@@ -19,6 +19,8 @@
 #include "uapmd-engine/uapmd-engine.hpp"
 #include <umppi/umppi.hpp>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd {
 
     namespace {

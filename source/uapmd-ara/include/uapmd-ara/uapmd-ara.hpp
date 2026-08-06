@@ -78,7 +78,7 @@ namespace uapmd::ara {
 
     class AraPluginExtension
         : public remidy::PluginExtensibility<remidy::PluginInstance>
-        , public AudioPluginInstanceExtension {
+        , public uapmd_plugin_hosting::AudioPluginInstanceExtension {
     protected:
         explicit AraPluginExtension(remidy::PluginInstance& owner)
             : remidy::PluginExtensibility<remidy::PluginInstance>(owner) {
@@ -93,7 +93,7 @@ namespace uapmd::ara {
         virtual std::unique_ptr<AraPluginDocument> createAraPluginDocument() = 0;
     };
 
-    inline AraPluginExtension* getAraPluginExtension(AudioPluginInstanceAPI& instance) {
+    inline AraPluginExtension* getAraPluginExtension(uapmd_plugin_hosting::AudioPluginInstanceAPI& instance) {
         auto* extension = instance.extension(kAraPluginExtensionId);
         return dynamic_cast<AraPluginExtension*>(extension);
     }
@@ -109,7 +109,7 @@ namespace uapmd::ara {
 
         virtual AraStatus attachPlugin(
             int32_t pluginInstanceId,
-            AudioPluginInstanceAPI& pluginInstance) = 0;
+            uapmd_plugin_hosting::AudioPluginInstanceAPI& pluginInstance) = 0;
         virtual void detachPlugin(int32_t pluginInstanceId) = 0;
 
         virtual AraPluginDocument* pluginDocument(int32_t pluginInstanceId) = 0;
@@ -129,7 +129,7 @@ namespace uapmd::ara {
 
         virtual AraStatus attachPlugin(
             int32_t pluginInstanceId,
-            AudioPluginInstanceAPI& pluginInstance) = 0;
+            uapmd_plugin_hosting::AudioPluginInstanceAPI& pluginInstance) = 0;
         virtual void detachPlugin(int32_t pluginInstanceId) = 0;
 
         virtual bool hasNativeAraBinding(int32_t pluginInstanceId) const = 0;

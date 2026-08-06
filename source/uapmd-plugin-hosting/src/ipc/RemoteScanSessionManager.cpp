@@ -1,7 +1,7 @@
 #include "RemoteScanSessionManager.hpp"
 #include "../scanner/ScanConstants.hpp"
 
-#if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED
+#if UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED
 
 #include <algorithm>
 #include <chrono>
@@ -31,7 +31,7 @@ extern char** environ;
 #include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 #include "ScannerProtocol.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 namespace {
 constexpr int kConnectionTimeoutMs = 10000;
@@ -533,6 +533,6 @@ void RemoteScanSessionManager::runScan(PluginScanTool& tool,
     }
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting
 
-#endif // REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED
+#endif // UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED

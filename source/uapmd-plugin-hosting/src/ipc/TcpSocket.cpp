@@ -16,7 +16,7 @@
 #include <unistd.h>
 #endif
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 namespace {
 
@@ -353,4 +353,4 @@ void TcpServer::close() {
     port_ = 0;
 }
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

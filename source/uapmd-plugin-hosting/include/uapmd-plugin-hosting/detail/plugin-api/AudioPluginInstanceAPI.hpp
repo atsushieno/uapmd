@@ -9,7 +9,7 @@
 #include "remidy/remidy.hpp"
 #include "../CommonTypes.hpp"
 
-namespace uapmd {
+namespace uapmd_plugin_hosting {
     struct ParameterNamedValue {
         double value;
         std::string name;

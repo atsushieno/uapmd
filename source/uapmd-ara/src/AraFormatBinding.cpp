@@ -1,5 +1,7 @@
 #include "AraFormatBinding.hpp"
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd::ara {
 
     namespace {

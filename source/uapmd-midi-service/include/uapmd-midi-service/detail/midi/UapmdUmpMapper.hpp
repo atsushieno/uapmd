@@ -37,7 +37,7 @@ namespace uapmd {
         // FIXME: we should probably remove this.
         virtual void drainPresetRequests() = 0;
 
-        static std::unique_ptr<UapmdUmpInputMapper> create(AudioPluginInstanceAPI* plugin);
+        static std::unique_ptr<UapmdUmpInputMapper> create(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
     };
 
     class UapmdUmpOutputMapper {

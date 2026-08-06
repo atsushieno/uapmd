@@ -26,6 +26,6 @@ namespace uapmd::ara {
     std::unique_ptr<AraFormatBinding> createVst3AraBinding(AraPluginInstanceHandleExtension& araHandles);
     std::unique_ptr<AraFormatBinding> createClapAraBinding(AraPluginInstanceHandleExtension& araHandles);
     std::unique_ptr<AraFormatBinding> createAudioUnitAraBinding(AraPluginInstanceHandleExtension& araHandles);
-    std::unique_ptr<AraFormatBinding> createAraFormatBinding(AudioPluginInstanceAPI& pluginInstance);
+    std::unique_ptr<AraFormatBinding> createAraFormatBinding(uapmd_plugin_hosting::AudioPluginInstanceAPI& pluginInstance);
 
 } // namespace uapmd::ara

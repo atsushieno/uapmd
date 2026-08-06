@@ -5,7 +5,7 @@
 
 #include <choc/text/choc_JSON.h>
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 struct IpcMessage {
     std::string type;
@@ -13,4 +13,4 @@ struct IpcMessage {
     choc::value::Value payload;
 };
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

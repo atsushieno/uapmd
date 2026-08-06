@@ -43,7 +43,7 @@ private:
         MidiKeyboard midiKeyboard;
         ParameterList parameterList;
         bool visible = false;
-        std::vector<uapmd::PresetsMetadata> presets;
+        std::vector<uapmd_plugin_hosting::PresetsMetadata> presets;
         int selectedPreset = -1;
         float pitchBendValue = 0.0f; // -1..1 UI range
         float channelPressureValue = 0.0f; // 0..1 UI range

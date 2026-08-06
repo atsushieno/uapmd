@@ -27,7 +27,7 @@ public:
     using ContextChangeCallback = std::function<void(ParameterContext context, uint8_t value)>;
 
 private:
-    std::vector<ParameterMetadata> parameters_;
+    std::vector<uapmd_plugin_hosting::ParameterMetadata> parameters_;
     std::vector<float> parameterValues_;
     std::vector<std::string> parameterValueStrings_;
     char parameterFilter_[256] = "";
@@ -48,7 +48,7 @@ public:
     ParameterList(ParameterList&& other) noexcept;
     ParameterList& operator=(ParameterList&& other) noexcept;
 
-    void setParameters(const std::vector<ParameterMetadata>& parameters);
+    void setParameters(const std::vector<uapmd_plugin_hosting::ParameterMetadata>& parameters);
     void setParameterValue(size_t index, float value);
     void setParameterValueString(size_t index, const std::string& valueString);
 
@@ -58,7 +58,7 @@ public:
     void setOnGetParameterValueString(GetParameterValueStringCallback callback);
     void setOnContextChanged(ContextChangeCallback callback);
 
-    const std::vector<ParameterMetadata>& getParameters() const;
+    const std::vector<uapmd_plugin_hosting::ParameterMetadata>& getParameters() const;
     const std::vector<float>& getParameterValues() const;
     float getParameterValue(size_t index) const;
     ParameterContext context() const;

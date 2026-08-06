@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #endif
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 namespace {
 
@@ -93,4 +93,4 @@ void IpcJsonChannel::close() {
     socket_.close();
 }
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

@@ -9,7 +9,7 @@
 
 #include "remidy/remidy.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
     using namespace remidy;
 
     enum class ScanMode {

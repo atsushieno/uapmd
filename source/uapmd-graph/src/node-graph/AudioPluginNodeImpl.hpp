@@ -7,19 +7,22 @@
 #include <cstring>
 #include <memory>
 #include <vector>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include "uapmd-graph/detail/node-graph/AudioPluginNode.hpp"
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 
-namespace uapmd {
 #ifdef __EMSCRIPTEN__
+namespace uapmd_plugin_hosting {
     bool trySendWebClapInputEvents(AudioPluginInstanceAPI* instance, const uapmd_ump_t* events, size_t sizeInBytes);
+}
 #endif
 
+namespace uapmd {
     class AudioPluginNodeImpl : public AudioPluginNode {
         int32_t instance_id_;
         std::string node_id_;
         std::string node_type_;
-        AudioPluginInstanceAPI* instance_;
+        uapmd_plugin_hosting::AudioPluginInstanceAPI* instance_;
         moodycamel::ConcurrentQueue<umppi::Ump> queue_;
         std::vector<umppi::Ump> pending_events_;
         std::function<void()> on_delete_;
@@ -38,7 +41,7 @@ namespace uapmd {
     public:
         AudioPluginNodeImpl(
             int32_t instanceId,
-            AudioPluginInstanceAPI* instance,
+            uapmd_plugin_hosting::AudioPluginInstanceAPI* instance,
             size_t eventBufferSizeInBytes,
             std::function<void()>&& onDelete
         ) : instance_id_(instanceId),
@@ -103,7 +106,7 @@ namespace uapmd {
                 instance_->bypassed(value);
         }
 
-        AudioPluginInstanceAPI* instance() override {
+        uapmd_plugin_hosting::AudioPluginInstanceAPI* instance() override {
             return instance_;
         }
 
@@ -146,7 +149,7 @@ namespace uapmd {
         bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override {
 #ifdef __EMSCRIPTEN__
             if (instance_) {
-                if (trySendWebClapInputEvents(instance_, static_cast<const uapmd_ump_t*>(events), size))
+                if (uapmd_plugin_hosting::trySendWebClapInputEvents(instance_, static_cast<const uapmd_ump_t*>(events), size))
                     return true;
             }
 #endif

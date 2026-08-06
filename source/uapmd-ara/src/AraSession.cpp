@@ -2,6 +2,8 @@
 
 #include <map>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd::ara {
 
     namespace {

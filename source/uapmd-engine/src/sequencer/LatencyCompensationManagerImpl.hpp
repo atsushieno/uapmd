@@ -13,6 +13,8 @@
 #include <uapmd-engine/detail/sequencer/AudioProcessingEventHandler.hpp>
 #include <uapmd-engine/detail/sequencer/SequencerProcessingLifecycleListener.hpp>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd {
     class TrackRoutingManager;
     class SequenceProcessContext;

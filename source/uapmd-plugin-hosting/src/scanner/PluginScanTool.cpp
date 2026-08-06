@@ -25,7 +25,7 @@
 #include "../ipc/InProcessScanSessionManager.hpp"
 #include "../ipc/RemoteScanSessionManager.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 #ifdef __EMSCRIPTEN__
 EM_JS(void, uapmd_sync_browser_fs_async, (const char* pathPtr, const char* kindPtr), {
@@ -268,7 +268,7 @@ void PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
                            observer);
 }
 
-remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
+uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
                                                                                        bool requireFastScanning,
                                                                                        std::filesystem::path& pluginListCacheFile,
                                                                                        bool forceRescan,
@@ -499,7 +499,7 @@ bool PluginScanToolImpl::shouldCreateInstanceOnUIThread(PluginFormat *format, Pl
     return forceMainThread || format->requiresUIThreadOn(entry) != PluginUIThreadRequirement::None;
 }
 
-std::vector<remidy_tooling::BlocklistEntry> PluginScanToolImpl::blocklistEntries() const {
+std::vector<uapmd_plugin_hosting::BlocklistEntry> PluginScanToolImpl::blocklistEntries() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return blocklistEntries_;
 }
@@ -578,13 +578,13 @@ bool PluginScanToolImpl::isBundleBlocklisted(const std::string& formatName,
     return isBlocklisted(formatName, bundlePath.lexically_normal().string());
 }
 
-remidy_tooling::ScanSessionManager& PluginScanToolImpl::ensureInProcessSessionManager() {
+uapmd_plugin_hosting::ScanSessionManager& PluginScanToolImpl::ensureInProcessSessionManager() {
     if (!inProcessSessionManager_)
         inProcessSessionManager_ = std::make_unique<InProcessScanSessionManager>();
     return *inProcessSessionManager_;
 }
 
-remidy_tooling::ScanSessionManager& PluginScanToolImpl::ensureRemoteSessionManager() {
+uapmd_plugin_hosting::ScanSessionManager& PluginScanToolImpl::ensureRemoteSessionManager() {
 #if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
     throw std::runtime_error("Remote scanning is unavailable on this platform.");
 #else
@@ -749,4 +749,4 @@ std::unique_ptr<PluginScanTool> PluginScanTool::create() {
     return std::make_unique<PluginScanToolImpl>();
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

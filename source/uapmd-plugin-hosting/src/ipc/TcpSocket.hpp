@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 class TcpSocket {
 public:
@@ -53,4 +53,4 @@ private:
 
 bool ensureSocketLayerInitialized();
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

@@ -56,7 +56,7 @@ void installSignalTraceHandler() {}
  */
 int main(int argc, char** argv) {
     auto runPrimary = [&](int argcIn, char** argvIn) {
-        remidy_tooling::RemotePluginScannerProcess remoteScanner(argcIn, argvIn);
+        uapmd_plugin_hosting::RemotePluginScannerProcess remoteScanner(argcIn, argvIn);
         if (remoteScanner.matches())
             return remoteScanner.process();
         return uapmd::runMainLoop(argcIn, argvIn);

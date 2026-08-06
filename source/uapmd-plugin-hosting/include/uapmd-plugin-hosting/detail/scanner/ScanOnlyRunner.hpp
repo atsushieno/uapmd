@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 struct ScanOnlyOptions {
     bool forceRescan = false;

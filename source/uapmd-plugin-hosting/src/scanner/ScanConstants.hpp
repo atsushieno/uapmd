@@ -1,8 +1,8 @@
 #pragma once
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 inline constexpr int kScanTimeoutExitCode = -2;
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting
 

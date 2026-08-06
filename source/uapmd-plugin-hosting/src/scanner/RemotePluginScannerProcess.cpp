@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 RemotePluginScannerProcess::RemotePluginScannerProcess(int argc, char** argv)
     : ChildProcess(argc, argv) {}
@@ -73,4 +73,4 @@ void RemotePluginScannerProcess::ensureParsed() {
     }
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

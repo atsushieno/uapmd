@@ -148,11 +148,11 @@ int runMainLoop(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     if (cliOptions.scanOnly) {
-        remidy_tooling::ScanOnlyOptions options{
+        uapmd_plugin_hosting::ScanOnlyOptions options{
             .forceRescan = cliOptions.forceRescan,
             .fullVerification = cliOptions.fullVerification
         };
-        return remidy_tooling::runScanOnlyMode(options);
+        return uapmd_plugin_hosting::runScanOnlyMode(options);
     }
 #endif
 

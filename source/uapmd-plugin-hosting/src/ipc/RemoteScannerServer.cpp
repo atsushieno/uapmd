@@ -23,7 +23,7 @@
 #include "ScanSessionManager.hpp"
 #include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
 #if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
@@ -306,4 +306,4 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
 #endif
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

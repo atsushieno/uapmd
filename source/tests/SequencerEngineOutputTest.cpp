@@ -86,7 +86,7 @@ private:
     std::vector<remidy::AudioBusConfiguration*> output_buses_;
 };
 
-class MutableTimingPlugin final : public uapmd::AudioPluginInstanceAPI {
+class MutableTimingPlugin final : public uapmd_plugin_hosting::AudioPluginInstanceAPI {
 public:
     uint32_t latencyInSamples() const override {
         return latency_in_samples_.load(std::memory_order_acquire);
@@ -106,19 +106,19 @@ public:
     uapmd_status_t processAudio(remidy::AudioProcessContext&) override { return 0; }
     double tailLengthInSeconds() const override { return 0.0; }
     bool requiresReplacingProcess() const override { return false; }
-    std::vector<uapmd::ParameterMetadata> parameterMetadataList() override { return {}; }
-    std::vector<uapmd::ParameterMetadata> perNoteControllerMetadataList(
+    std::vector<uapmd_plugin_hosting::ParameterMetadata> parameterMetadataList() override { return {}; }
+    std::vector<uapmd_plugin_hosting::ParameterMetadata> perNoteControllerMetadataList(
         remidy::PerNoteControllerContextTypes,
         uint32_t) override {
         return {};
     }
-    std::vector<uapmd::PresetsMetadata> presetMetadataList() override { return {}; }
+    std::vector<uapmd_plugin_hosting::PresetsMetadata> presetMetadataList() override { return {}; }
     void loadPreset(int32_t) override {}
     void loadPreset(int32_t, std::function<void(std::string, void*)>) override {}
     std::vector<uint8_t> saveStateSync() override { return {}; }
     void loadStateSync(std::vector<uint8_t>&) override {}
     void requestState(
-        uapmd::StateContextType,
+        uapmd_plugin_hosting::StateContextType,
         bool,
         void* callbackContext,
         std::function<void(std::vector<uint8_t>, std::string, void*)> receiver) override {
@@ -126,7 +126,7 @@ public:
     }
     void loadState(
         std::vector<uint8_t>,
-        uapmd::StateContextType,
+        uapmd_plugin_hosting::StateContextType,
         bool,
         void* callbackContext,
         std::function<void(std::string, void*)> completed) override {

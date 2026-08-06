@@ -9,6 +9,8 @@
 #include <sstream>
 #include <stdexcept>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd::ara {
 
     namespace {

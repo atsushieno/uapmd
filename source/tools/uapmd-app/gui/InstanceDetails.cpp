@@ -13,6 +13,8 @@
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
 
+using namespace uapmd_plugin_hosting;
+
 namespace {
 using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
 
@@ -43,22 +45,22 @@ std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd::gui::Paramete
     return selection;
 }
 
-std::vector<uapmd::ParameterMetadata> toParameterMetadata(const std::vector<remidy::PluginParameter*>& pluginParams) {
-    std::vector<uapmd::ParameterMetadata> metadata;
+std::vector<ParameterMetadata> toParameterMetadata(const std::vector<remidy::PluginParameter*>& pluginParams) {
+    std::vector<ParameterMetadata> metadata;
     metadata.reserve(pluginParams.size());
     for (auto* param : pluginParams) {
         if (!param) {
             continue;
         }
-        std::vector<uapmd::ParameterNamedValue> namedValues;
+        std::vector<ParameterNamedValue> namedValues;
         namedValues.reserve(param->enums().size());
         for (const auto& enumeration : param->enums()) {
-            namedValues.push_back(uapmd::ParameterNamedValue{
+            namedValues.push_back(ParameterNamedValue{
                 .value = enumeration.value,
                 .name = enumeration.label
             });
         }
-        metadata.push_back(uapmd::ParameterMetadata{
+        metadata.push_back(ParameterMetadata{
             .index = param->index(),
             .stableId = param->stableId(),
             .name = param->name(),
@@ -544,7 +546,7 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
         return;
     }
 
-    std::vector<uapmd::ParameterMetadata> parameters;
+    std::vector<ParameterMetadata> parameters;
     if (usingPerNoteControllers) {
         auto pluginParams = parameterSupport->perNoteControllers(perNoteSelection->type, perNoteSelection->context);
         parameters = toParameterMetadata(pluginParams);

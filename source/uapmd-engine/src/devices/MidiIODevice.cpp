@@ -14,7 +14,6 @@
 #include <string>
 #include <vector>
 
-#include <libremidi/libremidi.hpp>
 #include <remidy/detail/common.hpp>
 
 #ifdef _WIN32

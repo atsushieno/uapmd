@@ -2,7 +2,7 @@
 
 #include "ScanSessionManager.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
     class InProcessScanSessionManager final : public ScanSessionManager {
     public:
         void runScan(PluginScanTool& tool,

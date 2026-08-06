@@ -16,7 +16,7 @@
 #include <uapmd-ara/ara-plugin-instance-handles.hpp>
 #endif
 
-namespace uapmd {
+namespace uapmd_plugin_hosting {
     int32_t instanceIdSerial{0};
 
     namespace {
@@ -35,15 +35,15 @@ namespace uapmd {
         }
     }
 
-    static remidy::PluginStateSupport::StateContextType toRemidyStateContextType(uapmd::StateContextType type) {
+    static remidy::PluginStateSupport::StateContextType toRemidyStateContextType(StateContextType type) {
         switch (type) {
-            case uapmd::StateContextType::Remember:
+            case StateContextType::Remember:
                 return remidy::PluginStateSupport::StateContextType::Remember;
-            case uapmd::StateContextType::Copyable:
+            case StateContextType::Copyable:
                 return remidy::PluginStateSupport::StateContextType::Copyable;
-            case uapmd::StateContextType::Preset:
+            case StateContextType::Preset:
                 return remidy::PluginStateSupport::StateContextType::Preset;
-            case uapmd::StateContextType::Project:
+            case StateContextType::Project:
                 return remidy::PluginStateSupport::StateContextType::Project;
         }
     }
@@ -95,7 +95,7 @@ namespace uapmd {
         bool bypassed_{true};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
         std::function<void()> on_plugin_state_changed_{};
-        std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
+        std::shared_ptr<uapmd_plugin_hosting::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
 #ifdef UAPMD_HAS_ARA
         AraHandleExtensionAdapter ara_handle_extension{*this};
@@ -116,7 +116,7 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance, std::function<void()> onPluginStateChanged)
+        explicit RemidyAudioPluginInstance(const std::shared_ptr<uapmd_plugin_hosting::PluginInstancing>& instancing, remidy::PluginInstance* instance, std::function<void()> onPluginStateChanged)
           : instancing(instancing), instance(instance), on_plugin_state_changed_(std::move(onPluginStateChanged)) {
             bypassed_ = false;
             if (instance)
@@ -202,7 +202,7 @@ namespace uapmd {
             return instance ? instance->tailLengthInSeconds() : 0.0;
         }
 
-        std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
+        std::vector<ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();
             for (auto p : pl->parameters()) {
@@ -256,7 +256,7 @@ namespace uapmd {
             }
             return ret;
         }
-        std::vector<uapmd::PresetsMetadata> presetMetadataList() override {
+        std::vector<PresetsMetadata> presetMetadataList() override {
             std::vector<PresetsMetadata> ret{};
             auto pl = instance->presets();
             for (int32_t p = 0, n = pl->getPresetCount(); p < n; p++) {
@@ -506,16 +506,16 @@ namespace uapmd {
 #endif
 }
 
-std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::create() {
+std::unique_ptr<uapmd_plugin_hosting::AudioPluginHostingAPI> uapmd_plugin_hosting::AudioPluginHostingAPI::create() {
     return std::make_unique<RemidyAudioPluginHost>();
 }
 
-uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
-    scanning = remidy_tooling::PluginScanTool::create();
+uapmd_plugin_hosting::RemidyAudioPluginHost::RemidyAudioPluginHost() {
+    scanning = uapmd_plugin_hosting::PluginScanTool::create();
 #if ANDROID
     // Android has no persistent plugin cache path here. Populate fast-scan entries
     // eagerly so formats like AAP appear in the catalog without a manual scan.
-    scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
+    scanning->performPluginScanning(true, uapmd_plugin_hosting::ScanMode::InProcess, false);
 #endif
 #if _WIN32
     // VST3 plugins (especially NI and JUCE-based ones) use COM and require STA.
@@ -529,43 +529,43 @@ uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
 #endif
 }
 
-uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
+uapmd_plugin_hosting::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
 #if _WIN32
     if (comInitialized)
         CoUninitialize();
 #endif
 }
 
-std::vector<remidy::PluginCatalogEntry> uapmd::RemidyAudioPluginHost::pluginCatalogEntries() {
+std::vector<remidy::PluginCatalogEntry> uapmd_plugin_hosting::RemidyAudioPluginHost::pluginCatalogEntries() {
     std::vector<remidy::PluginCatalogEntry> ret{};
     for (const auto e : scanning->catalog().getPlugins())
         ret.emplace_back(*e);
     return ret;
 }
 
-void uapmd::RemidyAudioPluginHost::savePluginCatalogToFile(std::filesystem::path path) {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::savePluginCatalogToFile(std::filesystem::path path) {
     scanning->catalog().save(path);
 }
 
 std::filesystem::path empty_path{""};
-void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
     scanning->catalog().clear();
-    scanning->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, rescan);
+    scanning->performPluginScanning(false, uapmd_plugin_hosting::ScanMode::InProcess, rescan);
 }
 
-void uapmd::RemidyAudioPluginHost::reloadPluginCatalogFromCache() {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::reloadPluginCatalogFromCache() {
     auto& cacheFile = scanning->pluginListCacheFile();
     if (cacheFile.empty()) {
         scanning->catalog().clear();
-        scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
+        scanning->performPluginScanning(true, uapmd_plugin_hosting::ScanMode::InProcess, false);
         return;
     }
 
     scanning->catalog().clear();
-    scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
+    scanning->performPluginScanning(true, uapmd_plugin_hosting::ScanMode::InProcess, false);
 }
 
-void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
+void uapmd_plugin_hosting::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
                                                         uint32_t bufferSize,
                                                         std::optional<uint32_t> mainInputChannels,
                                                         std::optional<uint32_t> mainOutputChannels,
@@ -581,7 +581,7 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
     if (entry == plugins.end())
         callback(-1, "Plugin not found");
     else {
-        auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(*scanning, format, *entry);
+        auto instancing = std::make_shared<PluginInstancing>(*scanning, format, *entry);
         auto& configuration = instancing->configurationRequest();
         configuration.sampleRate = sampleRate;
         configuration.bufferSizeInSamples = bufferSize;
@@ -606,30 +606,30 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
     }
 }
 
-void uapmd::RemidyAudioPluginHost::deletePluginInstance(int32_t instanceId) {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::deletePluginInstance(int32_t instanceId) {
     instances.erase(instanceId);
 }
-std::vector<int32_t> uapmd::RemidyAudioPluginHost::instanceIds() {
+std::vector<int32_t> uapmd_plugin_hosting::RemidyAudioPluginHost::instanceIds() {
     std::vector<int32_t> ret;
     for (auto& i : instances)
         ret.push_back(i.first);
     return ret;
 }
 
-uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
+uapmd_plugin_hosting::AudioPluginInstanceAPI * uapmd_plugin_hosting::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
     const auto &i = instances[instanceId];
     return i ? i.get() : nullptr;
 }
 
-remidy::EventListenerId uapmd::RemidyAudioPluginHost::addPluginStateChangeListener(std::function<void(int32_t)> listener) {
+remidy::EventListenerId uapmd_plugin_hosting::RemidyAudioPluginHost::addPluginStateChangeListener(std::function<void(int32_t)> listener) {
     return plugin_state_change_event_.addListener(std::move(listener));
 }
 
-void uapmd::RemidyAudioPluginHost::removePluginStateChangeListener(remidy::EventListenerId listenerId) {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::removePluginStateChangeListener(remidy::EventListenerId listenerId) {
     plugin_state_change_event_.removeListener(listenerId);
 }
 
-void uapmd::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t instanceId, int32_t trackIndex, bool isMasterTrack, uint32_t order) {
+void uapmd_plugin_hosting::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t instanceId, int32_t trackIndex, bool isMasterTrack, uint32_t order) {
 #ifdef __EMSCRIPTEN__
     auto it = instances.find(instanceId);
     if (it == instances.end() || !it->second)

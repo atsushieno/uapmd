@@ -11,22 +11,22 @@
 #endif
 
 #if !defined(ANDROID) && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
-#define REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED 1
+#define UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED 1
 #else
-#define REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED 0
+#define UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED 0
 #endif
 
 #include "IpcJsonChannel.hpp"
 #include "ScanSessionManager.hpp"
-#if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED == 0
+#if UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED == 0
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 #endif
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 class PluginScanTool;
 
-#if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED
+#if UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED
 
 class RemoteScanSessionManager final : public ScanSessionManager {
 public:
@@ -79,4 +79,4 @@ public:
 
 #endif
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

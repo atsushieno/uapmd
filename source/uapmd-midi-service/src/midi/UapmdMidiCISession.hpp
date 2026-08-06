@@ -5,10 +5,10 @@
 #include <string>
 
 #include "uapmd-plugin-hosting/detail/CommonTypes.hpp"
+#include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
 namespace uapmd {
     class UapmdFunctionBlock;
-    class AudioPluginInstanceAPI;
 
     // Handles UAPMD-specific MIDI-CI messages. Namely, it registers property getter and setter for
     // AllCtrlList, CtrlMapList, ProgramList, and State.
@@ -23,7 +23,7 @@ namespace uapmd {
 
         static std::unique_ptr<UapmdMidiCISession> create(
             UapmdFunctionBlock* device,
-            AudioPluginInstanceAPI* instance,
+            uapmd_plugin_hosting::AudioPluginInstanceAPI* instance,
             std::string deviceName,
             std::string manufacturerName,
             std::string versionString);

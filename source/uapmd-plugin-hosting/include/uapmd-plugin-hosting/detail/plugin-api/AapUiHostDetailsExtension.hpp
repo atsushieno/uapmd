@@ -6,7 +6,7 @@
 
 // Bridges to remidy's AAP (Android Audio Plugin) instance extensibility.
 // Only meaningful for the AAP format; other formats never register it.
-namespace uapmd {
+namespace uapmd_plugin_hosting {
     inline constexpr std::string_view kAapUiHostDetailsExtensionId =
         "dev.atsushieno.uapmd.plugin-instance.aap-ui-host-details.v1";
 

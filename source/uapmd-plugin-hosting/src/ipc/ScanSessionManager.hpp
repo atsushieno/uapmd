@@ -7,7 +7,7 @@ namespace remidy {
     class PluginFormat;
 }
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
     class PluginScanTool;
     struct PluginScanObserver;
 

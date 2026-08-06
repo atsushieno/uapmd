@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cfloat>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd::gui {
 
 static std::string escapeSliderFormatLiteral(const std::string& text) {

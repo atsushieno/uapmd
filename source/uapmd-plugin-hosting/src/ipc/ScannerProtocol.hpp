@@ -1,6 +1,6 @@
 #pragma once
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 inline constexpr char kScannerMsgHello[] = "hello";
 inline constexpr char kScannerMsgStartScan[] = "startScan";
@@ -12,4 +12,4 @@ inline constexpr char kScannerMsgCancelScan[] = "cancelScan";
 
 inline constexpr int kScannerProtocolVersion = 1;
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

@@ -6,7 +6,7 @@
 #include "ChildProcess.hpp"
 #include "RemoteScannerServer.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 class RemotePluginScannerProcess final : public ChildProcess {
 public:
@@ -30,4 +30,4 @@ private:
     Options options_{};
 };
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

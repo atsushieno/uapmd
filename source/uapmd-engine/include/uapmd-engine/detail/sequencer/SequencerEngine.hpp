@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-data/detail/project/LatencyCompensationTypes.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
@@ -16,7 +17,6 @@
 #include "TimelineFacade.hpp"
 
 namespace uapmd {
-    class AudioPluginHostingAPI;
     class SequencerEngine;
     class FrozenTrackManager;
     class TailProcessManager;
@@ -56,10 +56,10 @@ namespace uapmd {
         virtual std::vector<MidiPortTrackConnection> platformMidiOutputConnections() const = 0;
         virtual void clearPlatformMidiOutputRoute() = 0;
 
-        virtual AudioPluginHostingAPI* pluginHost() = 0;
+        virtual uapmd_plugin_hosting::AudioPluginHostingAPI* pluginHost() = 0;
         virtual FrozenTrackManager& frozenTrackManager() = 0;
         virtual TailProcessManager& tailProcessManager() = 0;
-        virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
+        virtual uapmd_plugin_hosting::AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
         // FIXME: we should probably remove this at some stage
         virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;

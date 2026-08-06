@@ -3,7 +3,7 @@
 #include <iostream>
 #include <format>
 
-void remidy_tooling::PluginInstancing::setupInstance(remidy::PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
+void uapmd_plugin_hosting::PluginInstancing::setupInstance(remidy::PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
     Logger::global()->logInfo("  instantiating %s %s", format->name().c_str(), displayName.c_str());
     instancing_state = PluginInstancingState::Preparing;
 
@@ -38,32 +38,32 @@ void remidy_tooling::PluginInstancing::setupInstance(remidy::PluginUIThreadRequi
     format->createInstance(entry, remidy::PluginFormat::PluginInstantiationOptions{uiThreadRequirement}, cb);
 }
 
-remidy::PluginFormat* findFormat(remidy_tooling::PluginScanTool& scanner, const std::string_view& format) {
+remidy::PluginFormat* findFormat(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format) {
     for (auto f : scanner.formats())
         if (f->name() == format)
             return f;
     return nullptr;
 }
-remidy::PluginCatalogEntry* findPlugin(remidy_tooling::PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId) {
+remidy::PluginCatalogEntry* findPlugin(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId) {
     for (auto e : scanner.catalog().getPlugins())
         if (e->format() == format && e->pluginId() == pluginId)
             return e;
     return nullptr;
 }
 
-remidy_tooling::PluginInstancing::PluginInstancing(remidy_tooling::PluginScanTool &scanner,
+uapmd_plugin_hosting::PluginInstancing::PluginInstancing(uapmd_plugin_hosting::PluginScanTool &scanner,
                                                    const std::string_view &format, const std::string_view &pluginId) :
     scanner(scanner), format(findFormat(scanner, format)), entry(findPlugin(scanner, format, pluginId)) {
         displayName = entry->displayName();
 }
 
-remidy_tooling::PluginInstancing::PluginInstancing(PluginScanTool& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
+uapmd_plugin_hosting::PluginInstancing::PluginInstancing(PluginScanTool& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();
 }
 
 
-remidy_tooling::PluginInstancing::~PluginInstancing() {
+uapmd_plugin_hosting::PluginInstancing::~PluginInstancing() {
     // Allow destruction during async instantiation (e.g., if instantiation fails or is cancelled)
     if (instancing_state == PluginInstancingState::Preparing) {
         Logger::global()->logWarning("  %s: %s destroyed while still preparing (async instantiation likely failed or cancelled)",
@@ -92,7 +92,7 @@ remidy_tooling::PluginInstancing::~PluginInstancing() {
     instancing_state = PluginInstancingState::Terminated;
 }
 
-void remidy_tooling::PluginInstancing::makeAlive(std::function<void(std::string error)> callback) {
+void uapmd_plugin_hosting::PluginInstancing::makeAlive(std::function<void(std::string error)> callback) {
     if (scanner.shouldCreateInstanceOnUIThread(format, entry)) {
         EventLoop::runTaskOnMainThread([this,callback] {
             setupInstance(remidy::PluginUIThreadRequirement::AllNonAudioOperation, callback);

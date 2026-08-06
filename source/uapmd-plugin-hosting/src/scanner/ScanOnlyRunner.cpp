@@ -8,9 +8,9 @@
 
 #if defined(__EMSCRIPTEN__) || ANDROID || (defined(__APPLE__) && TARGET_OS_IPHONE)
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
-int runScanOnlyMode(const ScanOnlyOptions&, ScanOnlyReport*) {
+int runScanOnlyMode(const uapmd_plugin_hosting::ScanOnlyOptions&, uapmd_plugin_hosting::ScanOnlyReport*) {
     return EXIT_FAILURE;
 }
 
@@ -33,10 +33,10 @@ int runScanOnlyMode(const ScanOnlyOptions&, ScanOnlyReport*) {
 #include <remidy/remidy.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 namespace {
 
-ScanVerificationReport runFullVerification(remidy_tooling::PluginScanTool& scanner) {
+ScanVerificationReport runFullVerification(uapmd_plugin_hosting::PluginScanTool& scanner) {
     ScanVerificationReport report{};
     report.enabled = true;
 
@@ -54,7 +54,7 @@ ScanVerificationReport runFullVerification(remidy_tooling::PluginScanTool& scann
 
                 ++report.attempted;
                 bool successful = false;
-                remidy_tooling::PluginInstancing instancing{scanner, format, info};
+                uapmd_plugin_hosting::PluginInstancing instancing{scanner, format, info};
                 std::atomic<bool> instantiationFinished{false};
                 std::mutex errorMutex;
                 std::string instantiationError;
@@ -74,7 +74,7 @@ ScanVerificationReport runFullVerification(remidy_tooling::PluginScanTool& scann
                     std::lock_guard<std::mutex> lock(errorMutex);
                     errorCopy = instantiationError;
                 }
-                if (!errorCopy.empty() || state != remidy_tooling::PluginInstancingState::Ready) {
+                if (!errorCopy.empty() || state != uapmd_plugin_hosting::PluginInstancingState::Ready) {
                     if (errorCopy.empty())
                         errorCopy = "Plugin did not reach ready state.";
                     report.failures.push_back(ScanVerificationFailure{
@@ -178,7 +178,7 @@ ScanVerificationReport runFullVerification(remidy_tooling::PluginScanTool& scann
     return report;
 }
 
-std::vector<ScannedPluginEntry> buildPluginList(remidy_tooling::PluginScanTool& scanner) {
+std::vector<ScannedPluginEntry> buildPluginList(uapmd_plugin_hosting::PluginScanTool& scanner) {
     auto catalogEntries = scanner.catalog().getPlugins();
     std::vector<ScannedPluginEntry> plugins;
     plugins.reserve(catalogEntries.size());
@@ -200,17 +200,17 @@ std::vector<ScannedPluginEntry> buildPluginList(remidy_tooling::PluginScanTool& 
 int runScanOnlyMode(const ScanOnlyOptions& options, ScanOnlyReport* outReport) {
     remidy::EventLoop::initializeOnUIThread();
 
-    auto scanner = remidy_tooling::PluginScanTool::create();
+    auto scanner = uapmd_plugin_hosting::PluginScanTool::create();
     auto scanMode = options.useRemoteScanner
-        ? remidy_tooling::ScanMode::Remote
-        : remidy_tooling::ScanMode::InProcess;
+        ? uapmd_plugin_hosting::ScanMode::Remote
+        : uapmd_plugin_hosting::ScanMode::InProcess;
 
     std::mutex scanMutex;
     std::condition_variable scanCondition;
     bool scanCompleted = false;
     bool scanFailed = false;
     std::string scanError;
-    remidy_tooling::PluginScanObserver observer;
+    uapmd_plugin_hosting::PluginScanObserver observer;
     observer.errorOccurred = [&](const std::string& message) {
         std::lock_guard<std::mutex> lock(scanMutex);
         scanFailed = true;

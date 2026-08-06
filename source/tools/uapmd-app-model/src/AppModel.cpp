@@ -43,6 +43,8 @@ constexpr uint32_t kDefaultDctpq = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
 
+using namespace uapmd_plugin_hosting;
+
 namespace {
 
 std::unique_ptr<uapmd::AppModel> appModelInstance;
@@ -362,7 +364,7 @@ void uapmd::AppModel::cleanupInstance() {
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         ump_buffer_size_in_bytes_(umpBufferSizeInBytes),
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
-        pluginScanTool_(remidy_tooling::PluginScanTool::create()),
+        pluginScanTool_(uapmd_plugin_hosting::PluginScanTool::create()),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
         sample_rate_(sampleRate),
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
@@ -647,7 +649,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan,
                 }
             };
 
-            remidy_tooling::PluginScanObserver observer;
+            uapmd_plugin_hosting::PluginScanObserver observer;
             observer.slowScanStarted = [this](uint32_t totalBundles) {
                 std::lock_guard<std::mutex> lock(slowScanMutex_);
                 slowScanProgress_.running = true;
@@ -682,8 +684,8 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan,
                 return scanCancelRequested_.load(std::memory_order_acquire);
             };
             auto mode = (request == PluginScanRequest::RemoteProcess)
-                        ? remidy_tooling::ScanMode::Remote
-                        : remidy_tooling::ScanMode::InProcess;
+                        ? uapmd_plugin_hosting::ScanMode::Remote
+                        : uapmd_plugin_hosting::ScanMode::InProcess;
             pluginScanTool_->performPluginScanning(requireFastScanning,
                                                    cacheFile,
                                                    mode,
@@ -744,7 +746,7 @@ uapmd::AppModel::SlowScanProgressState uapmd::AppModel::slowScanProgress() const
     return slowScanProgress_;
 }
 
-std::vector<remidy_tooling::BlocklistEntry> uapmd::AppModel::pluginBlocklist() const {
+std::vector<uapmd_plugin_hosting::BlocklistEntry> uapmd::AppModel::pluginBlocklist() const {
     return pluginScanTool_->blocklistEntries();
 }
 
@@ -1595,7 +1597,7 @@ void uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& fil
         return;
     }
 
-    instance->loadState(std::move(stateData), uapmd::StateContextType::Project, false, nullptr,
+    instance->loadState(std::move(stateData), StateContextType::Project, false, nullptr,
                         [callback = std::move(callback), result](std::string error, void* callbackContext) mutable {
                             auto completed = result;
                             if (!error.empty()) {
@@ -1648,7 +1650,7 @@ void uapmd::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle,
                                    return;
                                }
 
-                               instance->loadState(std::move(data), uapmd::StateContextType::Project, false, nullptr,
+                               instance->loadState(std::move(data), StateContextType::Project, false, nullptr,
                                                    [callback = std::move(callback), completed](std::string error, void* callbackContext) mutable {
                                                        auto finalResult = completed;
                                                        if (!error.empty()) {
@@ -1690,7 +1692,7 @@ void uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& fil
         return;
     }
 
-    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+    instance->requestState(StateContextType::Project, false, nullptr,
                            [callback = std::move(callback), result, filepath](std::vector<uint8_t> state, std::string error, void* callbackContext) mutable {
                                auto completed = result;
                                if (!error.empty()) {
@@ -1745,7 +1747,7 @@ void uapmd::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle,
         return;
     }
 
-    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+    instance->requestState(StateContextType::Project, false, nullptr,
                            [handle = std::move(handle), callback = std::move(callback), result](std::vector<uint8_t> state, std::string error, void* callbackContext) mutable {
                                auto completed = result;
                                if (!error.empty()) {

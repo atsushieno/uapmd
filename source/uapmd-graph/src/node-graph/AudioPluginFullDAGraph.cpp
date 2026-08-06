@@ -16,6 +16,8 @@
 #include <sstream>
 #include <unordered_map>
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd {
 
     namespace {

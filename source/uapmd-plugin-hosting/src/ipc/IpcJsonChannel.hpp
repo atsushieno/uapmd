@@ -6,7 +6,7 @@
 #include "IpcMessage.hpp"
 #include "TcpSocket.hpp"
 
-namespace remidy_tooling::ipc {
+namespace uapmd_plugin_hosting::ipc {
 
 class IpcJsonChannel {
 public:
@@ -26,4 +26,4 @@ private:
     TcpSocket socket_;
 };
 
-} // namespace remidy_tooling::ipc
+} // namespace uapmd_plugin_hosting::ipc

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 class ChildProcess {
 public:
@@ -16,4 +16,4 @@ protected:
     char** argv_;
 };
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

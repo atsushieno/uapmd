@@ -8,9 +8,8 @@
 #include <sstream>
 #include <string_view>
 
-namespace uapmd {
-
-namespace {
+using namespace uapmd;
+using namespace uapmd_plugin_hosting;
 
 constexpr std::string_view kGraphInputNodeId = "graph:input";
 constexpr std::string_view kGraphOutputNodeId = "graph:output";
@@ -638,7 +637,7 @@ std::unique_ptr<UapmdProjectPluginGraphData> createProjectGraphDataForProvider(
     return graphData;
 }
 
-} // namespace
+namespace uapmd {
 
 std::unique_ptr<UapmdProjectPluginGraphData> createSerializedProjectGraph(
     const AudioGraphProvider& provider,

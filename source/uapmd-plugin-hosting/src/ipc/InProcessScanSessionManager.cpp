@@ -5,7 +5,7 @@
 #include "InProcessScanSessionManager.hpp"
 #include "../../include/uapmd-plugin-hosting/detail/scanner/PluginScanTool.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 void InProcessScanSessionManager::runScan(PluginScanTool& tool,
                                           const SlowScanCatalog& catalogPlan,
@@ -68,4 +68,4 @@ void InProcessScanSessionManager::runScan(PluginScanTool& tool,
     std::filesystem::current_path(savedCwd);
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

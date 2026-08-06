@@ -1,6 +1,6 @@
 #include "../../include/uapmd-plugin-hosting/detail/scanner/PluginFormatManager.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 PluginFormatManager::PluginFormatManager() {
 #if ANDROID
@@ -45,4 +45,4 @@ void PluginFormatManager::addFormat(remidy::PluginFormat* format) {
         formats_.push_back(format);
 }
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

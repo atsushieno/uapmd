@@ -33,7 +33,7 @@ namespace uapmd {
         AudioGraphExtension* getExtension(const std::type_info& type) override;
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
 
-        uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
+        uapmd_status_t appendNodeSimple(int32_t instanceId, uapmd_plugin_hosting::AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
         uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
         bool removeNodeSimple(int32_t instanceId) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
@@ -227,7 +227,7 @@ namespace uapmd {
         return outputTailLengthInSeconds(0);
     }
 
-    uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
+    uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, uapmd_plugin_hosting::AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
         auto newNode = std::make_shared<AudioPluginNodeImpl>(instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete));
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         auto insertPos = std::find_if(access->begin(), access->end(), [](const auto& node) {

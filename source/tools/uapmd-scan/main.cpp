@@ -71,7 +71,7 @@ CommandLineOptions parseOptions(int argc, char** argv) {
 }
 
 int runScanner(int argc, char** argv) {
-    remidy_tooling::RemotePluginScannerProcess remoteScanner(argc, argv);
+    uapmd_plugin_hosting::RemotePluginScannerProcess remoteScanner(argc, argv);
     if (remoteScanner.matches())
         return remoteScanner.process();
 
@@ -86,13 +86,13 @@ int runScanner(int argc, char** argv) {
         return EXIT_SUCCESS;
     }
 
-    remidy_tooling::ScanOnlyOptions options{};
+    uapmd_plugin_hosting::ScanOnlyOptions options{};
     options.forceRescan = true;
     options.fullVerification = true;
     options.useRemoteScanner = true;
     options.bundleTimeoutSeconds = cli.timeoutSeconds;
 
-    return remidy_tooling::runScanOnlyMode(options);
+    return uapmd_plugin_hosting::runScanOnlyMode(options);
 }
 
 }

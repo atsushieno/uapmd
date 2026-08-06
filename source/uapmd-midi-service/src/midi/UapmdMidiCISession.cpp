@@ -11,6 +11,8 @@
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 #include "UapmdMidiCISession.hpp"
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd {
     namespace {
         class UapmdMidiCISessionImpl : public UapmdMidiCISession {
@@ -72,7 +74,7 @@ namespace uapmd {
 
     void setupParameterList(std::string controlType,
                             std::vector<commonproperties::MidiCIControl>& allCtrlList,
-                            std::vector<uapmd::ParameterMetadata>& parameterList,
+                            std::vector<ParameterMetadata>& parameterList,
                             MidiCIDevice& ciDevice) {
         for (auto& p : parameterList) {
             if (p.hidden || !p.automatable)
@@ -177,7 +179,7 @@ namespace uapmd {
 
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
-        std::vector<uapmd::PresetsMetadata> presetsList = instance->presetMetadataList();
+        std::vector<PresetsMetadata> presetsList = instance->presetMetadataList();
         std::vector<commonproperties::MidiCIProgram> programList{};
         programList.reserve(presetsList.size());
         for (auto& p : presetsList) {
@@ -204,7 +206,7 @@ namespace uapmd {
                 if (instance) {
                     auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
                     auto stateFuture = statePromise->get_future();
-                    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                    instance->requestState(StateContextType::Project, false, nullptr,
                                            [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
                                                statePromise->set_value({std::move(state), std::move(error)});
                                            });
@@ -229,7 +231,7 @@ namespace uapmd {
                 if (instance) {
                     auto loadPromise = std::make_shared<std::promise<std::string>>();
                     auto loadFuture = loadPromise->get_future();
-                    instance->loadState(std::vector<uint8_t>(body), uapmd::StateContextType::Project, false, nullptr,
+                    instance->loadState(std::vector<uint8_t>(body), StateContextType::Project, false, nullptr,
                                         [loadPromise](std::string error, void* callbackContext) {
                                             loadPromise->set_value(std::move(error));
                                         });

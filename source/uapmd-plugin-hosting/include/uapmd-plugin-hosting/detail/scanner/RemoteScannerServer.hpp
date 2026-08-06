@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 struct RemoteScannerServerOptions {
     std::string host;

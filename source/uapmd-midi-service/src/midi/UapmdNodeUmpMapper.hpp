@@ -6,15 +6,17 @@
 #include "uapmd-midi-service/detail/midi/UapmdUmpMapper.hpp"
 #include "uapmd-plugin-hosting/detail/plugin-api/AudioPluginInstanceAPI.hpp"
 
+using namespace uapmd_plugin_hosting;
+
 namespace uapmd {
     class UapmdNodeUmpInputMapper :
         public UapmdUmpInputMapper,
         public remidy::UmpInputDispatcher {
-        AudioPluginInstanceAPI* plugin;
+        uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin;
         moodycamel::ReaderWriterQueue<uint32_t> preset_load_queue_{4};
 
     public:
-        explicit UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin);
+        explicit UapmdNodeUmpInputMapper(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
 
         void process(remidy::AudioProcessContext& src) override;
 

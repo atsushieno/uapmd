@@ -19,7 +19,7 @@ public:
     using PluginStateFileCallback = std::function<void(
         int32_t instanceId,
         size_t pluginOrder,
-        AudioPluginInstanceAPI* instance,
+        uapmd_plugin_hosting::AudioPluginInstanceAPI* instance,
         const std::function<void(const std::string& relativePath)>& setStateFile)>;
     virtual const std::string& id() const = 0;
     virtual const std::string& label() const = 0;
@@ -48,7 +48,7 @@ std::unique_ptr<UapmdProjectPluginGraphData> createSerializedProjectGraph(
     const AudioGraphProvider& provider,
     const std::vector<int32_t>& orderedInstanceIds,
     AudioPluginGraph& runtimeGraph,
-    const std::function<AudioPluginInstanceAPI*(int32_t instanceId)>& resolveInstance,
+    const std::function<uapmd_plugin_hosting::AudioPluginInstanceAPI*(int32_t instanceId)>& resolveInstance,
     const AudioGraphProvider::PluginStateFileCallback& pluginStateFileCallback = {});
 std::unique_ptr<UapmdProjectPluginGraphData> loadSerializedProjectGraph(
     const AudioGraphProvider& provider,

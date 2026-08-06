@@ -10,7 +10,7 @@
 
 #include "remidy/remidy.hpp"
 
-namespace remidy_tooling {
+namespace uapmd_plugin_hosting {
 
 class PluginFormatManager {
     std::vector<std::string> vst3SearchPaths_{};
@@ -42,4 +42,4 @@ public:
     void addFormat(remidy::PluginFormat* format);
 };
 
-} // namespace remidy_tooling
+} // namespace uapmd_plugin_hosting

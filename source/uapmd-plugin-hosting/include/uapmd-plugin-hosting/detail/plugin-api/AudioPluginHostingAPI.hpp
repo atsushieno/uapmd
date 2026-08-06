@@ -3,7 +3,7 @@
 #include <functional>
 #include "../plugin-api/AudioPluginInstanceAPI.hpp"
 
-namespace uapmd {
+namespace uapmd_plugin_hosting {
     // a Plugin hosting API Abstraction Layer.
     class AudioPluginHostingAPI {
     public:

@@ -131,7 +131,7 @@ namespace uapmd {
         //  and define some system global constant somewhere in the core.
         size_t ump_buffer_size_in_bytes_;
         RealtimeSequencer sequencer_;
-        std::unique_ptr<remidy_tooling::PluginScanTool> pluginScanTool_;
+        std::unique_ptr<uapmd_plugin_hosting::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
 #ifdef UAPMD_HAS_ARA
         std::unique_ptr<ara::AraSupport> araSupport_;
@@ -195,8 +195,8 @@ namespace uapmd {
         RealtimeSequencer& sequencer() { return sequencer_; }
         std::vector<MidiPortInfo> getMidiInputPorts() const;
         std::vector<MidiPortInfo> getMidiOutputPorts() const;
-        remidy_tooling::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }
-        const remidy_tooling::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
+        uapmd_plugin_hosting::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }
+        const uapmd_plugin_hosting::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
         IDocumentProvider* documentProvider();
         bool isScanning() const { return isScanning_; }
@@ -339,7 +339,7 @@ namespace uapmd {
                                    double remoteTimeoutSeconds = 0.0,
                                    bool requireFastScanning = false);
         SlowScanProgressState slowScanProgress() const;
-        std::vector<remidy_tooling::BlocklistEntry> pluginBlocklist() const;
+        std::vector<uapmd_plugin_hosting::BlocklistEntry> pluginBlocklist() const;
         bool unblockPluginFromBlocklist(const std::string& entryId);
         void clearPluginBlocklist();
         std::string lastPluginScanError() const;
