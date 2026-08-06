@@ -3,22 +3,26 @@
 ![UAPMD v0.5.2 example screenshot](docs/images/uapmd-app-v0.5.2-sshot.png)
 ![UAPMD v0.4 example screenshot](docs/images/uapmd-app-v0.4-sshot.png)
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) is a cross-platform, multi-track audio plugin host sequencer that exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is a music sequencer engine with the following features and characteristics:
+
+- MIT-licensed, with some exceptional opt-in features (e.g. ARA support module, under the Apache V2 license).
+- cross-platform.
+- builds upon its own audio plugin hosting foundation.
+- builds upon its own MIDI 2.0 UMP and MIDI-CI processing library from scratch, including Flex Data, Mixed Data Set, as well as Process Inquiry. No other MIDI 2.0 library provides such complete feature sets.
+- import SMF (either as a clip or split into tracks), MIDI 2.0 clips, audio recording (either as a clip or split into tracks using demucs.cpp)
+- save and load user projects, based on audio and MIDI2 clips (to fully control audio plugins), organized into multiple tracks.
+- audio warps i.e. time-stretched audio clips.
+- provides full access to the sequencer engine using JavaScript and MCP server.
+- implements various DAW engine features including fast plugin scanning without loading plugins, remote process plugin scanner, DAG, latency compensation, track freezing, and offline renderer.
+- highly modularized: you can just take plugin hosting abstraction layer, virtual MIDI device hosting, project data format, sequencer engine, or up to the actual application layer.
+
+UAPMD can expose audio plugins' control points as platform virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
 - play MIDI 2.0 instruments with 32-bit precision; use Assignable Controllers (NRPNs) to change plugin parameters in 32-bit values (velocity in 16-bit).
 - retrieve parameter list as Assignable Controllers and presets as Program List, as long as they are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
 - save and load the plugin's binary state (`.vstpreset` etc.), just like how you use them in a DAW.
 
 We also develop [midicci](https://github.com/atsushieno/midicci), an fully featured MIDI 2.0 software keyboard that leverages the full potential of this project.
-
-`uapmd-app`, our proof-of-concept sequencer application, and its engine `uapmd-engine`, is currently capable of:
-
-- managing a master track and multiple tracks, where
-- each track has a linear list of audio plugins, and
-- contains audio clips and MIDI clips together
-- importing SMF into multiple tracks
-- importing audio file into multiple tracks using STEM separator (Demucs so far)
-- save and load them as a project
 
 UAPMD targets the following platforms:
 
@@ -32,8 +36,6 @@ UAPMD targets the following platforms:
 | Web (Emscripten) | [WebCLAP](https://github.com/WebCLAP) | |
 
 Note that there are handful of experimental formats.
-
-UAPMD is based on its own plugin hosting foundation `remidy`, and released under the MIT license (except for Android which brings in a lot of ApacheV2-licensed libraries). `uapmd-app` is built strictly on the libraries with liberal licenses.
 
 ## Build + Install
 
