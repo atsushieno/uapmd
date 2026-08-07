@@ -78,6 +78,38 @@ bool renderIconButtonWithTooltip(const char* label, const char* tooltip) {
     return contextActionButton(label, ImVec2(0.0f, 0.0f), tooltip);
 }
 
+bool renderRotatingIconButton(
+    const char* id,
+    const char* icon,
+    const ImVec2& size,
+    float radians,
+    const char* tooltip) {
+    const bool clicked = contextActionButton(id, size, tooltip);
+    const ImVec2 buttonMin = ImGui::GetItemRectMin();
+    const ImVec2 buttonMax = ImGui::GetItemRectMax();
+    const ImVec2 iconSize = ImGui::CalcTextSize(icon);
+    const ImVec2 iconPos(
+        (buttonMin.x + buttonMax.x - iconSize.x) * 0.5f,
+        (buttonMin.y + buttonMax.y - iconSize.y) * 0.5f);
+    auto* drawList = ImGui::GetWindowDrawList();
+    const int vertexStart = drawList->VtxBuffer.Size;
+    drawList->AddText(iconPos, ImGui::GetColorU32(ImGuiCol_Text), icon);
+
+    const ImVec2 pivot(
+        (buttonMin.x + buttonMax.x) * 0.5f,
+        (buttonMin.y + buttonMax.y) * 0.5f);
+    const float cosAngle = std::cos(radians);
+    const float sinAngle = std::sin(radians);
+    for (int vertexIndex = vertexStart; vertexIndex < drawList->VtxBuffer.Size; ++vertexIndex) {
+        auto& vertex = drawList->VtxBuffer[vertexIndex];
+        const ImVec2 offset(vertex.pos.x - pivot.x, vertex.pos.y - pivot.y);
+        vertex.pos = ImVec2(
+            pivot.x + offset.x * cosAngle - offset.y * sinAngle,
+            pivot.y + offset.x * sinAngle + offset.y * cosAngle);
+    }
+    return clicked;
+}
+
 float linearGainToSliderDb(double gain) {
     if (gain <= 0.0)
         return kTrackGainUiMinDb;
@@ -791,33 +823,24 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
-    // Row 1: Clips + Graph + Slider(1.5 slots) + Mute + Solo = 5.5 icon
-    // slots, 4 gaps, and left/right padding. Bypass is in the more menu.
+    // The shared legend width is the exact width of a regular track's first
+    // row. Master-specific controls must not widen the whole timeline.
     const float pad = 4.0f * uiScale;
     const float framePadX = ImGui::GetStyle().FramePadding.x;
     const float gap = ImGui::GetStyle().ItemSpacing.x;
+    const float clipsButtonWidth = ImGui::CalcTextSize(icons::Clips).x + framePadX * 2.0f;
+    const float graphButtonWidth = ImGui::CalcTextSize(icons::Graph).x + framePadX * 2.0f;
+    const float muteButtonWidth = ImGui::CalcTextSize("M").x + framePadX * 2.0f;
+    const float soloButtonWidth = ImGui::CalcTextSize("S").x + framePadX * 2.0f;
     const float iconBtnW = std::max({
         ImGui::CalcTextSize(icons::Clips).x,
         ImGui::CalcTextSize(icons::Graph).x,
         ImGui::CalcTextSize(icons::ToggleOn).x,
         ImGui::CalcTextSize(icons::DeleteTrack).x,
     }) + framePadX * 2.0f;
-    const float row1W = pad + 5.5f * iconBtnW + 4.0f * gap + pad;
-    // Row 2 must fit the master label, or the regular label plus its delete button.
-    const std::string masterPluginLabel = std::format("{} Add Master Plugin", icons::ContextMenu);
-    const std::string trackPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
-    const float masterPluginWidth = ImGui::CalcTextSize(masterPluginLabel.c_str()).x + framePadX * 2.0f;
-    const float trackPluginWidth = ImGui::CalcTextSize(trackPluginLabel.c_str()).x + framePadX * 2.0f;
-    const float masterRow2W = pad + masterPluginWidth + pad;
-    const auto freezeBusyLabel = std::format("{} Busy", icons::Freeze);
-    const auto freezeOffLabel = std::format("{} Off", icons::Freeze);
-    const float freezePolicyWidth =
-        std::max(
-            ImGui::CalcTextSize(freezeBusyLabel.c_str()).x,
-            ImGui::CalcTextSize(freezeOffLabel.c_str()).x) +
-        framePadX * 2.0f;
-    const float trackRow2W = pad + freezePolicyWidth + 2.0f * gap + trackPluginWidth + gap + iconBtnW + pad;
-    const float legendWidth = std::max({row1W, masterRow2W, trackRow2W});
+    const float legendWidth =
+        pad + clipsButtonWidth + gap + graphButtonWidth + gap + iconBtnW * 1.5f +
+        gap + muteButtonWidth + gap + soloButtonWidth + pad;
 
     return SequenceEditor::RenderContext{
         .refreshClips = [this](int32_t trackIndex) {
@@ -1493,23 +1516,27 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 ImGui::PopStyleColor(3);
         }
     }
-    // Row 2: Freeze switch + Plugin context button + More menu on the right
+    const bool isRegularTrack = track && trackIndex != uapmd::kMasterTrackIndex;
+    const float regularTrackRow1Width = isRegularTrack
+        ? ImGui::GetItemRectMax().x - (legendArea.Min.x + pad)
+        : 0.0f;
+    // Row 2: Freeze switch + Plugin context button + More menu on the right.
+    // Regular tracks use the same span as the mixer controls above. The master
+    // track keeps its full legend width for its longer plugin label.
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
-    const float buttonWidth = legendWidth - pad * 2;
+    const float fullButtonWidth = legendWidth - pad * 2;
     float miscButtonWidth = 0.0f;
     if (track && trackIndex != uapmd::kMasterTrackIndex)
         miscButtonWidth = ImGui::CalcTextSize(icons::ContextMenu).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const auto freezeBusyLabel = std::format("{} Busy", icons::Freeze);
-    const auto freezeOffLabel = std::format("{} Off", icons::Freeze);
     const float freezePolicyButtonWidth =
-        std::max(
-            ImGui::CalcTextSize(freezeBusyLabel.c_str()).x,
-            ImGui::CalcTextSize(freezeOffLabel.c_str()).x) +
-        ImGui::GetStyle().FramePadding.x * 2.0f;
-    const float freezePolicyWidth = track && trackIndex != uapmd::kMasterTrackIndex
+        ImGui::CalcTextSize(icons::Freeze).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float freezePolicyWidth = isRegularTrack
         ? freezePolicyButtonWidth
         : 0.0f;
+    const float buttonWidth = isRegularTrack
+        ? std::min(fullButtonWidth, regularTrackRow1Width)
+        : fullButtonWidth;
     const float pluginButtonWidth = std::max(
         0.0f,
         buttonWidth - freezePolicyWidth - miscButtonWidth -
@@ -1521,15 +1548,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         const auto currentPolicy = frozenTrackManager.freezePolicyForTrack(trackIndex);
         const auto runtimeState =
             frozenTrackManager.runtimeStateForTrack(trackIndex);
-        const char* policyLabel =
-            runtimeState ==
-                uapmd::FrozenTrackManager::RuntimeState::Rendering
-            ? "Busy"
-            : currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
-            ? "On"
-            : "Off";
-        const auto freezePolicyLabel =
-            std::format("{} {}", icons::Freeze, policyLabel);
+        const bool queued =
+            currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On &&
+            runtimeState == uapmd::FrozenTrackManager::RuntimeState::Live;
         std::string policyTooltip =
             currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
             ? "Track freezing: On (click to unfreeze)"
@@ -1544,16 +1565,40 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 policyTooltip = "Track freezing failed";
             policyTooltip += " (click to turn off)";
         }
+        else if (queued)
+            policyTooltip = "Track freezing: queued (click to cancel)";
         const auto nextPolicy =
             runtimeState ==
                     uapmd::FrozenTrackManager::RuntimeState::Rendering ||
                 currentPolicy == uapmd::FrozenTrackManager::FreezePolicy::On
             ? uapmd::FrozenTrackManager::FreezePolicy::Off
             : uapmd::FrozenTrackManager::FreezePolicy::On;
-        if (contextActionButton(
-                std::format("{}##LegFreeze{}", freezePolicyLabel, trackIndex).c_str(),
-            ImVec2(freezePolicyButtonWidth, 0.0f),
-                policyTooltip.c_str()) &&
+        const bool rendering = runtimeState == uapmd::FrozenTrackManager::RuntimeState::Rendering;
+        const bool frozen = runtimeState == uapmd::FrozenTrackManager::RuntimeState::Frozen;
+        if (frozen) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.61f, 0.76f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.32f, 0.70f, 0.85f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.17f, 0.47f, 0.61f, 1.0f));
+        }
+        else if (queued) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.82f, 0.52f, 0.08f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.96f, 0.66f, 0.12f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.64f, 0.37f, 0.04f, 1.0f));
+        }
+        const bool freezeClicked = rendering
+            ? renderRotatingIconButton(
+                std::format("##LegFreeze{}", trackIndex).c_str(),
+                icons::Spinner,
+                ImVec2(freezePolicyButtonWidth, 0.0f),
+                static_cast<float>(ImGui::GetTime() * 8.0),
+                policyTooltip.c_str())
+            : contextActionButton(
+                std::format("{}##LegFreeze{}", icons::Freeze, trackIndex).c_str(),
+                ImVec2(freezePolicyButtonWidth, 0.0f),
+                policyTooltip.c_str());
+        if (frozen || queued)
+            ImGui::PopStyleColor(3);
+        if (freezeClicked &&
             frozenTrackManager.setFreezePolicyForTrack(trackIndex, nextPolicy))
             appModel.markProjectDirty();
         ImGui::SameLine();
