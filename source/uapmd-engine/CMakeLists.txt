@@ -23,7 +23,7 @@ CPMAddPackage(
         NAME           libremidi
         GIT_REPOSITORY https://github.com/celtera/libremidi
         GIT_TAG        1c1c7ce
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
 )
 
 if(EMSCRIPTEN AND TARGET libremidi)
