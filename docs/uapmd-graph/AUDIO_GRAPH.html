@@ -19,9 +19,9 @@
 
     <main class="panel documentation">
 <h1 id="audio-graph-abstraction">Audio Graph abstraction</h1>
-<p><code>AudioPluginGraph</code> is designed to customizable enough to
-allow external implementation while being decoupled from other UAPMD
-components.</p>
+<p><code>AudioPluginGraph</code> implements the actual audio node
+connections. It is designed to be customizable enough to allow external
+implementation while being decoupled from other UAPMD components.</p>
 <p>Currently there are two graph implementations:</p>
 <ul>
 <li>simple linear graph</li>
@@ -30,7 +30,8 @@ components.</p>
 <p><code>AudioPluginGraph</code> implementation classes must provide
 realtime-safe <code>processAudio()</code> implementation that might be
 in an isolated process such as Web <code>AudioWorklet</code> or AUv3
-audio processor.</p>
+audio processor. Modifying its node connections must not affect realtime
+safety either.</p>
 <p>uapmd-graph also features <code>AudioGraph</code> and
 <code>AudioGraphNode</code> interfaces, that provide
 implementation-agnostic ways to process custom audio nodes such as gain

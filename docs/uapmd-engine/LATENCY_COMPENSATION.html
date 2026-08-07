@@ -69,6 +69,52 @@ monitoring policy</li>
 <li>graph APIs summarize graph-local timing</li>
 <li>the sequencer decides transport behavior</li>
 </ul>
+<h2 id="engine-processing-extension-boundary">Engine processing
+extension boundary</h2>
+<p><code>LatencyCompensationManagerImpl</code> is attached to
+<code>SequencerEngine</code> through two generic extension points
+instead of being called directly from the engine's track-processing and
+lifecycle code:</p>
+<ul>
+<li><code>AudioProcessingEventHandler</code>
+<ul>
+<li>runs on the audio thread around each track's normal processing;</li>
+<li>receives a <code>TrackAudioProcessingEvent</code> containing the
+track index, track, mutable process context, and block frame count;</li>
+<li>provides <code>beforeTrackProcess()</code> for input-side processing
+and <code>afterTrackProcess()</code> for output-side processing.</li>
+</ul></li>
+<li><code>SequencerProcessingLifecycleListener</code>
+<ul>
+<li>runs outside the audio callback;</li>
+<li>receives track, plugin-graph, timing, transport, and
+processing-reset notifications used to build, resize, reset, or
+otherwise maintain the state consumed by the realtime handler.</li>
+</ul></li>
+</ul>
+<p>The per-track order is:</p>
+<ol type="1">
+<li>the pump fills the track input context;</li>
+<li><code>beforeTrackProcess()</code> handlers run;</li>
+<li>a <code>TrackAudioProcessorExtension</code> may substitute normal
+graph processing (this is how frozen-track playback works), otherwise
+the normal graph runs;</li>
+<li><code>afterTrackProcess()</code> handlers run;</li>
+<li>the resulting outputs are published or routed to the master/main mix
+path.</li>
+</ol>
+<p>Latency compensation currently uses only
+<code>afterTrackProcess()</code>: its output alignment delay is
+therefore applied consistently to both live graph output and
+frozen-track output, before either is mixed. The input-side hook exists
+for future compensation work and must not be used to perform
+non-realtime state changes.</p>
+<p>Audio processing handlers must not allocate, lock, perform I/O, or
+mutate graph or engine structure. Handler registration uses an
+atomically published immutable handler list, so registration changes do
+not modify a list being walked by the audio thread. Any lifecycle
+notification that changes storage used by the realtime handler must be
+emitted only while that storage is excluded from the audio callback.</p>
 <h2 id="timing-primitives">Timing primitives</h2>
 <h3 id="plugin-layer">Plugin layer</h3>
 <p>The plugin layer exposes:</p>
@@ -203,8 +249,10 @@ destination.</p>
 <li>preallocated delay lines outside the audio-thread hot path</li>
 <li>per-track and per-bus inspection APIs</li>
 </ul>
-<p>The holdback is applied before track outputs are mixed into master or
-main mix.</p>
+<p>The holdback is applied by the manager's
+<code>afterTrackProcess()</code> handler, after either normal or frozen
+track processing and before track outputs are published or mixed into
+master or main mix.</p>
 <p>This is currently implemented with the routing model that exists
 today:</p>
 <ul>
@@ -445,9 +493,10 @@ accidentally depend on debug transport behavior.</p>
 ownership</h3>
 <p>Track-routing interpretation lives in the routing manager. Latency
 policy state lives in the latency-compensation manager. Sequencer
-transport uses both, but the newer design direction is to keep policy
-and routing details out of <code>SequencerEngine</code> as much as
-practical.</p>
+transport uses both, but communicates compensation-relevant changes
+through <code>SequencerProcessingLifecycleListener</code> notifications.
+<code>SequencerEngine</code> does not invoke latency-manager-specific
+processing, output-alignment, or transport methods directly.</p>
 <h3 id="shared-stop-drain-computation">Shared stop-drain
 computation</h3>
 <p>Realtime and offline drain now use one shared internal stop-drain

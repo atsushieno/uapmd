@@ -51,13 +51,15 @@ that the picker uses.</p>
 <p>Relevant implementation:</p>
 <ul>
 <li>JS binding:
-<code>source/tools/uapmd-app/UapmdJSRuntime.cpp</code></li>
+<code>source/tools/uapmd-app-model/src/UapmdJSRuntime.cpp</code></li>
 <li>JS API surface:
-<code>source/tools/uapmd-app/scripts/uapmd-api.js</code></li>
-<li>app loader: <code>source/tools/uapmd-app/AppModel.cpp</code></li>
+<code>source/tools/uapmd-app-model/scripts/uapmd-api.js</code></li>
+<li>app loader:
+<code>source/tools/uapmd-app-model/src/AppModel.cpp</code></li>
 <li>Android token persistence:
 <code>source/uapmd-file/src/DocumentProviderAndroid.cpp</code></li>
-<li>MCP tool: <code>source/tools/uapmd-app/mcp/McpServer.cpp</code></li>
+<li>MCP tool:
+<code>source/tools/uapmd-app-model/src/McpServer.cpp</code></li>
 </ul>
 <p>Today, Android <code>persistHandle()</code> simply serializes the URI
 string itself. In practice, the “token” is the
