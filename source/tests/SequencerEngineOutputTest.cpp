@@ -1,10 +1,14 @@
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <numbers>
+#include <queue>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -18,6 +22,58 @@ using namespace uapmd_graph;
 namespace fs = std::filesystem;
 
 namespace {
+
+class TestEventLoop final : public remidy::EventLoop {
+protected:
+    void initializeOnUIThreadImpl() override {}
+
+    bool runningOnMainThreadImpl() override {
+        return std::this_thread::get_id() == main_thread_id_;
+    }
+
+    void enqueueTaskOnMainThreadImpl(std::function<void()>&& task) override {
+        std::lock_guard lock(mutex_);
+        tasks_.push(std::move(task));
+    }
+
+    void startImpl() override {}
+    void stopImpl() override {}
+
+    void processQueuedTasksImpl() override {
+        std::queue<std::function<void()>> tasks;
+        {
+            std::lock_guard lock(mutex_);
+            std::swap(tasks, tasks_);
+        }
+        while (!tasks.empty()) {
+            auto task = std::move(tasks.front());
+            tasks.pop();
+            task();
+        }
+    }
+
+private:
+    std::thread::id main_thread_id_{std::this_thread::get_id()};
+    std::mutex mutex_;
+    std::queue<std::function<void()>> tasks_;
+};
+
+class ScopedTestEventLoop final {
+public:
+    ScopedTestEventLoop() {
+        remidy::EventLoop::initializeOnUIThread();
+        previous_ = remidy::getEventLoop();
+        remidy::setEventLoop(&event_loop_);
+    }
+
+    ~ScopedTestEventLoop() {
+        remidy::setEventLoop(previous_);
+    }
+
+private:
+    remidy::EventLoop* previous_;
+    TestEventLoop event_loop_;
+};
 
 struct RenderedAudio {
     choc::audio::AudioFileProperties properties{};
@@ -225,8 +281,15 @@ protected:
 TEST_F(
     SequencerEngineOutputTest,
     FreezePolicyCanChangeDuringPlaybackWithoutStartingRender) {
-    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    constexpr uint32_t umpBufferSize = 65536;
+
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::create(
+        sampleRate, bufferSize, umpBufferSize);
     ASSERT_NE(engine, nullptr);
+    engine->setEngineActive(true);
     const auto trackIndex = engine->addEmptyTrack();
     ASSERT_GE(trackIndex, 0);
 
@@ -256,6 +319,25 @@ TEST_F(
         manager.runtimeStateForTrack(trackIndex),
         uapmd::FrozenTrackManager::RuntimeState::Live);
     engine->stopPlayback();
+
+    remidy::AudioProcessContext process(
+        engine->data().masterContext(), umpBufferSize);
+    process.configureMainBus(2, 2, bufferSize);
+    process.frameCount(bufferSize);
+    constexpr auto kSilenceBlocks = sampleRate / 4 / bufferSize + 1;
+    for (int block = 0; block < kSilenceBlocks; ++block)
+        engine->processAudio(process);
+
+    // The quiet notification crosses the tail-manager dispatch thread before
+    // it is posted to the main event loop, where it begins the deferred render.
+    for (int attempt = 0;
+         attempt < 100 &&
+         manager.runtimeStateForTrack(trackIndex) !=
+             uapmd::FrozenTrackManager::RuntimeState::Rendering;
+         ++attempt) {
+        remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     EXPECT_EQ(
         manager.runtimeStateForTrack(trackIndex),
         uapmd::FrozenTrackManager::RuntimeState::Rendering);

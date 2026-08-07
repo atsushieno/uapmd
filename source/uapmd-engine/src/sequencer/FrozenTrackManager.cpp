@@ -338,6 +338,12 @@ void FrozenTrackManager::transportPlaybackStarted() {
 
 void FrozenTrackManager::transportPlaybackStopped() {
     playback_active_.store(false, std::memory_order_release);
+    // Play/Resume may have been deferred while an active render restores the
+    // plugin instances. Stop/Pause revokes that deferred user request: once
+    // the renderer completes, it may resume queued freezing work, but must
+    // never change the transport state itself.
+    std::lock_guard lock(mutex_);
+    pending_playback_start_ = {};
 }
 
 void FrozenTrackManager::transportBecameQuiet() {
