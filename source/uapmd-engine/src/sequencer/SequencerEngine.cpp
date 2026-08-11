@@ -283,6 +283,10 @@ namespace uapmd {
         std::unique_ptr<FrozenTrackManager> frozen_track_manager_;
 
     public:
+        void registerAddinExtensionPoints(uapmd_addin::AddinManager& manager) override {
+            manager.registerExtensionPoint("/uapmd/engine/v1", this);
+        }
+
         explicit SequencerEngineImpl(
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,

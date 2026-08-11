@@ -4,13 +4,15 @@
 #include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include <uapmd-ara/uapmd-ara.hpp>
 
+using namespace uapmd_addin;
+
 namespace {
 
 class AraAddin final
-    : public uapmd::Addin
+    : public Addin
     , public uapmd::PluginInstanceLifecycleListener {
 public:
-    uapmd::AddinIdentity identity() const noexcept override {
+    AddinIdentity identity() const noexcept override {
         return {"/uapmd/ara", "support"};
     }
 
@@ -22,7 +24,7 @@ public:
         return "/uapmd/engine/plugin-instance-lifecycle/v1";
     }
 
-    bool initialize(uapmd::AddinHost& host) noexcept override {
+    bool initialize(AddinHost& host) noexcept override {
         auto* engine = static_cast<uapmd::SequencerEngine*>(
             host.extensionPoint("/uapmd/engine/v1"));
         if (!engine)
@@ -45,7 +47,7 @@ public:
         }
     }
 
-    void cleanup(uapmd::AddinHost&) noexcept override {
+    void cleanup(AddinHost&) noexcept override {
         if (engine_)
             engine_->removePluginInstanceLifecycleListener(*this);
         if (support_) {
@@ -77,7 +79,7 @@ private:
     std::set<int32_t> attached_instances_;
 };
 
-class AraAddinEntry final : public uapmd::AddinEntry {
+class AraAddinEntry final : public AddinEntry {
 public:
     AraAddinEntry() {
         addins_[0] = &addin_;
@@ -87,13 +89,13 @@ public:
         return "/uapmd/ara";
     }
 
-    std::span<uapmd::Addin* const> addins() noexcept override {
+    std::span<Addin* const> addins() noexcept override {
         return addins_;
     }
 
 private:
     AraAddin addin_;
-    std::array<uapmd::Addin*, 1> addins_{};
+    std::array<Addin*, 1> addins_{};
 };
 
 AraAddinEntry araAddinEntry;
@@ -101,7 +103,7 @@ AraAddinEntry araAddinEntry;
 class AraBuiltinAddinRegistration final {
 public:
     AraBuiltinAddinRegistration() {
-        uapmd::registerBuiltinAddin(araAddinEntry);
+        registerBuiltinAddin(araAddinEntry);
     }
 };
 

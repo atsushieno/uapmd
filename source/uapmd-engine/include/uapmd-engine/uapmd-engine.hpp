@@ -20,4 +20,3 @@
 #include "detail/sequencer/TimelineFacade.hpp"
 #include "detail/sequencer/SequencerEngine.hpp"
 #include "detail/sequencer/RealtimeSequencer.hpp"
-#include "detail/addins/AddinManager.hpp"

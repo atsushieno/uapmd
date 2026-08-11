@@ -6,7 +6,7 @@ namespace uapmd_app_gui {
 
 class AddinManagerWindow {
 public:
-    explicit AddinManagerWindow(uapmd::AddinManager& runtime);
+    explicit AddinManagerWindow(uapmd_addin::AddinManager& runtime);
 
     void show();
     void hide();
@@ -14,7 +14,7 @@ public:
     void render(float uiScale);
 
 private:
-    uapmd::AddinManager& runtime_;
+    uapmd_addin::AddinManager& runtime_;
     bool open_ = false;
 };
 

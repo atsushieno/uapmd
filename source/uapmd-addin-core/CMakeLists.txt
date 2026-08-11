@@ -1,5 +1,5 @@
 add_library(uapmd-addin-core STATIC
-        src/Addin.cpp
+        src/AddinManager.cpp
 )
 
 set_target_properties(uapmd-addin-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -9,6 +9,19 @@ target_include_directories(uapmd-addin-core PUBLIC
 )
 
 target_compile_features(uapmd-addin-core PUBLIC cxx_std_23)
+
+if(UAPMD_ENABLE_CPPLOCATE)
+    target_include_directories(uapmd-addin-core PRIVATE
+            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/liblocate/include
+    )
+    target_link_libraries(uapmd-addin-core PRIVATE ${cpplocate_LIBRARIES})
+    target_compile_definitions(uapmd-addin-core PRIVATE UAPMD_HAS_CPPLOCATE=1)
+endif()
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(uapmd-addin-core PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 add_library(uapmd::uapmd-addin-core ALIAS uapmd-addin-core)
 

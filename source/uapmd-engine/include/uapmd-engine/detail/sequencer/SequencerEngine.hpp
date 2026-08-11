@@ -8,6 +8,7 @@
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
+#include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include "TrackAudioProcessorExtension.hpp"
 #include "AudioProcessingEventHandler.hpp"
 #include "SequencerProcessingLifecycleListener.hpp"
@@ -38,6 +39,8 @@ namespace uapmd {
 
     public:
         virtual ~SequencerEngine() = default;
+
+        virtual void registerAddinExtensionPoints(uapmd_addin::AddinManager& manager) = 0;
 
         virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
 

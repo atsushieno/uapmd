@@ -4,7 +4,7 @@
 
 namespace uapmd_app_gui {
 
-AddinManagerWindow::AddinManagerWindow(uapmd::AddinManager& runtime)
+AddinManagerWindow::AddinManagerWindow(uapmd_addin::AddinManager& runtime)
     : runtime_(runtime) {}
 
 void AddinManagerWindow::show() {
@@ -29,7 +29,7 @@ void AddinManagerWindow::render(float uiScale) {
         return;
     }
 
-    if (!uapmd::AddinManager::supportsDynamicLoading()) {
+    if (!uapmd_addin::AddinManager::supportsDynamicLoading()) {
         ImGui::TextWrapped("This WebAssembly build uses compiled-in addins. Changes to enabled addins take effect when the application restarts.");
         ImGui::Separator();
     } else {
@@ -64,7 +64,7 @@ void AddinManagerWindow::render(float uiScale) {
             ImGui::PushID((addin.package_id + "/" + addin.addin_id).c_str());
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            bool enabled = addin.state == uapmd::AddinState::Active;
+            bool enabled = addin.state == uapmd_addin::AddinState::Active;
             if (ImGui::Checkbox("##enabled", &enabled))
                 runtime_.setEnabled(addin.package_id, addin.addin_id, enabled);
             ImGui::TableSetColumnIndex(1);
@@ -74,7 +74,7 @@ void AddinManagerWindow::render(float uiScale) {
             ImGui::TableSetColumnIndex(3);
             ImGui::TextUnformatted(addin.path.c_str());
             ImGui::TableSetColumnIndex(4);
-            ImGui::TextUnformatted(uapmd::addinStateName(addin.state));
+            ImGui::TextUnformatted(uapmd_addin::addinStateName(addin.state));
             ImGui::TableSetColumnIndex(5);
             if (addin.built_in)
                 ImGui::TextUnformatted("Built-in");

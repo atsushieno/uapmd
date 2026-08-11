@@ -1,4 +1,4 @@
-#include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-addin-core/uapmd-addin-core.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -17,22 +17,22 @@
     #include <dlfcn.h>
 #endif
 
-namespace uapmd {
+namespace uapmd_addin {
 namespace {
 
-class EngineAddinHost final : public AddinHost {
+class ManagerAddinHost final : public AddinHost {
 public:
-    explicit EngineAddinHost(SequencerEngine& engine)
-        : engine_(engine) {}
-
     void* extensionPoint(std::string_view path) noexcept override {
-        if (path == "/uapmd/engine/v1")
-            return &engine_;
-        return nullptr;
+        const auto entry = extension_points_.find(std::string(path));
+        return entry == extension_points_.end() ? nullptr : entry->second;
+    }
+
+    void registerExtensionPoint(std::string_view path, void* extensionPoint) {
+        extension_points_[std::string(path)] = extensionPoint;
     }
 
 private:
-    SequencerEngine& engine_;
+    std::map<std::string, void*, std::less<>> extension_points_;
 };
 
 std::string addinKey(std::string_view packageId, std::string_view addinId) {
@@ -130,26 +130,25 @@ void registerBuiltinAddin(AddinEntry& entry) {
 class AddinManager::Impl {
 public:
     struct LoadedAddin {
-        uapmd::Addin* addin = nullptr;
+        Addin* addin = nullptr;
         AddinInfo info;
     };
 
     struct Library {
         std::filesystem::path path;
         void* handle = nullptr;
-        uapmd::AddinEntry* entry = nullptr;
+        AddinEntry* entry = nullptr;
         std::vector<LoadedAddin> addins;
     };
 
-    EngineAddinHost host;
+    ManagerAddinHost host;
     std::vector<std::unique_ptr<Library>> libraries;
     std::vector<AddinInfo> addin_infos;
     std::map<std::string, bool, std::less<>> enabled_settings;
     std::vector<std::filesystem::path> addin_directories = addinDirectoryPaths();
     std::string last_error;
 
-    explicit Impl(SequencerEngine& engine)
-        : host(engine) {
+    Impl() {
         loadSettings();
     }
 
@@ -432,8 +431,15 @@ public:
     }
 };
 
-AddinManager::AddinManager(SequencerEngine& engine)
-    : impl_(std::make_unique<Impl>(engine)) {
+AddinManager::AddinManager()
+    : impl_(std::make_unique<Impl>()) {
+}
+
+void AddinManager::registerExtensionPoint(std::string_view path, void* extensionPoint) {
+    impl_->host.registerExtensionPoint(path, extensionPoint);
+}
+
+void AddinManager::initialize() {
     impl_->loadBuiltinAddins();
     loadInstalledAddins();
 }

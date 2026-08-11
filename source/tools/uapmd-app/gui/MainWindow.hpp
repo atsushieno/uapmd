@@ -84,7 +84,7 @@ class MainWindow {
         ExporterWindow exporterWindow_;
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
-        uapmd::AddinManager addinRuntime_;
+        uapmd_addin::AddinManager addinRuntime_;
         AddinManagerWindow addinManagerWindow_{addinRuntime_};
 
         // Plugin selection
