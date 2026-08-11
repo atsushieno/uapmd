@@ -710,6 +710,7 @@ bool MainWindow::requestClose() {
 }
 
 void MainWindow::shutdown() {
+    timelineEditor_.pluginGraphEditor().hide();
     addinRuntime_.shutdown();
 }
 

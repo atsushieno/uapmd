@@ -343,7 +343,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         if (!node)
             continue;
         auto* pluginNode = dynamic_cast<AudioPluginNode*>(node);
-        auto* gainNode = dynamic_cast<webaudio_compat::GainNode*>(node);
+        const bool isBuiltInNode = !pluginNode;
         auto* instance = pluginNode ? pluginNode->instance() : nullptr;
         const auto nodeId = nodeIdForTrackEndpoint(window, AudioPluginGraphEndpointType::Plugin, node->nodeId());
         ImNodes::BeginNode(nodeId);
@@ -353,7 +353,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
 
         const uint32_t eventInputCount = instance && instance->audioBuses() && instance->audioBuses()->hasEventInputs()
             ? 1u
-            : (gainNode ? layout.event_input_bus_count : 0u);
+            : (isBuiltInNode ? layout.event_input_bus_count : 0u);
         for (uint32_t bus = 0; bus < eventInputCount; ++bus) {
             PinDescriptor descriptor{
                 window.track_index,
@@ -412,7 +412,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
                 ImGui::Text("Event Out %u", eventBus);
                 ImNodes::EndOutputAttribute();
             }
-        } else if (gainNode) {
+        } else if (isBuiltInNode) {
             for (uint32_t bus = 0; bus < layout.audio_input_bus_count; ++bus) {
                 PinDescriptor descriptor{
                     window.track_index,
