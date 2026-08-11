@@ -420,16 +420,31 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
-            if (ImGui::Button("Settings")) {
-                showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
-            }
-            ImGui::SameLine();
+            if (contextActionButton("Command"))
+                ImGui::OpenPopup("CommandActions");
+            if (ImGui::BeginPopup("CommandActions")) {
+                if (contextActionMenuItem(showDeviceSettingsWindow_ ? "Hide Device Settings" : "Show Device Settings"))
+                    showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
 
-            if (ImGui::Button("Addins")) {
-                if (addinManagerWindow_.isOpen())
-                    addinManagerWindow_.hide();
-                else
-                    addinManagerWindow_.show();
+                if (contextActionMenuItem(addinManagerWindow_.isOpen() ? "Hide Addins" : "Show Addins")) {
+                    if (addinManagerWindow_.isOpen())
+                        addinManagerWindow_.hide();
+                    else
+                        addinManagerWindow_.show();
+                }
+
+                if (contextActionMenuItem(scriptEditor_.isOpen() ? "Hide Script" : "Show Script")) {
+                    if (scriptEditor_.isOpen())
+                        scriptEditor_.hide();
+                    else
+                        scriptEditor_.show();
+                }
+
+#ifdef UAPMD_HAS_MCP_SERVER
+                if (contextActionMenuItem(showMcpSettings_ ? "Hide MCP Settings" : "Show MCP Settings"))
+                    showMcpSettings_ = !showMcpSettings_;
+#endif
+                ImGui::EndPopup();
             }
             ImGui::SameLine();
 
@@ -527,24 +542,13 @@ void MainWindow::render(void* window) {
                 showSelector = !showSelector;
             }
             ImGui::SameLine();
-            if (ImGui::Button("Script")) {
-                if (scriptEditor_.isOpen())
-                    scriptEditor_.hide();
-                else
-                    scriptEditor_.show();
-            }
-            ImGui::SameLine();
 #ifdef UAPMD_HAS_MCP_SERVER
-            {
+            if (showMcpSettings_) {
 #ifdef __EMSCRIPTEN__
-                // Wasm: MCP is always active as a C export — static green button.
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.28f, 1.0f));
-                if (contextActionButton("MCP", ImVec2(0.0f, 0.0f), "MCP active — call via Module.ccall('uapmd_mcp_call',...)"))
-                    ImGui::OpenPopup("MCPSettings");
-                ImGui::PopStyleColor();
+                // Wasm: MCP is always active as a C export.
                 ImGui::SetNextWindowSizeConstraints(
                     ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
-                if (ImGui::BeginPopup("MCPSettings")) {
+                if (ImGui::Begin("MCP Settings", &showMcpSettings_)) {
                     ImGui::TextDisabled("MCP  (WebAssembly)");
                     ImGui::Separator();
                     ImGui::TextWrapped("MCP is always active as a JavaScript export.");
@@ -558,32 +562,13 @@ void MainWindow::render(void* window) {
                     ImGui::TextUnformatted("  Module.ccall(");
                     ImGui::TextUnformatted("    'uapmd_eval',");
                     ImGui::TextUnformatted("    'string',['string'],[code])");
-                    ImGui::EndPopup();
                 }
+                ImGui::End();
 #else
-                // Desktop / mobile: full connect/disconnect popover.
-                // Button colour reflects connection state.
-                const auto mcpState = mcpServer_
-                    ? mcpServer_->connectionState()
-                    : uapmd_app::McpConnectionState::Idle;
-                ImVec4 mcpColor;
-                switch (mcpState) {
-                case uapmd_app::McpConnectionState::Connected:   mcpColor = ImVec4(0.20f, 0.55f, 0.28f, 1.0f); break;
-                case uapmd_app::McpConnectionState::Connecting:  mcpColor = ImVec4(0.55f, 0.50f, 0.10f, 1.0f); break;
-                case uapmd_app::McpConnectionState::Error:       mcpColor = ImVec4(0.55f, 0.20f, 0.20f, 1.0f); break;
-                default:                              mcpColor = ImVec4(0.35f, 0.35f, 0.35f, 1.0f); break;
-                }
-                ImGui::PushStyleColor(ImGuiCol_Button, mcpColor);
-                const auto tip = mcpServer_ ? mcpServer_->statusMessage() : std::string("Click to configure MCP");
-                if (contextActionButton("MCP", ImVec2(0.0f, 0.0f), tip.c_str()))
-                    ImGui::OpenPopup("MCPSettings");
-                ImGui::PopStyleColor();
-
+                // Desktop / mobile: full connect/disconnect settings window.
                 ImGui::SetNextWindowSizeConstraints(
                     ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
-                if (ImGui::BeginPopup("MCPSettings")) {
-                    ImGui::TextDisabled("MCP Settings");
-                    ImGui::Separator();
+                if (ImGui::Begin("MCP Settings", &showMcpSettings_)) {
 
 #ifdef UAPMD_MCP_HAS_HTTP_SERVER
                     // Mode selector — only meaningful on desktop.
@@ -630,14 +615,11 @@ void MainWindow::render(void* window) {
                             if (mcpServer_)
                                 mcpServer_->start();
                         }
-                        ImGui::CloseCurrentPopup();
                     }
-
-                    ImGui::EndPopup();
                 }
+                ImGui::End();
 #endif // __EMSCRIPTEN__
             }
-            ImGui::SameLine();
 #endif // UAPMD_HAS_MCP_SERVER
             bool openImportPopup = false;
             if (contextActionButton("Import")) {

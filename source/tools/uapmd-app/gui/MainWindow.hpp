@@ -66,6 +66,7 @@ class MainWindow {
 
 #ifdef UAPMD_HAS_MCP_SERVER
         std::unique_ptr<uapmd_app::McpServer> mcpServer_;
+        bool showMcpSettings_ = false;
         // 0 = Server (desktop only), 1 = Client
         int  mcpMode_          = UAPMD_MCP_DEFAULT_MODE;
         int  mcpPort_          = 37373;
