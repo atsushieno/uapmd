@@ -459,6 +459,9 @@ int runMainLoop(int argc, char** argv) {
 #endif
     }
 
+    // Addins must clean up while the application host and UI are still alive.
+    mainWindow.shutdown();
+
     // Final guard: ensure audio is stopped before teardown
     uapmd_app::AppModel::instance().setAudioEngineEnabled(false);
 

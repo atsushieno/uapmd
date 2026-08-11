@@ -423,6 +423,14 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
+            if (ImGui::Button("Addins")) {
+                if (addinManagerWindow_.isOpen())
+                    addinManagerWindow_.hide();
+                else
+                    addinManagerWindow_.show();
+            }
+            ImGui::SameLine();
+
             // Transport controls
             auto& transport = appModel.transport();
             if (!audioEngineEnabled)
@@ -693,6 +701,7 @@ void MainWindow::render(void* window) {
     timelineEditor_.renderPluginSelectorWindow(uiScale_);
     timelineEditor_.renderPluginGraphWindow(uiScale_);
     renderDeviceSettingsWindow();
+    addinManagerWindow_.render(uiScale_);
     renderAudioGraphEditorWindow();
     mixerMonitorWindow_.render(uiScale_);
     exporterWindow_.render(uiScale_);
@@ -714,6 +723,10 @@ bool MainWindow::requestClose() {
     closeRequestHandled_ = true;
     showUnsavedProjectDialog_ = true;
     return false;
+}
+
+void MainWindow::shutdown() {
+    addinRuntime_.shutdown();
 }
 
 void MainWindow::renderUnsavedProjectDialog() {

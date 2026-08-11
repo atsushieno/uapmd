@@ -285,6 +285,7 @@ endif()
 
 add_subdirectory(remidy)
 add_subdirectory(remidy-gui)
+add_subdirectory(uapmd-addin-core)
 add_subdirectory(uapmd-plugin-hosting)
 add_subdirectory(uapmd-midi-service)
 add_subdirectory(uapmd-graph)
@@ -327,6 +328,7 @@ endif()
 set(_UAPMD_PUBLIC_INCLUDE_SUBDIRS
         remidy
         remidy-gui
+        uapmd-addin-core
         uapmd-plugin-hosting
         uapmd-midi-service
         uapmd-graph
@@ -354,6 +356,7 @@ endforeach()
 
 install(TARGETS
         remidy
+        uapmd-addin-core
         uapmd-plugin-hosting
         remidy-gui
         uapmd-midi-service

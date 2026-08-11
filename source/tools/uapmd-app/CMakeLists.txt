@@ -57,6 +57,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/MidiDumpWindow.cpp
         gui/PianoRollEditor.cpp
         gui/FontLoader.cpp
+        gui/AddinManagerWindow.cpp
 )
 if(ANDROID)
     list(APPEND UAPMD_APP_COMMON_SOURCE_FILES AndroidAutomationBridge.cpp)

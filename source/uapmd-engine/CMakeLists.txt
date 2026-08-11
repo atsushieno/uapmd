@@ -173,6 +173,7 @@ target_include_directories(uapmd-engine PRIVATE
         ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include
+        ../uapmd-addin-core/include
         ../uapmd-plugin-hosting/include
         include
 )
@@ -184,6 +185,7 @@ target_link_libraries(uapmd-engine
         PUBLIC
         remidy::remidy
         uapmd::uapmd-plugin-hosting
+        uapmd::uapmd-addin-core
         uapmd-midi-service
         uapmd-graph
         uapmd-data
@@ -206,7 +208,27 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/TailProcessManager.cpp
         src/sequencer/TrackRoutingManager.cpp
         src/sequencer/TimelineFacade.cpp
+        src/addins/AddinManager.cpp
 )
+
+if(UAPMD_ENABLE_CPPLOCATE)
+    target_include_directories(uapmd-engine PRIVATE
+            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/liblocate/include
+    )
+    target_link_libraries(uapmd-engine PRIVATE ${cpplocate_LIBRARIES})
+    target_compile_definitions(uapmd-engine PRIVATE UAPMD_HAS_CPPLOCATE=1)
+endif()
+
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(uapmd-engine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+if(NOT EMSCRIPTEN AND NOT IOS)
+    add_library(uapmd-addin-diagnostics SHARED src/addins/DiagnosticsAddin.cpp)
+    add_uapmd_addin_library(uapmd-addin-diagnostics)
+endif()
 
 # Platform-specific audio backend
 if(EMSCRIPTEN)

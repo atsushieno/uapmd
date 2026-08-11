@@ -21,6 +21,7 @@
 #include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
 #include "MixerMonitorWindow.hpp"
+#include "AddinManagerWindow.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 #include <uapmd-app-model/uapmd-app-model.hpp>
@@ -82,6 +83,8 @@ class MainWindow {
         ExporterWindow exporterWindow_;
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
+        uapmd::AddinManager addinRuntime_;
+        AddinManagerWindow addinManagerWindow_{addinRuntime_};
 
         // Plugin selection
 
@@ -131,6 +134,7 @@ class MainWindow {
         void update();
         bool& isOpen() { return isOpen_; }
         bool requestClose();
+        void shutdown();
         bool closeRequestHandled() const { return closeRequestHandled_; }
         bool consumePendingWindowResize(ImVec2& size);
         void applySystemUiScale(float scale);
