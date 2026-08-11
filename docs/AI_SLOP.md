@@ -6,6 +6,11 @@ Note that it is just an overview and never means strict distinction at all.
 
 Unless otherwise noted, "I" points to @atsushieno.
 
+## notice
+
+I describe things "slop" based on MY definition and standards, not yours. These AI "slop" may not actually be sloppy 
+to many people (I actually pay a lot of attention to lead to certain generation results, usually).
+
 ## remidy
 
 - GUI API: it is almost AI generated implementation. I defined the API similar to CLAP GUI extension and let AI coders adopt to each format. That's a lot of annoyances to adjust to each format's nature.
