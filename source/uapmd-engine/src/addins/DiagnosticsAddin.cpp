@@ -7,7 +7,7 @@ namespace {
 class DiagnosticsAddin final : public uapmd::Addin {
 public:
     uapmd::AddinIdentity identity() const noexcept override {
-        return {"org.uapmd.diagnostics", "lifecycle"};
+        return {"/uapmd/diagnostics", "lifecycle"};
     }
 
     std::string_view name() const noexcept override {
@@ -41,7 +41,7 @@ public:
     }
 
     std::string_view packageId() const noexcept override {
-        return "org.uapmd.diagnostics";
+        return "/uapmd/diagnostics";
     }
 
     std::span<uapmd::Addin* const> addins() noexcept override {

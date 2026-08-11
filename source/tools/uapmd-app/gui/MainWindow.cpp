@@ -43,7 +43,9 @@ using namespace uapmd;
 
 namespace uapmd_app_gui {
 
-MainWindow::MainWindow(GuiDefaults defaults) {
+MainWindow::MainWindow(GuiDefaults defaults)
+    : addinRuntime_(*uapmd_app::AppModel::instance().sequencer().engine())
+    , addinManagerWindow_(addinRuntime_) {
     remidy_imgui::SetupImGuiStyle();
     // Font is already loaded in main_common.cpp before renderer initialization
     baseStyle_ = ImGui::GetStyle();

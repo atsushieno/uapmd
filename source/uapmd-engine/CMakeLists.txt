@@ -228,6 +228,10 @@ endif()
 if(NOT EMSCRIPTEN AND NOT IOS)
     add_library(uapmd-addin-diagnostics SHARED src/addins/DiagnosticsAddin.cpp)
     add_uapmd_addin_library(uapmd-addin-diagnostics)
+    if(APPLE)
+        deploy_uapmd_addin_library(uapmd-addin-diagnostics
+                "$<TARGET_BUNDLE_DIR:uapmd-app-bundle>/../addins")
+    endif()
 endif()
 
 # Platform-specific audio backend

@@ -11,6 +11,7 @@
 #include "TrackAudioProcessorExtension.hpp"
 #include "AudioProcessingEventHandler.hpp"
 #include "SequencerProcessingLifecycleListener.hpp"
+#include "PluginInstanceLifecycleListener.hpp"
 #include "LatencyCompensationManager.hpp"
 #include "OfflineRenderer.hpp"
 #include "TimelineFacade.hpp"
@@ -145,6 +146,8 @@ namespace uapmd {
         virtual void removeAudioProcessingEventHandler(AudioProcessingEventHandler& handler) = 0;
         virtual void addProcessingLifecycleListener(SequencerProcessingLifecycleListener& listener) = 0;
         virtual void removeProcessingLifecycleListener(SequencerProcessingLifecycleListener& listener) = 0;
+        virtual void addPluginInstanceLifecycleListener(PluginInstanceLifecycleListener& listener) = 0;
+        virtual void removePluginInstanceLifecycleListener(PluginInstanceLifecycleListener& listener) = 0;
         virtual void addPlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
         virtual void removePlaybackEngineExtension(PlaybackEngineExtension& extension) = 0;
         virtual PlaybackEngineExtension* findPlaybackEngineExtension(std::string_view extensionId) = 0;

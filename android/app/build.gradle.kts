@@ -28,6 +28,7 @@ android {
             cmake {
                 arguments.addAll(listOf(
                     "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                    "-DUAPMD_ENABLE_ARA=1",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",

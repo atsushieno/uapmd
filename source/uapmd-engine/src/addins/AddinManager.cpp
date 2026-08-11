@@ -22,14 +22,31 @@ namespace {
 
 class EngineAddinHost final : public AddinHost {
 public:
-    void* extensionPoint(std::string_view) noexcept override {
-        // Concrete extension points register their host interfaces here.
+    explicit EngineAddinHost(SequencerEngine& engine)
+        : engine_(engine) {}
+
+    void* extensionPoint(std::string_view path) noexcept override {
+        if (path == "/uapmd/engine/v1")
+            return &engine_;
         return nullptr;
     }
+
+private:
+    SequencerEngine& engine_;
 };
 
 std::string addinKey(std::string_view packageId, std::string_view addinId) {
     return std::string(packageId) + '\t' + std::string(addinId);
+}
+
+bool isValidPackageId(std::string_view packageId) {
+    return packageId.size() > 1 && packageId.starts_with('/') &&
+           !packageId.ends_with('/') && packageId.find("//") == std::string_view::npos;
+}
+
+std::vector<AddinEntry*>& builtinAddinEntries() {
+    static std::vector<AddinEntry*> entries;
+    return entries;
 }
 
 std::filesystem::path settingsPath() {
@@ -62,6 +79,36 @@ std::filesystem::path addinDirectoryPath() {
 #endif
 }
 
+std::filesystem::path installationPrefixPath() {
+#if defined(UAPMD_HAS_CPPLOCATE)
+    const auto bundle = cpplocate::getBundlePath();
+    if (!bundle.empty())
+        return std::filesystem::path(bundle).parent_path();
+
+    const auto executable = cpplocate::getExecutablePath();
+    if (executable.empty())
+        return {};
+    const std::filesystem::path executablePath(executable);
+    return executablePath.parent_path();
+#else
+    return {};
+#endif
+}
+
+std::vector<std::filesystem::path> addinDirectoryPaths() {
+    std::vector<std::filesystem::path> directories;
+    const auto localDirectory = addinDirectoryPath();
+    if (!localDirectory.empty())
+        directories.push_back(localDirectory);
+    const auto prefix = installationPrefixPath();
+    if (!prefix.empty()) {
+        const auto prefixDirectory = prefix / "addins";
+        if (std::ranges::find(directories, prefixDirectory) == directories.end())
+            directories.push_back(prefixDirectory);
+    }
+    return directories;
+}
+
 bool isDynamicLibraryPath(const std::filesystem::path& path) {
 #if defined(_WIN32)
     return path.extension() == ".dll";
@@ -73,6 +120,12 @@ bool isDynamicLibraryPath(const std::filesystem::path& path) {
 }
 
 } // namespace
+
+void registerBuiltinAddin(AddinEntry& entry) {
+    auto& entries = builtinAddinEntries();
+    if (std::ranges::find(entries, &entry) == entries.end())
+        entries.push_back(&entry);
+}
 
 class AddinManager::Impl {
 public:
@@ -92,10 +145,11 @@ public:
     std::vector<std::unique_ptr<Library>> libraries;
     std::vector<AddinInfo> addin_infos;
     std::map<std::string, bool, std::less<>> enabled_settings;
-    std::filesystem::path addin_directory = addinDirectoryPath();
+    std::vector<std::filesystem::path> addin_directories = addinDirectoryPaths();
     std::string last_error;
 
-    Impl() {
+    explicit Impl(SequencerEngine& engine)
+        : host(engine) {
         loadSettings();
     }
 
@@ -257,9 +311,9 @@ public:
 
         auto entryFunction = reinterpret_cast<AddinEntryFunction>(symbol);
         auto* entry = entryFunction();
-        if (!entry || entry->packageId().empty()) {
+        if (!entry || !isValidPackageId(entry->packageId())) {
             closeLibrary(handle);
-            last_error = "Addin entry is null or has no package ID";
+            last_error = "Addin entry is null or has an invalid package ID";
             return false;
         }
 
@@ -274,7 +328,7 @@ public:
                 return false;
             }
             const auto identity = addin->identity();
-            if (identity.package_id.empty() || identity.addin_id.empty() || addin->name().empty() || addin->path().empty()) {
+            if (!isValidPackageId(identity.package_id) || identity.addin_id.empty() || addin->name().empty() || addin->path().empty()) {
                 closeLibrary(handle);
                 last_error = "Addin metadata must include package ID, addin ID, name, and path";
                 return false;
@@ -282,6 +336,12 @@ public:
             if (identity.package_id != entry->packageId()) {
                 closeLibrary(handle);
                 last_error = "Addin package ID does not match its entry";
+                return false;
+            }
+            if (findAddin(identity.package_id, identity.addin_id)) {
+                closeLibrary(handle);
+                if (!ignoreMissingEntry)
+                    last_error = "Addin is already registered";
                 return false;
             }
             const bool duplicate = std::ranges::any_of(library->addins, [&](const auto& existing) {
@@ -322,6 +382,43 @@ public:
         return true;
     }
 
+    void loadBuiltinAddins() {
+        for (AddinEntry* entry : builtinAddinEntries()) {
+            if (!entry || !isValidPackageId(entry->packageId()))
+                continue;
+            auto library = std::make_unique<Library>();
+            library->entry = entry;
+            for (Addin* addin : entry->addins()) {
+                if (!addin)
+                    continue;
+                const auto identity = addin->identity();
+                if (identity.package_id != entry->packageId() || !isValidPackageId(identity.package_id) ||
+                    identity.addin_id.empty() || addin->name().empty() || addin->path().empty() ||
+                    findAddin(identity.package_id, identity.addin_id))
+                    continue;
+                library->addins.push_back({
+                    .addin = addin,
+                    .info = {
+                        .package_id = std::string(identity.package_id),
+                        .addin_id = std::string(identity.addin_id),
+                        .name = std::string(addin->name()),
+                        .path = std::string(addin->path()),
+                        .built_in = true,
+                    },
+                });
+            }
+            if (library->addins.empty())
+                continue;
+            for (auto& addin : library->addins) {
+                const auto setting = enabled_settings.find(addinKey(addin.info.package_id, addin.info.addin_id));
+                if (setting == enabled_settings.end() || setting->second)
+                    activate(addin);
+            }
+            libraries.push_back(std::move(library));
+        }
+        rebuildInfoSnapshot();
+    }
+
     void shutdown() {
         for (auto library = libraries.rbegin(); library != libraries.rend(); ++library) {
             for (auto addin = (*library)->addins.rbegin(); addin != (*library)->addins.rend(); ++addin)
@@ -335,8 +432,9 @@ public:
     }
 };
 
-AddinManager::AddinManager()
-    : impl_(std::make_unique<Impl>()) {
+AddinManager::AddinManager(SequencerEngine& engine)
+    : impl_(std::make_unique<Impl>(engine)) {
+    impl_->loadBuiltinAddins();
     loadInstalledAddins();
 }
 
@@ -355,19 +453,28 @@ void AddinManager::loadInstalledAddins() {
     if (!supportsDynamicLoading()) {
         return;
     }
-    if (impl_->addin_directory.empty()) {
+    if (impl_->addin_directories.empty()) {
         impl_->last_error = "No addin directory is available on this platform";
         return;
     }
-    std::error_code error;
-    for (const auto& entry : std::filesystem::directory_iterator(impl_->addin_directory, error)) {
-        if (error) {
-            impl_->last_error = "Failed to scan addin directory: " + error.message();
-            return;
-        }
-        if (!entry.is_regular_file(error) || error || !isDynamicLibraryPath(entry.path()))
+    for (const auto& directory : impl_->addin_directories) {
+        std::error_code error;
+        if (!std::filesystem::exists(directory, error)) {
+            if (error) {
+                impl_->last_error = "Failed to access addin directory: " + error.message();
+                return;
+            }
             continue;
-        impl_->loadLibrary(entry.path(), true);
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
+            if (error) {
+                impl_->last_error = "Failed to scan addin directory: " + error.message();
+                return;
+            }
+            if (!entry.is_regular_file(error) || error || !isDynamicLibraryPath(entry.path()))
+                continue;
+            impl_->loadLibrary(entry.path(), true);
+        }
     }
 }
 
@@ -399,8 +506,8 @@ const std::string& AddinManager::lastError() const noexcept {
     return impl_->last_error;
 }
 
-const std::filesystem::path& AddinManager::addinDirectory() const noexcept {
-    return impl_->addin_directory;
+const std::vector<std::filesystem::path>& AddinManager::addinDirectories() const noexcept {
+    return impl_->addin_directories;
 }
 
 const char* addinStateName(AddinState state) noexcept {

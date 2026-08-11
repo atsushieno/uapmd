@@ -22,10 +22,6 @@
 #include <uapmd-engine/uapmd-engine.hpp>
 #include <uapmd-file/IDocumentProvider.hpp>
 
-namespace uapmd::ara {
-    class AraSupport;
-}
-
 namespace uapmd_app {
     struct ScopedTempDir;
     // Forward declarations
@@ -134,9 +130,6 @@ namespace uapmd_app {
         uapmd::RealtimeSequencer sequencer_;
         std::unique_ptr<uapmd_plugin_hosting::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
-#ifdef UAPMD_HAS_ARA
-        std::unique_ptr<uapmd::ara::AraSupport> araSupport_;
-#endif
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
         // Muted shutdown drain for the audio engine switch (see setAudioEngineEnabled).

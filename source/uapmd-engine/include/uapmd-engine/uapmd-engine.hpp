@@ -13,6 +13,7 @@
 #include "detail/sequencer/TrackAudioProcessorExtension.hpp"
 #include "detail/sequencer/AudioProcessingEventHandler.hpp"
 #include "detail/sequencer/SequencerProcessingLifecycleListener.hpp"
+#include "detail/sequencer/PluginInstanceLifecycleListener.hpp"
 #include "detail/sequencer/FrozenTrackManager.hpp"
 #include "detail/sequencer/SequencerTrack.hpp"
 #include "detail/sequencer/SequenceProcessContext.hpp"

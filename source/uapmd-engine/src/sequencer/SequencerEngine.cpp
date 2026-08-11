@@ -205,6 +205,7 @@ namespace uapmd {
         std::shared_ptr<const AudioProcessingEventHandlers> audio_processing_event_handlers_{
             std::make_shared<const AudioProcessingEventHandlers>()};
         std::vector<SequencerProcessingLifecycleListener*> processing_lifecycle_listeners_;
+        std::vector<PluginInstanceLifecycleListener*> plugin_instance_lifecycle_listeners_;
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
         // Starts inactive so that no plugin code runs before the user explicitly enables the
         // audio engine (important on Emscripten where AudioWorklet fires immediately after
@@ -416,6 +417,18 @@ namespace uapmd {
             SequencerProcessingLifecycleListener& listener) override {
             std::erase(processing_lifecycle_listeners_, &listener);
         }
+        void addPluginInstanceLifecycleListener(
+            PluginInstanceLifecycleListener& listener) override {
+            if (std::find(
+                    plugin_instance_lifecycle_listeners_.begin(),
+                    plugin_instance_lifecycle_listeners_.end(),
+                    &listener) == plugin_instance_lifecycle_listeners_.end())
+                plugin_instance_lifecycle_listeners_.push_back(&listener);
+        }
+        void removePluginInstanceLifecycleListener(
+            PluginInstanceLifecycleListener& listener) override {
+            std::erase(plugin_instance_lifecycle_listeners_, &listener);
+        }
         void addPlaybackEngineExtension(PlaybackEngineExtension& extension) override {
             if (std::find(playback_engine_extensions_.begin(), playback_engine_extensions_.end(), &extension) ==
                 playback_engine_extensions_.end())
@@ -565,6 +578,7 @@ namespace uapmd {
         void resetOutputAlignmentBuffers();
         void notifyAudioProcessingConfigurationChanged();
         void notifyPluginGraphChanged();
+        void notifyPluginInstanceAdded(int32_t instanceId, AudioPluginInstanceAPI& instance);
         void notifyGraphTimingChanged();
         void notifyPluginInstanceWillBeDestroyed(int32_t instanceId);
         void notifyTrackProcessingStateReset(uapmd_track_index_t trackIndex);
@@ -734,6 +748,14 @@ namespace uapmd {
                 listener->pluginGraphChanged();
     }
 
+    void SequencerEngineImpl::notifyPluginInstanceAdded(
+        int32_t instanceId,
+        AudioPluginInstanceAPI& instance) {
+        for (auto* listener : plugin_instance_lifecycle_listeners_)
+            if (listener)
+                listener->pluginInstanceAdded(instanceId, instance);
+    }
+
     void SequencerEngineImpl::notifyGraphTimingChanged() {
         const bool isPlaybackActive =
             is_playback_active_.load(std::memory_order_acquire);
@@ -744,6 +766,9 @@ namespace uapmd {
 
     void SequencerEngineImpl::notifyPluginInstanceWillBeDestroyed(
         int32_t instanceId) {
+        for (auto* listener : plugin_instance_lifecycle_listeners_)
+            if (listener)
+                listener->pluginInstanceWillBeDestroyed(instanceId);
         for (auto* listener : processing_lifecycle_listeners_)
             if (listener)
                 listener->pluginInstanceWillBeDestroyed(instanceId);
@@ -2006,6 +2031,7 @@ namespace uapmd {
                 refreshFunctionBlockMappings();
 
                 instance->bypassed(false);
+                notifyPluginInstanceAdded(instanceId, *instance);
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 timeline_->onTrackGraphChanged(targetMaster ? kMasterTrackIndex : trackIndex);

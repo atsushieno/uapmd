@@ -192,10 +192,6 @@ set(_uapmd_app_model_link_libraries
         zlib-ng
 )
 
-if(TARGET uapmd::ara)
-    list(APPEND _uapmd_app_model_link_libraries uapmd::ara)
-    target_compile_definitions(uapmd-app-model PUBLIC UAPMD_HAS_ARA=1)
-endif()
 if(UAPMD_ENABLE_CPPTRACE)
     list(APPEND _uapmd_app_model_link_libraries cpptrace::cpptrace)
 endif()

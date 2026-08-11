@@ -9,6 +9,8 @@
 
 namespace uapmd {
 
+class SequencerEngine;
+
 enum class AddinState {
     Inactive,
     Initializing,
@@ -23,13 +25,17 @@ struct AddinInfo {
     std::string name;
     std::string path;
     std::filesystem::path library_path;
+    bool built_in = false;
     AddinState state = AddinState::Inactive;
     std::string message;
 };
 
+// Built-in addins must be registered before the AddinManager is constructed.
+void registerBuiltinAddin(AddinEntry& entry);
+
 class AddinManager {
 public:
-    AddinManager();
+    explicit AddinManager(SequencerEngine& engine);
     ~AddinManager();
 
     AddinManager(const AddinManager&) = delete;
@@ -38,7 +44,7 @@ public:
     bool setEnabled(const std::string& packageId, const std::string& addinId, bool enabled);
     void shutdown();
 
-    const std::filesystem::path& addinDirectory() const noexcept;
+    const std::vector<std::filesystem::path>& addinDirectories() const noexcept;
     const std::vector<AddinInfo>& addins() const noexcept;
     const std::string& lastError() const noexcept;
     static bool supportsDynamicLoading() noexcept;

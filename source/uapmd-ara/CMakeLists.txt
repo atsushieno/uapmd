@@ -1,4 +1,5 @@
 add_library(uapmd-ara STATIC
+        src/AraAddin.cpp
         src/AraSupport.cpp
         src/AraSession.cpp
         src/AraHostDocumentController.cpp

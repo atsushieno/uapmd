@@ -261,10 +261,9 @@ install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)
 
+# ARA_API currently rejects wasm32: it has no ABI packing/alignment definition
+# for this architecture. Keep this disabled by default but overrideable for SDK experiments.
 option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" OFF)
-if(EMSCRIPTEN)
-    set(UAPMD_ENABLE_ARA OFF CACHE BOOL "Build the optional ARA host integration" FORCE)
-endif()
 if(UAPMD_ENABLE_ARA)
     CPMAddPackage(
             NAME           ARA_SDK

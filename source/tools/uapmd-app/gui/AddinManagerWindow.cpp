@@ -33,9 +33,12 @@ void AddinManagerWindow::render(float uiScale) {
         ImGui::TextWrapped("This WebAssembly build uses compiled-in addins. Changes to enabled addins take effect when the application restarts.");
         ImGui::Separator();
     } else {
-        ImGui::TextWrapped("Install addin libraries in this directory:");
-        const auto directory = runtime_.addinDirectory().string();
-        ImGui::TextUnformatted(directory.empty() ? "No addin directory is available on this platform." : directory.c_str());
+        ImGui::TextWrapped("Install addin libraries in one of these directories:");
+        const auto& directories = runtime_.addinDirectories();
+        if (directories.empty())
+            ImGui::TextUnformatted("No addin directory is available on this platform.");
+        for (const auto& directory : directories)
+            ImGui::TextUnformatted(directory.string().c_str());
         ImGui::Separator();
     }
 
@@ -73,7 +76,10 @@ void AddinManagerWindow::render(float uiScale) {
             ImGui::TableSetColumnIndex(4);
             ImGui::TextUnformatted(uapmd::addinStateName(addin.state));
             ImGui::TableSetColumnIndex(5);
-            ImGui::TextUnformatted(addin.library_path.filename().string().c_str());
+            if (addin.built_in)
+                ImGui::TextUnformatted("Built-in");
+            else
+                ImGui::TextUnformatted(addin.library_path.filename().string().c_str());
             ImGui::PopID();
         }
         ImGui::EndTable();
