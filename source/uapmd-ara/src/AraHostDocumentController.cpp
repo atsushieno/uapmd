@@ -627,6 +627,41 @@ namespace uapmd::ara {
                 controller->notifyModelUpdates(controller_instance->documentControllerRef);
         }
 
+        // ARA's beginEditing/endEditing are unguarded pass-through calls, so
+        // nesting them directly would unbalance the plug-in's edit cycle.
+        // Everything that edits the model goes through this pair instead, which
+        // opens one cycle for the outermost scope. A document transaction holds
+        // the scope open for its whole batch, so a multi-step edit reaches the
+        // plug-in as a single atomic cycle rather than one cycle per event.
+        uint32_t editing_depth{0};
+        bool model_updates_pending{false};
+
+        void enterEditing() {
+            if (editing_depth++ == 0)
+                beginEditing();
+        }
+
+        void leaveEditing() {
+            if (editing_depth == 0)
+                return;
+            if (--editing_depth > 0)
+                return;
+            endEditing();
+            if (model_updates_pending) {
+                model_updates_pending = false;
+                notifyModelUpdates();
+            }
+        }
+
+        // Coalesces the notification to once per edit cycle; a batch of twenty
+        // clip changes should not produce twenty model-update notifications.
+        void requestModelUpdates() {
+            if (editing_depth > 0)
+                model_updates_pending = true;
+            else
+                notifyModelUpdates();
+        }
+
         bool playbackRendererAvailable() const {
             return plugin_extension &&
                 plugin_extension->playbackRendererRef &&
@@ -1519,7 +1554,7 @@ namespace uapmd::ara {
 
             document_view = &view;
             bool handled = false;
-            beginEditing();
+            enterEditing();
             switch (event.kind()) {
                 case ProjectDocumentEventKind::MasterTrackChanged:
                     handled = updateMusicalContextContent(masterTrackSnapshot);
@@ -1578,12 +1613,24 @@ namespace uapmd::ara {
                 case ProjectDocumentEventKind::PluginGraphChanged:
                     break;
             }
-            endEditing();
+            leaveEditing();
 
             if (!handled)
                 return populateModel(view, masterTrackSnapshot);
-            notifyModelUpdates();
+            requestModelUpdates();
             return true;
+        }
+
+        void beginProjectDocumentTransaction() {
+            if (!valid())
+                return;
+            enterEditing();
+        }
+
+        void endProjectDocumentTransaction() {
+            if (!valid())
+                return;
+            leaveEditing();
         }
 
         std::optional<ARA::ARAContentType> araContentTypeForKind(AraContentKind kind) const {
@@ -2255,6 +2302,18 @@ namespace uapmd::ara {
         if (!valid())
             return;
         impl_->notifyModelUpdates();
+    }
+
+    void AraHostDocumentController::beginProjectDocumentTransaction() {
+        if (!valid())
+            return;
+        impl_->beginProjectDocumentTransaction();
+    }
+
+    void AraHostDocumentController::endProjectDocumentTransaction() {
+        if (!valid())
+            return;
+        impl_->endProjectDocumentTransaction();
     }
 
 } // namespace uapmd::ara

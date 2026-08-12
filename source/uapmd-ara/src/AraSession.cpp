@@ -21,8 +21,32 @@ namespace uapmd::ara {
                 return document_view_ && event_source_;
             }
 
+            // Every event drives a full resync, so within a batch the work is
+            // deferred to the end and done once instead of once per event.
+            // The in-batch flag is defensive: an event delivered outside a
+            // batch still resyncs immediately rather than being dropped.
+            bool in_event_batch_{false};
+            bool resync_pending_{false};
+
             void resyncAfterEvent(const ProjectDocumentEvent& event) {
                 (void) event;
+                if (in_event_batch_) {
+                    resync_pending_ = true;
+                    return;
+                }
+                resyncFromProjectDocument();
+            }
+
+            void transactionBegan() override {
+                in_event_batch_ = true;
+                resync_pending_ = false;
+            }
+
+            void transactionEnded() override {
+                in_event_batch_ = false;
+                if (!resync_pending_)
+                    return;
+                resync_pending_ = false;
                 resyncFromProjectDocument();
             }
 

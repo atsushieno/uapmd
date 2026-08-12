@@ -376,6 +376,14 @@ namespace uapmd {
             return audio_graph_provider_registry_;
         }
 
+        void beginDocumentTransaction() override {
+            project_document_events_.beginTransaction();
+        }
+
+        void endDocumentTransaction() override {
+            project_document_events_.endTransaction();
+        }
+
         ProjectDocumentEventSource& projectDocumentEvents() override {
             return project_document_events_;
         }
@@ -1353,6 +1361,9 @@ namespace uapmd {
             // so that every clip produces its own removal event. Clearing
             // directly leaves observers holding clips that no longer exist.
             // getAllClips() returns a copy, so removing while iterating is safe.
+            // The whole sweep is one transaction: clearing a track is a single
+            // user action, and observers should not see it clip by clip.
+            ProjectDocumentTransaction transaction(project_document_events_);
             bool removedAny = false;
             for (const auto& clip : targetTrack->clipManager().getAllClips())
                 removedAny |= removeClipFromTrack(trackIndex, clip.clipId);

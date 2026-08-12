@@ -2,9 +2,10 @@
 
 ## Status
 
-Phase 0 in progress. Step 0.1 is complete; step 0.2 is complete apart from the
-clip anchor operations, which wait on the anchor sidecar described under 0.1.
-Steps 0.3 to 0.5 have not been started. Each step below records its own state.
+Phase 0 in progress. Steps 0.1 and 0.3 are complete. Step 0.2 is complete apart
+from the clip anchor operations, which wait on the anchor sidecar described
+under 0.1, and the source node replacement deferred to 0.4. Steps 0.4 and 0.5
+have not been started. Each step below records its own state.
 
 This document describes Phase 0, the shared groundwork that both undo/redo
 and copy/paste require. The undo stack itself (Phase 1) and the clipboard
@@ -213,7 +214,7 @@ but pulling it in requires auditing every site for double revocation.
 
 ### 0.3 Transactions
 
-Not started.
+Done.
 
 One user gesture becomes one unit.
 
@@ -230,6 +231,42 @@ One user gesture becomes one unit.
 - In the ARA addin, `beginEditing` and `endEditing` move from per-event to
   per-transaction scope. They are currently unguarded direct calls, so this
   also requires a depth guard to keep them balanced under nesting.
+
+As implemented, batching lives in `ProjectDocumentEventDispatcher` rather than
+in the facade, so it applies to every emitter. `beginTransaction` and
+`endTransaction` nest and only the outermost end flushes;
+`ProjectDocumentTransaction` and `ScopedDocumentTransaction` are the scoped
+forms, the latter being what callers outside the engine use.
+
+Every event now reaches a listener inside a `transactionBegan` /
+`transactionEnded` pair, including an event emitted outside any explicit
+transaction, which is delivered as a batch of one. Making the bracket
+unconditional is what lets a listener move its per-event work to the batch
+boundary without needing to know whether a transaction is in progress.
+
+Within a batch, events matching on kind and on track, clip and audio source
+identity collapse to one. Kind is part of that identity, so an add is never
+absorbed into a later change of the same object. This is safe because listeners
+re-read current state from `ProjectDocumentView` when handling an event and a
+batch is delivered only after every mutation in it has been applied. Revisions
+are assigned at delivery rather than at emission, so they stay contiguous in
+the order observers see them.
+
+Both ARA listeners gained real behaviour from this. `AraSession` was doing a
+full `resyncFromProjectDocument` per event and now defers to one per batch.
+`AraHostDocumentController` routes all editing through a depth-guarded
+`enterEditing` / `leaveEditing` pair, and defers `notifyModelUpdates` to the
+close of the outermost cycle, so a batch of twenty clip changes produces one
+edit cycle and one model-update notification instead of twenty of each.
+
+Transactions were applied to the composite operations 0.2 exposed: the audio
+warp rebuild in both `AppModel` and `TimelineEditor`, the MIDI and piano roll
+edit paths, the clip file replacement, and `clearClipsFromTrack`, which is one
+user action however many clips it removes.
+
+The batching rules are covered by `ProjectDocumentEventDispatcherTest` in
+`source/tests/UapmdProjectFileTest.cpp`: delivery outside a transaction,
+nesting, collapsing, and revision contiguity.
 
 ### 0.4 Detachable fragments
 

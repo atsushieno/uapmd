@@ -2581,6 +2581,10 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
     );
 
     auto& timelineFacade = sequencer_.engine()->timeline();
+    // Markers, warps, the rebuilt source node and the duration are one edit;
+    // observers must not see the clip with its warps applied but its old
+    // source node still in place.
+    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
     if (!timelineFacade.setClipMarkers(trackIndex, clipId, markers)) {
         error = "Failed to update clip markers.";
         return false;

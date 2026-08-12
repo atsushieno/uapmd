@@ -306,6 +306,25 @@ namespace uapmd::ara {
                 resyncNativeAraDocuments();
             }
 
+            // Hold one ARA edit cycle open for the whole batch, so that a
+            // multi-step edit is applied atomically rather than as one cycle
+            // per event.
+            void transactionBegan() override {
+                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                    (void) pluginInstanceId;
+                    if (document.controller)
+                        document.controller->beginProjectDocumentTransaction();
+                }
+            }
+
+            void transactionEnded() override {
+                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                    (void) pluginInstanceId;
+                    if (document.controller)
+                        document.controller->endProjectDocumentTransaction();
+                }
+            }
+
             void masterTrackChanged(const ProjectDocumentEvent& event) override {
                 applyNativeAraProjectEvent(event);
             }

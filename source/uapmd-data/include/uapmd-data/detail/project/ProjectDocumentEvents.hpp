@@ -231,6 +231,15 @@ namespace uapmd {
     public:
         virtual ~ProjectDocumentEventListener() = default;
 
+        // Called immediately before and after each batch of events the
+        // dispatcher delivers. Every event arrives inside exactly one such
+        // pair, including an event emitted outside an explicit transaction,
+        // which is delivered as a batch of one. A listener that must apply a
+        // batch atomically, or that wants to refresh once per batch rather
+        // than once per event, brackets its work here.
+        virtual void transactionBegan() {}
+        virtual void transactionEnded() {}
+
         virtual void projectLoaded(const ProjectDocumentEvent& event) { (void) event; }
         virtual void projectClosing(const ProjectDocumentEvent& event) { (void) event; }
         virtual void projectSaved(const ProjectDocumentEvent& event) { (void) event; }
@@ -335,13 +344,82 @@ namespace uapmd {
             current_revision_.store(revision, std::memory_order_release);
         }
 
+        // Groups every event emitted until the matching endTransaction() into
+        // one batch, delivered when the outermost transaction ends. Calls
+        // nest; only the outermost one flushes.
+        //
+        // Within a batch, events that address the same object in the same way
+        // are collapsed to one. Listeners re-read current state from
+        // ProjectDocumentView when they handle an event, and a batch is
+        // delivered only after every mutation in it has been applied, so each
+        // duplicate would resolve to the same state anyway.
+        void beginTransaction() {
+            std::lock_guard<std::mutex> lock(transaction_mutex_);
+            ++transaction_depth_;
+        }
+
+        void endTransaction() {
+            std::vector<ProjectDocumentEvent> batch;
+            {
+                std::lock_guard<std::mutex> lock(transaction_mutex_);
+                if (transaction_depth_ == 0)
+                    return;
+                if (--transaction_depth_ > 0)
+                    return;
+                batch.swap(pending_);
+            }
+            if (!batch.empty())
+                dispatchBatch(std::move(batch));
+        }
+
         void emit(ProjectDocumentEvent event) {
-            auto previousRevision = currentRevision();
-            if (event.previousRevision() == 0)
-                event.setPreviousRevision(previousRevision);
-            if (event.revision() == 0)
-                event.setRevision(previousRevision + 1);
-            current_revision_.store(event.revision(), std::memory_order_release);
+            {
+                std::lock_guard<std::mutex> lock(transaction_mutex_);
+                if (transaction_depth_ > 0) {
+                    if (!isDuplicateOfPendingLocked(event))
+                        pending_.push_back(std::move(event));
+                    return;
+                }
+            }
+            std::vector<ProjectDocumentEvent> batch;
+            batch.push_back(std::move(event));
+            dispatchBatch(std::move(batch));
+        }
+
+    private:
+        mutable std::mutex transaction_mutex_{};
+        uint32_t transaction_depth_{0};
+        std::vector<ProjectDocumentEvent> pending_{};
+
+        // Two events collapse when they would drive a listener to re-read the
+        // same object for the same reason. Kind is part of the identity, so an
+        // add is never absorbed into a later change of the same object.
+        static bool addressesSameChange(const ProjectDocumentEvent& a, const ProjectDocumentEvent& b) {
+            return a.kind() == b.kind()
+                && a.trackId() == b.trackId()
+                && a.clipId() == b.clipId()
+                && a.audioSourceId() == b.audioSourceId();
+        }
+
+        bool isDuplicateOfPendingLocked(const ProjectDocumentEvent& event) const {
+            for (const auto& pending : pending_)
+                if (addressesSameChange(pending, event))
+                    return true;
+            return false;
+        }
+
+        void dispatchBatch(std::vector<ProjectDocumentEvent> batch) {
+            // Revisions are assigned at delivery so that they stay contiguous
+            // and ordered as observers see them, rather than as mutations
+            // happened to be applied inside a transaction.
+            for (auto& event : batch) {
+                auto previousRevision = currentRevision();
+                if (event.previousRevision() == 0)
+                    event.setPreviousRevision(previousRevision);
+                if (event.revision() == 0)
+                    event.setRevision(previousRevision + 1);
+                current_revision_.store(event.revision(), std::memory_order_release);
+            }
 
             std::vector<ProjectDocumentEventListener*> listeners;
             {
@@ -354,9 +432,34 @@ namespace uapmd {
                 }
             }
 
-            for (auto* listener : listeners)
-                dispatchTo(*listener, event);
+            // Dispatched outside every lock: a listener may re-enter the
+            // dispatcher, and holding transaction_mutex_ here would deadlock.
+            for (auto* listener : listeners) {
+                listener->transactionBegan();
+                for (const auto& event : batch)
+                    dispatchTo(*listener, event);
+                listener->transactionEnded();
+            }
         }
+    };
+
+    // Scoped document transaction. Events emitted while one is alive are
+    // batched and delivered when the outermost guard goes out of scope.
+    class ProjectDocumentTransaction {
+        ProjectDocumentEventDispatcher* dispatcher_;
+
+    public:
+        explicit ProjectDocumentTransaction(ProjectDocumentEventDispatcher& dispatcher)
+            : dispatcher_(&dispatcher) {
+            dispatcher_->beginTransaction();
+        }
+
+        ~ProjectDocumentTransaction() {
+            dispatcher_->endTransaction();
+        }
+
+        ProjectDocumentTransaction(const ProjectDocumentTransaction&) = delete;
+        ProjectDocumentTransaction& operator=(const ProjectDocumentTransaction&) = delete;
     };
 
 } // namespace uapmd

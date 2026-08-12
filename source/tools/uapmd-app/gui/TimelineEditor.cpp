@@ -2384,6 +2384,9 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
         }
 
         auto& timelineFacade = appModel.sequencer().engine()->timeline();
+        // The source node swap above, the new file path and the duration are
+        // one edit.
+        uapmd::ScopedDocumentTransaction transaction(timelineFacade);
         timelineFacade.setClipFilepath(trackIndex, clipId, selectedFile);
         timelineFacade.resizeClip(trackIndex, clipId, durationSamples);
         appModel.markTrackDirty(trackIndex);
@@ -2795,6 +2798,8 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
     }
 
     auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    // The source node swap above and the duration change are one edit.
+    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
     timelineFacade.resizeClip(payload.trackIndex, clip->clipId, newDuration);
     timelineFacade.notifyClipChanged(payload.trackIndex, clip->clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(payload.trackIndex);
@@ -2857,6 +2862,8 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
     );
 
     auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    // Markers, warps, the rebuilt source node and the duration are one edit.
+    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
     if (!timelineFacade.setClipMarkers(payload.trackIndex, payload.clipId, payload.markers)) {
         error = "Failed to update clip markers.";
         return false;
@@ -2921,6 +2928,8 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
         return false;
     }
     auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    // The source node swap above and the duration change are one edit.
+    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
     timelineFacade.resizeClip(trackIndex, clipId, newDuration);
     timelineFacade.notifyClipChanged(trackIndex, clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(trackIndex);

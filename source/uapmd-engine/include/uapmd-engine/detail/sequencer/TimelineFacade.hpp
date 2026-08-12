@@ -128,6 +128,16 @@ public:
     virtual void loadProject(const std::filesystem::path& file, ProjectLoadCallback callback) = 0;
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
+    // Groups the document events produced by everything between the two calls
+    // into a single batch, delivered when the outermost transaction ends.
+    // Prefer the scoped form below. Calls nest.
+    //
+    // Use this whenever one user-visible action performs several mutations:
+    // without it each mutation is delivered separately and observers can see
+    // the action half-applied.
+    virtual void beginDocumentTransaction() = 0;
+    virtual void endDocumentTransaction() = 0;
+
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
     virtual ProjectDocumentView& projectDocumentView() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
@@ -234,6 +244,25 @@ public:
     virtual void onTrackGraphChanged(int32_t trackIndex) = 0;
 
     static std::unique_ptr<TimelineFacade> create(SequencerEngine& engine);
+};
+
+// Scoped form of TimelineFacade::beginDocumentTransaction(). Declare one for
+// the whole of a multi-step edit so that observers see it applied at once.
+class ScopedDocumentTransaction {
+    TimelineFacade* facade_;
+
+public:
+    explicit ScopedDocumentTransaction(TimelineFacade& facade)
+        : facade_(&facade) {
+        facade_->beginDocumentTransaction();
+    }
+
+    ~ScopedDocumentTransaction() {
+        facade_->endDocumentTransaction();
+    }
+
+    ScopedDocumentTransaction(const ScopedDocumentTransaction&) = delete;
+    ScopedDocumentTransaction& operator=(const ScopedDocumentTransaction&) = delete;
 };
 
 } // namespace uapmd

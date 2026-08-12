@@ -31,6 +31,11 @@ namespace uapmd::ara {
             ProjectDocumentView& documentView,
             const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot,
             const ProjectDocumentEvent& event);
+        // Holds one ARA edit cycle open across a batch of document events, so
+        // that a multi-step edit reaches the plug-in atomically instead of as
+        // one cycle per event. Calls nest.
+        void beginProjectDocumentTransaction();
+        void endProjectDocumentTransaction();
         AraRequestId requestAnalysis(AraAnalysisRequest request, AraAnalysisCallback callback);
         void cancelAnalysis(AraRequestId requestId);
         bool saveArchiveState(std::vector<uint8_t>& archive);

@@ -710,6 +710,108 @@ TEST_F(UapmdProjectFileTest, NonExistentFile) {
     EXPECT_EQ(project, nullptr);
 }
 
+// ── Document event batching ───────────────────────────────────────────────────
+
+namespace {
+    struct RecordingDocumentListener : uapmd::ProjectDocumentEventListener {
+        int batchesBegun{0};
+        int batchesEnded{0};
+        std::vector<std::string> received; // "<kind>:<clipId>"
+
+        void transactionBegan() override { ++batchesBegun; }
+        void transactionEnded() override { ++batchesEnded; }
+
+        void record(const char* kind, const uapmd::ProjectDocumentEvent& event) {
+            received.push_back(std::string(kind) + ":" + event.clipId().value_or("-"));
+        }
+        void clipAdded(const uapmd::ProjectDocumentEvent& event) override { record("added", event); }
+        void clipChanged(const uapmd::ProjectDocumentEvent& event) override { record("changed", event); }
+        void clipRemoved(const uapmd::ProjectDocumentEvent& event) override { record("removed", event); }
+    };
+
+    uapmd::ProjectDocumentEvent clipEvent(uapmd::ProjectDocumentEventKind kind, const std::string& clipId) {
+        uapmd::ProjectDocumentEvent event(kind);
+        event.setClipId(clipId);
+        return event;
+    }
+}
+
+TEST(ProjectDocumentEventDispatcherTest, EventOutsideTransactionIsDeliveredAsBatchOfOne) {
+    uapmd::ProjectDocumentEventDispatcher dispatcher;
+    RecordingDocumentListener listener;
+    dispatcher.addProjectDocumentEventListener(listener);
+
+    dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+
+    EXPECT_EQ(listener.received, (std::vector<std::string>{"changed:c1"}));
+    EXPECT_EQ(listener.batchesBegun, 1);
+    EXPECT_EQ(listener.batchesEnded, 1);
+}
+
+TEST(ProjectDocumentEventDispatcherTest, TransactionHoldsEventsUntilOutermostEnd) {
+    uapmd::ProjectDocumentEventDispatcher dispatcher;
+    RecordingDocumentListener listener;
+    dispatcher.addProjectDocumentEventListener(listener);
+
+    dispatcher.beginTransaction();
+    dispatcher.beginTransaction();
+    dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipAdded, "c1"));
+    dispatcher.endTransaction();
+    // The inner end must not flush.
+    EXPECT_TRUE(listener.received.empty());
+    EXPECT_EQ(listener.batchesBegun, 0);
+
+    dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+    dispatcher.endTransaction();
+
+    EXPECT_EQ(listener.received, (std::vector<std::string>{"added:c1", "changed:c1"}));
+    EXPECT_EQ(listener.batchesBegun, 1);
+    EXPECT_EQ(listener.batchesEnded, 1);
+}
+
+TEST(ProjectDocumentEventDispatcherTest, DuplicateChangesCollapseButDistinctKindsDoNot) {
+    uapmd::ProjectDocumentEventDispatcher dispatcher;
+    RecordingDocumentListener listener;
+    dispatcher.addProjectDocumentEventListener(listener);
+
+    {
+        uapmd::ProjectDocumentTransaction transaction(dispatcher);
+        // Three changes to one clip -- the shape a multi-step edit produces.
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+        // A different clip, and a different kind for the same clip, both stand.
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c2"));
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipRemoved, "c1"));
+    }
+
+    EXPECT_EQ(listener.received,
+              (std::vector<std::string>{"changed:c1", "changed:c2", "removed:c1"}));
+    EXPECT_EQ(listener.batchesBegun, 1);
+}
+
+TEST(ProjectDocumentEventDispatcherTest, RevisionsStayContiguousAcrossABatch) {
+    uapmd::ProjectDocumentEventDispatcher dispatcher;
+    struct RevisionListener : uapmd::ProjectDocumentEventListener {
+        std::vector<uapmd::ProjectRevision> revisions;
+        void clipChanged(const uapmd::ProjectDocumentEvent& event) override {
+            revisions.push_back(event.revision());
+        }
+    } listener;
+    dispatcher.addProjectDocumentEventListener(listener);
+
+    {
+        uapmd::ProjectDocumentTransaction transaction(dispatcher);
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c1"));
+        dispatcher.emit(clipEvent(uapmd::ProjectDocumentEventKind::ClipChanged, "c2"));
+    }
+
+    ASSERT_EQ(listener.revisions.size(), 2u);
+    EXPECT_EQ(listener.revisions[0], 1u);
+    EXPECT_EQ(listener.revisions[1], 2u);
+    EXPECT_EQ(dispatcher.currentRevision(), 2u);
+}
+
 // Test: a project written before persistent identity existed still loads, and
 // its objects are given the positional identifiers the old writer used.
 TEST_F(UapmdProjectFileTest, LegacyProjectWithoutIdsGetsPositionalIdentity) {
