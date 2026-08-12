@@ -143,10 +143,18 @@ namespace uapmd {
 
     static std::unique_ptr<UapmdProjectClipData> parseClip(
         const choc::value::ValueView& clipObj,
-        const std::string& anchorId,
+        const std::string& positionalId,
         AnchorResolver* resolver)
     {
         auto clip = UapmdProjectClipData::create();
+
+        // Persistent identity. Projects written before it existed carry no
+        // "id", so mint the positional identifier the old writer would have
+        // used for this clip; that keeps identity stable for a file that is
+        // loaded and saved without being reordered.
+        clip->referenceId(clipObj.hasObjectMember("id")
+            ? std::string(clipObj["id"].getString())
+            : positionalId);
 
         // Parse position
         UapmdTimelinePosition pos{};
@@ -379,11 +387,18 @@ namespace uapmd {
         return graph;
     }
 
+    // `positionalTrackId` is the identifier the pre-identity writer would have
+    // used for this track ("track_N", or "master_track"), and is the fallback
+    // identity for it and its clips when the file carries no "id".
     static std::unique_ptr<UapmdProjectTrackData> parseTrack(
         const choc::value::ValueView& trackObj,
-        size_t trackIndex)
+        const std::string& positionalTrackId)
     {
         auto track = UapmdProjectTrackData::create();
+
+        track->referenceId(trackObj.hasObjectMember("id")
+            ? std::string(trackObj["id"].getString())
+            : positionalTrackId);
 
         // Parse plugin graph
         if (trackObj.hasObjectMember("graph"))
@@ -425,9 +440,10 @@ namespace uapmd {
         if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
             size_t clipIdx = 0;
             for (const auto& clipObj : trackObj["clips"]) {
-                std::string anchorId = "track_" + std::to_string(trackIndex) +
-                                      "_clip_" + std::to_string(clipIdx);
-                track->clips().push_back(parseClip(clipObj, anchorId, nullptr));
+                track->clips().push_back(parseClip(
+                    clipObj,
+                    positionalTrackId + "_clip_" + std::to_string(clipIdx),
+                    nullptr));
                 ++clipIdx;
             }
         }
@@ -462,20 +478,21 @@ namespace uapmd {
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
             size_t trackIndex = 0;
             for (const auto& trackObj : root["tracks"]) {
-                project->addTrack(parseTrack(trackObj, trackIndex));
+                project->addTrack(parseTrack(trackObj, "track_" + std::to_string(trackIndex)));
                 ++trackIndex;
             }
         }
 
         // Parse master track
         if (root.hasObjectMember("master_track")) {
-            auto masterTrack = parseTrack(root["master_track"], 999999);
+            auto masterTrack = parseTrack(root["master_track"], "master_track");
             // Note: master track is already created in constructor
             // We need to populate it instead
             auto* master = dynamic_cast<UapmdProjectTrackData*>(project->masterTrack());
             if (master) {
                 if (root["master_track"].hasObjectMember("graph"))
                     master->graph(parsePluginGraph(root["master_track"]["graph"]));
+                master->referenceId(masterTrack->referenceId());
                 master->volume(masterTrack->volume());
                 master->markers(masterTrack->markers());
                 for (auto& clip : masterTrack->clips())

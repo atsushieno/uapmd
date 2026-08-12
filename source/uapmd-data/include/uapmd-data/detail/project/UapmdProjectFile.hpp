@@ -4,15 +4,27 @@
 #include <vector>
 #include <filesystem>
 #include <map>
+#include <string>
+#include <utility>
 
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {
     class UapmdClipDataReferencible {
+        std::string reference_id_{};
+
     public:
         virtual ~UapmdClipDataReferencible() = default;
 
         virtual uint64_t absolutePositionInSamples() = 0;
+
+        // Stable identity for this object, persisted in the project file and
+        // used to address it across save/load, undo and clipboard operations.
+        // Empty only while an object is being constructed, or when it came
+        // from a project file written before identity was persisted; the
+        // reader mints a positional identifier in that case.
+        const std::string& referenceId() const { return reference_id_; }
+        void referenceId(std::string value) { reference_id_ = std::move(value); }
     };
 
     enum class UapmdAnchorOrigin {

@@ -38,6 +38,7 @@ Each track represents an independent timeline with its own clips and optional au
 
 ```json
 {
+  "id": "track_0",
   "volume": 1.0,
   "graph": { /* graph object */ },
   "clips": [ /* array of clip objects */ ]
@@ -46,6 +47,14 @@ Each track represents an independent timeline with its own clips and optional au
 
 ### Fields
 
+- **`id`** (string, optional): Stable identity for this track
+  - Preserved across save/load so that the track can be addressed by identity
+    rather than by its position in the `tracks` array
+  - Omitted by writers that predate persistent identity. Readers mint
+    `"track_N"` (or `"master_track"`) for tracks that lack it, matching the
+    positional identifier those writers used
+  - Distinct from the anchor identifiers described under Clip Object, which
+    address objects only within a single file
 - **`volume`** (number, optional): Track/master fader gain as a linear scalar
   - Default is `1.0`
   - Recommended UAPMD-supported range is `0.0 .. 8.0`
@@ -84,6 +93,7 @@ Clips represent either audio files or MIDI data positioned on the timeline.
 
 ```json
 {
+  "id": "track_0_clip_0",
   "anchor": "track_0",
   "position_samples": 48000,
   "file": "/path/to/audio.wav",
@@ -92,6 +102,14 @@ Clips represent either audio files or MIDI data positioned on the timeline.
 ```
 
 ### Fields
+
+- **`id`** (string, optional): Stable identity for this clip
+  - Preserved across save/load so that the clip can be addressed by identity
+    rather than by its position in the `clips` array
+  - Omitted by writers that predate persistent identity. Readers mint
+    `"track_N_clip_M"` for clips that lack it
+  - Independent of `anchor`: identity survives reordering, whereas anchor
+    identifiers are regenerated from array position on every write
 
 - **`anchor`** (string, optional): ID of the anchor point for positioning
   - If omitted or `null`, position is absolute (relative to track start at sample 0)

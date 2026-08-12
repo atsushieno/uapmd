@@ -40,7 +40,11 @@ namespace uapmd {
 
     }
 
-    // Helper to generate unique anchor IDs for tracks and clips
+    // Helper to generate unique anchor IDs for tracks and clips.
+    // These stay positional and are regenerated on every write: they address
+    // objects *within one file*, and are deliberately kept separate from the
+    // persistent `id` written alongside, so that older builds continue to
+    // resolve anchors in files this writer produces.
     class AnchorIdGenerator {
         std::map<UapmdClipDataReferencible*, std::string> id_map_;
 
@@ -71,6 +75,9 @@ namespace uapmd {
         AnchorIdGenerator& idGen)
     {
         auto obj = choc::value::createObject("UapmdClip");
+
+        if (!clip->referenceId().empty())
+            obj.addMember("id", clip->referenceId());
 
         auto pos = clip->position();
 
@@ -176,6 +183,9 @@ namespace uapmd {
         AnchorIdGenerator& idGen)
     {
         auto obj = choc::value::createObject("UapmdTrack");
+
+        if (!track->referenceId().empty())
+            obj.addMember("id", track->referenceId());
 
         obj.addMember("volume", track->volume());
         if (track->muted())

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -118,6 +119,38 @@ namespace uapmd {
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
+
+        // Identity staged by the project loader for the next track or clip it
+        // creates, so that loaded objects keep the reference IDs they were
+        // saved under instead of being given freshly allocated ones. Empty
+        // means "allocate as usual"; each is consumed by the next creation.
+        std::string pending_track_reference_id_{};
+        std::string pending_clip_reference_id_{};
+
+        std::string takePendingClipReferenceId() {
+            auto id = std::move(pending_clip_reference_id_);
+            // A moved-from std::string is valid but unspecified, and short
+            // strings are commonly left intact. Clear explicitly so a staged
+            // identity cannot be handed to a second clip.
+            pending_clip_reference_id_.clear();
+            return id;
+        }
+
+        // Keeps the allocator ahead of every restored identifier, so that a
+        // track added after a load cannot collide with one the project already
+        // used.
+        void reserveTrackReferenceId(std::string_view referenceId) {
+            constexpr std::string_view prefix{"track_"};
+            if (!referenceId.starts_with(prefix))
+                return;
+            uint32_t value{};
+            auto digits = referenceId.substr(prefix.size());
+            auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), value);
+            if (ec != std::errc{} || ptr != digits.data() + digits.size())
+                return;
+            if (value >= next_timeline_track_reference_)
+                next_timeline_track_reference_ = value + 1;
+        }
 
     public:
         explicit TimelineFacadeImpl(SequencerEngine& engine)
@@ -810,6 +843,7 @@ namespace uapmd {
                         continue;
 
                     auto projectTrack = UapmdProjectTrackData::create();
+                    projectTrack->referenceId(timelineTrack->referenceId());
                     auto clips = sequencer_detail::sortedTrackClips(*timelineTrack);
                     serializedTracks.push_back(SerializedTrackClips{
                         static_cast<int32_t>(trackIndex),
@@ -1054,6 +1088,7 @@ namespace uapmd {
             int64_t durationSamples = sourceNode->totalLength();
 
             ClipData clip;
+            clip.referenceId = takePendingClipReferenceId();
             clip.clipType = ClipType::Midi;
             clip.position = position;
             clip.durationSamples = durationSamples;
@@ -1107,6 +1142,7 @@ namespace uapmd {
             int64_t durationSamples = sourceNode->totalLength();
 
             ClipData clip;
+            clip.referenceId = takePendingClipReferenceId();
             clip.position = position;
             clip.durationSamples = durationSamples;
             clip.sourceNodeInstanceId = sourceNodeId;
@@ -1621,7 +1657,12 @@ namespace uapmd {
             auto& tracks = project->tracks();
 
             for (size_t i = 0; i < tracks.size() && earlyError.empty(); ++i) {
+                // Restore the track under the identity it was saved with, so
+                // that anything keyed by it (ARA persistent IDs, frozen track
+                // state) still resolves after a reload.
+                pending_track_reference_id_ = tracks[i]->referenceId();
                 int32_t trackIndex = engine_.addEmptyTrack();
+                pending_track_reference_id_.clear();
                 if (trackIndex < 0) {
                     earlyError = "Failed to create track";
                     break;
@@ -1632,6 +1673,10 @@ namespace uapmd {
                 for (auto& clip : tracks[i]->clips()) {
                     if (!clip)
                         continue;
+
+                    // Staged per clip, so a clip that fails to load cannot
+                    // leak its identity onto the next one.
+                    pending_clip_reference_id_ = clip->referenceId();
 
                     auto absoluteSamples = static_cast<int64_t>(clip->absolutePositionInSamples());
                     TimelinePosition position;
@@ -1756,6 +1801,7 @@ namespace uapmd {
                 for (auto& clip : masterProjectTrack->clips()) {
                     if (!clip || clip->clipType() != "midi")
                         continue;
+                    pending_clip_reference_id_ = clip->referenceId();
                     auto resolvedPath = makeAbsolutePath(projectDir, clip->file());
                     if (resolvedPath.empty())
                         continue;
@@ -2328,7 +2374,13 @@ namespace uapmd {
             bufferSizeInFrames_ = bufferSizeInFrames;
             master_timeline_track_->reconfigureBuffers(0, bufferSizeInFrames);
 
-            const std::string trackReferenceId = std::format("track_{}", next_timeline_track_reference_++);
+            std::string trackReferenceId;
+            if (!pending_track_reference_id_.empty()) {
+                trackReferenceId = std::move(pending_track_reference_id_);
+                pending_track_reference_id_.clear();
+                reserveTrackReferenceId(trackReferenceId);
+            } else
+                trackReferenceId = std::format("track_{}", next_timeline_track_reference_++);
             auto newTrack = std::make_shared<TimelineTrack>(trackReferenceId, outputChannels, sampleRate, bufferSizeInFrames);
 
             newTrack->setNrpnParameterCallback(

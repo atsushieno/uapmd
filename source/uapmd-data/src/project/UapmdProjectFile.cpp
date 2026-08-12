@@ -151,6 +151,9 @@ namespace uapmd {
     public:
         UapmdProjectDataImpl()
             : master_track_(std::make_unique<UapmdProjectTrackDataImpl>()) {
+            // The master track is a singleton within a project, so its identity
+            // is fixed rather than allocated.
+            master_track_->referenceId("master_track");
         }
 
         size_t addTrack(std::unique_ptr<UapmdProjectTrackData> newTrack) override {

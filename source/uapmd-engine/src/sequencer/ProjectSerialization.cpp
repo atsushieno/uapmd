@@ -310,6 +310,7 @@ namespace uapmd::sequencer_detail {
         size_t& midiExportCounter,
         std::string& error) {
         auto projectClip = UapmdProjectClipData::create();
+        projectClip->referenceId(clip.referenceId);
         projectClip->clipType(clip.clipType == ClipType::Midi ? "midi" : "audio");
         projectClip->tickResolution(clip.tickResolution);
         projectClip->markers(clip.markers);

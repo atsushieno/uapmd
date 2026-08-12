@@ -709,3 +709,73 @@ TEST_F(UapmdProjectFileTest, NonExistentFile) {
     auto project = uapmd::UapmdProjectDataReader::read(file_path);
     EXPECT_EQ(project, nullptr);
 }
+
+// Test: a project written before persistent identity existed still loads, and
+// its objects are given the positional identifiers the old writer used.
+TEST_F(UapmdProjectFileTest, LegacyProjectWithoutIdsGetsPositionalIdentity) {
+    std::string json = R"({
+      "tracks": [
+        { "volume": 1.0, "clips": [
+            { "position_samples": 0, "file": "a.wav" },
+            { "anchor": "track_0_clip_0", "position_samples": 100, "file": "b.wav" }
+        ] },
+        { "volume": 0.5, "clips": [ { "position_samples": 0, "file": "c.wav" } ] }
+      ],
+      "master_track": { "volume": 1.0 }
+    })";
+    auto project = uapmd::UapmdProjectDataReader::read(createTestFile("legacy.uapmd", json));
+    ASSERT_NE(project, nullptr);
+
+    auto tracks = project->tracks();
+    ASSERT_EQ(tracks.size(), 2u);
+    EXPECT_EQ(tracks[0]->referenceId(), "track_0");
+    EXPECT_EQ(tracks[1]->referenceId(), "track_1");
+    EXPECT_EQ(project->masterTrack()->referenceId(), "master_track");
+
+    ASSERT_EQ(tracks[0]->clips().size(), 2u);
+    EXPECT_EQ(tracks[0]->clips()[0]->referenceId(), "track_0_clip_0");
+    EXPECT_EQ(tracks[0]->clips()[1]->referenceId(), "track_0_clip_1");
+    EXPECT_EQ(tracks[1]->clips()[0]->referenceId(), "track_1_clip_0");
+
+    // The anchor in the legacy file must still resolve after minting.
+    EXPECT_EQ(tracks[0]->clips()[1]->position().anchor, tracks[0]->clips()[0].get());
+}
+
+// Test: identity survives a load/save/load cycle, and the anchors written
+// alongside it stay positional so that older readers keep resolving them.
+TEST_F(UapmdProjectFileTest, PersistentIdentitySurvivesRoundTrip) {
+    std::string json = R"({
+      "tracks": [
+        { "id": "track_authored_7", "volume": 1.0, "clips": [
+            { "id": "clip_authored_42", "position_samples": 0, "file": "a.wav" },
+            { "anchor": "track_0_clip_0", "position_samples": 100, "file": "b.wav" }
+        ] }
+      ]
+    })";
+    auto loaded = uapmd::UapmdProjectDataReader::read(createTestFile("authored.uapmd", json));
+    ASSERT_NE(loaded, nullptr);
+
+    auto written = test_dir / "roundtrip.uapmd";
+    ASSERT_TRUE(uapmd::UapmdProjectDataWriter::write(loaded.get(), written));
+
+    auto reloaded = uapmd::UapmdProjectDataReader::read(written);
+    ASSERT_NE(reloaded, nullptr);
+    auto tracks = reloaded->tracks();
+    ASSERT_EQ(tracks.size(), 1u);
+    EXPECT_EQ(tracks[0]->referenceId(), "track_authored_7");
+    ASSERT_EQ(tracks[0]->clips().size(), 2u);
+    EXPECT_EQ(tracks[0]->clips()[0]->referenceId(), "clip_authored_42");
+    // The second clip had no authored id, so it kept the minted one.
+    EXPECT_EQ(tracks[0]->clips()[1]->referenceId(), "track_0_clip_1");
+    EXPECT_EQ(tracks[0]->clips()[1]->position().anchor, tracks[0]->clips()[0].get());
+
+    // The anchor on disk must remain positional rather than adopting the
+    // authored id, otherwise readers without identity support would fail to
+    // resolve it and drop the clip.
+    std::ifstream ifs(written);
+    std::stringstream buffer;
+    buffer << ifs.rdbuf();
+    const auto contents = buffer.str();
+    EXPECT_NE(contents.find(R"("anchor": "track_0_clip_0")"), std::string::npos) << contents;
+    EXPECT_NE(contents.find(R"("id": "clip_authored_42")"), std::string::npos) << contents;
+}
