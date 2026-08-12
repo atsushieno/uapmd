@@ -2,8 +2,8 @@
 
 ## Status
 
-Phase 0 in progress. Steps 0.1 and 0.3 are complete, and 0.4 is complete for
-clips. Step 0.2 is complete apart from the clip anchor operations, which wait
+Phase 0 in progress. Steps 0.1, 0.1c and 0.3 are complete, and 0.4 is complete
+for clips. Step 0.2 is complete apart from the clip anchor operations, which wait
 on the anchor sidecar described under 0.1, and the audio source node
 replacement left with 0.4. Track fragments, the ARA archive slot and step 0.5
 have not been started. Each step below records its own state.
@@ -349,6 +349,94 @@ concepts — stable persistent identifiers, partial archives, identifier
 remapping on restore — are allowed to shape the document model, but the
 structure filling stays confined to the addin so that a draft revision does
 not propagate into `uapmd-data`.
+
+## Remaining work
+
+Collected from the per-step notes above so that what is left is visible in one
+place. Ordered by dependency, not by priority.
+
+1. **Persistent identity for plugin graph nodes (0.1c).** Done.
+
+   `AudioGraphNode::nodeId()` already existed and is already the key everything
+   downstream uses — `getNode()` lookups, the DAG's indegree and topological
+   order maps, connection endpoints. For plugin nodes it merely held
+   `"plugin:" + instanceId`, a string wrapper around a session-local integer.
+   The fix was therefore to change how that string is chosen rather than to
+   introduce a second identifier: `AudioPluginNodeImpl` now accepts a node id,
+   `appendNodeSimple` and `SequencerEngine::addPluginToTrack` take an optional
+   restore id, and the project loader passes the stored one. An empty id still
+   derives the old value, so newly added plugins behave as before.
+
+   `UapmdProjectPluginNodeData` gained a `node_id` member, written from the live
+   node's identity on save and minted positionally when absent on load. It is
+   deliberately not called `id`: `plugin_id` already means the plugin *type*.
+
+   Back compatibility came out free for DAG projects. They already carried
+   `"plugin:<n>"` strings in both node descriptors and connection endpoints, so
+   on load those simply become the persistent identities and the connections
+   resolve against themselves. No migration is needed.
+
+   The ARA archive manifest moved from keying entries by runtime instance id to
+   keying them by node id, and its version went to `uapmd-ara-state-v2`. v1
+   manifests are still read, but their entries can only be applied positionally
+   and may bind to the wrong plugin — nothing better is recoverable from an
+   identifier that no longer means anything. Archive files keep positional
+   names so that node ids never have to be escaped into filenames.
+
+2. **ARA wiring (0.5).** Described in its own section. Independent of items 1,
+   3 and 4, so it can proceed in parallel.
+
+3. **Audio source node replacement.** The three remaining
+   `replaceClipSourceNode` call sites rebuild an `AudioFileSourceNode` from
+   resolved warp points. They need their own mutator, in the shape of
+   `replaceMidiClipContent`.
+
+4. **Track fragments.** Item 1 is done, so this is unblocked.
+
+   A track fragment can hold its engine state by value, the same way a clip
+   fragment holds MIDI content. Both halves are already produced as byte
+   vectors: graph topology through `AudioGraphProvider::saveProjectGraph`, and
+   per-plugin state through `AudioPluginInstance::requestState`. The external
+   `.graph.json` and plugin state blob files are artifacts of saving a project,
+   not of the serialization itself, so a fragment does not need them.
+
+   What does make a track unlike a clip is that **both** capture and attach are
+   asynchronous. `requestState` is callback-based, so capture cannot have the
+   `std::optional<ProjectClipFragment>` shape that `captureClipFragment` has;
+   and plugin instantiation through `addPluginToTrack` is callback-based, so
+   attach cannot return a finished track. The consequence for undo is the
+   sharper one: deleting a track has to capture plugin state before destroying
+   the instances, so the delete itself does not complete synchronously and its
+   undo entry is an asynchronous command rather than a captured value.
+
+   `saveProject` already sequences per-plugin `requestState` calls through a
+   `runNext` chain with a pending counter. That is the pattern to follow rather
+   than inventing a second one.
+
+   Duplication is also not all-or-nothing. Every DAW that offers track
+   duplication offers a choice of what comes along — plugins with or without
+   clips being the common split — so attach takes a component mask. Capture
+   stays uniform and captures everything, so that one fragment serves a clone,
+   a partial duplicate and an undo restore.
+
+5. **Clip anchors.** Moving anchor storage out of the project document into an
+   extension sidecar, then migrating the three deferred `setClipAnchor` call
+   sites onto a facade mutator.
+
+6. **Frozen render revocation.** Move it inside the mutation funnel.
+   `FrozenTrackManager` already listens for document events but its
+   `clipAdded`, `clipRemoved` and `clipChanged` handlers are empty stubs, so the
+   only thing revoking a stale frozen render is the hand-written
+   `AppModel::markTrackDirty` call at each site. Implementing those handlers is
+   the clean fix; the work is auditing the existing sites for double revocation.
+
+Two defects found along the way are recorded here rather than fixed, because
+neither belongs to this plan. Anchors that target master-track clips never
+resolve, because the writer and reader disagree on the identifier spelling and
+the master-track resolution loop is guarded by an inverted condition.
+Separately, `AppModel::removeTrack` does not remove a track — it destroys the
+plugin instances, clears the clips and tombstones the index in
+`hidden_tracks_`, so a track slot is never reclaimed.
 
 ## Scope boundaries
 

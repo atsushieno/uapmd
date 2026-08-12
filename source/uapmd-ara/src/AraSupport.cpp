@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <format>
+#include <iostream>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -41,6 +42,31 @@ namespace uapmd::ara {
             ProjectDocumentEventListenerToken event_listener_token_{};
             std::map<int32_t, NativeAraDocument> native_ara_documents_{};
             std::map<int32_t, std::vector<uint8_t>> pending_native_archives_{};
+
+            // ARA archives are stored against a plugin's persistent graph node
+            // identity rather than its runtime instance id, which is allocated
+            // per session and does not survive a reload. Keying by the instance
+            // id bound a plugin's archived state to whichever plugin happened
+            // to be allocated that id next time.
+            std::string nodeIdForInstance(int32_t instanceId) {
+                for (auto* track : engine_.tracks())
+                    if (track)
+                        if (auto* node = track->graph().getPluginNode(instanceId))
+                            return node->nodeId();
+                if (auto* master = engine_.masterTrack())
+                    if (auto* node = master->graph().getPluginNode(instanceId))
+                        return node->nodeId();
+                return {};
+            }
+
+            int32_t instanceIdForNodeId(const std::string& nodeId) {
+                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                    (void) document;
+                    if (nodeIdForInstance(pluginInstanceId) == nodeId)
+                        return pluginInstanceId;
+                }
+                return -1;
+            }
 
             void resyncNativeAraDocuments() {
                 auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
@@ -218,11 +244,24 @@ namespace uapmd::ara {
                 ProjectSerializationWriteContext& context,
                 std::string& error) override {
                 std::ostringstream manifest;
-                manifest << "uapmd-ara-state-v1\n";
+                // v2 keys entries by persistent graph node identity. v1 keyed
+                // them by runtime instance id and is still read, below.
+                manifest << "uapmd-ara-state-v2\n";
 
+                size_t archiveIndex = 0;
                 for (auto& [pluginInstanceId, document] : native_ara_documents_) {
                     if (!document.controller)
                         continue;
+
+                    // Node ids may contain characters that are awkward in a
+                    // filename, so the archive keeps a positional name and the
+                    // manifest carries the identity.
+                    const auto nodeId = nodeIdForInstance(pluginInstanceId);
+                    if (nodeId.empty()) {
+                        std::cerr << "Warning: No graph node found for plugin instance " << pluginInstanceId
+                                  << "; its ARA state will not be archived." << std::endl;
+                        continue;
+                    }
 
                     std::vector<uint8_t> archive;
                     if (!document.controller->saveArchiveState(archive)) {
@@ -232,10 +271,11 @@ namespace uapmd::ara {
                     if (archive.empty())
                         continue;
 
-                    const auto archivePath = std::filesystem::path("native") / (std::to_string(pluginInstanceId) + ".bin");
+                    const auto archivePath = std::filesystem::path("native") / (std::to_string(archiveIndex++) + ".bin");
                     if (!context.writeExtensionFile(extensionId(), archivePath, archive, error))
                         return false;
-                    manifest << "native " << pluginInstanceId << " " << archivePath.generic_string() << "\n";
+                    // Node id last, so that it may contain spaces.
+                    manifest << "native " << archivePath.generic_string() << " " << nodeId << "\n";
                 }
 
                 return context.writeExtensionFile(
@@ -259,7 +299,12 @@ namespace uapmd::ara {
                 std::istringstream manifest(stringFromBytes(*manifestBytes));
                 std::string header;
                 std::getline(manifest, header);
-                if (header != "uapmd-ara-state-v1") {
+                // v1 entries are "native <instanceId> <path>", keyed by a
+                // runtime instance id that is meaningless in this session.
+                // Those entries are read positionally and may bind to the wrong
+                // plugin; nothing better is recoverable from them.
+                const bool keyedByNodeId = header == "uapmd-ara-state-v2";
+                if (!keyedByNodeId && header != "uapmd-ara-state-v1") {
                     error = "Unsupported ARA extension manifest.";
                     return false;
                 }
@@ -273,7 +318,19 @@ namespace uapmd::ara {
 
                     int32_t pluginInstanceId{};
                     std::string archivePath;
-                    if (!(manifest >> pluginInstanceId >> archivePath)) {
+                    if (keyedByNodeId) {
+                        std::string nodeId;
+                        if (!(manifest >> archivePath) || !std::getline(manifest, nodeId)) {
+                            error = "Malformed ARA extension manifest entry.";
+                            return false;
+                        }
+                        // Node id runs to end of line, so trim the separator.
+                        const auto firstNonSpace = nodeId.find_first_not_of(" \t\r");
+                        nodeId = firstNonSpace == std::string::npos ? std::string{} : nodeId.substr(firstNonSpace);
+                        while (!nodeId.empty() && (nodeId.back() == '\r' || nodeId.back() == ' '))
+                            nodeId.pop_back();
+                        pluginInstanceId = instanceIdForNodeId(nodeId);
+                    } else if (!(manifest >> pluginInstanceId >> archivePath)) {
                         error = "Malformed ARA extension manifest entry.";
                         return false;
                     }

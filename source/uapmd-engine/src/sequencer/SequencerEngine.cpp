@@ -322,7 +322,7 @@ namespace uapmd {
         uapmd_track_index_t addEmptyTrack() override;
         bool removeTrack(uapmd_track_index_t trackIndex) override;
         bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) override;
-        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
+        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback, std::string restoreNodeId = {}) override;
         bool removePluginInstance(int32_t instanceId) override;
 
         uint8_t getInstanceGroup(int32_t instanceId) const override {
@@ -1942,7 +1942,7 @@ namespace uapmd {
         return true;
     }
 
-    void SequencerEngineImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
+    void SequencerEngineImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback, std::string restoreNodeId) {
         if (frozen_track_manager_->isTrackBusy(trackIndex)) {
             callback(-1, trackIndex, "Track is busy freezing");
             return;
@@ -1963,8 +1963,10 @@ namespace uapmd {
                                           false,
                                           format,
                                           pluginId,
-                                          [this, trackIndex, targetMaster, callback](int32_t instanceId, std::string error) {
-            auto complete = [this, trackIndex, targetMaster, callback, instanceId, error = std::move(error)]() mutable {
+                                          [this, trackIndex, targetMaster, callback,
+                                           restoreNodeId = std::move(restoreNodeId)](int32_t instanceId, std::string error) mutable {
+            auto complete = [this, trackIndex, targetMaster, callback, instanceId, error = std::move(error),
+                             restoreNodeId = std::move(restoreNodeId)]() mutable {
                 if (instanceId < 0) {
                     callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Could not create plugin: " + error);
                     return;
@@ -2002,7 +2004,7 @@ namespace uapmd {
                     auto instance = plugin_host->getInstance(instanceId);
                     instance->bypassed(true);
                     plugin_host->deletePluginInstance(instanceId);
-                });
+                }, std::move(restoreNodeId));
                 if (status != 0) {
                     callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
                     return;

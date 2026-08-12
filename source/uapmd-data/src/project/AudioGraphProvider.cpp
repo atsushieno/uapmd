@@ -211,8 +211,16 @@ void parsePluginListPayload(const choc::value::ValueView& root, GraphT& graph) {
         graph.graphType(std::string(root["graph_type"].getString()));
 
     if (root.hasObjectMember("plugins") && root["plugins"].isArray()) {
+        size_t pluginIndex = 0;
         for (const auto& pluginObj : root["plugins"]) {
             UapmdProjectPluginNodeData node;
+            // Graphs written before node identity was persisted carry no
+            // node_id, so mint the positional identifier the runtime would
+            // have derived for a node in this slot.
+            node.node_id = pluginObj.hasObjectMember("node_id")
+                ? std::string(pluginObj["node_id"].getString())
+                : "plugin:" + std::to_string(pluginIndex);
+            ++pluginIndex;
             if (pluginObj.hasObjectMember("plugin_id"))
                 node.plugin_id = std::string(pluginObj["plugin_id"].getString());
             if (pluginObj.hasObjectMember("format"))
@@ -240,6 +248,8 @@ choc::value::Value serializePluginListPayload(GraphT& graph) {
         auto pluginsArray = choc::value::createEmptyArray();
         for (const auto& plugin : plugins) {
             auto pluginObj = choc::value::createObject("Plugin");
+            if (!plugin.node_id.empty())
+                pluginObj.addMember("node_id", plugin.node_id);
             pluginObj.addMember("plugin_id", plugin.plugin_id);
             pluginObj.addMember("format", plugin.format);
             pluginObj.addMember("display_name", plugin.display_name);
@@ -579,6 +589,10 @@ void populateProjectGraphPlugins(
             continue;
 
         UapmdProjectPluginNodeData nodeData;
+        // Record the node's runtime identity so that reloading restores the
+        // same one rather than deriving a fresh one from the new instance id.
+        if (auto* pluginNode = runtimeGraph.getPluginNode(instanceId))
+            nodeData.node_id = pluginNode->nodeId();
         nodeData.plugin_id = instance->pluginId();
         nodeData.format = instance->formatName();
         nodeData.display_name = instance->displayName();

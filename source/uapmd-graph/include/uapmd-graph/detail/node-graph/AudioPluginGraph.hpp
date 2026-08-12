@@ -35,7 +35,11 @@ namespace uapmd_graph {
     public:
         virtual ~AudioPluginGraph() = default;
 
-        virtual uapmd_status_t appendNodeSimple(int32_t instanceId, uapmd_plugin_hosting::AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) = 0;
+        // `nodeId` is the node's persistent identity, as stored in the project.
+        // Pass it when restoring a saved graph so that the node comes back
+        // under the identity anything else keyed by it expects; leave it empty
+        // for a newly added plugin and one is derived from `instanceId`.
+        virtual uapmd_status_t appendNodeSimple(int32_t instanceId, uapmd_plugin_hosting::AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete, std::string nodeId = {}) = 0;
         virtual uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) = 0;
         virtual bool removeNodeSimple(int32_t instanceId) = 0;
 

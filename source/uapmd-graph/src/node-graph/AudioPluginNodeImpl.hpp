@@ -39,13 +39,21 @@ namespace uapmd_graph {
         bool has_active_notes_{false};
 
     public:
+        // `nodeId` is this node's persistent identity: it is written to the
+        // project and passed back here when the project is reloaded, so that
+        // anything keyed by it (ARA archives, saved graph connections)
+        // reconnects to the same plugin. Pass an empty string for a node that
+        // has no stored identity yet, and one is derived from the runtime
+        // instance id, which is what every caller did before identity was
+        // persisted.
         AudioPluginNodeImpl(
             int32_t instanceId,
             uapmd_plugin_hosting::AudioPluginInstanceAPI* instance,
             size_t eventBufferSizeInBytes,
-            std::function<void()>&& onDelete
+            std::function<void()>&& onDelete,
+            std::string nodeId = {}
         ) : instance_id_(instanceId),
-            node_id_("plugin:" + std::to_string(instanceId)),
+            node_id_(nodeId.empty() ? "plugin:" + std::to_string(instanceId) : std::move(nodeId)),
             node_type_(instance && !instance->formatName().empty() ? "plugin:" + instance->formatName() : "plugin"),
             instance_(instance),
             queue_(eventBufferSizeInBytes),

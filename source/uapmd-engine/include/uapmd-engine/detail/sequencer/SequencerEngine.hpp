@@ -87,7 +87,12 @@ namespace uapmd {
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track
-        virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
+        // `restoreNodeId` gives the appended graph node a persistent identity
+        // instead of one derived from its runtime instance id. Pass the value
+        // stored in the project when reloading a saved graph, so that anything
+        // keyed by node identity reconnects; leave it empty when the user adds
+        // a new plugin.
+        virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback, std::string restoreNodeId = {}) = 0;
         virtual bool removePluginInstance(int32_t instanceId) = 0;
         virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
         virtual bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<uapmd_graph::AudioPluginGraph>&& graph) = 0;

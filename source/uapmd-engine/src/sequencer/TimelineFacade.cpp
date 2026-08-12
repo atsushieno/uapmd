@@ -1777,6 +1777,9 @@ namespace uapmd {
                     std::string format = plugin.format;
                     std::string pluginId = plugin.plugin_id;
                     std::string stateFile = plugin.state_file;
+                    // Restore the node under the identity it was saved with, so
+                    // that ARA archives and saved graph connections reconnect.
+                    std::string nodeId = plugin.node_id;
                     const std::string pluginName = plugin.display_name;
                     const int32_t groupIndex = plugin.group_index;
 
@@ -1810,7 +1813,7 @@ namespace uapmd {
 
                     plugin_load_steps->push_back(
                         [this, trackIndex, format = std::move(format), pluginId = std::move(pluginId),
-                         resolvedState, groupIndex, pluginLabel](std::function<void()> done) mutable {
+                         resolvedState, groupIndex, pluginLabel, nodeId = std::move(nodeId)](std::function<void()> done) mutable {
                             engine_.addPluginToTrack(trackIndex, format, pluginId,
                                 [this, resolvedState, groupIndex, pluginLabel, pluginId, format, done = std::move(done)](int32_t instanceId, int32_t, std::string error) mutable {
                             auto finishPlugin = [done]() mutable {
@@ -1844,7 +1847,8 @@ namespace uapmd {
                                 }
                             }
                             finishPlugin();
-                        });
+                        },
+                        std::move(nodeId));
                     });
                 }
             };

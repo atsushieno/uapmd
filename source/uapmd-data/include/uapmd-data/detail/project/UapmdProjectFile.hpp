@@ -79,6 +79,12 @@ namespace uapmd {
     };
 
     struct UapmdProjectPluginNodeData {
+        // Persistent identity of this node within its graph, matching
+        // AudioGraphNode::nodeId() at runtime. Distinct from `plugin_id`, which
+        // identifies the plugin *type* rather than this instance of it.
+        // Readers mint a positional identifier when it is absent, so that
+        // graphs written before identity was persisted still get one.
+        std::string node_id{};
         std::string plugin_id{};
         std::string format{};
         std::string display_name{};

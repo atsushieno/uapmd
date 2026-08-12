@@ -407,7 +407,7 @@ namespace uapmd_graph {
         AudioGraphExtension* getExtension(const std::type_info& type) override;
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
 
-        uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
+        uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete, std::string nodeId = {}) override;
         uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
         bool removeNodeSimple(int32_t instanceId) override;
         std::map<std::string, AudioGraphNode*> nodes() override;
@@ -786,12 +786,13 @@ namespace uapmd_graph {
 
     uapmd_status_t AudioPluginFullDAGraphImpl::appendNodeSimple(int32_t instanceId,
                                                           AudioPluginInstanceAPI* instance,
-                                                          std::function<void()>&& onDelete) {
+                                                          std::function<void()>&& onDelete,
+                                                          std::string nodeId) {
         if (!instance)
             return -1;
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         access->nodes.push_back(std::make_shared<AudioPluginNodeImpl>(
-            instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete)));
+            instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete), std::move(nodeId)));
         if (access->custom_topology)
             rebuildCompiledState(*access);
         else
