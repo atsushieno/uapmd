@@ -372,6 +372,14 @@ namespace uapmd {
                 dispatchBatch(std::move(batch));
         }
 
+        // True while a transaction is open. Operations that are illegal
+        // mid-edit -- archiving a plug-in's state, for one -- check this rather
+        // than discovering the problem further down.
+        bool inTransaction() const {
+            std::lock_guard<std::mutex> lock(transaction_mutex_);
+            return transaction_depth_ > 0;
+        }
+
         void emit(ProjectDocumentEvent event) {
             {
                 std::lock_guard<std::mutex> lock(transaction_mutex_);

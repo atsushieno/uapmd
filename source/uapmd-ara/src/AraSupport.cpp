@@ -3,6 +3,7 @@
 #include "AraFormatBinding.hpp"
 #include "AraHostDocumentController.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <iostream>
@@ -41,7 +42,13 @@ namespace uapmd::ara {
             ProjectDocumentEventSource* event_source_{};
             ProjectDocumentEventListenerToken event_listener_token_{};
             std::map<int32_t, NativeAraDocument> native_ara_documents_{};
-            std::map<int32_t, std::vector<uint8_t>> pending_native_archives_{};
+            // Archive bytes plus the plug-in archive identifier they were written
+            // under; ARA refuses a restore that cannot name its own format.
+            struct PendingArchive {
+                std::string archive_id;
+                std::vector<uint8_t> bytes;
+            };
+            std::map<int32_t, PendingArchive> pending_native_archives_{};
 
             // ARA archives are stored against a plugin's persistent graph node
             // identity rather than its runtime instance id, which is allocated
@@ -67,6 +74,51 @@ namespace uapmd::ara {
                 }
                 return -1;
             }
+
+            // A clip's ARA state is not one archive: every plug-in instance
+            // hosting an ARA document holds its own. The slot therefore carries
+            // one entry per document, keyed by the plug-in's persistent graph
+            // node identity, and each entry records the persistent IDs its
+            // archive was taken from so a paste can remap them.
+            //
+            // Framed by hand rather than as JSON because the archives are
+            // arbitrary binary and the slot is opaque to everyone but this
+            // extension.
+            static void appendChunk(std::vector<uint8_t>& out, const void* data, size_t size) {
+                const auto length = static_cast<uint32_t>(size);
+                const auto* lengthBytes = reinterpret_cast<const uint8_t*>(&length);
+                out.insert(out.end(), lengthBytes, lengthBytes + sizeof(length));
+                const auto* bytes = static_cast<const uint8_t*>(data);
+                out.insert(out.end(), bytes, bytes + size);
+            }
+
+            static void appendChunk(std::vector<uint8_t>& out, const std::string& value) {
+                appendChunk(out, value.data(), value.size());
+            }
+
+            static bool readChunk(const std::vector<uint8_t>& in, size_t& offset, std::vector<uint8_t>& out) {
+                uint32_t length{};
+                if (offset + sizeof(length) > in.size())
+                    return false;
+                std::memcpy(&length, in.data() + offset, sizeof(length));
+                offset += sizeof(length);
+                if (offset + length > in.size())
+                    return false;
+                out.assign(in.begin() + static_cast<std::ptrdiff_t>(offset),
+                           in.begin() + static_cast<std::ptrdiff_t>(offset + length));
+                offset += length;
+                return true;
+            }
+
+            static bool readChunk(const std::vector<uint8_t>& in, size_t& offset, std::string& out) {
+                std::vector<uint8_t> bytes;
+                if (!readChunk(in, offset, bytes))
+                    return false;
+                out.assign(bytes.begin(), bytes.end());
+                return true;
+            }
+
+            static constexpr uint32_t kFragmentSlotVersion = 1;
 
             void resyncNativeAraDocuments() {
                 auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
@@ -142,13 +194,33 @@ namespace uapmd::ara {
                 if (!controller->valid())
                     return AraStatus::BackendError;
 
+                // An ARA plug-in editing a region changes what the track
+                // renders, exactly as a user edit in our own UI would, so it
+                // must revoke a frozen render the same way. Without this a
+                // frozen track keeps playing pre-edit audio with nothing to
+                // indicate why.
+                controller->setRenderedSignalChangedCallback(
+                    [this](const ProjectObjectId& trackId) {
+                        // trackIndexForReferenceId scans regular tracks only and
+                        // returns -1 both for the master track and for an id it
+                        // does not know, so the master case is resolved first
+                        // rather than inferred from that -1.
+                        auto* master = engine_.timeline().masterTimelineTrack();
+                        const auto trackIndex = master && master->referenceId() == trackId
+                            ? kMasterTrackIndex
+                            : engine_.timeline().trackIndexForReferenceId(trackId);
+                        if (trackIndex < 0 && trackIndex != kMasterTrackIndex)
+                            return;
+                        engine_.frozenTrackManager().projectTrackBecameDirty(trackIndex);
+                    });
+
                 if (!controller->resyncFromProjectDocument(
                         engine_.timeline().projectDocumentView(),
                         engine_.timeline().buildMasterTrackSnapshot()))
                     return AraStatus::BackendError;
 
                 if (auto pendingIt = pending_native_archives_.find(pluginInstanceId); pendingIt != pending_native_archives_.end()) {
-                    if (!controller->loadArchiveState(pendingIt->second))
+                    if (!controller->loadArchiveState(pendingIt->second.bytes, pendingIt->second.archive_id))
                         return AraStatus::BackendError;
                     pending_native_archives_.erase(pendingIt);
                 }
@@ -264,7 +336,8 @@ namespace uapmd::ara {
                     }
 
                     std::vector<uint8_t> archive;
-                    if (!document.controller->saveArchiveState(archive)) {
+                    std::string archiveId;
+                    if (!document.controller->saveArchiveState(archive, archiveId)) {
                         error = std::format("Failed to archive native ARA document for plugin instance {}.", pluginInstanceId);
                         return false;
                     }
@@ -274,8 +347,11 @@ namespace uapmd::ara {
                     const auto archivePath = std::filesystem::path("native") / (std::to_string(archiveIndex++) + ".bin");
                     if (!context.writeExtensionFile(extensionId(), archivePath, archive, error))
                         return false;
-                    // Node id last, so that it may contain spaces.
-                    manifest << "native " << archivePath.generic_string() << " " << nodeId << "\n";
+                    // Archive id before the node id, which runs to end of line
+                    // so that it may contain spaces.
+                    manifest << "native " << archivePath.generic_string()
+                             << " " << archiveId << " " << nodeId << "\n";
+
                 }
 
                 return context.writeExtensionFile(
@@ -283,6 +359,214 @@ namespace uapmd::ara {
                     "manifest.txt",
                     bytesFromString(manifest.str()),
                     error);
+            }
+
+            bool captureClipFragmentState(
+                const ProjectObjectId& clipId,
+                std::vector<uint8_t>& state,
+                std::string& error) override {
+                std::vector<uint8_t> entries;
+                uint32_t entryCount = 0;
+
+                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                    if (!document.controller)
+                        continue;
+                    const auto nodeId = nodeIdForInstance(pluginInstanceId);
+                    if (nodeId.empty())
+                        continue;
+
+                    std::string archiveId;
+                    std::string audioSourceId;
+                    std::string modificationId;
+                    std::vector<uint8_t> archive;
+                    if (!document.controller->storeArchiveStateForClip(
+                            clipId, archiveId, audioSourceId, modificationId, archive)) {
+                        error = std::format(
+                            "Failed to archive ARA state for clip {} from plugin instance {}. "
+                            "Archiving is not permitted while the document is being edited.",
+                            clipId, pluginInstanceId);
+                        return false;
+                    }
+                    if (archive.empty())
+                        continue;
+
+                    appendChunk(entries, nodeId);
+                    appendChunk(entries, archiveId);
+                    appendChunk(entries, audioSourceId);
+                    appendChunk(entries, modificationId);
+                    appendChunk(entries, archive.data(), archive.size());
+                    ++entryCount;
+                }
+
+                if (entryCount == 0)
+                    return true;
+
+                const auto* versionBytes = reinterpret_cast<const uint8_t*>(&kFragmentSlotVersion);
+                state.insert(state.end(), versionBytes, versionBytes + sizeof(kFragmentSlotVersion));
+                const auto* countBytes = reinterpret_cast<const uint8_t*>(&entryCount);
+                state.insert(state.end(), countBytes, countBytes + sizeof(entryCount));
+                state.insert(state.end(), entries.begin(), entries.end());
+                return true;
+            }
+
+            bool restoreClipFragmentState(
+                const ProjectObjectId& clipId,
+                const std::vector<uint8_t>& state,
+                std::string& error) override {
+                if (state.empty())
+                    return true;
+
+                size_t offset = 0;
+                uint32_t version{};
+                uint32_t entryCount{};
+                if (state.size() < sizeof(version) + sizeof(entryCount)) {
+                    error = "Malformed ARA fragment state.";
+                    return false;
+                }
+                std::memcpy(&version, state.data(), sizeof(version));
+                offset += sizeof(version);
+                std::memcpy(&entryCount, state.data() + offset, sizeof(entryCount));
+                offset += sizeof(entryCount);
+                if (version != kFragmentSlotVersion) {
+                    error = std::format("Unsupported ARA fragment state version {}.", version);
+                    return false;
+                }
+
+                for (uint32_t i = 0; i < entryCount; ++i) {
+                    std::string nodeId;
+                    std::string archiveId;
+                    std::string audioSourceId;
+                    std::string modificationId;
+                    std::vector<uint8_t> archive;
+                    if (!readChunk(state, offset, nodeId)
+                        || !readChunk(state, offset, archiveId)
+                        || !readChunk(state, offset, audioSourceId)
+                        || !readChunk(state, offset, modificationId)
+                        || !readChunk(state, offset, archive)) {
+                        error = "Truncated ARA fragment state.";
+                        return false;
+                    }
+
+                    // The plug-in that produced this entry may not be present
+                    // any more -- the fragment could have come from another
+                    // project, or its plug-in since removed. Skipping is
+                    // correct; there is nothing to restore the state onto.
+                    const auto instanceId = instanceIdForNodeId(nodeId);
+                    if (instanceId < 0)
+                        continue;
+                    auto documentIt = native_ara_documents_.find(instanceId);
+                    if (documentIt == native_ara_documents_.end() || !documentIt->second.controller)
+                        continue;
+
+                    if (!documentIt->second.controller->restoreArchiveStateForClip(
+                            clipId, archiveId, audioSourceId, modificationId, archive)) {
+                        error = std::format(
+                            "Failed to restore ARA state for clip {} onto plugin instance {}.",
+                            clipId, instanceId);
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            bool captureTrackFragmentState(
+                const ProjectObjectId& trackId,
+                std::vector<uint8_t>& state,
+                std::string& error) override {
+                std::vector<uint8_t> entries;
+                uint32_t entryCount = 0;
+
+                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                    if (!document.controller)
+                        continue;
+                    const auto nodeId = nodeIdForInstance(pluginInstanceId);
+                    if (nodeId.empty())
+                        continue;
+
+                    std::string archiveId;
+                    std::string regionSequenceId;
+                    std::vector<uint8_t> archive;
+                    if (!document.controller->storeArchiveStateForTrack(
+                            trackId, archiveId, regionSequenceId, archive)) {
+                        error = std::format(
+                            "Failed to archive ARA state for track {} from plugin instance {}. "
+                            "Archiving is not permitted while the document is being edited.",
+                            trackId, pluginInstanceId);
+                        return false;
+                    }
+                    if (archive.empty())
+                        continue;
+
+                    appendChunk(entries, nodeId);
+                    appendChunk(entries, archiveId);
+                    appendChunk(entries, regionSequenceId);
+                    appendChunk(entries, archive.data(), archive.size());
+                    ++entryCount;
+                }
+
+                if (entryCount == 0)
+                    return true;
+
+                const auto* versionBytes = reinterpret_cast<const uint8_t*>(&kFragmentSlotVersion);
+                state.insert(state.end(), versionBytes, versionBytes + sizeof(kFragmentSlotVersion));
+                const auto* countBytes = reinterpret_cast<const uint8_t*>(&entryCount);
+                state.insert(state.end(), countBytes, countBytes + sizeof(entryCount));
+                state.insert(state.end(), entries.begin(), entries.end());
+                return true;
+            }
+
+            bool restoreTrackFragmentState(
+                const ProjectObjectId& trackId,
+                const std::vector<uint8_t>& state,
+                std::string& error) override {
+                if (state.empty())
+                    return true;
+
+                size_t offset = 0;
+                uint32_t version{};
+                uint32_t entryCount{};
+                if (state.size() < sizeof(version) + sizeof(entryCount)) {
+                    error = "Malformed ARA track fragment state.";
+                    return false;
+                }
+                std::memcpy(&version, state.data(), sizeof(version));
+                offset += sizeof(version);
+                std::memcpy(&entryCount, state.data() + offset, sizeof(entryCount));
+                offset += sizeof(entryCount);
+                if (version != kFragmentSlotVersion) {
+                    error = std::format("Unsupported ARA track fragment state version {}.", version);
+                    return false;
+                }
+
+                for (uint32_t i = 0; i < entryCount; ++i) {
+                    std::string nodeId;
+                    std::string archiveId;
+                    std::string regionSequenceId;
+                    std::vector<uint8_t> archive;
+                    if (!readChunk(state, offset, nodeId)
+                        || !readChunk(state, offset, archiveId)
+                        || !readChunk(state, offset, regionSequenceId)
+                        || !readChunk(state, offset, archive)) {
+                        error = "Truncated ARA track fragment state.";
+                        return false;
+                    }
+
+                    const auto instanceId = instanceIdForNodeId(nodeId);
+                    if (instanceId < 0)
+                        continue;
+                    auto documentIt = native_ara_documents_.find(instanceId);
+                    if (documentIt == native_ara_documents_.end() || !documentIt->second.controller)
+                        continue;
+
+                    if (!documentIt->second.controller->restoreArchiveStateForTrack(
+                            trackId, archiveId, regionSequenceId, archive)) {
+                        error = std::format(
+                            "Failed to restore ARA state for track {} onto plugin instance {}.",
+                            trackId, instanceId);
+                        return false;
+                    }
+                }
+                return true;
             }
 
             bool loadProjectExtensionData(
@@ -318,9 +602,10 @@ namespace uapmd::ara {
 
                     int32_t pluginInstanceId{};
                     std::string archivePath;
+                    std::string archiveId;
                     if (keyedByNodeId) {
                         std::string nodeId;
-                        if (!(manifest >> archivePath) || !std::getline(manifest, nodeId)) {
+                        if (!(manifest >> archivePath >> archiveId) || !std::getline(manifest, nodeId)) {
                             error = "Malformed ARA extension manifest entry.";
                             return false;
                         }
@@ -341,12 +626,13 @@ namespace uapmd::ara {
 
                     auto documentIt = native_ara_documents_.find(pluginInstanceId);
                     if (documentIt != native_ara_documents_.end() && documentIt->second.controller) {
-                        if (!documentIt->second.controller->loadArchiveState(*archiveBytes)) {
+                        if (!documentIt->second.controller->loadArchiveState(*archiveBytes, archiveId)) {
                             error = std::format("Failed to restore native ARA document for plugin instance {}.", pluginInstanceId);
                             return false;
                         }
                     } else {
-                        pending_native_archives_[pluginInstanceId] = std::move(*archiveBytes);
+                        pending_native_archives_[pluginInstanceId] =
+                            PendingArchive{std::move(archiveId), std::move(*archiveBytes)};
                     }
                 }
 

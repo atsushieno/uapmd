@@ -53,4 +53,61 @@ namespace uapmd {
         }
     };
 
+    // One plugin on a captured track. Instances cannot be copied, so a fragment
+    // records what is needed to instantiate an equivalent one and restore its
+    // state into it.
+    struct ProjectTrackPluginFragment {
+        // Persistent graph node identity. Reused under
+        // ProjectObjectIdPolicy::Restore so that anything keyed by it, notably
+        // an ARA archive, reconnects to this plugin.
+        std::string nodeId{};
+        std::string pluginId{};
+        std::string format{};
+        std::string displayName{};
+        int32_t groupIndex{-1};
+        // Opaque plugin state. Reading it is asynchronous, which is why
+        // capturing a track fragment cannot be a plain return value.
+        std::vector<uint8_t> state{};
+    };
+
+    // Which parts of a captured track are applied when it is attached.
+    //
+    // Track duplication is not all-or-nothing in any DAW that offers it: the
+    // common choices are a full clone, and a track set up the same way but
+    // empty. Capture always takes everything, so one fragment serves a clone, a
+    // partial duplicate and an undo restore without being recaptured.
+    struct ProjectTrackAttachOptions {
+        ProjectObjectIdPolicy idPolicy{ProjectObjectIdPolicy::Mint};
+        bool includePlugins{true};
+        // Instantiate the plugins but leave them at their defaults. Skipping
+        // state also skips the slowest part of attaching.
+        bool includePluginState{true};
+        bool includeClips{true};
+    };
+
+    // A track detached from the document.
+    //
+    // Unlike a clip, a track owns live plugin instances rather than plain data,
+    // so both capturing and attaching one are asynchronous.
+    struct ProjectTrackFragment {
+        std::string referenceId{};
+        double volume{1.0};
+        bool muted{false};
+        bool solo{false};
+
+        // Graph topology as the track's provider serializes it, plus the
+        // provider identifier needed to deserialize it again. Held by value:
+        // the .graph.json file written during a project save is an artifact of
+        // saving, not of the serialization.
+        std::string graphType{};
+        std::vector<uint8_t> graphBytes{};
+
+        std::vector<ProjectTrackPluginFragment> plugins{};
+        std::vector<ProjectClipFragment> clips{};
+
+        // Opaque per-feature state covering the track itself, keyed by
+        // extension identifier, as with a clip fragment.
+        std::map<std::string, std::vector<uint8_t>> extensionState{};
+    };
+
 } // namespace uapmd

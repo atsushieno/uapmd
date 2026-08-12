@@ -535,6 +535,127 @@ TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) 
     EXPECT_EQ(recaptured->umpEvents, kFragmentUmp);
 }
 
+TEST_F(SequencerEngineOutputTest, ClipFragmentCarriesExtensionOwnedState) {
+    // Stands in for a feature that owns state the document cannot see, such as
+    // a plug-in's opaque per-clip state.
+    struct RecordingExtension : uapmd::ProjectSerializationExtension {
+        std::string capturedFrom;
+        std::string restoredOnto;
+        std::vector<uint8_t> restoredState;
+
+        std::string_view extensionId() const override { return "test.fragment-state"; }
+
+        bool captureClipFragmentState(const uapmd::ProjectObjectId& clipId,
+                                      std::vector<uint8_t>& state,
+                                      std::string&) override {
+            capturedFrom = clipId;
+            state = {0xDE, 0xAD, 0xBE, 0xEF};
+            return true;
+        }
+
+        bool restoreClipFragmentState(const uapmd::ProjectObjectId& clipId,
+                                      const std::vector<uint8_t>& state,
+                                      std::string&) override {
+            restoredOnto = clipId;
+            restoredState = state;
+            return true;
+        }
+    } extension;
+
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    timeline.addProjectSerializationExtension(extension);
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+
+    const auto fragment = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(fragment.has_value());
+    const auto capturedReferenceId = fragment->clip.referenceId;
+    EXPECT_EQ(extension.capturedFrom, capturedReferenceId);
+    ASSERT_TRUE(fragment->extensionState.contains("test.fragment-state"));
+    EXPECT_EQ(fragment->extensionState.at("test.fragment-state"),
+              (std::vector<uint8_t>{0xDE, 0xAD, 0xBE, 0xEF}));
+
+    // Pasting hands the state back addressed by the clip's *new* identity, so
+    // that the extension attaches it to the object that now exists.
+    const auto pasted = timeline.attachClipFragment(
+        trackIndex, *fragment, uapmd::ProjectObjectIdPolicy::Mint);
+    ASSERT_TRUE(pasted.success) << pasted.error;
+    EXPECT_EQ(extension.restoredState, (std::vector<uint8_t>{0xDE, 0xAD, 0xBE, 0xEF}));
+    EXPECT_FALSE(extension.restoredOnto.empty());
+    EXPECT_NE(extension.restoredOnto, capturedReferenceId);
+
+    // Restoring instead addresses it by the identity it was captured under.
+    ASSERT_TRUE(timeline.removeClipFromTrack(trackIndex, added.clipId));
+    const auto restored = timeline.attachClipFragment(
+        trackIndex, *fragment, uapmd::ProjectObjectIdPolicy::Restore);
+    ASSERT_TRUE(restored.success) << restored.error;
+    EXPECT_EQ(extension.restoredOnto, capturedReferenceId);
+
+    timeline.removeProjectSerializationExtension(extension);
+}
+
+TEST_F(SequencerEngineOutputTest, ClipFragmentCaptureFailsRatherThanLosingExtensionState) {
+    // An extension that cannot capture its state must not yield a fragment that
+    // merely looks complete: restoring one would silently discard the user's
+    // work with no way to notice or recover it.
+    struct FailingExtension : uapmd::ProjectSerializationExtension {
+        std::string_view extensionId() const override { return "test.failing"; }
+        bool captureClipFragmentState(const uapmd::ProjectObjectId&,
+                                      std::vector<uint8_t>&,
+                                      std::string& error) override {
+            error = "cannot archive right now";
+            return false;
+        }
+    } extension;
+
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+
+    // Without the extension the capture succeeds.
+    ASSERT_TRUE(timeline.captureClipFragment(trackIndex, added.clipId).has_value());
+
+    timeline.addProjectSerializationExtension(extension);
+    EXPECT_FALSE(timeline.captureClipFragment(trackIndex, added.clipId).has_value());
+    timeline.removeProjectSerializationExtension(extension);
+}
+
+TEST_F(SequencerEngineOutputTest, ClipFragmentCaptureIsRefusedInsideATransaction) {
+    // Archiving a plug-in's state is illegal while its document is being
+    // edited, which is exactly what an open transaction holds. The refusal
+    // belongs at this boundary so the mistake is reported at the call site.
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+    ASSERT_TRUE(timeline.captureClipFragment(trackIndex, added.clipId).has_value());
+
+    {
+        uapmd::ScopedDocumentTransaction transaction(timeline);
+        EXPECT_FALSE(timeline.captureClipFragment(trackIndex, added.clipId).has_value());
+    }
+
+    // And succeeds again once the transaction closes.
+    EXPECT_TRUE(timeline.captureClipFragment(trackIndex, added.clipId).has_value());
+}
+
 TEST_F(SequencerEngineOutputTest, ClipFragmentMintsANewIdentityWhenAttachedAlongside) {
     constexpr int32_t sampleRate = 48000;
     auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
@@ -565,6 +686,115 @@ TEST_F(SequencerEngineOutputTest, ClipFragmentMintsANewIdentityWhenAttachedAlong
     const auto pastedFragment = timeline.captureClipFragment(trackIndex, pasted.clipId);
     ASSERT_TRUE(pastedFragment.has_value());
     EXPECT_EQ(pastedFragment->umpEvents, kFragmentUmp);
+}
+
+// ── Track fragments ───────────────────────────────────────────────────────────
+
+TEST_F(SequencerEngineOutputTest, TrackFragmentRoundTripsContentAndIdentity) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    ASSERT_TRUE(addFragmentTestClip(*engine, trackIndex, sampleRate).success);
+    auto& tracks = engine->tracks();
+    ASSERT_LT(static_cast<size_t>(trackIndex), tracks.size());
+    tracks[trackIndex]->trackGain(0.25);
+    tracks[trackIndex]->muted(true);
+
+    // No plugins on this track, so the chain completes synchronously; the
+    // callback shape is still the contract.
+    std::optional<uapmd::ProjectTrackFragment> captured;
+    std::string captureError;
+    timeline.captureTrackFragment(trackIndex, [&](auto fragment, std::string error) {
+        captured = std::move(fragment);
+        captureError = std::move(error);
+    });
+    ASSERT_TRUE(captured.has_value()) << captureError;
+    const auto capturedReferenceId = captured->referenceId;
+    EXPECT_DOUBLE_EQ(captured->volume, 0.25);
+    EXPECT_TRUE(captured->muted);
+    ASSERT_EQ(captured->clips.size(), 1u);
+    EXPECT_EQ(captured->clips[0].umpEvents, kFragmentUmp);
+
+    // Mint: a second, distinct track carrying the same content.
+    int32_t clonedIndex = -1;
+    std::string attachError;
+    timeline.attachTrackFragment(*captured, {}, [&](int32_t index, std::string error) {
+        clonedIndex = index;
+        attachError = std::move(error);
+    });
+    ASSERT_GE(clonedIndex, 0) << attachError;
+    EXPECT_NE(clonedIndex, trackIndex);
+
+    auto clonedTracks = timeline.tracks();
+    ASSERT_LT(static_cast<size_t>(clonedIndex), clonedTracks.size());
+    EXPECT_NE(clonedTracks[clonedIndex]->referenceId(), capturedReferenceId);
+    EXPECT_EQ(clonedTracks[clonedIndex]->clipManager().clipCount(), 1u);
+    EXPECT_DOUBLE_EQ(engine->tracks()[clonedIndex]->trackGain(), 0.25);
+    EXPECT_TRUE(engine->tracks()[clonedIndex]->muted());
+}
+
+TEST_F(SequencerEngineOutputTest, TrackFragmentAttachHonoursTheComponentMask) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(addFragmentTestClip(*engine, trackIndex, sampleRate).success);
+
+    std::optional<uapmd::ProjectTrackFragment> captured;
+    timeline.captureTrackFragment(trackIndex, [&](auto fragment, std::string) {
+        captured = std::move(fragment);
+    });
+    ASSERT_TRUE(captured.has_value());
+    ASSERT_EQ(captured->clips.size(), 1u);
+
+    // "Duplicate without contents": the same track, set up the same way, empty.
+    uapmd::ProjectTrackAttachOptions options;
+    options.includeClips = false;
+    int32_t emptyIndex = -1;
+    timeline.attachTrackFragment(*captured, options, [&](int32_t index, std::string) {
+        emptyIndex = index;
+    });
+    ASSERT_GE(emptyIndex, 0);
+
+    auto tracks = timeline.tracks();
+    ASSERT_LT(static_cast<size_t>(emptyIndex), tracks.size());
+    EXPECT_EQ(tracks[emptyIndex]->clipManager().clipCount(), 0u);
+    // The original is untouched by either capture or attach.
+    EXPECT_EQ(tracks[trackIndex]->clipManager().clipCount(), 1u);
+}
+
+TEST_F(SequencerEngineOutputTest, TrackFragmentCaptureIsRefusedInsideATransaction) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    {
+        uapmd::ScopedDocumentTransaction transaction(timeline);
+        bool called = false;
+        std::string error;
+        timeline.captureTrackFragment(trackIndex, [&](auto fragment, std::string err) {
+            called = true;
+            EXPECT_FALSE(fragment.has_value());
+            error = std::move(err);
+        });
+        EXPECT_TRUE(called);
+        EXPECT_FALSE(error.empty());
+    }
+
+    bool succeeded = false;
+    timeline.captureTrackFragment(trackIndex, [&](auto fragment, std::string) {
+        succeeded = fragment.has_value();
+    });
+    EXPECT_TRUE(succeeded);
 }
 
 } // namespace

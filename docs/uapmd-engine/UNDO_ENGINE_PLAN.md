@@ -2,11 +2,11 @@
 
 ## Status
 
-Phase 0 in progress. Steps 0.1, 0.1c and 0.3 are complete, and 0.4 is complete
-for clips. Step 0.2 is complete apart from the clip anchor operations, which wait
-on the anchor sidecar described under 0.1, and the audio source node
-replacement left with 0.4. Track fragments, the ARA archive slot and step 0.5
-have not been started. Each step below records its own state.
+Phase 0 is complete except for two carve-outs recorded below. Steps 0.1, 0.1c,
+0.3, 0.4 and 0.5 are done; 0.5 is unverified against a real ARA plug-in. Step
+0.2 is complete apart from the clip anchor operations, which wait on the anchor
+sidecar described under 0.1, and the audio source node replacement. Each step
+below records its own state.
 
 This document describes Phase 0, the shared groundwork that both undo/redo
 and copy/paste require. The undo stack itself (Phase 1) and the clipboard
@@ -330,7 +330,7 @@ the ARA partial archive, which belongs with 0.5.
 
 ### 0.5 ARA wiring
 
-Not started.
+Done, apart from verification against a real ARA plug-in.
 
 Re-point the addin at the new emission source and close the opaque-state gap,
 keeping all ARA structure handling inside `uapmd-ara`.
@@ -349,6 +349,120 @@ concepts — stable persistent identifiers, partial archives, identifier
 remapping on restore — are allowed to shape the document model, but the
 structure filling stays confined to the addin so that a draft revision does
 not propagate into `uapmd-data`.
+
+The inbound notifications are implemented, but not as the dirty-state tracking
+this plan originally described. That tracking was written and then removed,
+because it had no consumer and should not have one.
+
+Its two candidate uses both fail. Skipping the re-archiving of unchanged state
+on save is unsafe here: `writeExtensionFile` writes into the project directory
+being saved, with no carry-forward from a previous save, so a skipped archive
+is simply absent and the state is lost on the next load. The SDK's optimisation
+assumes incremental persistency that this host does not implement. Marking the
+project as having unsaved changes is the other, and it is the right idea
+expressed in the wrong place: an ARA edit is a user edit, so it should reach
+the document and be marked dirty by the mutation funnel like any other change,
+not through a side channel that would need its own special case in every
+feature that cares.
+
+What the notifications do instead is invalidate cached rendered audio, which is
+the same reasoning applied where it does hold.
+`notifyPlaybackRegionContentChanged` and
+`notifyAudioModificationContentChanged` resolve the affected track and call
+`FrozenTrackManager::projectTrackBecameDirty`, exactly as a user edit does. Both
+are gated on `kARAContentUpdateSignalScopeRemainsUnchanged`: when the plug-in
+states the rendered audio did not change there is nothing to revoke, and absent
+that assurance the signal is assumed to have changed. Note that
+`trackIndexForReferenceId` scans regular tracks only and returns -1 both for the
+master track and for an unknown identifier, so the master track is resolved by
+reference identifier first rather than inferred from that -1.
+
+Partial persistency covers tracks as well as clips.
+`storeArchiveStateForTrack` and `restoreArchiveStateForTrack` use the ARA 3.0
+draft region sequence entries in the store and restore filters, a region
+sequence being what a track maps onto, and `AraSupport` implements the
+track-level fragment hooks with the same slot framing as the clip ones.
+
+`notifyRegionSequenceDataChanged` and `notifyDocumentDataChanged` remain
+deliberate no-ops. They report changes to state that is opaque to us and cannot
+reach our clips, and since every ARA document is archived on every save, that
+state cannot be lost by ignoring them.
+
+The hook a fragment needs in order to carry such state now exists. Rather than
+a parallel interface, `ProjectSerializationExtension` gained
+`captureClipFragmentState` and `restoreClipFragmentState`, both defaulting to
+no-ops. That reuses the existing registration and, more importantly, the same
+`extensionId()` space that already keys `ProjectClipFragment::extensionState`.
+It is unrelated to the addin mechanism in `uapmd-addin-core` despite the
+similar word.
+
+`captureClipFragment` asks every registered extension to contribute, and
+`attachClipFragment` hands each its own slot back, addressed by the identity
+the clip has at that moment: the captured one when restoring, a freshly minted
+one when pasting. Extensions are invoked outside the registry lock, since one
+may register or unregister another. Covered by
+`ClipFragmentCarriesExtensionOwnedState`.
+
+The ARA side of that hook is implemented.
+`AraHostDocumentController::storeArchiveStateForClip` builds an
+`ARAStoreObjectsFilter` naming only the audio source and audio modification
+covering one clip, with `documentData` false, which is the configuration the
+SDK documents for archives intended to be imported elsewhere.
+`restoreArchiveStateForClip` is its counterpart and passes an
+archive-to-current identifier mapping through `ARARestoreObjectsFilter` when
+the clip came back under a different identity, as it does for a paste. A null
+mapping means the archived identifiers are already the current ones, which is
+the restore-in-place case.
+
+`AraSupport` frames the fragment slot itself, because a clip's ARA state is not
+one archive: every plug-in instance hosting an ARA document holds its own. The
+slot carries one entry per document, keyed by the plug-in's persistent graph
+node identity from 0.1c, each entry recording the persistent identifiers its
+archive was taken from. An entry whose plug-in is not present when the fragment
+is restored is skipped, which is what should happen when a fragment arrives
+from another project or its plug-in has since been removed.
+
+One SDK constraint shaped the design rather than merely being satisfied.
+Archiving and restoring have opposite requirements: an archive "may only be
+created from documents that are not being currently edited", while a restore is
+documented as the sequence `beginEditing()`, `restoreObjectsFromArchive()`,
+`endEditing()`. Restoring inside `attachClipFragment` is therefore correct,
+since the surrounding transaction already holds an edit cycle open, but
+capturing inside a transaction would be an illegal call. `captureClipFragment`
+is documented as not being callable inside one, and the ARA side refuses rather
+than making the call if it is. A cut is composed as capture first, then remove
+inside a transaction.
+
+Two defects in the pre-existing archiving path had to be fixed for any of this
+to work, for fragments or for ordinary project save and load.
+
+`getDocumentArchiveID` returned a host-invented string. The SDK defines it as
+"the document archive ID that the plug-in's factory provided when saving the
+archive", which plug-ins use to select a decoder when they support more than
+one archive format; `ARAFactory::documentArchiveID` was read nowhere in the
+codebase. The identifier is now taken from the factory, stored beside the
+archive in both the project manifest and the fragment slot, and handed back on
+restore. Relatedly, the SDK requires the host to resolve versioning conflicts
+before restoring, so an archive is now refused unless the controller declares
+its identifier as its own format or lists it among
+`compatibleDocumentArchiveIDs`.
+
+The other defect was that failure was indistinguishable from success. A clip
+with no ARA objects and a clip whose state could not be archived both produced
+an empty archive and reported success, so a fragment could silently lose
+plug-in state and only reveal it when a user undid a delete and found their
+edits gone. Capture now separates the two: no ARA objects still succeeds
+trivially, while a clip that has state which cannot be captured fails, and
+`captureClipFragment` abandons the whole capture rather than returning a
+fragment that merely looks complete. It also refuses outright when called
+inside a transaction, reporting the mistake at the call site instead of leaving
+a slot mysteriously absent.
+
+The failure behaviour is covered by
+`ClipFragmentCaptureFailsRatherThanLosingExtensionState` and
+`ClipFragmentCaptureIsRefusedInsideATransaction`. The success path is not, and
+cannot be without a real ARA plug-in: it needs one loaded, a clip copied, and
+the state observed to survive. That verification is deliberately deferred.
 
 ## Remaining work
 
@@ -383,15 +497,14 @@ place. Ordered by dependency, not by priority.
    identifier that no longer means anything. Archive files keep positional
    names so that node ids never have to be escaped into filenames.
 
-2. **ARA wiring (0.5).** Described in its own section. Independent of items 1,
-   3 and 4, so it can proceed in parallel.
+2. **ARA wiring (0.5).** Done, unverified against a real plug-in.
 
 3. **Audio source node replacement.** The three remaining
    `replaceClipSourceNode` call sites rebuild an `AudioFileSourceNode` from
    resolved warp points. They need their own mutator, in the shape of
    `replaceMidiClipContent`.
 
-4. **Track fragments.** Item 1 is done, so this is unblocked.
+4. **Track fragments.** Done.
 
    A track fragment can hold its engine state by value, the same way a clip
    fragment holds MIDI content. Both halves are already produced as byte
@@ -419,11 +532,31 @@ place. Ordered by dependency, not by priority.
    stays uniform and captures everything, so that one fragment serves a clone,
    a partial duplicate and an undo restore.
 
+   As implemented, `captureTrackFragment` and `attachTrackFragment` are both
+   callback-based for the reasons above, and `ProjectTrackAttachOptions`
+   carries the mask: identifier policy, plugins, plugin state, clips. Plugin
+   state is a separate flag from the plugins themselves because instantiating
+   without restoring state is both the most common duplication variant and the
+   one that skips the slowest work. Covered by
+   `TrackFragmentRoundTripsContentAndIdentity`,
+   `TrackFragmentAttachHonoursTheComponentMask` and
+   `TrackFragmentCaptureIsRefusedInsideATransaction`.
+
 5. **Clip anchors.** Moving anchor storage out of the project document into an
    extension sidecar, then migrating the three deferred `setClipAnchor` call
    sites onto a facade mutator.
 
-6. **Frozen render revocation.** Move it inside the mutation funnel.
+6. **ARA content write-back.** Changes a plug-in makes to its content do not
+   reach our clips at all. `updateAudioSourceContent` runs host to plug-in
+   only; nothing reads an ARA content reader back into a clip, so
+   `notifyAudioModificationContentChanged` updates nothing in the document.
+   This is the gap that made per-feature dirty tracking look necessary in the
+   first place. Routing plug-in content changes back through the mutation
+   funnel would give dirtiness, document events, frozen render revocation and
+   undo from the existing machinery rather than one special case each. It is a
+   feature in its own right and wants its own design pass.
+
+7. **Frozen render revocation.** Move it inside the mutation funnel.
    `FrozenTrackManager` already listens for document events but its
    `clipAdded`, `clipRemoved` and `clipChanged` handlers are empty stubs, so the
    only thing revoking a stale frozen render is the hand-written

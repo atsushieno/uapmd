@@ -115,7 +115,13 @@ public:
     //
     // Capture is non-destructive: deleting is a separate removeClipFromTrack,
     // which lets copy, cut and delete-with-undo all be composed from the same
-    // two operations inside one transaction.
+    // two operations.
+    //
+    // Must NOT be called inside a document transaction. Extensions contribute
+    // their own state to the fragment, and an ARA plug-in cannot be archived
+    // while its document is being edited -- which is precisely what a
+    // transaction holds open. Compose a cut as capture first, then remove
+    // inside a transaction, rather than wrapping both.
     virtual std::optional<ProjectClipFragment> captureClipFragment(
         int32_t trackIndex,
         int32_t clipId) const = 0;
@@ -128,6 +134,27 @@ public:
         int32_t trackIndex,
         const ProjectClipFragment& fragment,
         ProjectObjectIdPolicy idPolicy) = 0;
+
+    // Detached track representation.
+    //
+    // Both halves are asynchronous, unlike the clip equivalents, because a
+    // track owns live plugin instances: reading plugin state and creating
+    // plugin instances are both callback-based. The callback is invoked
+    // exactly once, on the thread that completes the last plugin operation.
+    //
+    // Capture, like the clip version, must not be called inside a document
+    // transaction, and is non-destructive.
+    using TrackFragmentCallback =
+        std::function<void(std::optional<ProjectTrackFragment> fragment, std::string error)>;
+    virtual void captureTrackFragment(int32_t trackIndex, TrackFragmentCallback callback) = 0;
+
+    // Creates a new track from a captured one. `trackIndex` in the callback is
+    // the created track, or -1 on failure.
+    using TrackAttachCallback = std::function<void(int32_t trackIndex, std::string error)>;
+    virtual void attachTrackFragment(
+        const ProjectTrackFragment& fragment,
+        ProjectTrackAttachOptions options,
+        TrackAttachCallback callback) = 0;
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
 

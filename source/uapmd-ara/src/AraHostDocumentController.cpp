@@ -191,6 +191,23 @@ namespace uapmd::ara {
             AraHostDocumentController::Impl* impl,
             HostAudioSource* audioSourceHost);
 
+        void notifyAudioModificationContentChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostAudioModification* audioModificationHost,
+            ARA::ARAContentUpdateFlags flags);
+
+        void notifyPlaybackRegionContentChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostPlaybackRegion* playbackRegionHost,
+            ARA::ARAContentUpdateFlags flags);
+
+        void notifyRegionSequenceDataChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostRegionSequence* regionSequenceHost);
+
+        void notifyDocumentDataChangedFromImpl(
+            AraHostDocumentController::Impl* impl);
+
         ARA::ARAAudioReaderHostRef ARA_CALL createAudioReaderForSource(
             ARA::ARAAudioAccessControllerHostRef controllerHostRef,
             ARA::ARAAudioSourceHostRef audioSourceHostRef,
@@ -453,10 +470,13 @@ namespace uapmd::ara {
             ARA::ARAAudioModificationHostRef audioModificationHostRef,
             const ARA::ARAContentTimeRange* range,
             ARA::ARAContentUpdateFlags flags) {
-            (void) controllerHostRef;
-            (void) audioModificationHostRef;
+            // The range is not needed -- invalidation is whole-object -- but the
+            // flags say whether the rendered signal actually changed.
             (void) range;
-            (void) flags;
+            notifyAudioModificationContentChangedFromImpl(
+                reinterpret_cast<AraHostDocumentController::Impl*>(controllerHostRef),
+                reinterpret_cast<HostAudioModification*>(audioModificationHostRef),
+                flags);
         }
 
         void ARA_CALL notifyPlaybackRegionContentChanged(
@@ -464,22 +484,25 @@ namespace uapmd::ara {
             ARA::ARAPlaybackRegionHostRef playbackRegionHostRef,
             const ARA::ARAContentTimeRange* range,
             ARA::ARAContentUpdateFlags flags) {
-            (void) controllerHostRef;
-            (void) playbackRegionHostRef;
             (void) range;
-            (void) flags;
+            notifyPlaybackRegionContentChangedFromImpl(
+                reinterpret_cast<AraHostDocumentController::Impl*>(controllerHostRef),
+                reinterpret_cast<HostPlaybackRegion*>(playbackRegionHostRef),
+                flags);
         }
 
         void ARA_CALL notifyDocumentDataChanged(
             ARA::ARAModelUpdateControllerHostRef controllerHostRef) {
-            (void) controllerHostRef;
+            notifyDocumentDataChangedFromImpl(
+                reinterpret_cast<AraHostDocumentController::Impl*>(controllerHostRef));
         }
 
         void ARA_CALL notifyRegionSequenceDataChanged(
             ARA::ARAModelUpdateControllerHostRef controllerHostRef,
             ARA::ARARegionSequenceHostRef regionSequenceHostRef) {
-            (void) controllerHostRef;
-            (void) regionSequenceHostRef;
+            notifyRegionSequenceDataChangedFromImpl(
+                reinterpret_cast<AraHostDocumentController::Impl*>(controllerHostRef),
+                reinterpret_cast<HostRegionSequence*>(regionSequenceHostRef));
         }
     } // namespace
 
@@ -661,6 +684,7 @@ namespace uapmd::ara {
             else
                 notifyModelUpdates();
         }
+
 
         bool playbackRendererAvailable() const {
             return plugin_extension &&
@@ -1621,6 +1645,319 @@ namespace uapmd::ara {
             return true;
         }
 
+        // An ARA plug-in editing a playback region changes what that region
+        // renders, which is indistinguishable from a user edit as far as
+        // anything caching rendered audio is concerned. The controller cannot
+        // reach the engine, so it reports the affected track and the addin
+        // routes it to whatever holds such caches.
+        std::function<void(const ProjectObjectId& trackId)> rendered_signal_changed_callback{};
+
+        void reportRenderedSignalChanged(const ProjectObjectId& clipId) {
+            if (!rendered_signal_changed_callback)
+                return;
+            auto it = playback_region_track_ids.find(clipId);
+            if (it == playback_region_track_ids.end())
+                return;
+            rendered_signal_changed_callback(it->second);
+        }
+
+        // Every clip rendered through the given audio source. A modification
+        // sits on one audio source but may feed several playback regions.
+        void reportRenderedSignalChangedForAudioSource(const ProjectObjectId& audioSourceId) {
+            for (const auto& [clipId, ownerAudioSourceId] : playback_region_audio_source_ids)
+                if (ownerAudioSourceId == audioSourceId)
+                    reportRenderedSignalChanged(clipId);
+        }
+
+        // The identifier the plug-in's factory declares for archives this
+        // controller writes. ARA requires the host to store it alongside the
+        // archive and hand it back on restore, because a plug-in may support
+        // several archive formats and uses this to pick the right decoder. A
+        // host-invented label is not a substitute.
+        std::string documentArchiveId() const {
+            return factory && factory->documentArchiveID
+                ? std::string(factory->documentArchiveID)
+                : std::string{};
+        }
+
+        // "The host must deal with potential versioning conflicts before making
+        // this call": an archive may only be restored by a controller that
+        // declares its identifier as its own format, or lists it as one it can
+        // import.
+        bool canRestoreArchiveId(const std::string& archiveId) const {
+            if (archiveId.empty() || !factory)
+                return false;
+            if (archiveId == documentArchiveId())
+                return true;
+            for (ARA::ARASize i = 0; i < factory->compatibleDocumentArchiveIDsCount; ++i) {
+                const auto* compatible = factory->compatibleDocumentArchiveIDs[i];
+                if (compatible && archiveId == compatible)
+                    return true;
+            }
+            return false;
+        }
+
+        // The ARA objects covering one clip: its audio source, and the audio
+        // modification layered on it. Both refs and the persistent IDs they
+        // were created under are needed -- the refs to select them in a store
+        // filter, the IDs to remap them in a restore filter.
+        struct ClipArchiveScope {
+            ARA::ARAAudioSourceRef audio_source{};
+            ARA::ARAAudioModificationRef audio_modification{};
+            std::string audio_source_persistent_id;
+            std::string audio_modification_persistent_id;
+
+            bool valid() const { return audio_source != nullptr; }
+        };
+
+        ClipArchiveScope clipArchiveScope(const ProjectObjectId& clipId) {
+            ClipArchiveScope scope;
+            auto sourceIdIt = playback_region_audio_source_ids.find(clipId);
+            if (sourceIdIt == playback_region_audio_source_ids.end())
+                return scope;
+            const auto& audioSourceId = sourceIdIt->second;
+
+            if (auto it = audio_source_refs.find(audioSourceId); it != audio_source_refs.end())
+                scope.audio_source = it->second;
+            if (auto it = audio_source_hosts.find(audioSourceId); it != audio_source_hosts.end())
+                scope.audio_source_persistent_id = it->second.persistent_id;
+
+            const auto modificationId = "mod." + audioSourceId;
+            if (auto it = audio_modification_refs.find(modificationId); it != audio_modification_refs.end())
+                scope.audio_modification = it->second;
+            if (auto it = audio_modification_hosts.find(modificationId); it != audio_modification_hosts.end())
+                scope.audio_modification_persistent_id = it->second.persistent_id;
+            return scope;
+        }
+
+        // Archives just the objects covering `clipId`, for a fragment rather
+        // than for the project. documentData is false because the archive is
+        // meant to be imported into another context, which is exactly the case
+        // the SDK describes for copy/paste.
+        //
+        // Returns false only on real failure. A clip with no ARA objects
+        // produces an empty archive and returns true.
+        bool storeArchiveStateForClip(
+            const ProjectObjectId& clipId,
+            std::string& archiveId,
+            std::string& archivedAudioSourcePersistentId,
+            std::string& archivedAudioModificationPersistentId,
+            std::vector<uint8_t>& archive) {
+            auto* controller = controllerInterface();
+            if (!controller)
+                return true;
+
+            // Order matters. A clip with no ARA objects has nothing to archive
+            // and succeeds trivially; that must be distinguished from a clip
+            // that does have state which cannot be captured, because the latter
+            // silently produces a fragment that will lose the user's plug-in
+            // edits when it is restored.
+            auto scope = clipArchiveScope(clipId);
+            if (!scope.valid())
+                return true;
+
+            if (!controller->storeObjectsToArchive)
+                return false;
+            // "Archives may only be created from documents that are not being
+            // currently edited." Capturing inside an edit cycle would be an
+            // illegal call, so refuse rather than make it.
+            if (editing_depth > 0)
+                return false;
+
+            archiveId = documentArchiveId();
+            archivedAudioSourcePersistentId = scope.audio_source_persistent_id;
+            archivedAudioModificationPersistentId = scope.audio_modification_persistent_id;
+
+            ARA::ARAStoreObjectsFilter filter{
+                .structSize = sizeof(ARA::ARAStoreObjectsFilter),
+                .documentData = ARA::kARAFalse,
+                .audioSourceRefsCount = 1,
+                .audioSourceRefs = &scope.audio_source,
+                .audioModificationRefsCount = scope.audio_modification ? 1u : 0u,
+                .audioModificationRefs = scope.audio_modification ? &scope.audio_modification : nullptr,
+                .regionSequenceRefsCount = 0,
+                .regionSequenceRefs = nullptr
+            };
+
+            HostArchive hostArchive{
+                .read_data = nullptr,
+                .write_data = &archive,
+                .archive_id = archiveId
+            };
+            return controller->storeObjectsToArchive(
+                controller_instance->documentControllerRef,
+                reinterpret_cast<ARA::ARAArchiveWriterHostRef>(&hostArchive),
+                &filter) != ARA::kARAFalse;
+        }
+
+        // Restores a fragment archive onto whichever objects now cover
+        // `clipId`. When the clip came back under a different identity, as it
+        // does for a paste, the archived persistent IDs are mapped onto the
+        // current ones; persistent IDs are only unique per document, so this
+        // mapping is what makes importing into the same document safe.
+        bool restoreArchiveStateForClip(
+            const ProjectObjectId& clipId,
+            const std::string& archiveId,
+            const std::string& archivedAudioSourcePersistentId,
+            const std::string& archivedAudioModificationPersistentId,
+            const std::vector<uint8_t>& archive) {
+            auto* controller = controllerInterface();
+            if (!controller || !controller->restoreObjectsFromArchive || archive.empty())
+                return true;
+            // A fragment may have been captured from a different plug-in, or
+            // from an older version of this one. Restoring it anyway would hand
+            // the plug-in bytes it cannot decode.
+            if (!canRestoreArchiveId(archiveId))
+                return true;
+
+            auto scope = clipArchiveScope(clipId);
+            if (!scope.valid() || archivedAudioSourcePersistentId.empty())
+                return true;
+
+            const ARA::ARAPersistentID audioSourceArchiveIds[] = {archivedAudioSourcePersistentId.c_str()};
+            const ARA::ARAPersistentID audioSourceCurrentIds[] = {scope.audio_source_persistent_id.c_str()};
+            const ARA::ARAPersistentID modificationArchiveIds[] = {archivedAudioModificationPersistentId.c_str()};
+            const ARA::ARAPersistentID modificationCurrentIds[] = {scope.audio_modification_persistent_id.c_str()};
+
+            const bool hasModification = !archivedAudioModificationPersistentId.empty()
+                && !scope.audio_modification_persistent_id.empty();
+
+            ARA::ARARestoreObjectsFilter filter{
+                .structSize = sizeof(ARA::ARARestoreObjectsFilter),
+                .documentData = ARA::kARAFalse,
+                .audioSourceIDsCount = 1,
+                .audioSourceArchiveIDs = audioSourceArchiveIds,
+                // A null mapping means "the archived IDs are already the
+                // current ones", which is the restore-in-place case.
+                .audioSourceCurrentIDs =
+                    archivedAudioSourcePersistentId == scope.audio_source_persistent_id
+                        ? nullptr
+                        : audioSourceCurrentIds,
+                .audioModificationIDsCount = hasModification ? 1u : 0u,
+                .audioModificationArchiveIDs = hasModification ? modificationArchiveIds : nullptr,
+                .audioModificationCurrentIDs =
+                    !hasModification || archivedAudioModificationPersistentId == scope.audio_modification_persistent_id
+                        ? nullptr
+                        : modificationCurrentIds,
+                .regionSequenceIDsCount = 0,
+                .regionSequenceArchiveIDs = nullptr,
+                .regionSequenceCurrentIDs = nullptr
+            };
+
+            HostArchive hostArchive{
+                .read_data = &archive,
+                .write_data = nullptr,
+                .archive_id = archiveId
+            };
+
+            // Restoring, unlike archiving, must happen inside an edit cycle.
+            enterEditing();
+            const bool ok = controller->restoreObjectsFromArchive(
+                controller_instance->documentControllerRef,
+                reinterpret_cast<ARA::ARAArchiveReaderHostRef>(&hostArchive),
+                &filter) != ARA::kARAFalse;
+            leaveEditing();
+            return ok;
+        }
+
+        // Track-level counterpart of storeArchiveStateForClip. ARA 3.0 draft
+        // adds region sequences to the store and restore filters, and a region
+        // sequence is what a track maps onto.
+        bool storeArchiveStateForTrack(
+            const ProjectObjectId& trackId,
+            std::string& archiveId,
+            std::string& archivedRegionSequencePersistentId,
+            std::vector<uint8_t>& archive) {
+            auto* controller = controllerInterface();
+            if (!controller)
+                return true;
+
+            auto refIt = region_sequence_refs.find(trackId);
+            auto hostIt = region_sequence_hosts.find(trackId);
+            if (refIt == region_sequence_refs.end() || hostIt == region_sequence_hosts.end())
+                return true;
+
+            if (!controller->storeObjectsToArchive)
+                return false;
+            if (editing_depth > 0)
+                return false;
+
+            archiveId = documentArchiveId();
+            archivedRegionSequencePersistentId = hostIt->second.persistent_id;
+
+            auto regionSequenceRef = refIt->second;
+            ARA::ARAStoreObjectsFilter filter{
+                .structSize = sizeof(ARA::ARAStoreObjectsFilter),
+                .documentData = ARA::kARAFalse,
+                .audioSourceRefsCount = 0,
+                .audioSourceRefs = nullptr,
+                .audioModificationRefsCount = 0,
+                .audioModificationRefs = nullptr,
+                .regionSequenceRefsCount = 1,
+                .regionSequenceRefs = &regionSequenceRef
+            };
+
+            HostArchive hostArchive{
+                .read_data = nullptr,
+                .write_data = &archive,
+                .archive_id = archiveId
+            };
+            return controller->storeObjectsToArchive(
+                controller_instance->documentControllerRef,
+                reinterpret_cast<ARA::ARAArchiveWriterHostRef>(&hostArchive),
+                &filter) != ARA::kARAFalse;
+        }
+
+        bool restoreArchiveStateForTrack(
+            const ProjectObjectId& trackId,
+            const std::string& archiveId,
+            const std::string& archivedRegionSequencePersistentId,
+            const std::vector<uint8_t>& archive) {
+            auto* controller = controllerInterface();
+            if (!controller || !controller->restoreObjectsFromArchive || archive.empty())
+                return true;
+            if (!canRestoreArchiveId(archiveId))
+                return true;
+
+            auto hostIt = region_sequence_hosts.find(trackId);
+            if (hostIt == region_sequence_hosts.end() || archivedRegionSequencePersistentId.empty())
+                return true;
+
+            const ARA::ARAPersistentID archiveIds[] = {archivedRegionSequencePersistentId.c_str()};
+            const ARA::ARAPersistentID currentIds[] = {hostIt->second.persistent_id.c_str()};
+
+            ARA::ARARestoreObjectsFilter filter{
+                .structSize = sizeof(ARA::ARARestoreObjectsFilter),
+                .documentData = ARA::kARAFalse,
+                .audioSourceIDsCount = 0,
+                .audioSourceArchiveIDs = nullptr,
+                .audioSourceCurrentIDs = nullptr,
+                .audioModificationIDsCount = 0,
+                .audioModificationArchiveIDs = nullptr,
+                .audioModificationCurrentIDs = nullptr,
+                .regionSequenceIDsCount = 1,
+                .regionSequenceArchiveIDs = archiveIds,
+                .regionSequenceCurrentIDs =
+                    archivedRegionSequencePersistentId == hostIt->second.persistent_id
+                        ? nullptr
+                        : currentIds
+            };
+
+            HostArchive hostArchive{
+                .read_data = &archive,
+                .write_data = nullptr,
+                .archive_id = archiveId
+            };
+
+            enterEditing();
+            const bool ok = controller->restoreObjectsFromArchive(
+                controller_instance->documentControllerRef,
+                reinterpret_cast<ARA::ARAArchiveReaderHostRef>(&hostArchive),
+                &filter) != ARA::kARAFalse;
+            leaveEditing();
+            return ok;
+        }
+
         void beginProjectDocumentTransaction() {
             if (!valid())
                 return;
@@ -1764,16 +2101,17 @@ namespace uapmd::ara {
             pending_analysis_requests.erase(requestId);
         }
 
-        bool saveArchiveState(std::vector<uint8_t>& archive) {
+        bool saveArchiveState(std::vector<uint8_t>& archive, std::string& archiveId) {
             auto* controller = controllerInterface();
             if (!controller)
                 return false;
 
+            archiveId = documentArchiveId();
             archive.clear();
             HostArchive hostArchive{
                 .read_data = nullptr,
                 .write_data = &archive,
-                .archive_id = "uapmd-ara-document"
+                .archive_id = archiveId
             };
 
             if (controller->storeObjectsToArchive) {
@@ -1824,15 +2162,22 @@ namespace uapmd::ara {
             return false;
         }
 
-        bool loadArchiveState(const std::vector<uint8_t>& archive) {
+        bool loadArchiveState(const std::vector<uint8_t>& archive, const std::string& archiveId) {
             auto* controller = controllerInterface();
             if (!controller || archive.empty())
                 return false;
+            if (!canRestoreArchiveId(archiveId)) {
+                std::cerr << "Warning: Skipping ARA archive written as \"" << archiveId
+                          << "\"; this plug-in declares \"" << documentArchiveId()
+                          << "\" and lists it as neither its own format nor a compatible one."
+                          << std::endl;
+                return false;
+            }
 
             HostArchive hostArchive{
                 .read_data = &archive,
                 .write_data = nullptr,
-                .archive_id = "uapmd-ara-document"
+                .archive_id = archiveId
             };
 
             bool ok = false;
@@ -2160,6 +2505,58 @@ namespace uapmd::ara {
             impl->completeFinishedAnalysisRequests(audioSourceHost->id, false);
         }
 
+        // kARAContentUpdateSignalScopeRemainsUnchanged is the plug-in stating
+        // that whatever changed does not alter the rendered audio. Without that
+        // assurance the signal must be assumed to have changed.
+        bool signalScopeChanged(ARA::ARAContentUpdateFlags flags) {
+            return (flags & ARA::kARAContentUpdateSignalScopeRemainsUnchanged) == 0;
+        }
+
+        void notifyAudioModificationContentChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostAudioModification* audioModificationHost,
+            ARA::ARAContentUpdateFlags flags) {
+            if (!impl || !audioModificationHost)
+                return;
+            if (!signalScopeChanged(flags))
+                return;
+            // Modification ids are "mod." prefixed onto the audio source id.
+            constexpr std::string_view kModificationPrefix{"mod."};
+            const auto& modificationId = audioModificationHost->id;
+            if (modificationId.starts_with(kModificationPrefix))
+                impl->reportRenderedSignalChangedForAudioSource(
+                    modificationId.substr(kModificationPrefix.size()));
+        }
+
+        void notifyPlaybackRegionContentChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostPlaybackRegion* playbackRegionHost,
+            ARA::ARAContentUpdateFlags flags) {
+            if (!impl || !playbackRegionHost || !signalScopeChanged(flags))
+                return;
+            impl->reportRenderedSignalChanged(playbackRegionHost->id);
+        }
+
+        // These two report changes to state that is private to the plug-in and
+        // opaque to us. Unlike a content change they cannot reach our clips, so
+        // there is nothing in the document to update, and nothing else to do:
+        // every ARA document is archived on every project save, so the state
+        // cannot be lost by ignoring the notification. They exist so a host
+        // that persists incrementally can avoid re-archiving unchanged state,
+        // which this one does not do -- each save writes a fresh project
+        // directory with no carry-forward.
+        void notifyRegionSequenceDataChangedFromImpl(
+            AraHostDocumentController::Impl* impl,
+            HostRegionSequence* regionSequenceHost) {
+            (void) impl;
+            (void) regionSequenceHost;
+        }
+
+        void notifyDocumentDataChangedFromImpl(
+            AraHostDocumentController::Impl* impl) {
+            (void) impl;
+        }
+
         ARA::ARABool readAudioSamplesFromImpl(
             AraHostDocumentController::Impl* impl,
             HostAudioReader* reader,
@@ -2290,18 +2687,63 @@ namespace uapmd::ara {
         impl_->cancelAnalysis(requestId);
     }
 
-    bool AraHostDocumentController::saveArchiveState(std::vector<uint8_t>& archive) {
-        return valid() && impl_->saveArchiveState(archive);
+    bool AraHostDocumentController::saveArchiveState(std::vector<uint8_t>& archive, std::string& archiveId) {
+        return valid() && impl_->saveArchiveState(archive, archiveId);
     }
 
-    bool AraHostDocumentController::loadArchiveState(const std::vector<uint8_t>& archive) {
-        return valid() && impl_->loadArchiveState(archive);
+    bool AraHostDocumentController::loadArchiveState(const std::vector<uint8_t>& archive, const std::string& archiveId) {
+        return valid() && impl_->loadArchiveState(archive, archiveId);
     }
 
     void AraHostDocumentController::notifyModelUpdates() {
         if (!valid())
             return;
         impl_->notifyModelUpdates();
+    }
+
+    bool AraHostDocumentController::storeArchiveStateForClip(
+        const ProjectObjectId& clipId,
+        std::string& archiveId,
+        std::string& archivedAudioSourcePersistentId,
+        std::string& archivedAudioModificationPersistentId,
+        std::vector<uint8_t>& archive) {
+        return valid() && impl_->storeArchiveStateForClip(
+            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive);
+    }
+
+    bool AraHostDocumentController::restoreArchiveStateForClip(
+        const ProjectObjectId& clipId,
+        const std::string& archiveId,
+        const std::string& archivedAudioSourcePersistentId,
+        const std::string& archivedAudioModificationPersistentId,
+        const std::vector<uint8_t>& archive) {
+        return valid() && impl_->restoreArchiveStateForClip(
+            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive);
+    }
+
+    void AraHostDocumentController::setRenderedSignalChangedCallback(
+        std::function<void(const ProjectObjectId& trackId)> callback) {
+        if (!valid())
+            return;
+        impl_->rendered_signal_changed_callback = std::move(callback);
+    }
+
+    bool AraHostDocumentController::storeArchiveStateForTrack(
+        const ProjectObjectId& trackId,
+        std::string& archiveId,
+        std::string& archivedRegionSequencePersistentId,
+        std::vector<uint8_t>& archive) {
+        return valid() && impl_->storeArchiveStateForTrack(
+            trackId, archiveId, archivedRegionSequencePersistentId, archive);
+    }
+
+    bool AraHostDocumentController::restoreArchiveStateForTrack(
+        const ProjectObjectId& trackId,
+        const std::string& archiveId,
+        const std::string& archivedRegionSequencePersistentId,
+        const std::vector<uint8_t>& archive) {
+        return valid() && impl_->restoreArchiveStateForTrack(
+            trackId, archiveId, archivedRegionSequencePersistentId, archive);
     }
 
     void AraHostDocumentController::beginProjectDocumentTransaction() {

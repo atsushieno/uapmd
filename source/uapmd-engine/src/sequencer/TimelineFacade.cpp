@@ -127,6 +127,13 @@ namespace uapmd {
         std::string pending_track_reference_id_{};
         std::string pending_clip_reference_id_{};
 
+        // Copied under the lock so that extensions can be invoked without
+        // holding it; an extension may register or unregister another.
+        std::vector<ProjectSerializationExtension*> projectSerializationExtensionsSnapshot() const {
+            std::lock_guard<std::mutex> lock(project_serialization_extensions_mutex_);
+            return project_serialization_extensions_;
+        }
+
         // Resolves a track index to its TimelineTrack, mapping
         // kMasterTrackIndex onto the master track. Returns nullptr when the
         // index addresses no track.
@@ -374,6 +381,235 @@ namespace uapmd {
 
         const AudioGraphProviderRegistry& audioGraphProviderRegistry() const override {
             return audio_graph_provider_registry_;
+        }
+
+        SequencerTrack* resolveSequencerTrack(int32_t trackIndex) {
+            if (trackIndex == kMasterTrackIndex)
+                return engine_.masterTrack();
+            auto& tracks = engine_.tracks();
+            if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()))
+                return tracks[static_cast<size_t>(trackIndex)];
+            return nullptr;
+        }
+
+        void captureTrackFragment(int32_t trackIndex, TrackFragmentCallback callback) override {
+            if (!callback)
+                return;
+            // Same constraint as capturing a clip: extensions archive plug-in
+            // state here, which ARA forbids while the document is being edited.
+            if (project_document_events_.inTransaction()) {
+                callback(std::nullopt,
+                         "captureTrackFragment must not be called inside a document transaction");
+                return;
+            }
+
+            auto* timelineTrack = resolveTrack(trackIndex);
+            auto* sequencerTrack = resolveSequencerTrack(trackIndex);
+            if (!timelineTrack || !sequencerTrack) {
+                callback(std::nullopt, "Invalid track index");
+                return;
+            }
+
+            auto fragment = std::make_shared<ProjectTrackFragment>();
+            fragment->referenceId = timelineTrack->referenceId();
+            fragment->volume = sequencerTrack->trackGain();
+            fragment->muted = sequencerTrack->muted();
+            fragment->solo = sequencerTrack->solo();
+
+            // Graph topology, held by value. The .graph.json a project save
+            // writes is an artifact of saving; the serialization itself
+            // produces bytes.
+            if (auto* provider = audio_graph_provider_registry_.get(sequencerTrack->graph())) {
+                auto graphData = createSerializedProjectGraph(
+                    *provider,
+                    sequencerTrack->orderedInstanceIds(),
+                    sequencerTrack->graph(),
+                    [this](int32_t instanceId) { return engine_.getPluginInstance(instanceId); },
+                    nullptr);
+                if (graphData) {
+                    fragment->graphType = provider->id();
+                    provider->saveProjectGraph(graphData.get(), fragment->graphBytes);
+                }
+            }
+
+            // Plugin descriptors now; their state is read asynchronously below.
+            auto pluginInstanceIds = std::make_shared<std::vector<int32_t>>();
+            for (int32_t instanceId : sequencerTrack->orderedInstanceIds()) {
+                auto* instance = engine_.getPluginInstance(instanceId);
+                if (!instance)
+                    continue;
+                ProjectTrackPluginFragment plugin;
+                if (auto* node = sequencerTrack->graph().getPluginNode(instanceId))
+                    plugin.nodeId = node->nodeId();
+                plugin.pluginId = instance->pluginId();
+                plugin.format = instance->formatName();
+                plugin.displayName = instance->displayName();
+                const auto group = sequencerTrack->getInstanceGroup(instanceId);
+                plugin.groupIndex = group == 0xFF ? -1 : static_cast<int32_t>(group);
+                fragment->plugins.push_back(std::move(plugin));
+                pluginInstanceIds->push_back(instanceId);
+            }
+
+            for (const auto& clip : timelineTrack->clipManager().getAllClips()) {
+                auto clipFragment = captureClipFragment(trackIndex, clip.clipId);
+                if (!clipFragment) {
+                    callback(std::nullopt,
+                             std::format("Failed to capture clip {} of the track", clip.referenceId));
+                    return;
+                }
+                fragment->clips.push_back(std::move(*clipFragment));
+            }
+
+            for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                std::vector<uint8_t> state;
+                std::string extensionError;
+                if (!extension->captureTrackFragmentState(fragment->referenceId, state, extensionError)) {
+                    callback(std::nullopt,
+                             std::format("Extension {} could not capture its state for track {}: {}",
+                                         extension->extensionId(), fragment->referenceId, extensionError));
+                    return;
+                }
+                if (!state.empty())
+                    fragment->extensionState[std::string(extension->extensionId())] = std::move(state);
+            }
+
+            // Plugin state is callback-based, so the remaining work is a chain
+            // rather than a loop. This is the reason capture cannot simply
+            // return a fragment the way the clip version does.
+            auto sharedCallback = std::make_shared<TrackFragmentCallback>(std::move(callback));
+            auto step = std::make_shared<std::function<void(size_t)>>();
+            *step = [this, fragment, pluginInstanceIds, sharedCallback, step](size_t index) {
+                if (index >= pluginInstanceIds->size()) {
+                    (*sharedCallback)(std::move(*fragment), std::string{});
+                    return;
+                }
+                auto* instance = engine_.getPluginInstance((*pluginInstanceIds)[index]);
+                if (!instance) {
+                    (*step)(index + 1);
+                    return;
+                }
+                instance->requestState(
+                    StateContextType::Project, false, nullptr,
+                    [fragment, sharedCallback, step, index](
+                        std::vector<uint8_t> state, std::string error, void*) mutable {
+                        if (!error.empty()) {
+                            (*sharedCallback)(std::nullopt, std::move(error));
+                            return;
+                        }
+                        fragment->plugins[index].state = std::move(state);
+                        (*step)(index + 1);
+                    });
+            };
+            (*step)(0);
+        }
+
+        void attachTrackFragment(
+            const ProjectTrackFragment& fragment,
+            ProjectTrackAttachOptions options,
+            TrackAttachCallback callback) override {
+            if (!callback)
+                return;
+            // Copied because the chain below outlives this call.
+            auto source = std::make_shared<ProjectTrackFragment>(fragment);
+            auto sharedCallback = std::make_shared<TrackAttachCallback>(std::move(callback));
+
+            if (options.idPolicy == ProjectObjectIdPolicy::Restore)
+                pending_track_reference_id_ = source->referenceId;
+            const int32_t trackIndex = engine_.addEmptyTrack();
+            pending_track_reference_id_.clear();
+            if (trackIndex < 0) {
+                (*sharedCallback)(-1, "Failed to create track");
+                return;
+            }
+
+            if (auto* sequencerTrack = resolveSequencerTrack(trackIndex)) {
+                sequencerTrack->trackGain(source->volume);
+                sequencerTrack->muted(source->muted);
+                sequencerTrack->solo(source->solo);
+            }
+
+            // Applied once every plugin has been created and, if requested,
+            // had its state restored. Clips and extension state are synchronous
+            // and share one transaction so observers see the finished track
+            // rather than it filling in.
+            auto finish = [this, source, options, trackIndex, sharedCallback]() {
+                {
+                    ProjectDocumentTransaction transaction(project_document_events_);
+                    if (options.includeClips)
+                        for (const auto& clipFragment : source->clips)
+                            attachClipFragment(trackIndex, clipFragment, options.idPolicy);
+
+                    if (auto* timelineTrack = resolveTrack(trackIndex)) {
+                        for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                            const auto it = source->extensionState.find(std::string(extension->extensionId()));
+                            static const std::vector<uint8_t> kNoState{};
+                            const auto& state = it == source->extensionState.end() ? kNoState : it->second;
+                            std::string extensionError;
+                            if (!extension->restoreTrackFragmentState(
+                                    timelineTrack->referenceId(), state, extensionError))
+                                std::cerr << "Warning: Extension " << extension->extensionId()
+                                          << " failed to restore state for track "
+                                          << timelineTrack->referenceId() << ": " << extensionError << std::endl;
+                        }
+                    }
+                }
+                (*sharedCallback)(trackIndex, std::string{});
+            };
+
+            if (!options.includePlugins || source->plugins.empty()) {
+                finish();
+                return;
+            }
+
+            // Instantiating a plugin is callback-based, so plugins are added
+            // one at a time rather than in a loop.
+            auto finishHolder = std::make_shared<std::function<void()>>(std::move(finish));
+            auto step = std::make_shared<std::function<void(size_t)>>();
+            *step = [this, source, options, trackIndex, finishHolder, step](size_t index) {
+                if (index >= source->plugins.size()) {
+                    (*finishHolder)();
+                    return;
+                }
+                auto& plugin = source->plugins[index];
+                // Restore reuses the captured node identity so that anything
+                // keyed by it reconnects; Mint leaves it empty and a fresh one
+                // is derived from the new instance.
+                auto restoreNodeId = options.idPolicy == ProjectObjectIdPolicy::Restore
+                    ? plugin.nodeId
+                    : std::string{};
+                // addPluginToTrack takes non-const references.
+                auto format = plugin.format;
+                auto pluginId = plugin.pluginId;
+                engine_.addPluginToTrack(
+                    trackIndex, format, pluginId,
+                    [this, source, options, step, index](int32_t instanceId, int32_t, std::string error) {
+                        auto& added = source->plugins[index];
+                        if (!error.empty() || instanceId < 0) {
+                            std::cerr << "Warning: Failed to instantiate " << added.displayName
+                                      << " while attaching a track fragment: " << error << std::endl;
+                            (*step)(index + 1);
+                            return;
+                        }
+                        if (added.groupIndex >= 0 && added.groupIndex <= 15)
+                            engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(added.groupIndex));
+
+                        auto* instance = engine_.getPluginInstance(instanceId);
+                        if (!options.includePluginState || added.state.empty() || !instance) {
+                            (*step)(index + 1);
+                            return;
+                        }
+                        instance->loadState(
+                            added.state, StateContextType::Project, false, nullptr,
+                            [step, index, displayName = added.displayName](std::string loadError, void*) {
+                                if (!loadError.empty())
+                                    std::cerr << "Warning: Failed to restore state for " << displayName
+                                              << " while attaching a track fragment: " << loadError << std::endl;
+                                (*step)(index + 1);
+                            });
+                    },
+                    std::move(restoreNodeId));
+            };
+            (*step)(0);
         }
 
         void beginDocumentTransaction() override {
@@ -1478,6 +1714,16 @@ namespace uapmd {
         std::optional<ProjectClipFragment> captureClipFragment(
             int32_t trackIndex,
             int32_t clipId) const override {
+            // Extensions contribute state here, and at least one of them --
+            // ARA -- cannot legally archive while the document is being edited.
+            // Refusing at this boundary reports the mistake at the real call
+            // site rather than as a missing slot discovered much later.
+            if (project_document_events_.inTransaction()) {
+                std::cerr << "Error: captureClipFragment must not be called inside a document "
+                             "transaction; capture first, then mutate." << std::endl;
+                return std::nullopt;
+            }
+
             const auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
                 return std::nullopt;
@@ -1498,6 +1744,26 @@ namespace uapmd {
                     fragment.tempoChanges = midi->tempoChanges();
                     fragment.timeSignatureChanges = midi->timeSignatureChanges();
                 }
+            }
+
+            // Collect state owned outside the document, such as a plug-in's
+            // opaque per-clip state, so the fragment is self-contained.
+            for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                std::vector<uint8_t> state;
+                std::string extensionError;
+                if (!extension->captureClipFragmentState(clip->referenceId, state, extensionError)) {
+                    // Continuing would hand back a fragment that looks complete
+                    // but has lost state the user cannot see and cannot
+                    // recover. Failing the capture keeps the operation honest.
+                    std::cerr << "Error: Extension " << extension->extensionId()
+                              << " could not capture its state for clip "
+                              << clip->referenceId << ": " << extensionError
+                              << ". Capture abandoned rather than returning an incomplete fragment."
+                              << std::endl;
+                    return std::nullopt;
+                }
+                if (!state.empty())
+                    fragment.extensionState[std::string(extension->extensionId())] = std::move(state);
             }
             return fragment;
         }
@@ -1570,6 +1836,22 @@ namespace uapmd {
                 resizeClip(trackIndex, result.clipId, source.durationSamples);
             else if (!source.markers.empty())
                 setClipMarkers(trackIndex, result.clipId, source.markers);
+
+            // Hand each extension its own slot back, addressed by the identity
+            // the clip has now: the captured one when restoring, a freshly
+            // minted one when pasting.
+            if (const auto* attachedClip = clips.getClip(result.clipId)) {
+                for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                    const auto it = fragment.extensionState.find(std::string(extension->extensionId()));
+                    static const std::vector<uint8_t> kNoState{};
+                    const auto& state = it == fragment.extensionState.end() ? kNoState : it->second;
+                    std::string extensionError;
+                    if (!extension->restoreClipFragmentState(attachedClip->referenceId, state, extensionError))
+                        std::cerr << "Warning: Extension " << extension->extensionId()
+                                  << " failed to restore state for clip "
+                                  << attachedClip->referenceId << ": " << extensionError << std::endl;
+                }
+            }
             return result;
         }
 
