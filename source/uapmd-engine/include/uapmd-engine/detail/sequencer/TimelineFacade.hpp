@@ -102,6 +102,32 @@ public:
     virtual bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps) = 0;
 
     virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
+
+    // Replaces a MIDI clip's authored content, resizing the clip to match the
+    // new content's length. Emits one document event for the whole change.
+    virtual bool replaceMidiClipContent(
+        int32_t trackIndex,
+        int32_t clipId,
+        std::vector<uapmd_ump_t> umpEvents,
+        std::vector<uint64_t> umpTickTimestamps) = 0;
+
+    // Detached clip representation, shared by undo and the clipboard.
+    //
+    // Capture is non-destructive: deleting is a separate removeClipFromTrack,
+    // which lets copy, cut and delete-with-undo all be composed from the same
+    // two operations inside one transaction.
+    virtual std::optional<ProjectClipFragment> captureClipFragment(
+        int32_t trackIndex,
+        int32_t clipId) const = 0;
+
+    // Recreates a captured clip on the given track. With
+    // ProjectObjectIdPolicy::Restore the clip returns under its original
+    // identifiers, which is what undoing a delete requires; with Mint it
+    // becomes a new clip, which is what paste and duplicate require.
+    virtual ClipAddResult attachClipFragment(
+        int32_t trackIndex,
+        const ProjectClipFragment& fragment,
+        ProjectObjectIdPolicy idPolicy) = 0;
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
 

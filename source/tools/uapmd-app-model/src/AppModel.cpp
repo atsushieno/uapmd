@@ -2309,17 +2309,8 @@ static bool modifyMidiClipUmp(
     if (!modifier(newWords, newTicks, error))
         return false;
 
-    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
-        midiNode->instanceId(),
-        std::move(newWords),
-        std::move(newTicks),
-        midiNode->tickResolution(),
-        midiNode->clipTempo(),
-        static_cast<double>(appModel.sampleRate()),
-        midiNode->tempoChanges(),
-        midiNode->timeSignatureChanges());
-
-    if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(newNode))) {
+    if (!appModel.sequencer().engine()->timeline().replaceMidiClipContent(
+            trackIndex, clipId, std::move(newWords), std::move(newTicks))) {
         error = "Failed to replace clip data";
         return false;
     }

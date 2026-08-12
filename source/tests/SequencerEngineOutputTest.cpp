@@ -469,4 +469,102 @@ TEST_F(SequencerEngineOutputTest, OfflineRenderKeepsWarpedTailAudible) {
     EXPECT_GT(peakInFrameRange(rendered, stretchedTailStart, stretchedTailEnd), 0.01f);
 }
 
+// ── Clip fragments ────────────────────────────────────────────────────────────
+
+namespace {
+    // Two MIDI 2.0 channel voice messages, two words each, a beat apart.
+    const std::vector<uapmd_ump_t> kFragmentUmp{
+        0x40903C00u, 0x7FFF0000u,
+        0x40803C00u, 0x00000000u
+    };
+    const std::vector<uint64_t> kFragmentTicks{0, 0, 480, 480};
+
+    uapmd::TimelineFacade::ClipAddResult addFragmentTestClip(
+        uapmd::SequencerEngine& engine, int32_t trackIndex, int32_t sampleRate) {
+        return engine.timeline().addMidiClipToTrack(
+            trackIndex,
+            uapmd::TimelinePosition::fromSamples(0, sampleRate),
+            kFragmentUmp,
+            kFragmentTicks,
+            480,
+            120.0,
+            {},
+            {},
+            "Fragment Source");
+    }
+}
+
+TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.setClipName(trackIndex, added.clipId, "Renamed"));
+
+    const auto fragment = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(fragment.has_value());
+    const auto capturedReferenceId = fragment->clip.referenceId;
+    EXPECT_FALSE(capturedReferenceId.empty());
+    EXPECT_EQ(fragment->clip.name, "Renamed");
+    EXPECT_EQ(fragment->umpEvents, kFragmentUmp);
+
+    // Capture must not disturb the document.
+    ASSERT_NE(timeline.tracks()[trackIndex]->clipManager().getClip(added.clipId), nullptr);
+
+    ASSERT_TRUE(timeline.removeClipFromTrack(trackIndex, added.clipId));
+    ASSERT_EQ(timeline.tracks()[trackIndex]->clipManager().clipCount(), 0u);
+
+    // Undoing a delete: the clip must come back as the same object.
+    const auto restored = timeline.attachClipFragment(
+        trackIndex, *fragment, uapmd::ProjectObjectIdPolicy::Restore);
+    ASSERT_TRUE(restored.success) << restored.error;
+
+    const auto* restoredClip =
+        timeline.tracks()[trackIndex]->clipManager().getClip(restored.clipId);
+    ASSERT_NE(restoredClip, nullptr);
+    EXPECT_EQ(restoredClip->referenceId, capturedReferenceId);
+    EXPECT_EQ(restoredClip->name, "Renamed");
+
+    const auto recaptured = timeline.captureClipFragment(trackIndex, restored.clipId);
+    ASSERT_TRUE(recaptured.has_value());
+    EXPECT_EQ(recaptured->umpEvents, kFragmentUmp);
+}
+
+TEST_F(SequencerEngineOutputTest, ClipFragmentMintsANewIdentityWhenAttachedAlongside) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+    auto& timeline = engine->timeline();
+
+    const auto fragment = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(fragment.has_value());
+
+    // Pasting alongside the original: a second, distinct clip.
+    const auto pasted = timeline.attachClipFragment(
+        trackIndex, *fragment, uapmd::ProjectObjectIdPolicy::Mint);
+    ASSERT_TRUE(pasted.success) << pasted.error;
+    EXPECT_NE(pasted.clipId, added.clipId);
+    EXPECT_EQ(timeline.tracks()[trackIndex]->clipManager().clipCount(), 2u);
+
+    const auto* pastedClip =
+        timeline.tracks()[trackIndex]->clipManager().getClip(pasted.clipId);
+    ASSERT_NE(pastedClip, nullptr);
+    EXPECT_FALSE(pastedClip->referenceId.empty());
+    EXPECT_NE(pastedClip->referenceId, fragment->clip.referenceId);
+    // Content still copies across even though identity does not.
+    const auto pastedFragment = timeline.captureClipFragment(trackIndex, pasted.clipId);
+    ASSERT_TRUE(pastedFragment.has_value());
+    EXPECT_EQ(pastedFragment->umpEvents, kFragmentUmp);
+}
+
 } // namespace

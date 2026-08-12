@@ -2,9 +2,10 @@
 
 ## Status
 
-Phase 0 in progress. Steps 0.1 and 0.3 are complete. Step 0.2 is complete apart
-from the clip anchor operations, which wait on the anchor sidecar described
-under 0.1, and the source node replacement deferred to 0.4. Steps 0.4 and 0.5
+Phase 0 in progress. Steps 0.1 and 0.3 are complete, and 0.4 is complete for
+clips. Step 0.2 is complete apart from the clip anchor operations, which wait
+on the anchor sidecar described under 0.1, and the audio source node
+replacement left with 0.4. Track fragments, the ARA archive slot and step 0.5
 have not been started. Each step below records its own state.
 
 This document describes Phase 0, the shared groundwork that both undo/redo
@@ -270,7 +271,7 @@ nesting, collapsing, and revision contiguity.
 
 ### 0.4 Detachable fragments
 
-Not started.
+Clip fragments are done. Track fragments and the ARA archive slot are not.
 
 A lossless serializable representation of a clip or a track, detached from the
 document. The same fragment is the undo payload for a delete and the clipboard
@@ -289,6 +290,43 @@ attaching new content to an existing clip.
 MIDI content is cheap to capture whole. The piano roll already rebuilds the
 entire `MidiClipSourceNode` on every commit, so whole-clip capture is both
 correct and the natural granularity. Per-note deltas are not needed.
+
+As implemented, `ProjectClipFragment` in `uapmd-data` is a `ClipData` plus the
+authored MIDI content, plus a map of opaque per-feature state keyed by
+extension identifier, which is where an ARA partial archive will go. Audio
+clips carry no content because they are rebuilt from `clip.filepath`.
+
+The first bullet above did not survive contact with the code. Building on
+`UapmdProjectFile` was rejected because that format exports MIDI content to a
+separate file rather than holding it, so a fragment built on it would not be
+self-contained — which is the one property both undo and the clipboard need.
+`SourceNode::saveState` and `loadState` looked like the alternative, but every
+implementation of them is an empty stub. A fragment is therefore the set of
+values needed to recreate the clip, which is close to what the existing
+`addMidiClipToTrack` and `addAudioClipToTrack` already take.
+
+Capture is deliberately non-destructive and removal stays a separate call, so
+that copy, cut and delete-with-undo are all composed from the same two
+operations inside one transaction rather than needing three entry points.
+
+`ProjectObjectIdPolicy::Restore` reuses the captured identifiers, which is what
+undoing a delete requires, and `Mint` allocates fresh ones for paste and
+duplicate. Restore is implemented on the identity staging introduced in 0.1
+rather than on a second mechanism.
+
+`replaceMidiClipContent` landed here and took three of the six deferred
+`replaceClipSourceNode` sites. One of them, the generic UMP modifier in
+`AppModel`, emitted no document event at all before this. The remaining three
+sites rebuild an `AudioFileSourceNode` from resolved warp points, which is a
+different enough shape to want its own mutator.
+
+Covered by `ClipFragmentRestoresUnderItsOriginalIdentity` and
+`ClipFragmentMintsANewIdentityWhenAttachedAlongside` in
+`source/tests/SequencerEngineOutputTest.cpp`, which exercise the round trip
+through a real `SequencerEngine`.
+
+Still open in this step: track fragments, and populating `extensionState` with
+the ARA partial archive, which belongs with 0.5.
 
 ### 0.5 ARA wiring
 

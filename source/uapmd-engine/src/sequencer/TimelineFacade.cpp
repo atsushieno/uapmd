@@ -1438,6 +1438,141 @@ namespace uapmd {
             return clip ? clip->enabled : false;
         }
 
+        bool replaceMidiClipContent(
+            int32_t trackIndex,
+            int32_t clipId,
+            std::vector<uapmd_ump_t> umpEvents,
+            std::vector<uint64_t> umpTickTimestamps) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            auto* clip = targetTrack->clipManager().getClip(clipId);
+            if (!clip || clip->clipType != ClipType::Midi)
+                return false;
+            auto existing = std::dynamic_pointer_cast<MidiClipSourceNode>(
+                targetTrack->getSourceNode(clip->sourceNodeInstanceId));
+            if (!existing)
+                return false;
+
+            auto replacement = std::make_unique<MidiClipSourceNode>(
+                existing->instanceId(),
+                std::move(umpEvents),
+                std::move(umpTickTimestamps),
+                clip->tickResolution > 0 ? clip->tickResolution : existing->tickResolution(),
+                existing->clipTempo(),
+                static_cast<double>(sampleRate_),
+                existing->tempoChanges(),
+                existing->timeSignatureChanges());
+            const int64_t newDuration = replacement->totalLength();
+
+            // The node swap and the duration change are one edit.
+            ProjectDocumentTransaction transaction(project_document_events_);
+            if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
+                return false;
+            targetTrack->clipManager().resizeClip(clipId, newDuration);
+            notifyClipChanged(trackIndex, clipId, "clip-content-changed");
+            notifyTimelineChanged();
+            return true;
+        }
+
+        std::optional<ProjectClipFragment> captureClipFragment(
+            int32_t trackIndex,
+            int32_t clipId) const override {
+            const auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return std::nullopt;
+            const auto* clip = targetTrack->clipManager().getClip(clipId);
+            if (!clip)
+                return std::nullopt;
+
+            ProjectClipFragment fragment;
+            fragment.clip = *clip;
+            if (clip->clipType == ClipType::Midi) {
+                // Audio clips are rebuilt from their file, but MIDI content is
+                // authored and exists nowhere else, so it must be copied out.
+                auto sourceNode = const_cast<TimelineTrack*>(targetTrack)
+                    ->getSourceNode(clip->sourceNodeInstanceId);
+                if (auto midi = std::dynamic_pointer_cast<MidiClipSourceNode>(sourceNode)) {
+                    fragment.umpEvents = midi->umpEvents();
+                    fragment.umpTickTimestamps = midi->eventTimestampsTicks();
+                    fragment.tempoChanges = midi->tempoChanges();
+                    fragment.timeSignatureChanges = midi->timeSignatureChanges();
+                }
+            }
+            return fragment;
+        }
+
+        ClipAddResult attachClipFragment(
+            int32_t trackIndex,
+            const ProjectClipFragment& fragment,
+            ProjectObjectIdPolicy idPolicy) override {
+            ClipAddResult result;
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack) {
+                result.error = "Invalid track index";
+                return result;
+            }
+
+            // Recreating the clip and reapplying its metadata is one edit.
+            ProjectDocumentTransaction transaction(project_document_events_);
+
+            // Restore reuses the captured identity; Mint leaves the staging
+            // slot empty so the usual allocation happens.
+            pending_clip_reference_id_ = idPolicy == ProjectObjectIdPolicy::Restore
+                ? fragment.clip.referenceId
+                : std::string{};
+
+            const auto& source = fragment.clip;
+            if (fragment.isMidi()) {
+                result = addMidiClipToTimelineTrack(
+                    *targetTrack,
+                    source.position,
+                    source.filepath,
+                    fragment.umpEvents,
+                    fragment.umpTickTimestamps,
+                    source.tickResolution,
+                    source.clipTempo,
+                    fragment.tempoChanges,
+                    fragment.timeSignatureChanges,
+                    source.name,
+                    source.nrpnToParameterMapping,
+                    source.needsFileSave);
+            } else {
+                auto reader = createAudioFileReaderFromPath(source.filepath);
+                if (!reader) {
+                    pending_clip_reference_id_.clear();
+                    result.error = "Could not reopen the audio file for the clip";
+                    return result;
+                }
+                result = addAudioClipToTrack(
+                    *targetTrack,
+                    source.position,
+                    std::move(reader),
+                    source.filepath,
+                    source.markers,
+                    source.audioWarps);
+            }
+
+            // Staging is consumed by a successful add; clear it so a failed one
+            // cannot hand the captured identity to an unrelated later clip.
+            pending_clip_reference_id_.clear();
+            if (!result.success)
+                return result;
+
+            // Properties the add paths do not take. Applied through the
+            // mutators so each is a document change like any other; the
+            // surrounding transaction keeps them one batch.
+            auto& clips = targetTrack->clipManager();
+            clips.setClipGain(result.clipId, source.gain);
+            clips.setClipMuted(result.clipId, source.muted);
+            setClipEnabled(trackIndex, result.clipId, source.enabled);
+            if (!fragment.isMidi())
+                resizeClip(trackIndex, result.clipId, source.durationSamples);
+            else if (!source.markers.empty())
+                setClipMarkers(trackIndex, result.clipId, source.markers);
+            return result;
+        }
+
         bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
             std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) override {
             if (words.empty() || words.size() != ticks.size())

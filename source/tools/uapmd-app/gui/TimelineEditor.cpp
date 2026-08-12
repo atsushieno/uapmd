@@ -2776,32 +2776,11 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
         }
     }
 
-    auto tempoChanges = midiNode->tempoChanges();
-    auto timeSignatureChanges = midiNode->timeSignatureChanges();
-    double clipTempo = midiNode->clipTempo();
-    uint32_t tickResolution = clip->tickResolution > 0 ? clip->tickResolution : midiNode->tickResolution();
-    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
-        midiNode->instanceId(),
-        std::move(newEvents),
-        std::move(newTicks),
-        tickResolution,
-        clipTempo,
-        static_cast<double>(appModel.sampleRate()),
-        tempoChanges,
-        timeSignatureChanges
-    );
-
-    const int64_t newDuration = newNode->totalLength();
-    if (!track->replaceClipSourceNode(clip->clipId, std::move(newNode))) {
+    if (!appModel.sequencer().engine()->timeline().replaceMidiClipContent(
+            payload.trackIndex, clip->clipId, std::move(newEvents), std::move(newTicks))) {
         error = "Failed to replace MIDI clip data.";
         return false;
     }
-
-    auto& timelineFacade = appModel.sequencer().engine()->timeline();
-    // The source node swap above and the duration change are one edit.
-    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
-    timelineFacade.resizeClip(payload.trackIndex, clip->clipId, newDuration);
-    timelineFacade.notifyClipChanged(payload.trackIndex, clip->clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(payload.trackIndex);
     return true;
 }
@@ -2897,41 +2876,11 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
         error = "Track unavailable.";
         return false;
     }
-    auto& track = tracks[trackIndex];
-    auto* clip = track->clipManager().getClip(clipId);
-    if (!clip) {
-        error = "Clip not found.";
-        return false;
-    }
-    auto sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
-    auto midiNode = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
-    if (!midiNode) {
-        error = "MIDI source node unavailable.";
-        return false;
-    }
-    uint32_t tickResolution = clip->tickResolution > 0
-                              ? clip->tickResolution
-                              : midiNode->tickResolution();
-    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
-        midiNode->instanceId(),
-        std::move(newUmpEvents),
-        std::move(newTickTimestamps),
-        tickResolution,
-        midiNode->clipTempo(),
-        static_cast<double>(appModel.sampleRate()),
-        midiNode->tempoChanges(),
-        midiNode->timeSignatureChanges()
-    );
-    const int64_t newDuration = newNode->totalLength();
-    if (!track->replaceClipSourceNode(clipId, std::move(newNode))) {
+    if (!appModel.sequencer().engine()->timeline().replaceMidiClipContent(
+            trackIndex, clipId, std::move(newUmpEvents), std::move(newTickTimestamps))) {
         error = "Failed to replace MIDI clip data.";
         return false;
     }
-    auto& timelineFacade = appModel.sequencer().engine()->timeline();
-    // The source node swap above and the duration change are one edit.
-    uapmd::ScopedDocumentTransaction transaction(timelineFacade);
-    timelineFacade.resizeClip(trackIndex, clipId, newDuration);
-    timelineFacade.notifyClipChanged(trackIndex, clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(trackIndex);
     return true;
 }
