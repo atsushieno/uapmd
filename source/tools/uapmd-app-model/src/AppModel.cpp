@@ -99,20 +99,20 @@ int64_t defaultEmptyMidiClipDurationSamples(int32_t sampleRate,
     return std::max<int64_t>(1, static_cast<int64_t>(std::llround(seconds * safeSampleRate)));
 }
 
-void markTimelineTrackClipsNeedsFileSave(TimelineTrack* track) {
+void markTimelineTrackClipsNeedsFileSave(AppModel& appModel, TimelineTrack* track, int32_t trackIndex) {
     if (!track)
         return;
 
-    auto clips = track->clipManager().getAllClips();
-    for (const auto& clip : clips)
-        track->clipManager().setClipNeedsFileSave(clip.clipId, true);
+    auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    for (const auto& clip : track->clipManager().getAllClips())
+        timelineFacade.setClipNeedsFileSave(trackIndex, clip.clipId, true);
 }
 
 void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
     auto timelineTracks = appModel.getTimelineTracks();
-    for (auto* track : timelineTracks)
-        markTimelineTrackClipsNeedsFileSave(track);
-    markTimelineTrackClipsNeedsFileSave(appModel.getMasterTimelineTrack());
+    for (size_t i = 0; i < timelineTracks.size(); ++i)
+        markTimelineTrackClipsNeedsFileSave(appModel, timelineTracks[i], static_cast<int32_t>(i));
+    markTimelineTrackClipsNeedsFileSave(appModel, appModel.getMasterTimelineTrack(), kMasterTrackIndex);
 }
 
 } // namespace
@@ -159,14 +159,24 @@ public:
             return false;
         }
         TimelineTrack* currentTrack = nullptr;
+        // Tracked alongside the track pointer because clip mutation is
+        // addressed by track index through the timeline facade.
+        int32_t currentTrackIndex = -1;
         while (std::getline(input, line)) {
             if (line.rfind("track ", 0) == 0) {
                 const auto id = line.substr(6);
                 currentTrack = nullptr;
-                for (auto* track : app_model_.getTimelineTracks())
-                    if (track && track->referenceId() == id) currentTrack = track;
-                if (auto* master = app_model_.getMasterTimelineTrack(); master && master->referenceId() == id)
+                currentTrackIndex = -1;
+                const auto tracks = app_model_.getTimelineTracks();
+                for (size_t i = 0; i < tracks.size(); ++i)
+                    if (tracks[i] && tracks[i]->referenceId() == id) {
+                        currentTrack = tracks[i];
+                        currentTrackIndex = static_cast<int32_t>(i);
+                    }
+                if (auto* master = app_model_.getMasterTimelineTrack(); master && master->referenceId() == id) {
                     currentTrack = master;
+                    currentTrackIndex = kMasterTrackIndex;
+                }
             } else if (currentTrack && line.rfind("clip ", 0) == 0) {
                 const auto separator = line.rfind(" disabled");
                 if (separator == std::string::npos)
@@ -174,7 +184,8 @@ public:
                 const auto clipReference = line.substr(5, separator - 5);
                 for (const auto& clip : currentTrack->clipManager().getAllClips())
                     if (clip.referenceId == clipReference)
-                        currentTrack->clipManager().setClipEnabled(clip.clipId, false);
+                        app_model_.sequencer().engine()->timeline()
+                            .setClipEnabled(currentTrackIndex, clip.clipId, false);
             }
         }
         return true;
@@ -1896,9 +1907,7 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     result.success = engineResult.success;
     result.error = engineResult.error;
     if (result.success && emptyMidiClip) {
-        auto tracks = getTimelineTracks();
-        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex])
-            tracks[trackIndex]->clipManager().resizeClip(result.clipId, emptyMidiDurationSamples);
+        sequencer_.engine()->timeline().resizeClip(trackIndex, result.clipId, emptyMidiDurationSamples);
     }
     if (result.success)
         markTrackDirty(trackIndex);
@@ -2571,11 +2580,12 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
         resolvedWarps
     );
 
-    if (!track->clipManager().setClipMarkers(clipId, markers)) {
+    auto& timelineFacade = sequencer_.engine()->timeline();
+    if (!timelineFacade.setClipMarkers(trackIndex, clipId, markers)) {
         error = "Failed to update clip markers.";
         return false;
     }
-    if (!track->clipManager().setAudioWarps(clipId, audioWarps)) {
+    if (!timelineFacade.setClipAudioWarps(trackIndex, clipId, audioWarps)) {
         error = "Failed to update audio warp points.";
         return false;
     }
@@ -2584,7 +2594,7 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
         return false;
     }
     if (preserveClipDuration)
-        track->clipManager().resizeClip(clipId, authoredDuration);
+        timelineFacade.resizeClip(trackIndex, clipId, authoredDuration);
 
     resolveAllClipAnchorsInAppModel(*this);
     markTrackDirty(trackIndex);
@@ -2798,10 +2808,7 @@ bool uapmd_app::AppModel::removeTrack(int32_t trackIndex) {
     }
 
     // Clear clips via engine (which owns the timeline tracks)
-    auto timelineTracks = sequencer_.engine()->timeline().tracks();
-    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timelineTracks.size())) {
-        timelineTracks[trackIndex]->clipManager().clearAll();
-    }
+    sequencer_.engine()->timeline().clearClipsFromTrack(trackIndex);
 
     hidden_tracks_.insert(trackIndex);
     markProjectDirty();

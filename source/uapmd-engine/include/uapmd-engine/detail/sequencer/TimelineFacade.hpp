@@ -78,8 +78,29 @@ public:
         const std::string& filepath = "") = 0;
 
     virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
+    // Removes every clip on the track. Returns true when at least one was removed.
+    virtual bool clearClipsFromTrack(int32_t trackIndex) = 0;
     virtual bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") = 0;
+
+    // Clip mutations.
+    //
+    // These are the only supported way to change a clip: each applies the
+    // change and emits the matching document event as one step, so that an
+    // observer can never miss a mutation. Callers must not reach into
+    // TimelineTrack::clipManager() to mutate a clip directly -- doing so
+    // leaves observers, and eventually the undo stack, out of sync.
+    // Read-only access through clipManager() remains fine.
+    //
+    // Each returns false when the track or clip does not exist, or when the
+    // underlying change was rejected.
     virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) = 0;
+    virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples) = 0;
+    virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name) = 0;
+    virtual bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath) = 0;
+    virtual bool setClipNeedsFileSave(int32_t trackIndex, int32_t clipId, bool needsSave) = 0;
+    virtual bool setClipMarkers(int32_t trackIndex, int32_t clipId, std::vector<ClipMarker> markers) = 0;
+    virtual bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps) = 0;
+
     virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;

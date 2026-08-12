@@ -2281,9 +2281,7 @@ void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    const bool changed = tracks[trackIndex]->clipManager().clipCount() > 0;
-    tracks[trackIndex]->clipManager().clearAll();
-    if (changed)
+    if (appModel.sequencer().engine()->timeline().clearClipsFromTrack(trackIndex))
         appModel.markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
@@ -2339,10 +2337,8 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    if (tracks[trackIndex]->clipManager().setClipName(clipId, name)) {
+    if (appModel.sequencer().engine()->timeline().setClipName(trackIndex, clipId, name))
         appModel.markTrackDirty(trackIndex);
-        notifyTimelineClipChanged(trackIndex, clipId, "clip-name-changed");
-    }
     refreshSequenceEditorForTrack(trackIndex);
 }
 
@@ -2387,10 +2383,10 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
             return;
         }
 
-        tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
-        tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
+        auto& timelineFacade = appModel.sequencer().engine()->timeline();
+        timelineFacade.setClipFilepath(trackIndex, clipId, selectedFile);
+        timelineFacade.resizeClip(trackIndex, clipId, durationSamples);
         appModel.markTrackDirty(trackIndex);
-        notifyTimelineClipChanged(trackIndex, clipId, "clip-content-changed");
         refreshSequenceEditorForTrack(trackIndex);
     };
 
@@ -2798,8 +2794,9 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
         return false;
     }
 
-    track->clipManager().resizeClip(clip->clipId, newDuration);
-    notifyTimelineClipChanged(payload.trackIndex, payload.clipId, "clip-content-changed");
+    auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    timelineFacade.resizeClip(payload.trackIndex, clip->clipId, newDuration);
+    timelineFacade.notifyClipChanged(payload.trackIndex, clip->clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(payload.trackIndex);
     return true;
 }
@@ -2859,11 +2856,12 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
         resolvedWarps
     );
 
-    if (!track->clipManager().setClipMarkers(payload.clipId, payload.markers)) {
+    auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    if (!timelineFacade.setClipMarkers(payload.trackIndex, payload.clipId, payload.markers)) {
         error = "Failed to update clip markers.";
         return false;
     }
-    if (!track->clipManager().setAudioWarps(payload.clipId, payload.audioWarps)) {
+    if (!timelineFacade.setClipAudioWarps(payload.trackIndex, payload.clipId, payload.audioWarps)) {
         error = "Failed to update audio warp points.";
         return false;
     }
@@ -2872,11 +2870,11 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
         return false;
     }
     if (preserveClipDuration)
-        track->clipManager().resizeClip(payload.clipId, authoredDuration);
+        timelineFacade.resizeClip(payload.trackIndex, payload.clipId, authoredDuration);
 
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
-    notifyTimelineClipChanged(payload.trackIndex, payload.clipId, "clip-content-changed");
+    timelineFacade.notifyClipChanged(payload.trackIndex, payload.clipId, "clip-content-changed");
     refreshAllSequenceEditorTracks();
     return true;
 }
@@ -2922,8 +2920,9 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
         error = "Failed to replace MIDI clip data.";
         return false;
     }
-    track->clipManager().resizeClip(clipId, newDuration);
-    notifyTimelineClipChanged(trackIndex, clipId, "clip-content-changed");
+    auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    timelineFacade.resizeClip(trackIndex, clipId, newDuration);
+    timelineFacade.notifyClipChanged(trackIndex, clipId, "clip-content-changed");
     refreshSequenceEditorForTrack(trackIndex);
     return true;
 }
@@ -3027,11 +3026,8 @@ void TimelineEditor::addBlankMidiClipInRange(int32_t trackIndex, double startSec
 
     // Resize to the selected range's length (blank clips default to a small fixed length).
     const int64_t durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, endSeconds - startSeconds) * sampleRate));
-    auto tracks = appModel.getTimelineTracks();
-    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
-        tracks[trackIndex]->clipManager().resizeClip(result.clipId, std::max<int64_t>(1, durationSamples));
-        notifyTimelineClipChanged(trackIndex, result.clipId, "clip-duration-changed");
-    }
+    appModel.sequencer().engine()->timeline()
+        .resizeClip(trackIndex, result.clipId, std::max<int64_t>(1, durationSamples));
 
     refreshSequenceEditorForTrack(trackIndex);
 }

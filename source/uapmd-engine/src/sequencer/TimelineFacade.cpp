@@ -127,6 +127,21 @@ namespace uapmd {
         std::string pending_track_reference_id_{};
         std::string pending_clip_reference_id_{};
 
+        // Resolves a track index to its TimelineTrack, mapping
+        // kMasterTrackIndex onto the master track. Returns nullptr when the
+        // index addresses no track.
+        TimelineTrack* resolveTrack(int32_t trackIndex) {
+            if (trackIndex == kMasterTrackIndex)
+                return master_timeline_track_.get();
+            if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size()))
+                return timeline_tracks_[static_cast<size_t>(trackIndex)].get();
+            return nullptr;
+        }
+
+        const TimelineTrack* resolveTrack(int32_t trackIndex) const {
+            return const_cast<TimelineFacadeImpl*>(this)->resolveTrack(trackIndex);
+        }
+
         std::string takePendingClipReferenceId() {
             auto id = std::move(pending_clip_reference_id_);
             // A moved-from std::string is valid but unspecified, and short
@@ -1330,13 +1345,22 @@ namespace uapmd {
             return removed;
         }
 
+        bool clearClipsFromTrack(int32_t trackIndex) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            // Removed one at a time rather than by clearing the clip manager,
+            // so that every clip produces its own removal event. Clearing
+            // directly leaves observers holding clips that no longer exist.
+            // getAllClips() returns a copy, so removing while iterating is safe.
+            bool removedAny = false;
+            for (const auto& clip : targetTrack->clipManager().getAllClips())
+                removedAny |= removeClipFromTrack(trackIndex, clip.clipId);
+            return removedAny;
+        }
+
         bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") override {
-            TimelineTrack* targetTrack = nullptr;
-            if (trackIndex == kMasterTrackIndex) {
-                targetTrack = master_timeline_track_.get();
-            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
-                targetTrack = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
-            }
+            auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
                 return false;
             auto* clip = targetTrack->clipManager().getClip(clipId);
@@ -1348,25 +1372,57 @@ namespace uapmd {
             return true;
         }
 
-        bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) override {
-            TimelineTrack* targetTrack = trackIndex == kMasterTrackIndex
-                ? master_timeline_track_.get()
-                : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())
-                    ? timeline_tracks_[static_cast<size_t>(trackIndex)].get()
-                    : nullptr);
-            if (!targetTrack || !targetTrack->clipManager().setClipEnabled(clipId, enabled))
+        // Applies `mutate` to the addressed track's clip manager and, when it
+        // reports a change, emits `changeType` and refreshes the timeline.
+        // Every clip mutator goes through here so that no path can change a
+        // clip without the matching document event being emitted.
+        template<typename Mutation>
+        bool mutateClip(int32_t trackIndex, int32_t clipId, std::string changeType, Mutation&& mutate) {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack || !mutate(targetTrack->clipManager()))
                 return false;
-            notifyClipChanged(trackIndex, clipId, "clip-enablement-changed");
+            notifyClipChanged(trackIndex, clipId, std::move(changeType));
             notifyTimelineChanged();
             return true;
         }
 
+        bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) override {
+            return mutateClip(trackIndex, clipId, "clip-enablement-changed",
+                [&](ClipManager& clips) { return clips.setClipEnabled(clipId, enabled); });
+        }
+
+        bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples) override {
+            return mutateClip(trackIndex, clipId, "clip-duration-changed",
+                [&](ClipManager& clips) { return clips.resizeClip(clipId, newDurationSamples); });
+        }
+
+        bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name) override {
+            return mutateClip(trackIndex, clipId, "clip-name-changed",
+                [&](ClipManager& clips) { return clips.setClipName(clipId, name); });
+        }
+
+        bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath) override {
+            return mutateClip(trackIndex, clipId, "clip-content-changed",
+                [&](ClipManager& clips) { return clips.setClipFilepath(clipId, filepath); });
+        }
+
+        bool setClipNeedsFileSave(int32_t trackIndex, int32_t clipId, bool needsSave) override {
+            return mutateClip(trackIndex, clipId, "clip-content-changed",
+                [&](ClipManager& clips) { return clips.setClipNeedsFileSave(clipId, needsSave); });
+        }
+
+        bool setClipMarkers(int32_t trackIndex, int32_t clipId, std::vector<ClipMarker> markers) override {
+            return mutateClip(trackIndex, clipId, "clip-content-changed",
+                [&](ClipManager& clips) { return clips.setClipMarkers(clipId, std::move(markers)); });
+        }
+
+        bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps) override {
+            return mutateClip(trackIndex, clipId, "clip-content-changed",
+                [&](ClipManager& clips) { return clips.setAudioWarps(clipId, std::move(audioWarps)); });
+        }
+
         bool clipEnabled(int32_t trackIndex, int32_t clipId) const override {
-            const TimelineTrack* targetTrack = trackIndex == kMasterTrackIndex
-                ? master_timeline_track_.get()
-                : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())
-                    ? timeline_tracks_[static_cast<size_t>(trackIndex)].get()
-                    : nullptr);
+            const auto* targetTrack = resolveTrack(trackIndex);
             const auto* clip = targetTrack ? targetTrack->clipManager().getClip(clipId) : nullptr;
             return clip ? clip->enabled : false;
         }
