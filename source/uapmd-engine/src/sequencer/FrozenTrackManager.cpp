@@ -541,16 +541,32 @@ void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
     (void) event;
 }
 
+// A frozen render is a recording of what the track produced at one moment. Any
+// change to the track's clips makes it wrong, so it is revoked here rather than
+// relying on each call site to remember. Revoking is idempotent -- it bumps a
+// monotonic generation counter -- so the existing hand-written
+// AppModel::markTrackDirty calls remain harmless.
+//
+// Plugin graph changes are deliberately not handled the same way: freezing
+// manipulates the track's graph, so invalidating on graph changes risks a
+// render that revokes itself.
+void FrozenTrackManager::invalidateTrackForDocumentEvent(
+    const ProjectDocumentEvent& event) {
+    if (!event.trackId())
+        return;
+    invalidateTrack(*event.trackId());
+}
+
 void FrozenTrackManager::clipAdded(const ProjectDocumentEvent& event) {
-    (void) event;
+    invalidateTrackForDocumentEvent(event);
 }
 
 void FrozenTrackManager::clipRemoved(const ProjectDocumentEvent& event) {
-    (void) event;
+    invalidateTrackForDocumentEvent(event);
 }
 
 void FrozenTrackManager::clipChanged(const ProjectDocumentEvent& event) {
-    (void) event;
+    invalidateTrackForDocumentEvent(event);
 }
 
 void FrozenTrackManager::audioSourceAdded(const ProjectDocumentEvent&) {

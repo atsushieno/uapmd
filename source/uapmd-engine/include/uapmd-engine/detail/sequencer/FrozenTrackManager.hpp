@@ -120,6 +120,8 @@ private:
     void trackAdded(const ProjectDocumentEvent& event) override;
     void trackRemoved(const ProjectDocumentEvent& event) override;
     void trackChanged(const ProjectDocumentEvent& event) override;
+    // Revokes the frozen render of whichever track a document event names.
+    void invalidateTrackForDocumentEvent(const ProjectDocumentEvent& event);
     void clipAdded(const ProjectDocumentEvent& event) override;
     void clipRemoved(const ProjectDocumentEvent& event) override;
     void clipChanged(const ProjectDocumentEvent& event) override;

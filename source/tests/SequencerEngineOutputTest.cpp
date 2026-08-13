@@ -797,4 +797,33 @@ TEST_F(SequencerEngineOutputTest, TrackFragmentCaptureIsRefusedInsideATransactio
     EXPECT_TRUE(succeeded);
 }
 
+// ── Frozen render revocation ──────────────────────────────────────────────────
+
+TEST_F(SequencerEngineOutputTest, ClipMutationsRevokeTheTracksFrozenRender) {
+    // A frozen render records what a track produced at one moment, so any clip
+    // change makes it wrong. Revocation is driven by document events rather
+    // than by each call site remembering to ask for it.
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    auto& frozen = engine->frozenTrackManager();
+
+    const auto generationBeforeAdd = frozen.invalidationGenerationForTrack(trackIndex);
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+    const auto generationAfterAdd = frozen.invalidationGenerationForTrack(trackIndex);
+    EXPECT_GT(generationAfterAdd, generationBeforeAdd);
+
+    ASSERT_TRUE(timeline.setClipName(trackIndex, added.clipId, "Renamed"));
+    const auto generationAfterChange = frozen.invalidationGenerationForTrack(trackIndex);
+    EXPECT_GT(generationAfterChange, generationAfterAdd);
+
+    ASSERT_TRUE(timeline.removeClipFromTrack(trackIndex, added.clipId));
+    EXPECT_GT(frozen.invalidationGenerationForTrack(trackIndex), generationAfterChange);
+}
+
 } // namespace

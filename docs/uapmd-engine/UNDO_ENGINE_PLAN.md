@@ -124,23 +124,38 @@ refuses when called inside a transaction.
    rebuild an `AudioFileSourceNode` from resolved warp points and still bypass
    the funnel. They need their own mutator.
 
-2. **Clip anchors.** Move anchor storage into an extension sidecar, then
-   migrate the three deferred `setClipAnchor` call sites onto a facade mutator.
-   Deferred because they carry cycle rejection and a full anchor re-resolve,
-   and because the storage is moving anyway.
+2. **ARA content interchange.** The interchange is one-directional. We push
+   content to the plug-in through `updateAudioSourceContent` and never read any
+   back: no audio modification, playback region or audio source content reader
+   is created anywhere. So a plug-in's edits reach nothing of ours.
 
-3. **ARA content write-back.** Changes a plug-in makes to its content do not
-   reach our clips at all: `updateAudioSourceContent` runs host to plug-in only,
-   and nothing reads an ARA content reader back into a clip. Routing plug-in
-   content changes through the mutation funnel would give dirtiness, events,
-   frozen render revocation and undo from existing machinery rather than a
-   special case each. Wants its own design pass.
+   This needs a design pass rather than an implementation, because "write the
+   content back into our clips" presupposes an answer. Three separable things
+   hide under it, and they do not have the same answer:
 
-4. **Frozen render revocation.** `FrozenTrackManager` listens for document
-   events but its clip handlers are empty, so only the hand-written
-   `AppModel::markTrackDirty` call at each site revokes a stale render.
-   Implementing those handlers is the fix; the work is auditing existing sites
-   for double revocation.
+   - Knowing that something changed, for the unsaved-changes flag. Small, and
+     the content-changed notifications that now revoke frozen renders are
+     already the signal.
+   - Reading plug-in content to display it — detected notes, pitch, timing on
+     our own timeline. This is what ARA content readers exist for, and it is
+     read-only: the host shows the content, the plug-in still owns it.
+   - Storing the plug-in's edits in our document. This partially inverts ARA's
+     model, in which the plug-in owns the edit and the host owns the source
+     material, and is likely wrong as a general rule.
+
+   The whole ARA layer is AI-designed and should be assessed as such rather
+   than extended on its current assumptions.
+
+3. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
+   frozen render from the clip added, removed and changed document events,
+   rather than depending on each call site to remember an
+   `AppModel::markTrackDirty` call. Revocation is idempotent — it bumps a
+   monotonic generation counter — so the existing calls remain harmless.
+
+   Plugin graph changes deliberately do not trigger this, even though they also
+   change what a track renders: freezing manipulates the track's graph, so
+   revoking on graph changes risks a render that revokes itself. Wiring that up
+   needs the freeze path examined first.
 
 Deferred beyond Phase 0: the undo stack (Phase 1), the clipboard and paste
 semantics including the track duplication options dialog (Phase 2), plugin
