@@ -103,6 +103,23 @@ public:
 
     virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
 
+    // Rebuilds an audio clip's source from its file with the given markers and
+    // warp points, resolving warp references against the whole project.
+    //
+    // A non-empty `filepath` switches the clip to that file and adopts its
+    // length; otherwise the clip keeps its length, because a warp rebuild
+    // changes what plays rather than how long the clip is.
+    //
+    // `masterTrackMarkers` is passed in because markers and warps may reference
+    // the master track's markers, which the engine does not own.
+    virtual bool replaceAudioClipContent(
+        int32_t trackIndex,
+        int32_t clipId,
+        const std::string& filepath,
+        std::vector<ClipMarker> markers,
+        std::vector<AudioWarpPoint> audioWarps,
+        const std::vector<ClipMarker>& masterTrackMarkers) = 0;
+
     // Replaces a MIDI clip's authored content, resizing the clip to match the
     // new content's length. Emits one document event for the whole change.
     virtual bool replaceMidiClipContent(

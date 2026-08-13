@@ -64,7 +64,16 @@ Required because ARA archives are keyed by it.
 
 **0.2 — Mutation funnel.** `TimelineFacade` owns every clip mutation, each
 applying the change and emitting its event as one step so an observer cannot
-miss one. Callers no longer reach into `ClipManager` to mutate.
+miss one. Callers no longer reach into `ClipManager` to mutate, except for clip
+anchors, which are left alone because their storage is moving.
+
+Rebuilding an audio clip's source needed the warp resolution that decides where
+each warp point falls, and that resolution lived in the application — in three
+copies, across `TimelineEditor`, `AppModel` and `ClipPreview`, one of them under
+a different name. It could not move because it read the sample rate from an
+`AppModel` singleton. Taking the sample rate as a parameter freed it, and it now
+lives in `uapmd-data` as `TimeReferenceResolver`, next to the `TimeReference` it
+resolves. All three copies are gone.
 
 **0.3 — Transactions.** Batching lives in `ProjectDocumentEventDispatcher`, so
 it applies to every emitter. Transactions nest and only the outermost flushes.
@@ -120,11 +129,7 @@ refuses when called inside a transaction.
 
 ## Remaining work
 
-1. **Audio source node replacement.** Three `replaceClipSourceNode` call sites
-   rebuild an `AudioFileSourceNode` from resolved warp points and still bypass
-   the funnel. They need their own mutator.
-
-2. **ARA content interchange.** The interchange is one-directional. We push
+1. **ARA content interchange.** The interchange is one-directional. We push
    content to the plug-in through `updateAudioSourceContent` and never read any
    back: no audio modification, playback region or audio source content reader
    is created anywhere. So a plug-in's edits reach nothing of ours.
@@ -146,7 +151,7 @@ refuses when called inside a transaction.
    The whole ARA layer is AI-designed and should be assessed as such rather
    than extended on its current assumptions.
 
-3. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
+2. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
    frozen render from the clip added, removed and changed document events,
    rather than depending on each call site to remember an
    `AppModel::markTrackDirty` call. Revocation is idempotent — it bumps a

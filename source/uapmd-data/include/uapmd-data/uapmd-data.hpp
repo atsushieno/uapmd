@@ -21,6 +21,7 @@
 #include "detail/project/UapmdPluginGraphBuilder.hpp"
 #include "detail/project/ProjectArchive.hpp"
 #include "detail/timeline/TimelineTypes.hpp"
+#include "detail/timeline/TimeReferenceResolver.hpp"
 #include "detail/timeline/TempoMap.hpp"
 #include "detail/timeline/AudioFileSourceNode.hpp"
 #include "detail/timeline/TimelineTrack.hpp"

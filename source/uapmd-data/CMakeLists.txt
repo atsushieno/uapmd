@@ -173,6 +173,7 @@ target_sources(uapmd-data PRIVATE
         src/timeline/DeviceInputSourceNode.cpp
         src/timeline/MidiClipSourceNode.cpp
         src/timeline/ClipManager.cpp
+        src/timeline/TimeReferenceResolver.cpp
         src/timeline/TimelineTrack.cpp
 )
 

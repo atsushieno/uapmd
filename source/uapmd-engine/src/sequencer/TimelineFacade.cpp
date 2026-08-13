@@ -1674,6 +1674,73 @@ namespace uapmd {
             return clip ? clip->enabled : false;
         }
 
+        // Every clip in the project, addressable by reference identifier. Warp
+        // and marker references may point at any clip, so resolution needs the
+        // whole set.
+        ClipReferenceMap buildClipReferenceMap() const {
+            ClipReferenceMap lookup;
+            auto collect = [&lookup](const std::shared_ptr<TimelineTrack>& track) {
+                if (!track)
+                    return;
+                for (auto& clip : track->clipManager().getAllClips())
+                    lookup[clip.referenceId] = std::move(clip);
+            };
+            collect(master_timeline_track_);
+            for (const auto& track : timeline_tracks_)
+                collect(track);
+            return lookup;
+        }
+
+        bool replaceAudioClipContent(
+            int32_t trackIndex,
+            int32_t clipId,
+            const std::string& filepath,
+            std::vector<ClipMarker> markers,
+            std::vector<AudioWarpPoint> audioWarps,
+            const std::vector<ClipMarker>& masterTrackMarkers) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            auto* clip = targetTrack->clipManager().getClip(clipId);
+            if (!clip || clip->clipType != ClipType::Audio)
+                return false;
+
+            const auto sourcePath = filepath.empty() ? clip->filepath : filepath;
+            auto reader = createAudioFileReaderFromPath(sourcePath);
+            if (!reader)
+                return false;
+
+            // Resolved against the clip as it will be, not as it is: a warp may
+            // reference a marker that this same call is adding.
+            auto lookup = buildClipReferenceMap();
+            auto target = *clip;
+            target.markers = markers;
+            lookup[target.referenceId] = target;
+            auto resolvedWarps = resolveAudioWarpPoints(
+                target, audioWarps, lookup, masterTrackMarkers, static_cast<double>(sampleRate_));
+
+            auto replacement = std::make_unique<AudioFileSourceNode>(
+                clip->sourceNodeInstanceId,
+                std::move(reader),
+                static_cast<double>(sampleRate_),
+                std::move(resolvedWarps));
+            const int64_t sourceDuration = replacement->totalLength();
+
+            ProjectDocumentTransaction transaction(project_document_events_);
+            if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
+                return false;
+            auto& clips = targetTrack->clipManager();
+            clips.setClipMarkers(clipId, std::move(markers));
+            clips.setAudioWarps(clipId, std::move(audioWarps));
+            if (!filepath.empty()) {
+                clips.setClipFilepath(clipId, filepath);
+                clips.resizeClip(clipId, sourceDuration);
+            }
+            notifyClipChanged(trackIndex, clipId, "clip-content-changed");
+            notifyTimelineChanged();
+            return true;
+        }
+
         bool replaceMidiClipContent(
             int32_t trackIndex,
             int32_t clipId,
