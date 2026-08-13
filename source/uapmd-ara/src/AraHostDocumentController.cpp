@@ -1958,6 +1958,149 @@ namespace uapmd::ara {
             return ok;
         }
 
+        static AraContentGrade araContentGradeFrom(ARA::ARAContentGrade grade) {
+            switch (grade) {
+                case ARA::kARAContentGradeDetected: return AraContentGrade::Detected;
+                case ARA::kARAContentGradeAdjusted: return AraContentGrade::Adjusted;
+                case ARA::kARAContentGradeApproved: return AraContentGrade::Approved;
+                case ARA::kARAContentGradeInitial:
+                default:
+                    return AraContentGrade::Initial;
+            }
+        }
+
+        // Resolves the ARA object a scope and identifier name, along with the
+        // three per-scope calls needed to read its content.
+        struct ContentAccess {
+            ARA::ARABool (ARA_CALL *available)(ARA::ARADocumentControllerRef, void*, ARA::ARAContentType){};
+            bool valid{false};
+        };
+
+        std::optional<AraContentEvents> readContent(
+            AraContentScope scope,
+            const ProjectObjectId& objectId,
+            AraContentKind kind) {
+            auto* controller = controllerInterface();
+            if (!controller)
+                return std::nullopt;
+            auto contentType = araContentTypeForKind(kind);
+            if (!contentType)
+                return std::nullopt;
+
+            // The whole sequence below must not be interleaved with any other
+            // call to this document controller, so it is kept as one unit here
+            // rather than exposed step by step.
+            ARA::ARAContentReaderRef reader{};
+            AraContentEvents events;
+            events.kind = kind;
+
+            switch (scope) {
+                case AraContentScope::AudioSource: {
+                    auto it = audio_source_refs.find(objectId);
+                    if (it == audio_source_refs.end()
+                        || !controller->isAudioSourceContentAvailable
+                        || !controller->createAudioSourceContentReader)
+                        return std::nullopt;
+                    if (controller->isAudioSourceContentAvailable(
+                            controller_instance->documentControllerRef, it->second, *contentType) == ARA::kARAFalse)
+                        return std::nullopt;
+                    if (controller->getAudioSourceContentGrade)
+                        events.grade = araContentGradeFrom(controller->getAudioSourceContentGrade(
+                            controller_instance->documentControllerRef, it->second, *contentType));
+                    reader = controller->createAudioSourceContentReader(
+                        controller_instance->documentControllerRef, it->second, *contentType, nullptr);
+                    break;
+                }
+                case AraContentScope::AudioModification: {
+                    auto it = audio_modification_refs.find("mod." + objectId);
+                    if (it == audio_modification_refs.end()
+                        || !controller->isAudioModificationContentAvailable
+                        || !controller->createAudioModificationContentReader)
+                        return std::nullopt;
+                    if (controller->isAudioModificationContentAvailable(
+                            controller_instance->documentControllerRef, it->second, *contentType) == ARA::kARAFalse)
+                        return std::nullopt;
+                    if (controller->getAudioModificationContentGrade)
+                        events.grade = araContentGradeFrom(controller->getAudioModificationContentGrade(
+                            controller_instance->documentControllerRef, it->second, *contentType));
+                    reader = controller->createAudioModificationContentReader(
+                        controller_instance->documentControllerRef, it->second, *contentType, nullptr);
+                    break;
+                }
+                case AraContentScope::PlaybackRegion: {
+                    auto it = playback_region_refs.find(objectId);
+                    if (it == playback_region_refs.end()
+                        || !controller->isPlaybackRegionContentAvailable
+                        || !controller->createPlaybackRegionContentReader)
+                        return std::nullopt;
+                    if (controller->isPlaybackRegionContentAvailable(
+                            controller_instance->documentControllerRef, it->second, *contentType) == ARA::kARAFalse)
+                        return std::nullopt;
+                    if (controller->getPlaybackRegionContentGrade)
+                        events.grade = araContentGradeFrom(controller->getPlaybackRegionContentGrade(
+                            controller_instance->documentControllerRef, it->second, *contentType));
+                    reader = controller->createPlaybackRegionContentReader(
+                        controller_instance->documentControllerRef, it->second, *contentType, nullptr);
+                    break;
+                }
+            }
+
+            if (!reader)
+                return std::nullopt;
+
+            const auto eventCount = controller->getContentReaderEventCount
+                ? controller->getContentReaderEventCount(controller_instance->documentControllerRef, reader)
+                : 0;
+            for (ARA::ARAInt32 index = 0; index < eventCount; ++index) {
+                if (!controller->getContentReaderDataForEvent)
+                    break;
+                const auto* data = controller->getContentReaderDataForEvent(
+                    controller_instance->documentControllerRef, reader, index);
+                if (!data)
+                    continue;
+                // Copied out: the reader owns this memory and it dies with the
+                // reader below.
+                switch (*contentType) {
+                    case ARA::kARAContentTypeNotes: {
+                        const auto* note = static_cast<const ARA::ARAContentNote*>(data);
+                        events.notes.push_back(AraContentNote{
+                            .frequency = note->frequency,
+                            .pitchNumber = note->pitchNumber,
+                            .volume = note->volume,
+                            .startPosition = note->startPosition,
+                            .attackDuration = note->attackDuration,
+                            .noteDuration = note->noteDuration,
+                            .signalDuration = note->signalDuration
+                        });
+                        break;
+                    }
+                    case ARA::kARAContentTypeTempoEntries: {
+                        const auto* entry = static_cast<const ARA::ARAContentTempoEntry*>(data);
+                        events.tempoEntries.push_back(AraContentTempoEntry{
+                            .timePosition = entry->timePosition,
+                            .quarterPosition = entry->quarterPosition
+                        });
+                        break;
+                    }
+                    case ARA::kARAContentTypeBarSignatures: {
+                        const auto* signature = static_cast<const ARA::ARAContentBarSignature*>(data);
+                        events.barSignatures.push_back(AraContentBarSignature{
+                            .numerator = signature->numerator,
+                            .denominator = signature->denominator,
+                            .position = signature->position
+                        });
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+
+            if (controller->destroyContentReader)
+                controller->destroyContentReader(controller_instance->documentControllerRef, reader);
+            return events;
+        }
+
         void beginProjectDocumentTransaction() {
             if (!valid())
                 return;
@@ -2744,6 +2887,15 @@ namespace uapmd::ara {
         const std::vector<uint8_t>& archive) {
         return valid() && impl_->restoreArchiveStateForTrack(
             trackId, archiveId, archivedRegionSequencePersistentId, archive);
+    }
+
+    std::optional<AraContentEvents> AraHostDocumentController::readContent(
+        AraContentScope scope,
+        const ProjectObjectId& objectId,
+        AraContentKind kind) {
+        if (!valid())
+            return std::nullopt;
+        return impl_->readContent(scope, objectId, kind);
     }
 
     void AraHostDocumentController::beginProjectDocumentTransaction() {

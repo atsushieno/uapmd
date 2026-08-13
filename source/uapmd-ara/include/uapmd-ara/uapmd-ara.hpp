@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -55,6 +56,68 @@ namespace uapmd::ara {
     };
 
     using AraAnalysisCallback = std::function<void(const AraAnalysisResult& result)>;
+
+    // Which object's content to read. The level is not interchangeable: since
+    // ARA 2, a playback region's content cannot be derived from its audio
+    // modification plus transformation flags, because region transitions adjust
+    // notes at region borders. Read at region level for what a region plays,
+    // and at source or modification level for content in its original,
+    // untransformed state -- which is what detection wants.
+    enum class AraContentScope {
+        // Addressed by audio source id.
+        AudioSource,
+        // Addressed by audio source id; reads the modification layered on it.
+        AudioModification,
+        // Addressed by clip id.
+        PlaybackRegion
+    };
+
+    // How far the plug-in has got with this content. Initial means it has not
+    // analysed yet and is guessing.
+    enum class AraContentGrade {
+        Initial,
+        Detected,
+        Adjusted,
+        Approved
+    };
+
+    struct AraContentNote {
+        float frequency{0.0f};
+        int32_t pitchNumber{0};
+        float volume{0.0f};
+        double startPosition{0.0};
+        double attackDuration{0.0};
+        // To the release point, as with a MIDI note off.
+        double noteDuration{0.0};
+        // To the end of the release phase, so beyond noteDuration.
+        double signalDuration{0.0};
+    };
+
+    struct AraContentTempoEntry {
+        double timePosition{0.0};
+        double quarterPosition{0.0};
+    };
+
+    struct AraContentBarSignature {
+        int32_t numerator{4};
+        int32_t denominator{4};
+        double position{0.0};
+    };
+
+    // Content copied out of a plug-in's reader. The vectors are owned here:
+    // reader data is only valid until the reader is destroyed, so it is copied
+    // rather than referenced.
+    struct AraContentEvents {
+        AraContentKind kind{AraContentKind::Unknown};
+        AraContentGrade grade{AraContentGrade::Initial};
+        std::vector<AraContentNote> notes;
+        std::vector<AraContentTempoEntry> tempoEntries;
+        std::vector<AraContentBarSignature> barSignatures;
+
+        bool empty() const {
+            return notes.empty() && tempoEntries.empty() && barSignatures.empty();
+        }
+    };
 
     class AraPluginDocument {
     public:
@@ -143,6 +206,20 @@ namespace uapmd::ara {
             int32_t pluginInstanceId,
             AraAnalysisRequest request,
             AraAnalysisCallback callback) = 0;
+
+        // Reads content a plug-in exposes for one object.
+        //
+        // Pull, not push: the app learns that something changed from the
+        // document and analysis notifications, then reads only when it wants
+        // the content. Returns nothing when the plug-in does not offer this
+        // content for this object, which a completed analysis does not
+        // guarantee -- a plug-in may reject or fail a request, so availability
+        // is checked at read time rather than inferred from completion.
+        virtual std::optional<AraContentEvents> readContent(
+            int32_t pluginInstanceId,
+            AraContentScope scope,
+            const ProjectObjectId& objectId,
+            AraContentKind kind) = 0;
         virtual void cancelAnalysis(int32_t pluginInstanceId, AraRequestId requestId) = 0;
     };
 

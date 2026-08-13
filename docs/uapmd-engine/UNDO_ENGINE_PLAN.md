@@ -2,11 +2,13 @@
 
 ## Status
 
-Phase 0 is complete except for the carve-outs listed under Remaining work. It
-is unverified against a real ARA plug-in.
+Phase 0 is done for its purpose: the mutation funnel, transactions, persistent
+identity and detachable fragments all exist, so Phase 1 is unblocked. The undo
+stack itself is Phase 1 and the clipboard is Phase 2; neither has started.
 
-Phase 0 is the groundwork both undo/redo and copy/paste need. The undo stack
-itself is Phase 1 and the clipboard is Phase 2; neither has started.
+Two pieces of ARA work are deliberately left for later and are described under
+Remaining work. Neither gates Phase 1. The ARA work as a whole is unverified
+against a real plug-in.
 
 ## Why undo comes before copy/paste
 
@@ -108,14 +110,31 @@ Extensions contribute their own opaque state to a fragment through
 keys `ProjectClipFragment::extensionState`. Capture fails outright rather than
 returning a fragment that looks complete but has lost state.
 
-**0.5 — ARA wiring.** The inbound notifications are implemented.
+**0.5 — ARA wiring.** The inbound notifications are handled.
 `notifyPlaybackRegionContentChanged` and `notifyAudioModificationContentChanged`
 revoke the affected track's frozen render, because an ARA edit is a user edit as
-far as anything caching rendered audio is concerned. Both are gated on
-`kARAContentUpdateSignalScopeRemainsUnchanged`.
-`notifyRegionSequenceDataChanged` and `notifyDocumentDataChanged` are
-deliberate no-ops: they report state that cannot reach our clips, and every ARA
-document is archived on every save, so ignoring them loses nothing.
+far as anything caching rendered audio is concerned. Invalidation is suppressed
+only when `kARAContentUpdateSignalScopeRemainsUnchanged` is set, that flag being
+the plug-in's guarantee that the rendered signal did not change; absent it, the
+signal is assumed to have changed. An audio modification affects every playback
+region intersecting it, and the implementation conservatively revokes every
+track using that audio source.
+
+`notifyRegionSequenceDataChanged` and `notifyDocumentDataChanged` are deliberate
+no-ops. The reason is not that their state cannot affect us — private state can
+influence a plug-in's behaviour and rendering — but that they are dirty-state
+signals whose only purpose is letting a host skip re-archiving. Every save here
+writes a fresh full archive, so ignoring them loses no persisted state, and any
+audible or content change still arrives through the content-change
+notifications.
+
+Not implemented: playback region head and tail time. ARA requires the host to
+re-query `getPlaybackRegionHeadAndTailTime` whenever a region's output signal
+changes, and a plug-in may adjust head and tail on any model edit, including
+edits that do not touch the region directly. uapmd never calls it and models no
+per-region ARA head or tail, so region transitions that extend audio beyond a
+region's bounds are not accounted for. The general plug-in tail handled by
+`TailProcessManager` is a different, coarser concept and does not cover this.
 
 Partial persistency covers clips and tracks. Archives name only the objects
 covering one object, with `documentData` false, which is what the SDK documents
@@ -129,29 +148,48 @@ refuses when called inside a transaction.
 
 ## Remaining work
 
-1. **ARA content interchange.** The interchange is one-directional. We push
-   content to the plug-in through `updateAudioSourceContent` and never read any
-   back: no audio modification, playback region or audio source content reader
-   is created anywhere. So a plug-in's edits reach nothing of ours.
+Both items are ARA-only and deferred by choice, not blocked.
 
-   This needs a design pass rather than an implementation, because "write the
-   content back into our clips" presupposes an answer. Three separable things
-   hide under it, and they do not have the same answer:
+1. **A consumer for ARA content reading.** `AraSupport::readContent` is in
+   place and nothing calls it. Notes are the candidate worth doing first:
+   `AraContentNote` carries `frequency` as well as `pitchNumber`, so a MIDI 2.0
+   sequencer can keep the detected pitch where a MIDI 1.0 host must round to a
+   semitone. Generating a MIDI clip from detected notes is a document mutation
+   and belongs behind the funnel; the work is mostly converting ARA's seconds
+   to ticks, with note-off at `noteDuration` rather than `signalDuration`.
 
-   - Knowing that something changed, for the unsaved-changes flag. Small, and
-     the content-changed notifications that now revoke frozen renders are
-     already the signal.
-   - Reading plug-in content to display it — detected notes, pitch, timing on
-     our own timeline. This is what ARA content readers exist for, and it is
-     read-only: the host shows the content, the plug-in still owns it.
-   - Storing the plug-in's edits in our document. This partially inverts ARA's
-     model, in which the plug-in owns the edit and the host owns the source
-     material, and is likely wrong as a general rule.
+   Open: whether the generated clip lands on a new track or the source's own,
+   and whether re-running replaces the previous result or adds beside it.
 
-   The whole ARA layer is AI-designed and should be assessed as such rather
-   than extended on its current assumptions.
+2. **ARA playback region head time.** Not started, and narrower than it first
+   appears.
 
-2. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
+   Tail is already covered. ARA requires a plug-in's companion-API tail to be
+   at least the maximum tail of its playback regions, and the offline renderer
+   already extends its range by `tailLengthInSeconds`, so region tails are
+   accounted for conservatively without querying them.
+
+   Head is not. `renderLeadInSamples` is maximum plug-in *latency*, which is a
+   different quantity, and nothing queries ARA head anywhere. It only matters
+   where rendering is bounded — offline render and track freeze — because
+   realtime playback runs the plug-in continuously and it receives the earlier
+   audio regardless. The consequence is that a bounded render starting where a
+   region needs earlier input can begin with incorrect output.
+
+   The fix is to extend a bounded render's start by the maximum head across the
+   track's regions and discard that pre-roll, re-querying on
+   `notifyPlaybackRegionContentChanged`, which is already handled. The
+   structural obstacle is the familiar one: the offline renderer is in the
+   engine and ARA is an addin, so the value needs a contributor hook rather
+   than a direct call. `TrackAudioProcessorExtension` will not serve — it is
+   about performing processing, not about declaring a requirement.
+
+   Deferred deliberately: this is audio-correctness code guarding a case that
+   needs an ARA plug-in to reproduce, so writing it now would mean untestable
+   code whose only job is correctness nobody can observe. It should wait for a
+   plug-in to verify against.
+
+3. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
    frozen render from the clip added, removed and changed document events,
    rather than depending on each call site to remember an
    `AppModel::markTrackDirty` call. Revocation is idempotent — it bumps a
@@ -166,6 +204,42 @@ Deferred beyond Phase 0: the undo stack (Phase 1), the clipboard and paste
 semantics including the track duplication options dialog (Phase 2), plugin
 graph edits in the mutation layer, and parameter automation, whose
 participation in undo at all is a Phase 1 decision.
+
+## ARA content reading
+
+We push content to the plug-in through `updateAudioSourceContent`. Reading it
+back is permitted and intended: the SDK names acting as a detection engine, and
+reading what a region actually plays. The constraint is narrower than
+"don't import plug-in content" — content-reader output is not a substitute for
+archiving the plug-in's opaque modification state, which stays the plug-in's.
+
+The read level is not a free choice. Since ARA 2.0 a playback region's content
+cannot be derived from its audio modification plus transformation flags,
+because region transitions adjust notes at region borders. Content describing
+what a region plays must be read at region level; source or modification level
+is for content wanted untransformed, which is the detection case.
+
+`requestAnalysis` already triggers analysis and completes when the plug-in
+reports content changed, but `AraAnalysisResult` carries only which kinds
+finished. `AraSupport::readContent` supplies the missing half, taking a plug-in
+instance, a scope and a content kind and returning notes, tempo entries and bar
+signatures. It is pull: the app learns something changed from the document and
+analysis notifications, and reads when it wants the content.
+
+Three constraints shape it:
+
+- Reading is a call sequence — availability, grade, create reader, count, read
+  events, destroy reader — with no other call to that document controller
+  interleaved, so it is one unit inside the addin rather than exposed
+  piecemeal.
+- Event data belongs to the reader and is copied out before it is destroyed.
+- Completion is not availability. A plug-in may reject or fail an analysis, so
+  availability and grade are checked at read time rather than inferred from the
+  completion callback.
+
+Whether results reach our clips is a separate decision from being able to read
+them. Nothing consumes the API yet, and the first consumer is where that gets
+decided.
 
 ## Verification
 

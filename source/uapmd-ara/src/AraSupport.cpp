@@ -280,6 +280,17 @@ namespace uapmd::ara {
                 return it->second.binding->bindToDocumentController(documentControllerRef, knownRoles, assignedRoles);
             }
 
+            std::optional<AraContentEvents> readContent(
+                int32_t pluginInstanceId,
+                AraContentScope scope,
+                const ProjectObjectId& objectId,
+                AraContentKind kind) override {
+                auto it = native_ara_documents_.find(pluginInstanceId);
+                if (it == native_ara_documents_.end() || !it->second.controller)
+                    return std::nullopt;
+                return it->second.controller->readContent(scope, objectId, kind);
+            }
+
             AraRequestId requestAnalysis(
                 int32_t pluginInstanceId,
                 AraAnalysisRequest request,

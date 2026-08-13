@@ -39,6 +39,12 @@ namespace uapmd::ara {
         void beginProjectDocumentTransaction();
         void endProjectDocumentTransaction();
         AraRequestId requestAnalysis(AraAnalysisRequest request, AraAnalysisCallback callback);
+        // Reads content for one object, keeping ARA's required call sequence
+        // atomic with respect to other calls on this document controller.
+        std::optional<AraContentEvents> readContent(
+            AraContentScope scope,
+            const ProjectObjectId& objectId,
+            AraContentKind kind);
         void cancelAnalysis(AraRequestId requestId);
         // `archiveId` receives the plug-in factory's document archive
         // identifier. ARA requires it to be stored with the archive and passed
