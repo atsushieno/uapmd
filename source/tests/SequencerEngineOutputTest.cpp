@@ -527,12 +527,79 @@ TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) 
     const auto* restoredClip =
         timeline.tracks()[trackIndex]->clipManager().getClip(restored.clipId);
     ASSERT_NE(restoredClip, nullptr);
+    EXPECT_EQ(restored.clipId, added.clipId);
     EXPECT_EQ(restoredClip->referenceId, capturedReferenceId);
     EXPECT_EQ(restoredClip->name, "Renamed");
 
     const auto recaptured = timeline.captureClipFragment(trackIndex, restored.clipId);
     ASSERT_TRUE(recaptured.has_value());
     EXPECT_EQ(recaptured->umpEvents, kFragmentUmp);
+}
+
+TEST_F(SequencerEngineOutputTest, MidiClipContentUndoRestoresClipIdentityAndEvents) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+    auto& timeline = engine->timeline();
+    const auto originalReferenceId =
+        timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager()
+            .getClip(added.clipId)->referenceId;
+
+    const std::vector<uapmd_ump_t> replacementEvents{
+        0x40903E00u, 0x7FFF0000u,
+        0x40803E00u, 0x00000000u,
+    };
+    const std::vector<uint64_t> replacementTicks{0, 0, 960, 960};
+    ASSERT_TRUE(timeline.replaceMidiClipContent(
+        trackIndex, added.clipId, replacementEvents, replacementTicks));
+
+    auto track = timeline.tracks()[static_cast<size_t>(trackIndex)];
+    auto* changedClip = track->clipManager().getClip(added.clipId);
+    ASSERT_NE(changedClip, nullptr);
+    auto changedSource = track->getSourceNode(changedClip->sourceNodeInstanceId);
+    ASSERT_NE(changedSource, nullptr);
+    ASSERT_TRUE(std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(changedSource));
+    EXPECT_EQ(
+        std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(changedSource)->umpEvents(),
+        replacementEvents);
+
+    std::optional<uapmd::ProjectUndoResult> undoResult;
+    timeline.undoEngine().undo([&undoResult](uapmd::ProjectUndoResult result) {
+        undoResult = std::move(result);
+    });
+    ASSERT_TRUE(undoResult.has_value());
+    ASSERT_TRUE(undoResult->succeeded()) << undoResult->error;
+
+    auto* restoredClip = track->clipManager().getClip(added.clipId);
+    ASSERT_NE(restoredClip, nullptr);
+    EXPECT_EQ(restoredClip->referenceId, originalReferenceId);
+    auto restoredSource = track->getSourceNode(restoredClip->sourceNodeInstanceId);
+    ASSERT_NE(restoredSource, nullptr);
+    auto restoredMidi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(restoredSource);
+    ASSERT_NE(restoredMidi, nullptr);
+    EXPECT_EQ(restoredMidi->umpEvents(), kFragmentUmp);
+    EXPECT_EQ(restoredMidi->eventTimestampsTicks(), kFragmentTicks);
+
+    std::optional<uapmd::ProjectUndoResult> redoResult;
+    timeline.undoEngine().redo([&redoResult](uapmd::ProjectUndoResult result) {
+        redoResult = std::move(result);
+    });
+    ASSERT_TRUE(redoResult.has_value());
+    ASSERT_TRUE(redoResult->succeeded()) << redoResult->error;
+    auto* redoneClip = track->clipManager().getClip(added.clipId);
+    ASSERT_NE(redoneClip, nullptr);
+    EXPECT_EQ(redoneClip->referenceId, originalReferenceId);
+    auto redoneSource = track->getSourceNode(redoneClip->sourceNodeInstanceId);
+    ASSERT_NE(redoneSource, nullptr);
+    auto redoneMidi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(redoneSource);
+    ASSERT_NE(redoneMidi, nullptr);
+    EXPECT_EQ(redoneMidi->umpEvents(), replacementEvents);
+    EXPECT_EQ(redoneMidi->eventTimestampsTicks(), replacementTicks);
 }
 
 TEST_F(SequencerEngineOutputTest, ClipFragmentCarriesExtensionOwnedState) {

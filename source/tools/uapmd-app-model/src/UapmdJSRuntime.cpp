@@ -404,12 +404,8 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
-
-        if (instance)
-        {
-            instance->setParameterValue (paramId, value);
-        }
+        sequencer.engine()->timeline().setPluginParameterValue(
+            instanceId, paramId, value);
 
         return choc::value::Value();
     });
@@ -626,8 +622,8 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && paramIndex >= 0)
         {
             auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-            // FIXME: it must not invoke this function from this non-RT-safe context.
-            sequencer.engine()->setParameterValue (instanceId, paramIndex, value);
+            sequencer.engine()->timeline().setPluginParameterValue(
+                instanceId, paramIndex, value);
         }
         return choc::value::Value();
     });
@@ -733,8 +729,8 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId >= 0)
         {
             auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-            if (auto* instance = sequencer.engine()->getPluginInstance (instanceId))
-                instance->bypassed (bypassed);
+            sequencer.engine()->timeline().setPluginBypassed(
+                instanceId, bypassed);
         }
         return choc::value::Value();
     });
@@ -1486,7 +1482,8 @@ void UapmdJSRuntime::registerTimelineAPI()
             return result;
         }
 
-        bool markProjectDirty = false;
+        auto settings = manager->projectSettings();
+        bool hasMutation = false;
         auto payload = args[0]->getView();
         if (payload.hasObjectMember("playbackCompensationMode")) {
             uapmd::PlaybackCompensationMode mode;
@@ -1496,8 +1493,8 @@ void UapmdJSRuntime::registerTimelineAPI()
                 result.setMember("error", "playbackCompensationMode is invalid");
                 return result;
             }
-            manager->playbackCompensationMode(mode);
-            markProjectDirty = true;
+            settings.playback_compensation_mode = mode;
+            hasMutation = true;
         }
         if (payload.hasObjectMember("inputMonitoringPolicy")) {
             uapmd::InputMonitoringPolicy policy;
@@ -1507,8 +1504,8 @@ void UapmdJSRuntime::registerTimelineAPI()
                 result.setMember("error", "inputMonitoringPolicy is invalid");
                 return result;
             }
-            manager->inputMonitoringPolicy(policy);
-            markProjectDirty = true;
+            settings.input_monitoring_policy = policy;
+            hasMutation = true;
         }
         if (payload.hasObjectMember("tracks")) {
             auto tracks = payload["tracks"];
@@ -1525,15 +1522,33 @@ void UapmdJSRuntime::registerTimelineAPI()
                     return result;
                 }
                 const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
-                if (trackValue.hasObjectMember("recordArmed"))
-                    manager->trackRecordArmed(trackIndex, trackValue["recordArmed"].get<bool>());
-                if (trackValue.hasObjectMember("monitoringEnabled"))
-                    manager->trackMonitoringEnabled(trackIndex, trackValue["monitoringEnabled"].get<bool>());
+                if (trackIndex < 0
+                    || trackIndex >= static_cast<int32_t>(engine->tracks().size())) {
+                    result.setMember("success", false);
+                    result.setMember("error", "trackIndex is invalid");
+                    return result;
+                }
+                if (trackValue.hasObjectMember("recordArmed")) {
+                    std::erase(settings.record_armed_track_indexes, trackIndex);
+                    if (trackValue["recordArmed"].get<bool>())
+                        settings.record_armed_track_indexes.push_back(trackIndex);
+                }
+                if (trackValue.hasObjectMember("monitoringEnabled")) {
+                    std::erase(settings.monitored_track_indexes, trackIndex);
+                    if (trackValue["monitoringEnabled"].get<bool>())
+                        settings.monitored_track_indexes.push_back(trackIndex);
+                }
             }
-            markProjectDirty = true;
+            hasMutation = true;
         }
 
-        if (markProjectDirty)
+        if (hasMutation
+            && !engine->timeline().setLatencyCompensationSettings(settings)) {
+            result.setMember("success", false);
+            result.setMember("error", "failed to update latency compensation settings");
+            return result;
+        }
+        if (hasMutation)
             appModel.markProjectDirty();
         result.setMember("success", true);
         return result;

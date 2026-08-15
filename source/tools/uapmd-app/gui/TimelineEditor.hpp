@@ -74,6 +74,7 @@ public:
     void refreshSequenceEditorForTrack(int32_t trackIndex);
     void refreshBeatsSequenceEditorForTrack(int32_t trackIndex);
     void refreshAllSequenceEditorTracks();
+    void refreshAfterHistoryMutation();
     void addClipToTrack(int32_t trackIndex, const std::string& filepath);
     void addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds);
     void removeClipFromTrack(int32_t trackIndex, int32_t clipId);
@@ -147,6 +148,7 @@ private:
     void renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea);
     void deleteTrack(int32_t trackIndex);
     void syncExternalTimelineChanges();
+    void reloadSelectedPianoRoll();
     std::string buildTrackContentSignature(int32_t trackIndex) const;
     void resolveAllClipAnchors();
 

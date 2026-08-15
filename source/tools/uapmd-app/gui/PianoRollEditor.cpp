@@ -388,6 +388,15 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
     }
 }
 
+void PianoRollEditor::reloadClip(int32_t trackIndex, int32_t clipId,
+                                 std::shared_ptr<ClipPreview> preview) {
+    const auto key = std::make_pair(trackIndex, clipId);
+    const auto it = windows_.find(key);
+    if (it == windows_.end() || !it->second.visible)
+        return;
+    showClip(trackIndex, clipId, it->second.clipName, std::move(preview));
+}
+
 void PianoRollEditor::render(const RenderContext& ctx) {
     for (auto& [key, state] : windows_)
         if (state.visible)

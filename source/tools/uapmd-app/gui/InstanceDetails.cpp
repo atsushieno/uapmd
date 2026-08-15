@@ -109,8 +109,11 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             }();
 
             if (!perNoteSelection) {
-                seq.engine()->setParameterValue(instanceId, parameterIndex, value);
-                appModel.markPluginInstanceTrackDirty(instanceId);
+                if (seq.engine()->timeline().setPluginParameterValue(
+                        instanceId,
+                        parameterIndex,
+                        value))
+                    appModel.markPluginInstanceTrackDirty(instanceId);
                 return;
             }
 
@@ -130,6 +133,18 @@ void InstanceDetails::showWindow(int32_t instanceId) {
                 parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value);
                 appModel.markPluginInstanceTrackDirty(instanceId);
             }
+        });
+
+        state.parameterList.setOnParameterGestureBegin([](uint32_t) {
+            auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
+            if (engine)
+                engine->timeline().undoEngine().beginGesture(
+                    "Change plug-in parameter");
+        });
+        state.parameterList.setOnParameterGestureEnd([](uint32_t) {
+            auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
+            if (engine)
+                engine->timeline().undoEngine().endGesture();
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
@@ -362,7 +377,11 @@ void InstanceDetails::render(const RenderContext& context) {
                         const char* toggleIcon = pluginBypassed ? uapmd_app_gui::icons::ToggleOff : uapmd_app_gui::icons::ToggleOn;
                         std::string toggleLabel = std::format("{}##InstanceBypass{}", toggleIcon, instanceId);
                         if (ImGui::Button(toggleLabel.c_str()))
-                            instance->bypassed(!pluginBypassed);
+                            if (uapmd_app::AppModel::instance()
+                                    .sequencer().engine()->timeline()
+                                    .setPluginBypassed(instanceId, !pluginBypassed))
+                                uapmd_app::AppModel::instance()
+                                    .markPluginInstanceTrackDirty(instanceId);
                         if (pluginBypassed)
                             ImGui::PopStyleColor();
                         if (ImGui::IsItemHovered())

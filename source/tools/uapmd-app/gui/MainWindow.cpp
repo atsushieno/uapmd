@@ -966,17 +966,21 @@ void MainWindow::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutC
 
 void MainWindow::handleUndo() {
     uapmd_app::AppModel::instance().undo(
-        [](std::string error) {
+        [this](std::string error) {
             if (!error.empty())
                 platformError("Undo Failed", error);
+            else
+                timelineEditor_.refreshAfterHistoryMutation();
         });
 }
 
 void MainWindow::handleRedo() {
     uapmd_app::AppModel::instance().redo(
-        [](std::string error) {
+        [this](std::string error) {
             if (!error.empty())
                 platformError("Redo Failed", error);
+            else
+                timelineEditor_.refreshAfterHistoryMutation();
         });
 }
 

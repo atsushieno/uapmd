@@ -1250,15 +1250,23 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         const float gainDb = linearGainToSliderDb(track->trackGain());
         float sliderPos = dbToSliderPos(gainDb);
         ImGui::SetNextItemWidth(sliderWidth);
-        if (ImGui::SliderFloat(
+        const bool gainChanged = ImGui::SliderFloat(
                 std::format("##LegGain{}", trackIndex).c_str(),
                 &sliderPos,
                 0.0f, 1.0f,
                 sliderPos <= 0.0f ? "Mute" : "",
-                ImGuiSliderFlags_NoInput)) {
-            track->trackGain(sliderDbToLinearGain(sliderPosToDb(sliderPos)));
+                ImGuiSliderFlags_NoInput);
+        auto& undo = sequencer.engine()->timeline().undoEngine();
+        if (ImGui::IsItemActivated())
+            undo.beginGesture("Change track gain");
+        if (gainChanged) {
+            sequencer.engine()->timeline().setTrackGain(
+                trackIndex,
+                sliderDbToLinearGain(sliderPosToDb(sliderPos)));
             uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
         }
+        if (ImGui::IsItemDeactivated())
+            undo.endGesture();
         if (ImGui::IsItemHovered()) {
             const double linearGain = track->trackGain();
             if (linearGain <= 0.0)
@@ -1278,8 +1286,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             if (contextActionButton(
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
                     muted ? "Track muted (click to unmute)" : "Mute track")) {
-                track->muted(!muted);
-                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                if (sequencer.engine()->timeline().setTrackMuted(trackIndex, !muted))
+                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
             }
             if (muted)
                 ImGui::PopStyleColor(3);
@@ -1296,15 +1304,32 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     solo ? "Track soloed (click to clear)" : "Solo track")) {
                 const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
                 const bool enableSolo = !solo;
+                const bool ownsCompound = !additive && !undo.state().compoundOpen;
+                bool compoundOpened = false;
+                if (ownsCompound)
+                    compoundOpened = undo.beginCompound(
+                        enableSolo ? "Solo track" : "Unsolo track").succeeded();
+                bool succeeded = true;
                 if (enableSolo && !additive) {
                     for (size_t i = 0; i < tracksRef.size(); ++i)
                         if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
-                            tracksRef[i]->solo(false);
-                            uapmd_app::AppModel::instance().markTrackDirty(static_cast<int32_t>(i));
+                            const auto otherTrackIndex = static_cast<int32_t>(i);
+                            if (sequencer.engine()->timeline().setTrackSolo(otherTrackIndex, false))
+                                uapmd_app::AppModel::instance().markTrackDirty(otherTrackIndex);
+                            else
+                                succeeded = false;
                         }
                 }
-                track->solo(enableSolo);
-                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                if (succeeded && sequencer.engine()->timeline().setTrackSolo(trackIndex, enableSolo))
+                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                else
+                    succeeded = false;
+                if (compoundOpened) {
+                    if (succeeded)
+                        undo.endCompound();
+                    else
+                        undo.cancelCompound();
+                }
             }
             if (solo)
                 ImGui::PopStyleColor(3);
@@ -1393,7 +1418,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         if (frozen || queued)
             ImGui::PopStyleColor(3);
         if (freezeClicked &&
-            frozenTrackManager.setFreezePolicyForTrack(trackIndex, nextPolicy))
+            sequencer.engine()->timeline().setTrackFreezePolicyEnabled(
+                trackIndex,
+                nextPolicy == uapmd::FrozenTrackManager::FreezePolicy::On))
             appModel.markProjectDirty();
         ImGui::SameLine();
     }
@@ -1521,8 +1548,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             if (contextActionMenuItem(
                     bypassed ? "Enable Track Processing" : "Bypass Track Processing",
                     bypassed)) {
-                track->bypassed(!bypassed);
-                uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                if (sequencer.engine()->timeline().setTrackBypassed(trackIndex, !bypassed))
+                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
             }
         }
 
@@ -1559,6 +1586,26 @@ void TimelineEditor::refreshAllSequenceEditorTracks() {
     }
 }
 
+void TimelineEditor::refreshAfterHistoryMutation() {
+    refreshAllSequenceEditorTracks();
+    reloadSelectedPianoRoll();
+}
+
+void TimelineEditor::reloadSelectedPianoRoll() {
+    if (!selected_midi_clip_)
+        return;
+
+    const auto [trackIndex, clipId] = *selected_midi_clip_;
+    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+        return;
+    const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip || clip->clipType != uapmd::ClipType::Midi)
+        return;
+    pianoRollEditor_.reloadClip(
+        trackIndex, clipId, createMidiClipPreview(trackIndex, *clip, 0.0));
+}
+
 void TimelineEditor::syncExternalTimelineChanges() {
     auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
@@ -1570,6 +1617,7 @@ void TimelineEditor::syncExternalTimelineChanges() {
             ++it;
     }
 
+    bool refreshed = false;
     for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
         if (appModel.isTrackHidden(i))
             continue;
@@ -1578,7 +1626,10 @@ void TimelineEditor::syncExternalTimelineChanges() {
         if (it != trackContentSignatures_.end() && it->second == signature)
             continue;
         refreshSequenceEditorForTrack(i);
+        refreshed = true;
     }
+    if (refreshed)
+        reloadSelectedPianoRoll();
 }
 
 void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change) {
@@ -2118,14 +2169,13 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         return;
     }
 
-    if (!targetTrack->clipManager().setClipAnchor(clipId, anchor, appModel.sampleRate())) {
+    if (!appModel.sequencer().engine()->timeline().setClipAnchor(
+            trackIndex, clipId, anchor)) {
         std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
         return;
     }
     appModel.markTrackDirty(trackIndex);
-    resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
-    notifyTimelineClipChanged(trackIndex, clipId, "clip-position-changed");
     refreshAllSequenceEditorTracks();
 }
 
@@ -2201,18 +2251,14 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
     seconds = std::max(0.0, seconds);
-    const bool changed = tracks[trackIndex]->clipManager().setClipAnchor(
+    const bool changed = appModel.sequencer().engine()->timeline().setClipAnchor(
+        trackIndex,
         clipId,
-        uapmd::TimeReference::fromContainerStart({}, seconds),
-        static_cast<int32_t>(sr));
+        uapmd::TimeReference::fromContainerStart({}, seconds));
     if (changed)
         appModel.markTrackDirty(trackIndex);
-    resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
-    if (changed)
-        notifyTimelineClipChanged(trackIndex, clipId, "clip-position-changed");
     refreshAllSequenceEditorTracks();
 }
 
@@ -2248,6 +2294,7 @@ void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
     auto preview = createMidiClipPreview(trackIndex, *clipData, fallbackDuration);
     std::string clipName = clipData->name.empty()
         ? std::format("Clip {}", clipId) : clipData->name;
+    selected_midi_clip_ = std::pair{trackIndex, clipId};
     pianoRollEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
 }
 
@@ -2561,7 +2608,8 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
 bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload& payload, std::string& error) {
     auto& appModel = uapmd_app::AppModel::instance();
     if (payload.trackIndex == uapmd::kMasterTrackIndex) {
-        appModel.setMasterTrackMarkers(payload.markers);
+        if (!appModel.setMasterTrackMarkersWithValidation(payload.markers, error))
+            return false;
         invalidateMasterTrackSnapshot();
         refreshAllSequenceEditorTracks();
         return true;

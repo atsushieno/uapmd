@@ -116,6 +116,93 @@ void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
     markTimelineTrackClipsNeedsFileSave(appModel, appModel.getMasterTimelineTrack(), kMasterTrackIndex);
 }
 
+bool masterMarkersEqual(
+    const std::vector<ClipMarker>& lhs,
+    const std::vector<ClipMarker>& rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (lhs[i].markerId != rhs[i].markerId
+            || lhs[i].clipPositionOffset != rhs[i].clipPositionOffset
+            || lhs[i].referenceType != rhs[i].referenceType
+            || lhs[i].referenceClipId != rhs[i].referenceClipId
+            || lhs[i].referenceMarkerId != rhs[i].referenceMarkerId
+            || lhs[i].name != rhs[i].name)
+            return false;
+    }
+    return true;
+}
+
+class MasterMarkersUndoOperation final : public ProjectUndoableOperation {
+public:
+    using Apply = std::function<bool(const std::vector<ClipMarker>&)>;
+
+    MasterMarkersUndoOperation(
+        std::vector<ClipMarker> before,
+        std::vector<ClipMarker> after,
+        Apply apply)
+        : before_(std::move(before))
+        , after_(std::move(after))
+        , apply_(std::move(apply)) {
+    }
+
+    std::string description() const override {
+        return "Edit master markers";
+    }
+
+    size_t historySizeInBytes() const override {
+        auto size = sizeof(*this);
+        for (const auto& marker : before_)
+            size += sizeof(marker) + marker.markerId.capacity()
+                + marker.referenceClipId.capacity()
+                + marker.referenceMarkerId.capacity() + marker.name.capacity();
+        for (const auto& marker : after_)
+            size += sizeof(marker) + marker.markerId.capacity()
+                + marker.referenceClipId.capacity()
+                + marker.referenceMarkerId.capacity() + marker.name.capacity();
+        return size;
+    }
+
+    bool hasEffect() const override {
+        return !masterMarkersEqual(before_, after_);
+    }
+
+    void perform(
+        const ProjectUndoExecutionContext&,
+        ProjectUndoCompletion completion) override {
+        apply(after_, std::move(completion));
+    }
+
+    void undo(
+        const ProjectUndoExecutionContext&,
+        ProjectUndoCompletion completion) override {
+        apply(before_, std::move(completion));
+    }
+
+    void redo(
+        const ProjectUndoExecutionContext&,
+        ProjectUndoCompletion completion) override {
+        apply(after_, std::move(completion));
+    }
+
+private:
+    void apply(
+        const std::vector<ClipMarker>& markers,
+        ProjectUndoCompletion completion) {
+        if (apply_ && apply_(markers)) {
+            if (completion)
+                completion(ProjectUndoResult::success());
+            return;
+        }
+        if (completion)
+            completion(ProjectUndoResult::failure("Could not restore master markers"));
+    }
+
+    std::vector<ClipMarker> before_{};
+    std::vector<ClipMarker> after_{};
+    Apply apply_{};
+};
+
 } // namespace
 
 class ClipEnablementSerializationExtension final : public ProjectSerializationExtension {
@@ -472,8 +559,12 @@ bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     if (dynamic_cast<AudioPluginFullDAGraph*>(&track->graph()))
         return true;
     auto graph = AudioPluginFullDAGraph::create(ump_buffer_size_in_bytes_);
-    const bool changed = sequencer_.engine()->replaceTrackGraph(
-        trackIndex, std::unique_ptr<AudioPluginGraph>(graph.release()));
+    if (!graph)
+        return false;
+    const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
+        trackIndex,
+        graph->providerId(),
+        ump_buffer_size_in_bytes_);
     if (changed)
         markTrackDirty(trackIndex);
     return changed;
@@ -517,64 +608,24 @@ bool uapmd_app::AppModel::connectTrackGraph(
     int32_t trackIndex,
     const AudioPluginGraphConnection& connection,
     std::string& error) {
-    SequencerTrack* track = trackIndex == kMasterTrackIndex
-        ? sequencer_.engine()->masterTrack()
-        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
-            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
-            : nullptr);
-    if (!track) {
-        error = "Track not found";
-        return false;
-    }
-
-    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
-    if (!dag) {
-        error = "Track graph is not a full DAG graph";
-        return false;
-    }
-
-    const auto connectResult = dag->connect(connection);
-    if (connectResult != 0) {
-        if (connectResult == -1)
-            error = "Invalid graph endpoint direction";
-        else if (connectResult == -2)
-            error = "Graph endpoint does not exist";
-        else if (connectResult == -3)
-            error = "Graph connection would create a cycle";
-        else
-            error = "Failed to connect graph endpoints";
-        return false;
-    }
-    markTrackDirty(trackIndex);
-    return true;
+    const bool changed = sequencer_.engine()->timeline().connectTrackGraph(
+        trackIndex,
+        connection,
+        error);
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 bool uapmd_app::AppModel::disconnectTrackGraphConnection(
     int32_t trackIndex,
     int64_t connectionId,
     std::string& error) {
-    SequencerTrack* track = trackIndex == kMasterTrackIndex
-        ? sequencer_.engine()->masterTrack()
-        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
-            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
-            : nullptr);
-    if (!track) {
-        error = "Track not found";
-        return false;
-    }
-
-    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
-    if (!dag) {
-        error = "Track graph is not a full DAG graph";
-        return false;
-    }
-
-    if (!dag->disconnect(connectionId)) {
-        error = "Connection not found";
-        return false;
-    }
-    markTrackDirty(trackIndex);
-    return true;
+    const bool changed = sequencer_.engine()->timeline()
+        .disconnectTrackGraphConnection(trackIndex, connectionId, error);
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 uapmd::IDocumentProvider* uapmd_app::AppModel::documentProvider() {
@@ -778,7 +829,8 @@ bool uapmd_app::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
     auto* engine = sequencer_.engine();
     if (!engine)
         return false;
-    const bool changed = engine->setInstanceGroup(instanceId, group);
+    const bool changed =
+        engine->timeline().setPluginGroup(instanceId, group);
     if (changed)
         markPluginInstanceTrackDirty(instanceId);
     return changed;
@@ -1199,7 +1251,10 @@ uapmd_app::AppModel::PluginInstanceResult uapmd_app::AppModel::registerPluginIns
     }
 
     if (configOverride && !configOverride->stateFile.empty()) {
-        auto stateResult = loadPluginStateSync(instanceId, configOverride->stateFile.string());
+        auto stateResult = loadPluginStateSync(
+            instanceId,
+            configOverride->stateFile.string(),
+            uapmd::ProjectMutationOrigin::Internal);
         if (!stateResult.success) {
             std::cerr << "Automatic plugin state load failed for " << pluginName
                       << ": " << stateResult.error << std::endl;
@@ -1653,7 +1708,11 @@ void uapmd_app::AppModel::updateDeviceLabel(int32_t instanceId, const std::strin
     markPluginInstanceTrackDirty(instanceId);
 }
 
-void uapmd_app::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
+void uapmd_app::AppModel::loadPluginState(
+    int32_t instanceId,
+    const std::string& filepath,
+    PluginStateCallback callback,
+    uapmd::ProjectMutationOrigin origin) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = filepath;
@@ -1689,15 +1748,20 @@ void uapmd_app::AppModel::loadPluginState(int32_t instanceId, const std::string&
         return;
     }
 
-    instance->loadState(std::move(stateData), StateContextType::Project, false, nullptr,
-                        [callback = std::move(callback), result](std::string error, void* callbackContext) mutable {
+    sequencer_.engine()->timeline().setPluginState(
+        instanceId,
+        std::move(stateData),
+        origin,
+        [this, instanceId, callback = std::move(callback), result](
+            uapmd::ProjectUndoResult undoResult) mutable {
                             auto completed = result;
-                            if (!error.empty()) {
+                            if (!undoResult.succeeded()) {
                                 completed.success = false;
-                                completed.error = std::move(error);
+                                completed.error = std::move(undoResult.error);
                                 std::cerr << completed.error << std::endl;
                             } else {
                                 completed.success = true;
+                                markPluginInstanceTrackDirty(instanceId);
                                 std::cout << "Plugin state loaded from: " << completed.filepath << std::endl;
                             }
                             if (callback)
@@ -1705,7 +1769,11 @@ void uapmd_app::AppModel::loadPluginState(int32_t instanceId, const std::string&
                         });
 }
 
-void uapmd_app::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
+void uapmd_app::AppModel::loadPluginState(
+    int32_t instanceId,
+    DocumentHandle handle,
+    PluginStateCallback callback,
+    uapmd::ProjectMutationOrigin origin) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = handle.display_name.empty() ? handle.id : handle.display_name;
@@ -1731,7 +1799,7 @@ void uapmd_app::AppModel::loadPluginState(int32_t instanceId, DocumentHandle han
     }
 
     provider->readDocument(std::move(handle),
-                           [instance, callback = std::move(callback), result](DocumentIOResult ioResult, std::vector<uint8_t> data) mutable {
+                           [this, instanceId, origin, callback = std::move(callback), result](DocumentIOResult ioResult, std::vector<uint8_t> data) mutable {
                                auto completed = result;
                                if (!ioResult.success) {
                                    completed.success = false;
@@ -1742,15 +1810,20 @@ void uapmd_app::AppModel::loadPluginState(int32_t instanceId, DocumentHandle han
                                    return;
                                }
 
-                               instance->loadState(std::move(data), StateContextType::Project, false, nullptr,
-                                                   [callback = std::move(callback), completed](std::string error, void* callbackContext) mutable {
+                               sequencer_.engine()->timeline().setPluginState(
+                                   instanceId,
+                                   std::move(data),
+                                   origin,
+                                   [this, instanceId, callback = std::move(callback), completed](
+                                       uapmd::ProjectUndoResult undoResult) mutable {
                                                        auto finalResult = completed;
-                                                       if (!error.empty()) {
+                                                       if (!undoResult.succeeded()) {
                                                            finalResult.success = false;
-                                                           finalResult.error = std::move(error);
+                                                           finalResult.error = std::move(undoResult.error);
                                                            std::cerr << finalResult.error << std::endl;
                                                        } else {
                                                            finalResult.success = true;
+                                                           markPluginInstanceTrackDirty(instanceId);
                                                            std::cout << "Plugin state loaded from: " << finalResult.filepath << std::endl;
                                                        }
                                                        if (callback)
@@ -1759,13 +1832,57 @@ void uapmd_app::AppModel::loadPluginState(int32_t instanceId, DocumentHandle han
                            });
 }
 
-uapmd_app::AppModel::PluginStateResult uapmd_app::AppModel::loadPluginStateSync(int32_t instanceId, const std::string& filepath) {
+uapmd_app::AppModel::PluginStateResult uapmd_app::AppModel::loadPluginStateSync(
+    int32_t instanceId,
+    const std::string& filepath,
+    uapmd::ProjectMutationOrigin origin) {
+    if (origin == uapmd::ProjectMutationOrigin::Internal) {
+        PluginStateResult result;
+        result.instanceId = instanceId;
+        result.filepath = filepath;
+        auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
+        if (!instance) {
+            result.error = "Failed to get plugin instance";
+            return result;
+        }
+        std::vector<uint8_t> state;
+        try {
+            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+            if (!file.is_open())
+                throw std::runtime_error("Failed to open file for reading");
+            const auto fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+            state.resize(static_cast<size_t>(fileSize));
+            file.read(
+                reinterpret_cast<char*>(state.data()),
+                fileSize);
+        } catch (const std::exception& ex) {
+            result.error = std::format(
+                "Failed to load plugin state: {}", ex.what());
+            return result;
+        }
+        auto promise = std::make_shared<std::promise<PluginStateResult>>();
+        auto future = promise->get_future();
+        instance->loadState(
+            std::move(state),
+            StateContextType::Project,
+            false,
+            nullptr,
+            [promise, result](std::string error, void*) mutable {
+                auto completed = result;
+                completed.success = error.empty();
+                completed.error = std::move(error);
+                promise->set_value(std::move(completed));
+            });
+        return future.get();
+    }
     auto promise = std::make_shared<std::promise<PluginStateResult>>();
     auto future = promise->get_future();
     loadPluginState(instanceId, filepath,
                     [promise](PluginStateResult result) {
                         promise->set_value(std::move(result));
-                    });
+                    },
+                    origin);
     return future.get();
 }
 
@@ -2418,7 +2535,10 @@ bool uapmd_app::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
     return true;
 }
 
-bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error)
+bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(
+    std::vector<uapmd::ClipMarker> markers,
+    std::string& error,
+    uapmd::ProjectMutationOrigin origin)
 {
     std::unordered_set<std::string> ids;
     for (size_t i = 0; i < markers.size(); ++i) {
@@ -2436,9 +2556,31 @@ bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd:
         return false;
     }
 
-    setMasterTrackMarkers(std::move(markers));
-    markTrackDirty(kMasterTrackIndex);
-    return true;
+    auto apply = [this](const std::vector<uapmd::ClipMarker>& value) {
+        master_track_markers_ = value;
+        resolveAllClipAnchorsInAppModel(*this);
+        markTrackDirty(kMasterTrackIndex);
+        return true;
+    };
+    if (origin != ProjectMutationOrigin::User
+        && origin != ProjectMutationOrigin::Remote)
+        return apply(markers);
+
+    auto operation = std::make_shared<MasterMarkersUndoOperation>(
+        master_track_markers_, std::move(markers), std::move(apply));
+    auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+    sequencer_.engine()->timeline().undoEngine().perform(
+        std::move(operation),
+        origin,
+        [result](ProjectUndoResult completed) {
+            *result = std::move(completed);
+        });
+    if (result->has_value() && result->value().succeeded())
+        return true;
+    error = result->has_value() && !result->value().error.empty()
+        ? result->value().error
+        : "Could not record the master marker edit";
+    return false;
 }
 
 bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
@@ -2611,12 +2753,12 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
                 || sourceIndex >= static_cast<int32_t>(state->regularClipReferenceIds.size())
                 || state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)].empty())
                 continue;
-            if (auto* masterTrack = getMasterTimelineTrack()) {
-                masterTrack->clipManager().setClipAnchor(
+            if (getMasterTimelineTrack()) {
+                sequencer_.engine()->timeline().setClipAnchor(
+                    kMasterTrackIndex,
                     masterClipResult.clipId,
                     uapmd::TimeReference::fromContainerStart(
-                        state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)], 0.0),
-                    static_cast<int32_t>(sampleRate()));
+                        state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)], 0.0));
                 state->anchoredAnyMasterClip = true;
             }
         }
@@ -2801,15 +2943,10 @@ int32_t uapmd_app::AppModel::addDeviceInputToTrack(
     // Engine doesn't expose a next_source_node_id_ for DeviceInput nodes yet;
     // use a local counter for device input nodes in AppModel scope.
     int32_t sourceNodeId = next_source_node_id_++;
-    uint32_t channelCount = channelIndices.empty() ? 2 : static_cast<uint32_t>(channelIndices.size());
-
-    auto sourceNode = std::make_unique<uapmd::DeviceInputSourceNode>(
-        sourceNodeId,
-        channelCount,
-        channelIndices
-    );
-
-    if (timelineTracks[trackIndex]->addDeviceInputSource(std::move(sourceNode))) {
+    if (sequencer_.engine()->timeline().addDeviceInputToTrack(
+            trackIndex,
+            sourceNodeId,
+            channelIndices)) {
         markTrackDirty(trackIndex);
         return sourceNodeId;
     }

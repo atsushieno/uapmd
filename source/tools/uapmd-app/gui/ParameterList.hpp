@@ -23,6 +23,7 @@ public:
     };
 
     using ParameterChangeCallback = std::function<void(uint32_t parameterIndex, float value)>;
+    using ParameterGestureCallback = std::function<void(uint32_t parameterIndex)>;
     using GetParameterValueStringCallback = std::function<std::string(uint32_t parameterIndex, float value)>;
     using ContextChangeCallback = std::function<void(ParameterContext context, uint8_t value)>;
 
@@ -33,6 +34,8 @@ private:
     char parameterFilter_[256] = "";
 
     ParameterChangeCallback onParameterChanged_;
+    ParameterGestureCallback onParameterGestureBegin_;
+    ParameterGestureCallback onParameterGestureEnd_;
     GetParameterValueStringCallback onGetParameterValueString_;
     ContextChangeCallback onContextChanged_;
 
@@ -55,6 +58,8 @@ public:
     void render();
 
     void setOnParameterChanged(ParameterChangeCallback callback);
+    void setOnParameterGestureBegin(ParameterGestureCallback callback);
+    void setOnParameterGestureEnd(ParameterGestureCallback callback);
     void setOnGetParameterValueString(GetParameterValueStringCallback callback);
     void setOnContextChanged(ContextChangeCallback callback);
 

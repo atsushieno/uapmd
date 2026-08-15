@@ -71,6 +71,10 @@ namespace uapmd {
                 + value.referenceMarkerId.capacity();
         }
 
+        size_t retainedValueSize(const TimeReference& value) {
+            return sizeof(value) + value.referenceId.capacity();
+        }
+
         template<typename Value>
         size_t retainedValueSize(const Value&) {
             return sizeof(Value);
@@ -120,6 +124,40 @@ namespace uapmd {
                 result += sizeof(extensionId) + extensionId.capacity()
                     + sizeof(state) + state.capacity();
             return result;
+        }
+
+        size_t retainedValueSize(
+            const LatencyCompensationProjectSettings& settings) {
+            size_t result = sizeof(settings)
+                + settings.implementation_id.capacity()
+                + settings.monitored_track_indexes.capacity() * sizeof(int32_t)
+                + settings.record_armed_track_indexes.capacity() * sizeof(int32_t);
+            for (const auto& [key, value] : settings.implementation_properties)
+                result += sizeof(key) + key.capacity()
+                    + sizeof(value) + value.capacity();
+            return result;
+        }
+
+        bool latencyCompensationSettingsEqual(
+            const LatencyCompensationProjectSettings& lhs,
+            const LatencyCompensationProjectSettings& rhs) {
+            return lhs.implementation_id == rhs.implementation_id
+                && lhs.playback_compensation_mode == rhs.playback_compensation_mode
+                && lhs.input_monitoring_policy == rhs.input_monitoring_policy
+                && lhs.monitored_track_indexes == rhs.monitored_track_indexes
+                && lhs.record_armed_track_indexes == rhs.record_armed_track_indexes
+                && lhs.implementation_properties == rhs.implementation_properties;
+        }
+
+        struct TrackGraphSnapshot {
+            std::string graphType;
+            std::vector<uint8_t> graphBytes;
+        };
+
+        size_t retainedValueSize(const TrackGraphSnapshot& snapshot) {
+            return sizeof(snapshot)
+                + snapshot.graphType.capacity()
+                + snapshot.graphBytes.capacity();
         }
 
         bool clipMarkerEqual(const ClipMarker& lhs, const ClipMarker& rhs) {
@@ -249,6 +287,552 @@ namespace uapmd {
             Value after_{};
             Apply apply_{};
             std::function<bool(const Value&, const Value&)> equal_{};
+        };
+
+        template<typename Value>
+        class TrackPropertyUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                const Value& value)>;
+
+            TrackPropertyUndoOperation(
+                std::string description,
+                std::string propertyKey,
+                std::string trackReferenceId,
+                Value before,
+                Value after,
+                Apply apply)
+                : description_(std::move(description))
+                , property_key_(std::move(propertyKey))
+                , track_reference_id_(std::move(trackReferenceId))
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return description_;
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + description_.capacity()
+                    + property_key_.capacity()
+                    + track_reference_id_.capacity()
+                    + retainedValueSize(before_)
+                    + retainedValueSize(after_);
+            }
+
+            bool mergeWith(const ProjectUndoableOperation& subsequent) override {
+                const auto* next = dynamic_cast<const TrackPropertyUndoOperation*>(&subsequent);
+                if (!next
+                    || property_key_ != next->property_key_
+                    || track_reference_id_ != next->track_reference_id_)
+                    return false;
+                description_ = next->description_;
+                after_ = next->after_;
+                apply_ = next->apply_;
+                return true;
+            }
+
+            bool hasEffect() const override {
+                return before_ != after_;
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+        private:
+            void apply(const Value& value, ProjectUndoCompletion completion) {
+                if (apply_ && apply_(track_reference_id_, value)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(std::format(
+                        "Could not apply '{}' to track {}.",
+                        description_, track_reference_id_)));
+            }
+
+            std::string description_{};
+            std::string property_key_{};
+            std::string track_reference_id_{};
+            Value before_{};
+            Value after_{};
+            Apply apply_{};
+        };
+
+        class LatencySettingsUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                const LatencyCompensationProjectSettings& settings,
+                std::string& error)>;
+
+            LatencySettingsUndoOperation(
+                LatencyCompensationProjectSettings before,
+                LatencyCompensationProjectSettings after,
+                Apply apply)
+                : before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return "Change latency compensation settings";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + retainedValueSize(before_)
+                    + retainedValueSize(after_);
+            }
+
+            bool hasEffect() const override {
+                return !latencyCompensationSettingsEqual(before_, after_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+        private:
+            void apply(
+                const LatencyCompensationProjectSettings& settings,
+                ProjectUndoCompletion completion) {
+                std::string error;
+                if (apply_ && apply_(settings, error)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        error.empty()
+                            ? "Could not apply latency compensation settings"
+                            : std::move(error)));
+            }
+
+            LatencyCompensationProjectSettings before_{};
+            LatencyCompensationProjectSettings after_{};
+            Apply apply_{};
+        };
+
+        class DeviceInputUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Channels = std::optional<std::vector<uint32_t>>;
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                int32_t sourceNodeId,
+                const Channels& channels)>;
+
+            DeviceInputUndoOperation(
+                std::string description,
+                std::string trackReferenceId,
+                int32_t sourceNodeId,
+                Channels before,
+                Channels after,
+                Apply apply)
+                : description_(std::move(description))
+                , track_reference_id_(std::move(trackReferenceId))
+                , source_node_id_(sourceNodeId)
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return description_;
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + description_.capacity()
+                    + track_reference_id_.capacity()
+                    + (before_ ? retainedValueSize(*before_) : 0)
+                    + (after_ ? retainedValueSize(*after_) : 0);
+            }
+
+            bool hasEffect() const override {
+                return before_ != after_;
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+        private:
+            void apply(const Channels& channels, ProjectUndoCompletion completion) {
+                if (apply_ && apply_(track_reference_id_, source_node_id_, channels)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(std::format(
+                        "Could not apply '{}' to device input {} on track {}.",
+                        description_, source_node_id_, track_reference_id_)));
+            }
+
+            std::string description_{};
+            std::string track_reference_id_{};
+            int32_t source_node_id_{-1};
+            Channels before_{};
+            Channels after_{};
+            Apply apply_{};
+        };
+
+        template<typename Value>
+        class PluginPropertyUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                std::string_view nodeId,
+                const Value& value)>;
+
+            PluginPropertyUndoOperation(
+                std::string description,
+                std::string propertyKey,
+                std::string trackReferenceId,
+                std::string nodeId,
+                Value before,
+                Value after,
+                Apply apply)
+                : description_(std::move(description))
+                , property_key_(std::move(propertyKey))
+                , track_reference_id_(std::move(trackReferenceId))
+                , node_id_(std::move(nodeId))
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return description_;
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + description_.capacity()
+                    + property_key_.capacity()
+                    + track_reference_id_.capacity()
+                    + node_id_.capacity()
+                    + retainedValueSize(before_)
+                    + retainedValueSize(after_);
+            }
+
+            bool mergeWith(const ProjectUndoableOperation& subsequent) override {
+                const auto* next = dynamic_cast<const PluginPropertyUndoOperation*>(&subsequent);
+                if (!next
+                    || property_key_ != next->property_key_
+                    || track_reference_id_ != next->track_reference_id_
+                    || node_id_ != next->node_id_)
+                    return false;
+                description_ = next->description_;
+                after_ = next->after_;
+                apply_ = next->apply_;
+                return true;
+            }
+
+            bool hasEffect() const override {
+                return before_ != after_;
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+        private:
+            void apply(const Value& value, ProjectUndoCompletion completion) {
+                if (apply_ && apply_(track_reference_id_, node_id_, value)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(std::format(
+                        "Could not apply '{}' to plug-in node {} on track {}.",
+                        description_, node_id_, track_reference_id_)));
+            }
+
+            std::string description_{};
+            std::string property_key_{};
+            std::string track_reference_id_{};
+            std::string node_id_{};
+            Value before_{};
+            Value after_{};
+            Apply apply_{};
+        };
+
+        class GraphConnectionUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                const uapmd_graph::AudioPluginGraphConnection& connection,
+                bool present,
+                std::string& error)>;
+
+            GraphConnectionUndoOperation(
+                bool initialAddition,
+                std::string trackReferenceId,
+                uapmd_graph::AudioPluginGraphConnection connection,
+                Apply apply)
+                : initial_addition_(initialAddition)
+                , track_reference_id_(std::move(trackReferenceId))
+                , connection_(std::move(connection))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return initial_addition_
+                    ? "Connect track graph"
+                    : "Disconnect track graph";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + connection_.source.node_id.capacity()
+                    + connection_.target.node_id.capacity();
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(initial_addition_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(!initial_addition_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                perform(context, std::move(completion));
+            }
+
+        private:
+            void apply(bool present, ProjectUndoCompletion completion) {
+                std::string error;
+                if (apply_
+                    && apply_(track_reference_id_, connection_, present, error)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        error.empty()
+                            ? "Could not change the track graph connection"
+                            : std::move(error)));
+            }
+
+            bool initial_addition_{false};
+            std::string track_reference_id_{};
+            uapmd_graph::AudioPluginGraphConnection connection_{};
+            Apply apply_{};
+        };
+
+        class TrackGraphUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                const TrackGraphSnapshot& desired,
+                const TrackGraphSnapshot& compensation)>;
+
+            TrackGraphUndoOperation(
+                std::string trackReferenceId,
+                TrackGraphSnapshot before,
+                TrackGraphSnapshot after,
+                Apply apply)
+                : track_reference_id_(std::move(trackReferenceId))
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return "Change track graph type";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + retainedValueSize(before_)
+                    + retainedValueSize(after_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, before_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, after_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                perform(context, std::move(completion));
+            }
+
+        private:
+            void apply(
+                const TrackGraphSnapshot& desired,
+                const TrackGraphSnapshot& compensation,
+                ProjectUndoCompletion completion) {
+                if (apply_
+                    && apply_(track_reference_id_, desired, compensation)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "Could not restore the track graph"));
+            }
+
+            std::string track_reference_id_{};
+            TrackGraphSnapshot before_{};
+            TrackGraphSnapshot after_{};
+            Apply apply_{};
+        };
+
+        class PluginStateUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<void(
+                std::string_view trackReferenceId,
+                std::string_view nodeId,
+                const std::vector<uint8_t>& state,
+                ProjectUndoCompletion completion)>;
+
+            PluginStateUndoOperation(
+                std::string trackReferenceId,
+                std::string nodeId,
+                std::vector<uint8_t> before,
+                std::vector<uint8_t> after,
+                Apply apply)
+                : track_reference_id_(std::move(trackReferenceId))
+                , node_id_(std::move(nodeId))
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return "Load plug-in state";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + node_id_.capacity()
+                    + before_.capacity()
+                    + after_.capacity();
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                perform(context, std::move(completion));
+            }
+
+        private:
+            void apply(
+                const std::vector<uint8_t>& state,
+                ProjectUndoCompletion completion) {
+                if (apply_) {
+                    apply_(track_reference_id_, node_id_, state,
+                           std::move(completion));
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "Could not resolve the plug-in state mutation"));
+            }
+
+            std::string track_reference_id_{};
+            std::string node_id_{};
+            std::vector<uint8_t> before_{};
+            std::vector<uint8_t> after_{};
+            Apply apply_{};
         };
 
         class ClipRemovalUndoOperation final : public ProjectUndoableOperation {
@@ -413,6 +997,79 @@ namespace uapmd {
             Restore restore_{};
         };
 
+        class ClipContentUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Apply = std::function<bool(
+                std::string_view trackReferenceId,
+                const ProjectClipFragment& desired,
+                const ProjectClipFragment& compensation)>;
+
+            ClipContentUndoOperation(
+                std::string description,
+                std::string trackReferenceId,
+                ProjectClipFragment before,
+                ProjectClipFragment after,
+                Apply apply)
+                : description_(std::move(description))
+                , track_reference_id_(std::move(trackReferenceId))
+                , before_(std::move(before))
+                , after_(std::move(after))
+                , apply_(std::move(apply)) {
+            }
+
+            std::string description() const override {
+                return description_;
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + description_.capacity()
+                    + track_reference_id_.capacity()
+                    + retainedValueSize(before_)
+                    + retainedValueSize(after_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, before_, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(before_, after_, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                apply(after_, before_, std::move(completion));
+            }
+
+        private:
+            void apply(
+                const ProjectClipFragment& desired,
+                const ProjectClipFragment& compensation,
+                ProjectUndoCompletion completion) {
+                if (apply_ && apply_(track_reference_id_, desired, compensation)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(std::format(
+                        "Could not apply '{}' to clip {} on track {}.",
+                        description_, desired.clip.referenceId, track_reference_id_)));
+            }
+
+            std::string description_{};
+            std::string track_reference_id_{};
+            ProjectClipFragment before_{};
+            ProjectClipFragment after_{};
+            Apply apply_{};
+        };
+
         class TrackStructureUndoOperation final : public ProjectUndoableOperation {
         public:
             enum class InitialDirection {
@@ -518,6 +1175,67 @@ namespace uapmd {
             auto tempoChanges = MidiClipReader::applyAuthoritativeTempoMapToMusicalClips(master_timeline_track_, timeline_tracks_);
             if (!tempoChanges.empty())
                 timeline_.tempo = tempoChanges.front().bpm;
+        }
+
+        void resolveAllClipAnchors() {
+            struct ClipRecord {
+                ClipManager* manager{};
+                ClipData clip{};
+            };
+            std::unordered_map<std::string, ClipRecord> records;
+            auto collect = [&records](TimelineTrack* track) {
+                if (!track)
+                    return;
+                for (const auto& clip : track->clipManager().getAllClips())
+                    records.emplace(
+                        clip.referenceId,
+                        ClipRecord{&track->clipManager(), clip});
+            };
+            collect(master_timeline_track_.get());
+            for (const auto& track : timeline_tracks_)
+                collect(track.get());
+
+            std::unordered_map<std::string, TimelinePosition> resolved;
+            std::unordered_set<std::string> resolving;
+            std::function<TimelinePosition(const std::string&)> resolve =
+                [&](const std::string& referenceId) -> TimelinePosition {
+                    if (auto found = resolved.find(referenceId); found != resolved.end())
+                        return found->second;
+                    auto found = records.find(referenceId);
+                    if (found == records.end())
+                        return {};
+
+                    const auto reference = found->second.clip.timeReference(sampleRate_);
+                    if (reference.referenceId.empty()) {
+                        auto position = TimelinePosition::fromSeconds(reference.offset, sampleRate_);
+                        resolved[referenceId] = position;
+                        return position;
+                    }
+                    if (!resolving.insert(referenceId).second) {
+                        auto position = TimelinePosition::fromSeconds(reference.offset, sampleRate_);
+                        resolved[referenceId] = position;
+                        return position;
+                    }
+
+                    auto anchor = records.find(reference.referenceId);
+                    if (anchor == records.end()) {
+                        resolving.erase(referenceId);
+                        auto position = TimelinePosition::fromSeconds(reference.offset, sampleRate_);
+                        resolved[referenceId] = position;
+                        return position;
+                    }
+                    auto position = resolve(reference.referenceId);
+                    if (reference.type == TimeReferenceType::ContainerEnd)
+                        position.samples += anchor->second.clip.durationSamples;
+                    position = position
+                        + TimelinePosition::fromSeconds(reference.offset, sampleRate_);
+                    resolving.erase(referenceId);
+                    resolved[referenceId] = position;
+                    return position;
+                };
+
+            for (const auto& [referenceId, record] : records)
+                record.manager->setClipPosition(record.clip.clipId, resolve(referenceId));
         }
 
         static void appendMidiNodeMetaToSnapshot(MasterTrackSnapshot& snapshot,
@@ -669,6 +1387,68 @@ namespace uapmd {
             if (trackIndex < 0 && trackIndex != kMasterTrackIndex)
                 return {.error = "The clip's track no longer exists"};
             return attachClipFragment(trackIndex, fragment, ProjectObjectIdPolicy::Restore);
+        }
+
+        bool replaceClipByReferenceId(
+            std::string_view trackReferenceId,
+            const ProjectClipFragment& desired,
+            const ProjectClipFragment* compensation) {
+            auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+            if (!targetTrack)
+                return false;
+            const auto currentClipId =
+                clipIdForReferenceId(*targetTrack, desired.clip.referenceId);
+            if (currentClipId < 0 || !removeClipRaw(*targetTrack, currentClipId))
+                return false;
+            auto restored = restoreClipByReferenceId(trackReferenceId, desired);
+            if (restored.success) {
+                resolveAllClipAnchors();
+                return true;
+            }
+            if (compensation) {
+                const auto compensated =
+                    restoreClipByReferenceId(trackReferenceId, *compensation);
+                if (compensated.success)
+                    resolveAllClipAnchors();
+            }
+            return false;
+        }
+
+        bool recordReplacedClip(
+            int32_t trackIndex,
+            ProjectClipFragment before,
+            ProjectMutationOrigin origin,
+            std::string description) {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            auto after = captureClipFragment(trackIndex, before.clip.clipId);
+            if (!after) {
+                replaceClipByReferenceId(targetTrack->referenceId(), before, nullptr);
+                return false;
+            }
+            auto operation = std::make_shared<ClipContentUndoOperation>(
+                std::move(description),
+                targetTrack->referenceId(),
+                before,
+                *after,
+                [this](std::string_view persistentTrackId,
+                       const ProjectClipFragment& desired,
+                       const ProjectClipFragment& compensation) {
+                    return replaceClipByReferenceId(
+                        persistentTrackId, desired, &compensation);
+                });
+            auto recorded = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.recordPerformed(
+                std::move(operation),
+                origin,
+                [recorded](ProjectUndoResult result) {
+                    *recorded = std::move(result);
+                });
+            if (recorded->has_value() && recorded->value().succeeded())
+                return true;
+            replaceClipByReferenceId(targetTrack->referenceId(), before, &*after);
+            return false;
         }
 
         bool performCapturedClipRemoval(
@@ -880,6 +1660,93 @@ namespace uapmd {
             // Clip property operations complete inline. Keeping the result in
             // shared storage also makes an accidental off-thread call safe:
             // it reports false rather than leaving a dangling callback.
+            return result->has_value() && result->value().succeeded();
+        }
+
+        SequencerTrack* resolveSequencerTrackByReferenceId(
+            std::string_view trackReferenceId) {
+            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+            if (trackIndex == kMasterTrackIndex)
+                return engine_.masterTrack();
+            auto& tracks = engine_.tracks();
+            if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
+                return nullptr;
+            return tracks[static_cast<size_t>(trackIndex)];
+        }
+
+        void emitTrackChanged(
+            std::string_view trackReferenceId,
+            std::string changeType) {
+            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+            if (trackIndex == kMasterTrackIndex) {
+                emitMasterTrackChanged(std::move(changeType));
+                return;
+            }
+            ProjectDocumentEvent event(
+                ProjectDocumentEventKind::TrackChanged,
+                std::move(changeType));
+            event.setTrackId(std::string(trackReferenceId))
+                .setTrackIndex(trackIndex);
+            emitProjectDocumentEvent(std::move(event));
+        }
+
+        template<typename Value, typename Read, typename Mutation>
+        bool setUndoableTrackProperty(
+            int32_t trackIndex,
+            Value after,
+            ProjectMutationOrigin origin,
+            std::string description,
+            std::string changeType,
+            Read&& read,
+            Mutation&& mutate) {
+            auto* timelineTrack = resolveTrack(trackIndex);
+            auto* sequencerTrack = trackIndex == kMasterTrackIndex
+                ? engine_.masterTrack()
+                : (trackIndex >= 0
+                    && trackIndex < static_cast<int32_t>(engine_.tracks().size())
+                    ? engine_.tracks()[static_cast<size_t>(trackIndex)]
+                    : nullptr);
+            if (!timelineTrack || !sequencerTrack)
+                return false;
+
+            Value before = read(*sequencerTrack);
+            if (before == after)
+                return true;
+
+            auto trackReferenceId = timelineTrack->referenceId();
+            auto propertyKey = changeType;
+            auto apply = [this,
+                          changeType = std::move(changeType),
+                          mutate = std::forward<Mutation>(mutate)](
+                             std::string_view persistentTrackId,
+                             const Value& value) mutable {
+                auto* currentTrack =
+                    resolveSequencerTrackByReferenceId(persistentTrackId);
+                if (!currentTrack || !mutate(*currentTrack, value))
+                    return false;
+                emitTrackChanged(persistentTrackId, changeType);
+                notifyTimelineChanged();
+                return true;
+            };
+
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return apply(trackReferenceId, after);
+
+            auto operation = std::make_shared<TrackPropertyUndoOperation<Value>>(
+                std::move(description),
+                std::move(propertyKey),
+                std::move(trackReferenceId),
+                std::move(before),
+                std::move(after),
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
             return result->has_value() && result->value().succeeded();
         }
 
@@ -1283,7 +2150,8 @@ namespace uapmd {
             if (options.includePlugins
                 && !source->graphType.empty()
                 && !replaceTrackGraphType(
-                    trackIndex, source->graphType, engine_.umpBufferSizeInBytes())) {
+                    trackIndex, source->graphType, engine_.umpBufferSizeInBytes(),
+                    ProjectMutationOrigin::Internal)) {
                 (*fail)(std::format(
                     "Could not create graph type {} while attaching the track",
                     source->graphType));
@@ -1774,10 +2642,74 @@ namespace uapmd {
             return false;
         }
 
+        std::optional<TrackGraphSnapshot> captureTrackGraphSnapshot(
+            int32_t trackIndex) {
+            auto* track = resolveSequencerTrack(trackIndex);
+            if (!track)
+                return std::nullopt;
+            auto* provider = audio_graph_provider_registry_.get(track->graph());
+            if (!provider)
+                return std::nullopt;
+            auto graphData = createSerializedProjectGraph(
+                *provider,
+                track->orderedInstanceIds(),
+                track->graph(),
+                [this](int32_t instanceId) {
+                    return engine_.getPluginInstance(instanceId);
+                },
+                nullptr);
+            if (!graphData)
+                return std::nullopt;
+            TrackGraphSnapshot snapshot;
+            snapshot.graphType = provider->id();
+            if (!provider->saveProjectGraph(
+                    graphData.get(), snapshot.graphBytes))
+                return std::nullopt;
+            return snapshot;
+        }
+
+        bool applyTrackGraphSnapshot(
+            std::string_view trackReferenceId,
+            const TrackGraphSnapshot& snapshot,
+            size_t eventBufferSizeInBytes) {
+            auto* provider =
+                audio_graph_provider_registry_.get(snapshot.graphType);
+            const auto trackIndex =
+                trackIndexForPersistentId(trackReferenceId);
+            if (!provider
+                || (trackIndex < 0 && trackIndex != kMasterTrackIndex))
+                return false;
+            auto newGraph = provider->createGraph(eventBufferSizeInBytes);
+            if (!newGraph
+                || !engine_.replaceTrackGraph(trackIndex, std::move(newGraph)))
+                return false;
+            if (snapshot.graphBytes.empty())
+                return true;
+
+            auto* track = resolveSequencerTrack(trackIndex);
+            auto metadata = UapmdProjectPluginGraphData::create();
+            if (!track || !metadata)
+                return false;
+            metadata->graphType(snapshot.graphType);
+            auto graphData = loadSerializedProjectGraph(
+                *provider,
+                *metadata,
+                snapshot.graphBytes);
+            if (!graphData
+                || !provider->deserializeRuntimeGraph(
+                    graphData.get(),
+                    track->graph(),
+                    track->orderedInstanceIds()))
+                return false;
+            onTrackGraphChanged(trackIndex);
+            return true;
+        }
+
         bool replaceTrackGraphType(
             int32_t trackIndex,
             const std::string& graphTypeId,
-            size_t eventBufferSizeInBytes) override {
+            size_t eventBufferSizeInBytes,
+            ProjectMutationOrigin origin) override {
             auto* provider = audio_graph_provider_registry_.get(graphTypeId);
             if (!provider)
                 return false;
@@ -1792,9 +2724,62 @@ namespace uapmd {
 
             if (track->graph().providerId() == provider->id())
                 return true;
+            auto* timelineTrack = resolveTrack(trackIndex);
+            if (!timelineTrack)
+                return false;
+            auto before = captureTrackGraphSnapshot(trackIndex);
+            if (!before)
+                return false;
+            auto trackReferenceId = timelineTrack->referenceId();
+            TrackGraphSnapshot requested;
+            requested.graphType = graphTypeId;
+            if (!applyTrackGraphSnapshot(
+                    trackReferenceId,
+                    requested,
+                    eventBufferSizeInBytes))
+                return false;
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return true;
 
-            auto newGraph = provider->createGraph(eventBufferSizeInBytes);
-            return engine_.replaceTrackGraph(trackIndex, std::move(newGraph));
+            auto after = captureTrackGraphSnapshot(trackIndex);
+            if (!after) {
+                applyTrackGraphSnapshot(
+                    trackReferenceId, *before, eventBufferSizeInBytes);
+                return false;
+            }
+            auto apply = [this, eventBufferSizeInBytes](
+                             std::string_view persistentTrackId,
+                             const TrackGraphSnapshot& desired,
+                             const TrackGraphSnapshot& compensation) {
+                if (applyTrackGraphSnapshot(
+                        persistentTrackId,
+                        desired,
+                        eventBufferSizeInBytes))
+                    return true;
+                applyTrackGraphSnapshot(
+                    persistentTrackId,
+                    compensation,
+                    eventBufferSizeInBytes);
+                return false;
+            };
+            auto operation = std::make_shared<TrackGraphUndoOperation>(
+                trackReferenceId,
+                *before,
+                *after,
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.recordPerformed(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            if (result->has_value() && result->value().succeeded())
+                return true;
+            applyTrackGraphSnapshot(
+                trackReferenceId, *before, eventBufferSizeInBytes);
+            return false;
         }
 
         bool materializeProjectGraph(
@@ -1823,7 +2808,11 @@ namespace uapmd {
 
             if (trackIndex == -1)
                 return false;
-            if (!replaceTrackGraphType(trackIndex, provider->id(), eventBufferSizeInBytes))
+            if (!replaceTrackGraphType(
+                    trackIndex,
+                    provider->id(),
+                    eventBufferSizeInBytes,
+                    ProjectMutationOrigin::Internal))
                 return false;
             return provider->deserializeRuntimeGraph(
                 projectTrack->graph(), sequencerTrack->graph(), sequencerTrack->orderedInstanceIds());
@@ -2300,7 +3289,8 @@ namespace uapmd {
             std::vector<MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName,
             bool nrpnToParameterMapping,
-            bool needsFileSave) {
+            bool needsFileSave,
+            int32_t requestedClipId = -1) {
             ClipAddResult result;
 
             // Normalize incoming ticks to the single project-wide PPQ, established by whichever
@@ -2329,6 +3319,7 @@ namespace uapmd {
             int64_t durationSamples = sourceNode->totalLength();
 
             ClipData clip;
+            clip.clipId = requestedClipId;
             clip.referenceId = takePendingClipReferenceId();
             clip.clipType = ClipType::Midi;
             clip.position = position;
@@ -2365,7 +3356,8 @@ namespace uapmd {
             std::unique_ptr<AudioFileReader> reader,
             const std::string& filepath,
             std::vector<ClipMarker> markers,
-            std::vector<AudioWarpPoint> audioWarps) {
+            std::vector<AudioWarpPoint> audioWarps,
+            int32_t requestedClipId = -1) {
             ClipAddResult result;
             if (!reader) {
                 result.error = "Invalid audio file reader";
@@ -2383,6 +3375,7 @@ namespace uapmd {
             int64_t durationSamples = sourceNode->totalLength();
 
             ClipData clip;
+            clip.clipId = requestedClipId;
             clip.referenceId = takePendingClipReferenceId();
             clip.position = position;
             clip.durationSamples = durationSamples;
@@ -2667,6 +3660,756 @@ namespace uapmd {
             return true;
         }
 
+        bool setTrackGain(
+            int32_t trackIndex,
+            double gain,
+            ProjectMutationOrigin origin) override {
+            return setUndoableTrackProperty(
+                trackIndex, gain, origin,
+                "Change track gain", "track-gain-changed",
+                [](const SequencerTrack& track) { return track.trackGain(); },
+                [](SequencerTrack& track, double value) {
+                    return track.trackGain(value);
+                });
+        }
+
+        bool setTrackMuted(
+            int32_t trackIndex,
+            bool muted,
+            ProjectMutationOrigin origin) override {
+            return setUndoableTrackProperty(
+                trackIndex, muted, origin,
+                muted ? "Mute track" : "Unmute track", "track-mute-changed",
+                [](const SequencerTrack& track) { return track.muted(); },
+                [](SequencerTrack& track, bool value) {
+                    track.muted(value);
+                    return true;
+                });
+        }
+
+        bool setTrackSolo(
+            int32_t trackIndex,
+            bool solo,
+            ProjectMutationOrigin origin) override {
+            return setUndoableTrackProperty(
+                trackIndex, solo, origin,
+                solo ? "Solo track" : "Unsolo track", "track-solo-changed",
+                [](const SequencerTrack& track) { return track.solo(); },
+                [](SequencerTrack& track, bool value) {
+                    track.solo(value);
+                    return true;
+                });
+        }
+
+        bool setTrackBypassed(
+            int32_t trackIndex,
+            bool bypassed,
+            ProjectMutationOrigin origin) override {
+            return setUndoableTrackProperty(
+                trackIndex, bypassed, origin,
+                bypassed ? "Bypass track" : "Enable track processing",
+                "track-bypass-changed",
+                [](SequencerTrack& track) { return track.bypassed(); },
+                [](SequencerTrack& track, bool value) {
+                    track.bypassed(value);
+                    return true;
+                });
+        }
+
+        bool setTrackFreezePolicyEnabled(
+            int32_t trackIndex,
+            bool enabled,
+            ProjectMutationOrigin origin) override {
+            auto* timelineTrack = resolveTrack(trackIndex);
+            if (!timelineTrack || trackIndex == kMasterTrackIndex)
+                return false;
+            auto& manager = engine_.frozenTrackManager();
+            const bool before = manager.freezePolicyForTrack(trackIndex)
+                == FrozenTrackManager::FreezePolicy::On;
+            if (before == enabled)
+                return true;
+
+            auto trackReferenceId = timelineTrack->referenceId();
+            auto apply = [this](
+                             std::string_view persistentTrackId,
+                             const bool& value) {
+                const auto currentIndex =
+                    trackIndexForPersistentId(persistentTrackId);
+                if (currentIndex < 0)
+                    return false;
+                if (!engine_.frozenTrackManager().setFreezePolicyForTrack(
+                        currentIndex,
+                        value
+                            ? FrozenTrackManager::FreezePolicy::On
+                            : FrozenTrackManager::FreezePolicy::Off))
+                    return false;
+                emitTrackChanged(
+                    persistentTrackId,
+                    "track-freeze-policy-changed");
+                return true;
+            };
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return apply(trackReferenceId, enabled);
+
+            auto operation = std::make_shared<TrackPropertyUndoOperation<bool>>(
+                enabled ? "Freeze track" : "Unfreeze track",
+                "track-freeze-policy-changed",
+                std::move(trackReferenceId),
+                before,
+                enabled,
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
+        bool setLatencyCompensationSettings(
+            const LatencyCompensationProjectSettings& settings,
+            ProjectMutationOrigin origin) override {
+            auto* manager = engine_.latencyCompensationManager();
+            if (!manager)
+                return false;
+            auto before = manager->projectSettings();
+            if (latencyCompensationSettingsEqual(before, settings))
+                return true;
+
+            auto apply = [this](
+                             const LatencyCompensationProjectSettings& value,
+                             std::string& error) {
+                auto* currentManager = engine_.latencyCompensationManager();
+                if (!currentManager
+                    || !currentManager->applyProjectSettings(value, error))
+                    return false;
+                notifyTimelineChanged();
+                return true;
+            };
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote) {
+                std::string error;
+                return apply(settings, error);
+            }
+
+            auto operation = std::make_shared<LatencySettingsUndoOperation>(
+                std::move(before),
+                settings,
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
+        bool applyDeviceInputState(
+            std::string_view trackReferenceId,
+            int32_t sourceNodeId,
+            const DeviceInputUndoOperation::Channels& channels) {
+            auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+            if (!targetTrack)
+                return false;
+            auto source = targetTrack->getSourceNode(sourceNodeId);
+            auto deviceInput =
+                std::dynamic_pointer_cast<DeviceInputSourceNode>(source);
+            if (!channels) {
+                if (!deviceInput || !targetTrack->removeSource(sourceNodeId))
+                    return false;
+            } else if (deviceInput)
+                deviceInput->setInputChannels(*channels);
+            else {
+                if (source)
+                    return false;
+                const auto channelCount = static_cast<uint32_t>(channels->size());
+                auto newSource = std::make_unique<DeviceInputSourceNode>(
+                    sourceNodeId,
+                    channelCount,
+                    *channels);
+                if (!targetTrack->addDeviceInputSource(std::move(newSource)))
+                    return false;
+            }
+            emitTrackChanged(trackReferenceId, "track-device-input-changed");
+            notifyTimelineChanged();
+            return true;
+        }
+
+        bool performDeviceInputMutation(
+            int32_t trackIndex,
+            int32_t sourceNodeId,
+            DeviceInputUndoOperation::Channels before,
+            DeviceInputUndoOperation::Channels after,
+            ProjectMutationOrigin origin,
+            std::string description) {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            auto trackReferenceId = targetTrack->referenceId();
+            auto apply = [this](
+                             std::string_view persistentTrackId,
+                             int32_t persistentSourceNodeId,
+                             const DeviceInputUndoOperation::Channels& value) {
+                return applyDeviceInputState(
+                    persistentTrackId,
+                    persistentSourceNodeId,
+                    value);
+            };
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return apply(trackReferenceId, sourceNodeId, after);
+
+            auto operation = std::make_shared<DeviceInputUndoOperation>(
+                std::move(description),
+                std::move(trackReferenceId),
+                sourceNodeId,
+                std::move(before),
+                std::move(after),
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
+        bool addDeviceInputToTrack(
+            int32_t trackIndex,
+            int32_t sourceNodeId,
+            const std::vector<uint32_t>& channelIndices,
+            ProjectMutationOrigin origin) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack || targetTrack->getSourceNode(sourceNodeId))
+                return false;
+            auto normalizedChannels = channelIndices;
+            if (normalizedChannels.empty())
+                normalizedChannels = {0, 1};
+            return performDeviceInputMutation(
+                trackIndex,
+                sourceNodeId,
+                std::nullopt,
+                std::move(normalizedChannels),
+                origin,
+                "Add device input");
+        }
+
+        bool setDeviceInputChannels(
+            int32_t trackIndex,
+            int32_t sourceNodeId,
+            const std::vector<uint32_t>& channelIndices,
+            ProjectMutationOrigin origin) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            auto source = targetTrack
+                ? targetTrack->getSourceNode(sourceNodeId)
+                : nullptr;
+            auto deviceInput =
+                std::dynamic_pointer_cast<DeviceInputSourceNode>(source);
+            if (!deviceInput)
+                return false;
+            return performDeviceInputMutation(
+                trackIndex,
+                sourceNodeId,
+                deviceInput->getInputChannels(),
+                channelIndices,
+                origin,
+                "Change device input routing");
+        }
+
+        bool removeDeviceInputFromTrack(
+            int32_t trackIndex,
+            int32_t sourceNodeId,
+            ProjectMutationOrigin origin) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            auto source = targetTrack
+                ? targetTrack->getSourceNode(sourceNodeId)
+                : nullptr;
+            auto deviceInput =
+                std::dynamic_pointer_cast<DeviceInputSourceNode>(source);
+            if (!deviceInput)
+                return false;
+            return performDeviceInputMutation(
+                trackIndex,
+                sourceNodeId,
+                deviceInput->getInputChannels(),
+                std::nullopt,
+                origin,
+                "Remove device input");
+        }
+
+        struct PluginTarget {
+            std::string trackReferenceId;
+            std::string nodeId;
+        };
+
+        std::optional<PluginTarget> pluginTargetForInstance(
+            int32_t instanceId) {
+            const auto trackIndex = engine_.findTrackIndexForInstance(instanceId);
+            auto* timelineTrack = resolveTrack(trackIndex);
+            auto* sequencerTrack = resolveSequencerTrack(trackIndex);
+            auto* node = sequencerTrack
+                ? sequencerTrack->graph().getPluginNode(instanceId)
+                : nullptr;
+            if (!timelineTrack || !node || node->nodeId().empty())
+                return std::nullopt;
+            return PluginTarget{
+                .trackReferenceId = timelineTrack->referenceId(),
+                .nodeId = node->nodeId()
+            };
+        }
+
+        int32_t resolvePluginInstanceId(
+            std::string_view trackReferenceId,
+            std::string_view nodeId) {
+            auto* track = resolveSequencerTrackByReferenceId(trackReferenceId);
+            if (!track)
+                return -1;
+            for (const auto instanceId : track->orderedInstanceIds()) {
+                auto node = track->graph().getPluginNode(instanceId);
+                if (node && node->nodeId() == nodeId)
+                    return instanceId;
+            }
+            return -1;
+        }
+
+        template<typename Value, typename Read, typename Mutation>
+        bool setUndoablePluginProperty(
+            int32_t instanceId,
+            std::string propertyKey,
+            Value after,
+            ProjectMutationOrigin origin,
+            std::string description,
+            Read&& read,
+            Mutation&& mutate) {
+            auto target = pluginTargetForInstance(instanceId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!target || !instance)
+                return false;
+            Value before = read(*instance);
+            if (before == after)
+                return true;
+
+            auto changeType = propertyKey;
+            auto apply = [this,
+                          changeType = std::move(changeType),
+                          mutate = std::forward<Mutation>(mutate)](
+                             std::string_view persistentTrackId,
+                             std::string_view persistentNodeId,
+                             const Value& value) mutable {
+                const auto currentInstanceId = resolvePluginInstanceId(
+                    persistentTrackId,
+                    persistentNodeId);
+                auto* currentInstance =
+                    engine_.getPluginInstance(currentInstanceId);
+                if (!currentInstance
+                    || !mutate(currentInstanceId, *currentInstance, value))
+                    return false;
+                emitTrackChanged(persistentTrackId, changeType);
+                notifyTimelineChanged();
+                return true;
+            };
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return apply(target->trackReferenceId, target->nodeId, after);
+
+            auto operation = std::make_shared<PluginPropertyUndoOperation<Value>>(
+                std::move(description),
+                std::move(propertyKey),
+                std::move(target->trackReferenceId),
+                std::move(target->nodeId),
+                std::move(before),
+                std::move(after),
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
+        bool setPluginBypassed(
+            int32_t instanceId,
+            bool bypassed,
+            ProjectMutationOrigin origin) override {
+            return setUndoablePluginProperty(
+                instanceId,
+                "plugin-bypass-changed",
+                bypassed,
+                origin,
+                bypassed ? "Bypass plug-in" : "Enable plug-in",
+                [](const AudioPluginInstanceAPI& instance) {
+                    return instance.bypassed();
+                },
+                [](int32_t, AudioPluginInstanceAPI& instance, bool value) {
+                    instance.bypassed(value);
+                    return true;
+                });
+        }
+
+        bool setPluginParameterValue(
+            int32_t instanceId,
+            int32_t parameterIndex,
+            double value,
+            ProjectMutationOrigin origin) override {
+            return setUndoablePluginProperty(
+                instanceId,
+                std::format("plugin-parameter-{}-changed", parameterIndex),
+                value,
+                origin,
+                "Change plug-in parameter",
+                [parameterIndex](AudioPluginInstanceAPI& instance) {
+                    return instance.getParameterValue(parameterIndex);
+                },
+                [this, parameterIndex](
+                    int32_t currentInstanceId,
+                    AudioPluginInstanceAPI&,
+                    double currentValue) {
+                    if (engine_.frozenTrackManager().isInstanceBusy(
+                            currentInstanceId))
+                        return false;
+                    engine_.setParameterValue(
+                        currentInstanceId,
+                        parameterIndex,
+                        currentValue);
+                    return true;
+                });
+        }
+
+        bool setPluginGroup(
+            int32_t instanceId,
+            uint8_t group,
+            ProjectMutationOrigin origin) override {
+            const auto currentGroup = engine_.getInstanceGroup(instanceId);
+            if (currentGroup == 0xFF)
+                return false;
+            return setUndoablePluginProperty(
+                instanceId,
+                "plugin-group-changed",
+                group,
+                origin,
+                "Change plug-in UMP group",
+                [currentGroup](const AudioPluginInstanceAPI&) {
+                    return currentGroup;
+                },
+                [this](int32_t currentInstanceId, AudioPluginInstanceAPI&, uint8_t value) {
+                    return engine_.setInstanceGroup(currentInstanceId, value);
+                });
+        }
+
+        void applyPluginState(
+            std::string trackReferenceId,
+            std::string nodeId,
+            std::vector<uint8_t> state,
+            ProjectUndoCompletion completion) {
+            const auto instanceId = resolvePluginInstanceId(
+                trackReferenceId,
+                nodeId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!instance) {
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "The plug-in instance no longer exists"));
+                return;
+            }
+            instance->loadState(
+                std::move(state),
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this,
+                 trackReferenceId = std::move(trackReferenceId),
+                 completion = std::move(completion)](
+                    std::string error, void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         trackReferenceId = std::move(trackReferenceId),
+                         error = std::move(error),
+                         completion = std::move(completion)]() mutable {
+                            if (!error.empty()) {
+                                if (completion)
+                                    completion(ProjectUndoResult::failure(
+                                        std::move(error)));
+                                return;
+                            }
+                            emitTrackChanged(
+                                trackReferenceId,
+                                "plugin-state-changed");
+                            notifyTimelineChanged();
+                            if (completion)
+                                completion(ProjectUndoResult::success());
+                        });
+                });
+        }
+
+        void setPluginState(
+            int32_t instanceId,
+            std::vector<uint8_t> state,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion) override {
+            auto target = pluginTargetForInstance(instanceId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!target || !instance) {
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "The plug-in instance does not exist"));
+                return;
+            }
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote) {
+                applyPluginState(
+                    std::move(target->trackReferenceId),
+                    std::move(target->nodeId),
+                    std::move(state),
+                    std::move(completion));
+                return;
+            }
+
+            auto after = std::make_shared<std::vector<uint8_t>>(
+                std::move(state));
+            auto persistentTarget =
+                std::make_shared<PluginTarget>(std::move(*target));
+            instance->requestState(
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this,
+                 origin,
+                 after,
+                 persistentTarget,
+                 completion = std::move(completion)](
+                    std::vector<uint8_t> before,
+                    std::string error,
+                    void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         origin,
+                         before = std::move(before),
+                         error = std::move(error),
+                         after,
+                         persistentTarget,
+                         completion = std::move(completion)]() mutable {
+                            if (!error.empty()) {
+                                if (completion)
+                                    completion(ProjectUndoResult::failure(
+                                        std::move(error)));
+                                return;
+                            }
+                            auto apply = [this](
+                                             std::string_view trackReferenceId,
+                                             std::string_view nodeId,
+                                             const std::vector<uint8_t>& value,
+                                             ProjectUndoCompletion applied) {
+                                applyPluginState(
+                                    std::string(trackReferenceId),
+                                    std::string(nodeId),
+                                    value,
+                                    std::move(applied));
+                            };
+                            auto operation =
+                                std::make_shared<PluginStateUndoOperation>(
+                                    persistentTarget->trackReferenceId,
+                                    persistentTarget->nodeId,
+                                    std::move(before),
+                                    std::move(*after),
+                                    std::move(apply));
+                            undo_engine_.perform(
+                                std::move(operation),
+                                origin,
+                                std::move(completion));
+                        });
+                });
+        }
+
+        static bool graphEndpointEquivalent(
+            const uapmd_graph::AudioPluginGraphEndpoint& lhs,
+            const uapmd_graph::AudioPluginGraphEndpoint& rhs) {
+            return lhs.type == rhs.type
+                && lhs.node_id == rhs.node_id
+                && lhs.bus_index == rhs.bus_index;
+        }
+
+        static bool graphConnectionEquivalent(
+            const uapmd_graph::AudioPluginGraphConnection& lhs,
+            const uapmd_graph::AudioPluginGraphConnection& rhs) {
+            return lhs.bus_type == rhs.bus_type
+                && graphEndpointEquivalent(lhs.source, rhs.source)
+                && graphEndpointEquivalent(lhs.target, rhs.target);
+        }
+
+        bool applyGraphConnectionState(
+            std::string_view trackReferenceId,
+            const uapmd_graph::AudioPluginGraphConnection& desired,
+            bool present,
+            std::string& error) {
+            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+            auto* track = resolveSequencerTrack(trackIndex);
+            auto* graph = track
+                ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+                : nullptr;
+            if (!graph) {
+                error = "Track graph is not a full DAG graph";
+                return false;
+            }
+
+            const auto connections = graph->connections();
+            auto existing = std::find_if(
+                connections.begin(),
+                connections.end(),
+                [&desired](const auto& connection) {
+                    return graphConnectionEquivalent(connection, desired);
+                });
+            if (!present) {
+                if (existing == connections.end()) {
+                    error = "Graph connection not found";
+                    return false;
+                }
+                if (!graph->disconnect(existing->id)) {
+                    error = "Failed to disconnect graph endpoints";
+                    return false;
+                }
+            } else {
+                if (existing != connections.end())
+                    return true;
+                auto connection = desired;
+                connection.id = 0;
+                auto resolveEndpoint = [this, trackReferenceId](
+                                           auto& endpoint) {
+                    if (endpoint.type
+                        != uapmd_graph::AudioPluginGraphEndpointType::Plugin)
+                        return true;
+                    endpoint.instance_id = resolvePluginInstanceId(
+                        trackReferenceId,
+                        endpoint.node_id);
+                    return endpoint.instance_id >= 0;
+                };
+                if (!resolveEndpoint(connection.source)
+                    || !resolveEndpoint(connection.target)) {
+                    error = "A plug-in graph endpoint no longer exists";
+                    return false;
+                }
+                const auto result = graph->connect(connection);
+                if (result != 0) {
+                    if (result == -1)
+                        error = "Invalid graph endpoint direction";
+                    else if (result == -2)
+                        error = "Graph endpoint does not exist";
+                    else if (result == -3)
+                        error = "Graph connection would create a cycle";
+                    else
+                        error = "Failed to connect graph endpoints";
+                    return false;
+                }
+            }
+            onTrackGraphChanged(trackIndex);
+            notifyTimelineChanged();
+            return true;
+        }
+
+        bool performGraphConnectionMutation(
+            int32_t trackIndex,
+            uapmd_graph::AudioPluginGraphConnection connection,
+            bool present,
+            std::string& error,
+            ProjectMutationOrigin origin) {
+            auto* timelineTrack = resolveTrack(trackIndex);
+            if (!timelineTrack) {
+                error = "Track not found";
+                return false;
+            }
+            auto trackReferenceId = timelineTrack->referenceId();
+            auto apply = [this](
+                             std::string_view persistentTrackId,
+                             const uapmd_graph::AudioPluginGraphConnection& value,
+                             bool desiredPresence,
+                             std::string& applyError) {
+                return applyGraphConnectionState(
+                    persistentTrackId,
+                    value,
+                    desiredPresence,
+                    applyError);
+            };
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote)
+                return apply(trackReferenceId, connection, present, error);
+
+            auto operation = std::make_shared<GraphConnectionUndoOperation>(
+                present,
+                std::move(trackReferenceId),
+                std::move(connection),
+                std::move(apply));
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            if (!result->has_value()) {
+                error = "The undo engine did not complete the graph mutation inline";
+                return false;
+            }
+            if (!result->value().succeeded()) {
+                error = result->value().error;
+                return false;
+            }
+            return true;
+        }
+
+        bool connectTrackGraph(
+            int32_t trackIndex,
+            const uapmd_graph::AudioPluginGraphConnection& connection,
+            std::string& error,
+            ProjectMutationOrigin origin) override {
+            return performGraphConnectionMutation(
+                trackIndex,
+                connection,
+                true,
+                error,
+                origin);
+        }
+
+        bool disconnectTrackGraphConnection(
+            int32_t trackIndex,
+            int64_t connectionId,
+            std::string& error,
+            ProjectMutationOrigin origin) override {
+            auto* track = resolveSequencerTrack(trackIndex);
+            auto* graph = track
+                ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+                : nullptr;
+            if (!graph) {
+                error = "Track graph is not a full DAG graph";
+                return false;
+            }
+            const auto connections = graph->connections();
+            auto connection = std::find_if(
+                connections.begin(),
+                connections.end(),
+                [connectionId](const auto& candidate) {
+                    return candidate.id == connectionId;
+                });
+            if (connection == connections.end()) {
+                error = "Connection not found";
+                return false;
+            }
+            return performGraphConnectionMutation(
+                trackIndex,
+                *connection,
+                false,
+                error,
+                origin);
+        }
+
         bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") override {
             auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
@@ -2706,6 +4449,51 @@ namespace uapmd {
                 [](const ClipData& clip) { return clip.enabled; },
                 [](ClipManager& clips, int32_t currentClipId, bool value) {
                     return clips.setClipEnabled(currentClipId, value);
+                });
+        }
+
+        bool setClipAnchor(
+            int32_t trackIndex,
+            int32_t clipId,
+            const TimeReference& anchor,
+            ProjectMutationOrigin origin) override {
+            return setUndoableClipProperty(
+                trackIndex, clipId, anchor, origin,
+                "Move clip", "clip-position-changed",
+                [this](const ClipData& clip) { return clip.timeReference(sampleRate_); },
+                [this](ClipManager& clips, int32_t currentClipId, const TimeReference& value) {
+                    if (!clips.setClipAnchor(currentClipId, value, sampleRate_))
+                        return false;
+                    resolveAllClipAnchors();
+                    return true;
+                });
+        }
+
+        bool setClipGain(
+            int32_t trackIndex,
+            int32_t clipId,
+            double gain,
+            ProjectMutationOrigin origin) override {
+            return setUndoableClipProperty(
+                trackIndex, clipId, gain, origin,
+                "Change clip gain", "clip-gain-changed",
+                [](const ClipData& clip) { return clip.gain; },
+                [](ClipManager& clips, int32_t currentClipId, double value) {
+                    return clips.setClipGain(currentClipId, value);
+                });
+        }
+
+        bool setClipMuted(
+            int32_t trackIndex,
+            int32_t clipId,
+            bool muted,
+            ProjectMutationOrigin origin) override {
+            return setUndoableClipProperty(
+                trackIndex, clipId, muted, origin,
+                muted ? "Mute clip" : "Unmute clip", "clip-mute-changed",
+                [](const ClipData& clip) { return clip.muted; },
+                [](ClipManager& clips, int32_t currentClipId, bool value) {
+                    return clips.setClipMuted(currentClipId, value);
                 });
         }
 
@@ -2824,13 +4612,23 @@ namespace uapmd {
             const std::string& filepath,
             std::vector<ClipMarker> markers,
             std::vector<AudioWarpPoint> audioWarps,
-            const std::vector<ClipMarker>& masterTrackMarkers) override {
+            const std::vector<ClipMarker>& masterTrackMarkers,
+            ProjectMutationOrigin origin) override {
             auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
                 return false;
             auto* clip = targetTrack->clipManager().getClip(clipId);
             if (!clip || clip->clipType != ClipType::Audio)
                 return false;
+
+            std::optional<ProjectClipFragment> before;
+            const bool recordsHistory = origin == ProjectMutationOrigin::User
+                || origin == ProjectMutationOrigin::Remote;
+            if (recordsHistory) {
+                before = captureClipFragment(trackIndex, clipId);
+                if (!before)
+                    return false;
+            }
 
             const auto sourcePath = filepath.empty() ? clip->filepath : filepath;
             auto reader = createAudioFileReaderFromPath(sourcePath);
@@ -2853,26 +4651,30 @@ namespace uapmd {
                 std::move(resolvedWarps));
             const int64_t sourceDuration = replacement->totalLength();
 
-            ProjectDocumentTransaction transaction(project_document_events_);
-            if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
-                return false;
-            auto& clips = targetTrack->clipManager();
-            clips.setClipMarkers(clipId, std::move(markers));
-            clips.setAudioWarps(clipId, std::move(audioWarps));
-            if (!filepath.empty()) {
-                clips.setClipFilepath(clipId, filepath);
-                clips.resizeClip(clipId, sourceDuration);
+            {
+                ProjectDocumentTransaction transaction(project_document_events_);
+                if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
+                    return false;
+                auto& clips = targetTrack->clipManager();
+                clips.setClipMarkers(clipId, std::move(markers));
+                clips.setAudioWarps(clipId, std::move(audioWarps));
+                if (!filepath.empty()) {
+                    clips.setClipFilepath(clipId, filepath);
+                    clips.resizeClip(clipId, sourceDuration);
+                }
+                notifyClipChanged(trackIndex, clipId, "clip-content-changed");
+                notifyTimelineChanged();
             }
-            notifyClipChanged(trackIndex, clipId, "clip-content-changed");
-            notifyTimelineChanged();
-            return true;
+            return !recordsHistory || recordReplacedClip(
+                trackIndex, std::move(*before), origin, "Edit audio clip content");
         }
 
         bool replaceMidiClipContent(
             int32_t trackIndex,
             int32_t clipId,
             std::vector<uapmd_ump_t> umpEvents,
-            std::vector<uint64_t> umpTickTimestamps) override {
+            std::vector<uint64_t> umpTickTimestamps,
+            ProjectMutationOrigin origin) override {
             auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
                 return false;
@@ -2883,6 +4685,15 @@ namespace uapmd {
                 targetTrack->getSourceNode(clip->sourceNodeInstanceId));
             if (!existing)
                 return false;
+
+            std::optional<ProjectClipFragment> before;
+            const bool recordsHistory = origin == ProjectMutationOrigin::User
+                || origin == ProjectMutationOrigin::Remote;
+            if (recordsHistory) {
+                before = captureClipFragment(trackIndex, clipId);
+                if (!before)
+                    return false;
+            }
 
             auto replacement = std::make_unique<MidiClipSourceNode>(
                 existing->instanceId(),
@@ -2896,13 +4707,16 @@ namespace uapmd {
             const int64_t newDuration = replacement->totalLength();
 
             // The node swap and the duration change are one edit.
-            ProjectDocumentTransaction transaction(project_document_events_);
-            if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
-                return false;
-            targetTrack->clipManager().resizeClip(clipId, newDuration);
-            notifyClipChanged(trackIndex, clipId, "clip-content-changed");
-            notifyTimelineChanged();
-            return true;
+            {
+                ProjectDocumentTransaction transaction(project_document_events_);
+                if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
+                    return false;
+                targetTrack->clipManager().resizeClip(clipId, newDuration);
+                notifyClipChanged(trackIndex, clipId, "clip-content-changed");
+                notifyTimelineChanged();
+            }
+            return !recordsHistory || recordReplacedClip(
+                trackIndex, std::move(*before), origin, "Edit MIDI clip content");
         }
 
         std::optional<ProjectClipFragment> captureClipFragment(
@@ -2996,7 +4810,8 @@ namespace uapmd {
                     fragment.timeSignatureChanges,
                     source.name,
                     source.nrpnToParameterMapping,
-                    source.needsFileSave);
+                    source.needsFileSave,
+                    idPolicy == ProjectObjectIdPolicy::Restore ? source.clipId : -1);
             } else {
                 std::unique_ptr<AudioFileReader> reader;
                 if (source.filepath.empty()) {
@@ -3018,7 +4833,8 @@ namespace uapmd {
                     std::move(reader),
                     source.filepath,
                     source.markers,
-                    source.audioWarps);
+                    source.audioWarps,
+                    idPolicy == ProjectObjectIdPolicy::Restore ? source.clipId : -1);
             }
 
             // Staging is consumed by a successful add; clear it so a failed one
@@ -3126,14 +4942,12 @@ namespace uapmd {
                 allWords.insert(allWords.end(), event.words.begin(), event.words.end());
                 allTicks.insert(allTicks.end(), event.words.size(), event.tick);
             }
-            auto replacement = std::make_unique<MidiClipSourceNode>(midi->instanceId(),
-                std::move(allWords), std::move(allTicks), midi->tickResolution(), midi->clipTempo(),
-                static_cast<double>(sampleRate_), midi->tempoChanges(), midi->timeSignatureChanges());
-            if (!track->replaceClipSourceNode(clipId, std::move(replacement)))
-                return false;
-            notifyClipChanged(trackIndex, clipId, "midi-recorded");
-            notifyTimelineChanged();
-            return true;
+            return replaceMidiClipContent(
+                trackIndex,
+                clipId,
+                std::move(allWords),
+                std::move(allTicks),
+                ProjectMutationOrigin::User);
         }
 
         void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {

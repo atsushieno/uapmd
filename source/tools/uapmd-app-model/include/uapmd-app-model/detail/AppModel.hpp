@@ -360,10 +360,21 @@ namespace uapmd_app {
         using PluginStateCallback = std::function<void(PluginStateResult)>;
 
         // Load plugin state from a file.
-        void loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
-        void loadPluginState(int32_t instanceId, uapmd::DocumentHandle handle, PluginStateCallback callback);
+        void loadPluginState(
+            int32_t instanceId,
+            const std::string& filepath,
+            PluginStateCallback callback,
+            uapmd::ProjectMutationOrigin origin = uapmd::ProjectMutationOrigin::User);
+        void loadPluginState(
+            int32_t instanceId,
+            uapmd::DocumentHandle handle,
+            PluginStateCallback callback,
+            uapmd::ProjectMutationOrigin origin = uapmd::ProjectMutationOrigin::User);
         // OBSOLETE: use `loadPluginState()` with callback instead.
-        PluginStateResult loadPluginStateSync(int32_t instanceId, const std::string& filepath);
+        PluginStateResult loadPluginStateSync(
+            int32_t instanceId,
+            const std::string& filepath,
+            uapmd::ProjectMutationOrigin origin = uapmd::ProjectMutationOrigin::User);
 
         // Save plugin state to a file.
         void savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
@@ -440,7 +451,10 @@ namespace uapmd_app {
                                 std::vector<uapmd::ClipMarker> markers,
                                 std::vector<uapmd::AudioWarpPoint> audioWarps,
                                 std::string& error);
-        bool setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error);
+        bool setMasterTrackMarkersWithValidation(
+            std::vector<uapmd::ClipMarker> markers,
+            std::string& error,
+            uapmd::ProjectMutationOrigin origin = uapmd::ProjectMutationOrigin::User);
         ClipAddResult createEmptyMidiClip(int32_t trackIndex,
                                           int64_t positionSamples = 0,
                                           uint32_t tickResolution = 480,

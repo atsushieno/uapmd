@@ -386,9 +386,106 @@ supports Ctrl/Cmd-Z, Ctrl/Cmd-Shift-Z and Ctrl-Y. Failures reach the platform
 error UI. Script and MCP history commands, explicit remote compound scopes and
 a richer long-running progress surface remain open.
 
-## Remaining work
+## Phase 1 remaining work
 
-Both items are ARA-only and deferred by choice, not blocked.
+The history core is usable, but Phase 1 is not close to complete at the
+application level. A document mutation is not considered adopted merely
+because its enclosing clip or track can be deleted and restored: changing that
+property directly must itself create a correctly described history step, and
+every GUI, JavaScript and MCP entry point must use the same mutation primitive.
+
+The following known document mutations still bypass history.
+
+### Step 1 completed: clip timing and authored content
+
+The first implementation step is complete. Timeline dragging and explicit
+time-reference changes now use stable-ID anchor operations, with derived anchor
+resolution kept outside history. Audio and MIDI authored-content replacement
+retain complete before/after clip fragments, including source-node content,
+duration and extension state. Piano-roll/raw UMP edits and MIDI recording use
+that content operation. Master markers, clip gain and clip mute also have
+undoable mutation entry points. Multi-track MIDI import records the master-clip
+anchor separately inside its compound step, so redo reproduces it.
+
+### Track properties and routing
+
+- Track and master-track volume.
+- Track mute, solo and the implicit clearing of solo on other tracks.
+- Track processing bypass.
+- Track freeze policy.
+- Per-track record-arm and input-monitoring state.
+- Device-input source creation and its channel routing.
+- Project latency-compensation settings, including playback-compensation mode
+  and input-monitoring policy.
+
+Volume controls need gesture scopes so a drag produces one step. A solo action
+that changes several tracks is one compound step. Freeze state requires a
+specific policy: the saved policy is document state, while a rendered cache,
+queued render and render progress are derived runtime state and must not enter
+history.
+
+### Plug-ins and graphs
+
+- Plug-in creation and deletion, including implicit track creation.
+- Plug-in bypass.
+- Plug-in parameters changed by the host UI, hosted plug-in UI, JavaScript or
+  MCP, including per-note parameter editing.
+- Loading plug-in state and unsolicited persistent state changes reported by a
+  plug-in.
+- UMP group assignment and persisted device/instance labels or configuration.
+- Switching a track between the simple and full-DAG graph types.
+- Adding and removing graph connections and other graph-topology replacement.
+
+This is the outstanding substance of task 8. Plug-in insertion on a new track
+must record the track, instance, state, group and graph placement as one
+operation. Parameter changes require begin/end gesture integration; playback
+automation remains excluded, while editing automation data is undoable authored
+content. Loading a whole state requires capturing the previous opaque state
+before applying the replacement. Graph operations must invalidate frozen-track
+caches without allowing the freeze renderer's own temporary graph changes to
+revoke themselves.
+
+### Application, JavaScript and MCP adoption
+
+- JavaScript/WebAssembly track add, remove, clear and synchronous multi-track
+  MIDI import still use the `Legacy` APIs.
+- MCP track creation still uses `addTrackLegacy()`.
+- JavaScript and MCP content, plug-in, graph, routing and parameter mutations
+  listed above bypass history through raw engine or app-model entry points.
+- JavaScript and MCP cannot invoke undo or redo and cannot open, finish or
+  cancel an explicit named compound scope.
+- Long-running native operations expose only minimal busy feedback in the
+  Command popup; persistent progress/cancellation presentation is still absent.
+
+These surfaces need callback jobs, promises or request identifiers. They must
+not simulate synchronous completion by blocking the model thread. A remote
+mutation is one history step unless its client explicitly owns a named compound
+scope, and abandoned scopes need deterministic cancellation.
+
+### Known gaps in operations already presented as undoable
+
+- Track attachment publishes a provisional live track before asynchronous
+  plug-in construction and state restoration finish. Detached preparation is
+  still required to prevent observers from seeing a half-built track.
+- Real asynchronous plug-in track restoration has no integration coverage.
+- File-backed audio redo intentionally fails when the source file is missing,
+  but resource recovery or relinking UX is absent.
+- App dirty state still combines history-node state with older local dirty
+  flags. Undoing back to the saved history node therefore does not yet
+  guarantee that the application reports a clean document.
+- Replay currently republishes the complete track layout rather than emitting
+  a precise app-model delta. This is functional but should be narrowed once
+  every mutation is behind the funnel.
+
+Phase 1 completion therefore requires an audit showing that every persisted
+GUI, JavaScript and MCP edit either enters history or is explicitly classified
+as internal/derived state. Project load, resynchronization, cache maintenance,
+transport, scanning, rendering/export and UI-window state remain intentionally
+outside undo.
+
+## ARA remaining work
+
+The first two items are ARA-only and deferred by choice, not blocked.
 
 1. **A consumer for ARA content reading.** `AraSupport::readContent` is in
    place and nothing calls it. Notes are the candidate worth doing first:

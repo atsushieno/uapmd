@@ -1,5 +1,6 @@
 #include "MixerMonitorWindow.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <utility>
@@ -99,12 +100,18 @@ void MixerMonitorWindow::render(float uiScale) {
     ImGui::SameLine();
     ImGui::Text("Output Alignment: %s", outputAlignmentActive ? "active" : "inactive");
     if (ImGui::Combo("Playback Compensation", &playbackCompMode, playbackCompItems, IM_ARRAYSIZE(playbackCompItems))) {
-        latencyManager->playbackCompensationMode(static_cast<uapmd::PlaybackCompensationMode>(playbackCompMode));
-        appModel.markProjectDirty();
+        auto settings = latencyManager->projectSettings();
+        settings.playback_compensation_mode =
+            static_cast<uapmd::PlaybackCompensationMode>(playbackCompMode);
+        if (engine->timeline().setLatencyCompensationSettings(settings))
+            appModel.markProjectDirty();
     }
     if (ImGui::Combo("Input Monitoring", &inputMonitoringPolicy, inputMonitoringItems, IM_ARRAYSIZE(inputMonitoringItems))) {
-        latencyManager->inputMonitoringPolicy(static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy));
-        appModel.markProjectDirty();
+        auto settings = latencyManager->projectSettings();
+        settings.input_monitoring_policy =
+            static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy);
+        if (engine->timeline().setLatencyCompensationSettings(settings))
+            appModel.markProjectDirty();
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", inputMonitoringPolicyHint(static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy)));
@@ -161,8 +168,13 @@ void MixerMonitorWindow::render(float uiScale) {
                 bool recordArmed = latencyManager->trackRecordArmed(static_cast<uapmd_track_index_t>(trackIndex));
                 const std::string checkboxId = std::format("##record-track-{}", trackIndex);
                 if (ImGui::Checkbox(checkboxId.c_str(), &recordArmed)) {
-                    latencyManager->trackRecordArmed(static_cast<uapmd_track_index_t>(trackIndex), recordArmed);
-                    appModel.markProjectDirty();
+                    auto settings = latencyManager->projectSettings();
+                    auto& tracks = settings.record_armed_track_indexes;
+                    std::erase(tracks, trackIndex);
+                    if (recordArmed)
+                        tracks.push_back(trackIndex);
+                    if (engine->timeline().setLatencyCompensationSettings(settings))
+                        appModel.markProjectDirty();
                 }
             } else {
                 ImGui::TextUnformatted("-");
@@ -173,8 +185,13 @@ void MixerMonitorWindow::render(float uiScale) {
                 bool monitorEnabled = latencyManager->trackMonitoringEnabled(static_cast<uapmd_track_index_t>(trackIndex));
                 const std::string checkboxId = std::format("##monitor-track-{}", trackIndex);
                 if (ImGui::Checkbox(checkboxId.c_str(), &monitorEnabled)) {
-                    latencyManager->trackMonitoringEnabled(static_cast<uapmd_track_index_t>(trackIndex), monitorEnabled);
-                    appModel.markProjectDirty();
+                    auto settings = latencyManager->projectSettings();
+                    auto& tracks = settings.monitored_track_indexes;
+                    std::erase(tracks, trackIndex);
+                    if (monitorEnabled)
+                        tracks.push_back(trackIndex);
+                    if (engine->timeline().setLatencyCompensationSettings(settings))
+                        appModel.markProjectDirty();
                 }
             } else {
                 ImGui::TextUnformatted("-");

@@ -727,8 +727,9 @@ static choc::value::Value toolSetTrackFreezePolicy(
     if (!engine || trackIndex < 0 ||
         static_cast<size_t>(trackIndex) >= engine->tracks().size())
         throw std::invalid_argument("trackIndex is invalid");
-    if (engine->frozenTrackManager().setFreezePolicyForTrack(
-            trackIndex, policy))
+    if (engine->timeline().setTrackFreezePolicyEnabled(
+            trackIndex,
+            policy == uapmd::FrozenTrackManager::FreezePolicy::On))
         AppModel::instance().markProjectDirty();
     return serializeTrackFreezeState(trackIndex);
 }
@@ -951,20 +952,21 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
     if (!manager)
         throw std::runtime_error("latency compensation manager is unavailable");
 
-    bool markProjectDirty = false;
+    auto settings = manager->projectSettings();
+    bool hasMutation = false;
     if (args.hasObjectMember("playbackCompensationMode")) {
         uapmd::PlaybackCompensationMode mode;
         if (!parsePlaybackCompensationMode(args["playbackCompensationMode"].get<std::string>(), mode))
             throw std::invalid_argument("playbackCompensationMode is invalid");
-        manager->playbackCompensationMode(mode);
-        markProjectDirty = true;
+        settings.playback_compensation_mode = mode;
+        hasMutation = true;
     }
     if (args.hasObjectMember("inputMonitoringPolicy")) {
         uapmd::InputMonitoringPolicy policy;
         if (!parseInputMonitoringPolicy(args["inputMonitoringPolicy"].get<std::string>(), policy))
             throw std::invalid_argument("inputMonitoringPolicy is invalid");
-        manager->inputMonitoringPolicy(policy);
-        markProjectDirty = true;
+        settings.input_monitoring_policy = policy;
+        hasMutation = true;
     }
     if (args.hasObjectMember("tracks")) {
         auto tracks = args["tracks"];
@@ -974,15 +976,27 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
             if (!trackValue.isObject() || !trackValue.hasObjectMember("trackIndex"))
                 throw std::invalid_argument("track entry must contain trackIndex");
             const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
-            if (trackValue.hasObjectMember("recordArmed"))
-                manager->trackRecordArmed(trackIndex, trackValue["recordArmed"].get<bool>());
-            if (trackValue.hasObjectMember("monitoringEnabled"))
-                manager->trackMonitoringEnabled(trackIndex, trackValue["monitoringEnabled"].get<bool>());
+            if (trackIndex < 0
+                || trackIndex >= static_cast<int32_t>(engine->tracks().size()))
+                throw std::invalid_argument("trackIndex is invalid");
+            if (trackValue.hasObjectMember("recordArmed")) {
+                std::erase(settings.record_armed_track_indexes, trackIndex);
+                if (trackValue["recordArmed"].get<bool>())
+                    settings.record_armed_track_indexes.push_back(trackIndex);
+            }
+            if (trackValue.hasObjectMember("monitoringEnabled")) {
+                std::erase(settings.monitored_track_indexes, trackIndex);
+                if (trackValue["monitoringEnabled"].get<bool>())
+                    settings.monitored_track_indexes.push_back(trackIndex);
+            }
         }
-        markProjectDirty = true;
+        hasMutation = true;
     }
 
-    if (markProjectDirty)
+    if (hasMutation
+        && !engine->timeline().setLatencyCompensationSettings(settings))
+        throw std::runtime_error("failed to update latency compensation settings");
+    if (hasMutation)
         appModel.markProjectDirty();
     auto result = choc::value::createObject("");
     result.setMember("success", true);

@@ -41,6 +41,8 @@ ParameterList::ParameterList(const ParameterList& other) :
         parameterValues_(other.parameterValues_),
         parameterValueStrings_(other.parameterValueStrings_),
         onParameterChanged_(other.onParameterChanged_),
+        onParameterGestureBegin_(other.onParameterGestureBegin_),
+        onParameterGestureEnd_(other.onParameterGestureEnd_),
         onGetParameterValueString_(other.onGetParameterValueString_),
         onContextChanged_(other.onContextChanged_),
         context_(other.context_),
@@ -60,6 +62,8 @@ ParameterList& ParameterList::operator=(const ParameterList& other) {
     parameterValueStrings_ = other.parameterValueStrings_;
     std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
     onParameterChanged_ = other.onParameterChanged_;
+    onParameterGestureBegin_ = other.onParameterGestureBegin_;
+    onParameterGestureEnd_ = other.onParameterGestureEnd_;
     onGetParameterValueString_ = other.onGetParameterValueString_;
     onContextChanged_ = other.onContextChanged_;
     context_ = other.context_;
@@ -76,6 +80,8 @@ ParameterList::ParameterList(ParameterList&& other) noexcept :
         parameterValues_(std::move(other.parameterValues_)),
         parameterValueStrings_(std::move(other.parameterValueStrings_)),
         onParameterChanged_(std::move(other.onParameterChanged_)),
+        onParameterGestureBegin_(std::move(other.onParameterGestureBegin_)),
+        onParameterGestureEnd_(std::move(other.onParameterGestureEnd_)),
         onGetParameterValueString_(std::move(other.onGetParameterValueString_)),
         onContextChanged_(std::move(other.onContextChanged_)),
         context_(other.context_),
@@ -95,6 +101,8 @@ ParameterList& ParameterList::operator=(ParameterList&& other) noexcept {
     parameterValueStrings_ = std::move(other.parameterValueStrings_);
     std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
     onParameterChanged_ = std::move(other.onParameterChanged_);
+    onParameterGestureBegin_ = std::move(other.onParameterGestureBegin_);
+    onParameterGestureEnd_ = std::move(other.onParameterGestureEnd_);
     onGetParameterValueString_ = std::move(other.onGetParameterValueString_);
     onContextChanged_ = std::move(other.onContextChanged_);
     context_ = other.context_;
@@ -260,6 +268,10 @@ void ParameterList::render() {
                                    static_cast<float>(param.maxPlainValue), format)) {
                 parameterChanged = true;
             }
+            const bool parameterGestureBegan = ImGui::IsItemActivated();
+            const bool parameterGestureEnded = ImGui::IsItemDeactivated();
+            if (parameterGestureBegan && onParameterGestureBegin_)
+                onParameterGestureBegin_(param.index);
 
             ImVec2 sliderMin = ImGui::GetItemRectMin();
             ImVec2 sliderMax = ImGui::GetItemRectMax();
@@ -319,6 +331,8 @@ void ParameterList::render() {
                 }
                 std::cout << "Parameter " << param.name << " changed to " << parameterValues_[paramIndex] << std::endl;
             }
+            if (parameterGestureEnded && onParameterGestureEnd_)
+                onParameterGestureEnd_(param.index);
 
             ImGui::TableNextColumn();
             std::string resetId = "Reset##" + std::to_string(param.index);
@@ -339,6 +353,14 @@ void ParameterList::render() {
 
 void ParameterList::setOnParameterChanged(ParameterChangeCallback callback) {
     onParameterChanged_ = callback;
+}
+
+void ParameterList::setOnParameterGestureBegin(ParameterGestureCallback callback) {
+    onParameterGestureBegin_ = std::move(callback);
+}
+
+void ParameterList::setOnParameterGestureEnd(ParameterGestureCallback callback) {
+    onParameterGestureEnd_ = std::move(callback);
 }
 
 void ParameterList::setOnGetParameterValueString(GetParameterValueStringCallback callback) {

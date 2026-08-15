@@ -11,6 +11,7 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
 #include "ProjectUndo.hpp"
+#include "LatencyCompensationTypes.hpp"
 
 namespace uapmd {
 
@@ -105,6 +106,12 @@ public:
     // underlying change was rejected.
     virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled,
                                 ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipAnchor(int32_t trackIndex, int32_t clipId, const TimeReference& anchor,
+                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipGain(int32_t trackIndex, int32_t clipId, double gain,
+                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipMuted(int32_t trackIndex, int32_t clipId, bool muted,
+                              ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples,
                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name,
@@ -135,7 +142,8 @@ public:
         const std::string& filepath,
         std::vector<ClipMarker> markers,
         std::vector<AudioWarpPoint> audioWarps,
-        const std::vector<ClipMarker>& masterTrackMarkers) = 0;
+        const std::vector<ClipMarker>& masterTrackMarkers,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     // Replaces a MIDI clip's authored content, resizing the clip to match the
     // new content's length. Emits one document event for the whole change.
@@ -143,7 +151,8 @@ public:
         int32_t trackIndex,
         int32_t clipId,
         std::vector<uapmd_ump_t> umpEvents,
-        std::vector<uint64_t> umpTickTimestamps) = 0;
+        std::vector<uint64_t> umpTickTimestamps,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     // Detached clip representation, shared by undo and the clipboard.
     //
@@ -199,6 +208,83 @@ public:
         int32_t trackIndex,
         ProjectMutationOrigin origin,
         TrackAttachCallback callback) = 0;
+
+    // Persistent mixer properties. These address tracks by their stable
+    // document identity during replay, so inserting or removing another track
+    // does not redirect an undo operation to the wrong track.
+    virtual bool setTrackGain(
+        int32_t trackIndex,
+        double gain,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setTrackMuted(
+        int32_t trackIndex,
+        bool muted,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setTrackSolo(
+        int32_t trackIndex,
+        bool solo,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setTrackBypassed(
+        int32_t trackIndex,
+        bool bypassed,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setTrackFreezePolicyEnabled(
+        int32_t trackIndex,
+        bool enabled,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    // Applies the complete persisted latency/monitoring configuration as one
+    // history item. Callers that edit only one field should copy
+    // latencyCompensationManager()->projectSettings(), alter that field, and
+    // submit the resulting snapshot here.
+    virtual bool setLatencyCompensationSettings(
+        const LatencyCompensationProjectSettings& settings,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    virtual bool addDeviceInputToTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setDeviceInputChannels(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool removeDeviceInputFromTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    virtual bool setPluginBypassed(
+        int32_t instanceId,
+        bool bypassed,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setPluginParameterValue(
+        int32_t instanceId,
+        int32_t parameterIndex,
+        double value,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setPluginGroup(
+        int32_t instanceId,
+        uint8_t group,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual void setPluginState(
+        int32_t instanceId,
+        std::vector<uint8_t> state,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) = 0;
+    virtual bool connectTrackGraph(
+        int32_t trackIndex,
+        const uapmd_graph::AudioPluginGraphConnection& connection,
+        std::string& error,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool disconnectTrackGraphConnection(
+        int32_t trackIndex,
+        int64_t connectionId,
+        std::string& error,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
 
@@ -243,7 +329,8 @@ public:
     virtual bool replaceTrackGraphType(
         int32_t trackIndex,
         const std::string& graphTypeId,
-        size_t eventBufferSizeInBytes) = 0;
+        size_t eventBufferSizeInBytes,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool materializeProjectGraph(
         UapmdProjectTrackData* projectTrack,
         SequencerTrack* sequencerTrack,

@@ -69,6 +69,11 @@ public:
                   const std::string& clipName,
                   std::shared_ptr<ClipPreview> preview);
 
+    // Refreshes an already-open clip after an external history mutation while
+    // preserving its window and view state.
+    void reloadClip(int32_t trackIndex, int32_t clipId,
+                    std::shared_ptr<ClipPreview> preview);
+
     void render(const RenderContext& ctx);
 
 private:

@@ -538,7 +538,11 @@ void FrozenTrackManager::trackRemoved(const ProjectDocumentEvent& event) {
 }
 
 void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
-    (void) event;
+    // The policy transition itself creates or revokes the frozen render. It is
+    // not source material that should invalidate the render it just started.
+    if (event.type() == "track-freeze-policy-changed")
+        return;
+    invalidateTrackForDocumentEvent(event);
 }
 
 // A frozen render is a recording of what the track produced at one moment. Any
