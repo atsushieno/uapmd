@@ -330,8 +330,40 @@ restore removes the partially attached clip and reports failure, leaving the
 history cursor unchanged. Redo of file-backed audio still depends on reopening
 the source file; a missing file is therefore a visible replay failure, as
 required by the resource-failure policy. `Mint` attachment for paste and
-duplicate remains Phase 2. The next implementation slice is structural track
-operations.
+duplicate remains Phase 2.
+
+Task 7's engine layer is now implemented, but application adoption and fully
+detached preparation remain open. `TimelineFacade` exposes asynchronous track
+add and remove operations. A delete captures plugin state, clips, graph bytes
+and extension state before removal, then records a persistent-ID operation;
+undo recreates the track at its former index and redo resolves it by persistent
+identity. Empty-track creation uses the same post-construction registration as
+clip creation. Track history entries account for retained graph, plugin, clip
+and extension data in the memory budget.
+
+Track attachment now restores into a requested insertion position, rebuilds the
+captured graph type and topology, and treats plugin creation, MIDI-group,
+plugin-state, clip, graph and extension restoration failures as failures. It
+removes the partially constructed track and reports the error, so the history
+cursor does not advance. Track-fragment capture likewise fails if graph
+serialization is unavailable instead of returning incomplete state.
+
+Two parts keep task 7 from being called complete. First, plugin instances are
+currently constructed only after a live engine track exists, so observers can
+briefly see that provisional track during an asynchronous attach even though a
+failure rolls it back. Fully satisfying the prepare-before-visible-commit rule
+requires a detached track/plugin construction facility. Second,
+`uapmd-app-model` still implements deletion by emptying and hiding a stable
+track slot; it does not yet call the new asynchronous structural API. Replacing
+that tombstone policy requires replacing the synchronous return contracts of
+`AppModel::addTrack()` and `AppModel::removeTrack()` with callback-based
+completion. Layout changes, plugin registration and removal, dirty-state
+updates, and user-visible failures must occur from that asynchronous completion
+rather than being reported before the engine operation finishes. The operation
+as a whole remains asynchronous: resource preparation may take arbitrarily
+long, while only insertion of a fully prepared track into the live document and
+publication of its events should be a short synchronous commit. That
+application integration is the next slice.
 
 ## Remaining work
 

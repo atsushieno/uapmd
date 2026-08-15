@@ -319,7 +319,8 @@ namespace uapmd {
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         void setSampleRate(int32_t newSampleRate) override;
-        uapmd_track_index_t addEmptyTrack() override;
+        uapmd_track_index_t addEmptyTrack(
+            uapmd_track_index_t insertionIndex = -1) override;
         bool removeTrack(uapmd_track_index_t trackIndex) override;
         bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) override;
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback, std::string restoreNodeId = {}) override;
@@ -1823,19 +1824,31 @@ namespace uapmd {
         }
     }
 
-    uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
+    uapmd_track_index_t SequencerEngineImpl::addEmptyTrack(
+        uapmd_track_index_t insertionIndex) {
+        if (insertionIndex < 0)
+            insertionIndex = static_cast<uapmd_track_index_t>(tracks_.size());
+        if (static_cast<size_t>(insertionIndex) > tracks_.size())
+            return -1;
+
         auto tr = SequencerTrack::create(
             timeline_->audioGraphProviderRegistry(),
             ump_buffer_size_in_ints,
             "");
         StructureMutationGuard mutationGuard(*this);
-        tracks_.emplace_back(std::move(tr));
-        sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
-        track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
+        tracks_.insert(
+            tracks_.begin() + insertionIndex,
+            std::move(tr));
+        sequence.tracks.insert(
+            sequence.tracks.begin() + insertionIndex,
+            new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
+        track_processing_flags_.insert(
+            track_processing_flags_.begin() + insertionIndex,
+            std::make_unique<std::atomic<bool>>(false));
         for (auto* listener : processing_lifecycle_listeners_)
             if (listener)
-                listener->trackAdded(static_cast<uapmd_track_index_t>(tracks_.size() - 1));
-        auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
+                listener->trackAdded(insertionIndex);
+        auto trackIndex = insertionIndex;
 
         // Configure main bus (moved from RealtimeSequencer)
         auto trackCtx = sequence.tracks[trackIndex];
@@ -1851,8 +1864,9 @@ namespace uapmd {
         auto ring = std::make_unique<PumpTrackRing>(sequence.masterContext(), ump_buffer_size_in_ints);
         for (auto& slot : ring->slots)
             slot.ctx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
-        pump_rings_.emplace_back(std::move(ring));
-        pump_sequence_.tracks.push_back(nullptr); // placeholder; set per-quantum in pumpAudio()
+        pump_rings_.insert(pump_rings_.begin() + trackIndex, std::move(ring));
+        // Placeholder; set per-quantum in pumpAudio().
+        pump_sequence_.tracks.insert(pump_sequence_.tracks.begin() + trackIndex, nullptr);
 
         // Keep pre-allocated work vectors in sync.
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
@@ -1862,8 +1876,10 @@ namespace uapmd {
         timeline_->onTrackAdded(
             default_output_channels_,
             static_cast<double>(sampleRate),
-            static_cast<uint32_t>(audio_buffer_size_in_frames)
+            static_cast<uint32_t>(audio_buffer_size_in_frames),
+            trackIndex
         );
+        refreshPlatformMidiTrackIndices();
         notifyPluginGraphChanged();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();

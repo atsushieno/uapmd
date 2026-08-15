@@ -78,6 +78,9 @@ namespace uapmd {
     // partial duplicate and an undo restore without being recaptured.
     struct ProjectTrackAttachOptions {
         ProjectObjectIdPolicy idPolicy{ProjectObjectIdPolicy::Mint};
+        // Negative appends. Undo restoration supplies the removed track's
+        // former index so project ordering is restored as well as identity.
+        int32_t insertionIndex{-1};
         bool includePlugins{true};
         // Instantiate the plugins but leave them at their defaults. Skipping
         // state also skips the slowest part of attaching.

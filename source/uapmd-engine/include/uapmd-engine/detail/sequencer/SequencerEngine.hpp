@@ -85,7 +85,10 @@ namespace uapmd {
             const std::vector<uapmd_graph::TrackOutputRoutingRule>& rules) = 0;
         virtual bool isOutputAlignmentActive() = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
-        virtual uapmd_track_index_t addEmptyTrack() = 0;
+        // Appends by default. A non-negative insertion index is used when
+        // restoring a removed track so its ordering is preserved.
+        virtual uapmd_track_index_t addEmptyTrack(
+            uapmd_track_index_t insertionIndex = -1) = 0;
         // Add plugin to existing track
         // `restoreNodeId` gives the appended graph node a persistent identity
         // instead of one derived from its runtime instance id. Pass the value

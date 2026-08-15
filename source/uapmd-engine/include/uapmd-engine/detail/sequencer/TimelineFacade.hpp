@@ -189,6 +189,16 @@ public:
         const ProjectTrackFragment& fragment,
         ProjectTrackAttachOptions options,
         TrackAttachCallback callback) = 0;
+
+    // Structural track mutations use the same asynchronous callback shape as
+    // fragment attachment because deletion first captures plugin state.
+    virtual void addEmptyTrack(
+        ProjectMutationOrigin origin,
+        TrackAttachCallback callback) = 0;
+    virtual void removeTrack(
+        int32_t trackIndex,
+        ProjectMutationOrigin origin,
+        TrackAttachCallback callback) = 0;
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
 
@@ -327,7 +337,8 @@ public:
     // Lifecycle hooks called by SequencerEngineImpl when tracks are added/removed
     virtual void onTrackAdded(uint32_t outputChannels,
                               double sampleRate,
-                              uint32_t bufferSizeInFrames) = 0;
+                              uint32_t bufferSizeInFrames,
+                              int32_t insertionIndex) = 0;
     virtual void onTrackRemoved(size_t trackIndex) = 0;
     virtual void onTrackGraphChanged(int32_t trackIndex) = 0;
 

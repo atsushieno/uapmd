@@ -102,6 +102,26 @@ namespace uapmd {
             return result;
         }
 
+        size_t retainedValueSize(const ProjectTrackFragment& fragment) {
+            size_t result = sizeof(fragment)
+                + fragment.referenceId.capacity()
+                + fragment.graphType.capacity()
+                + fragment.graphBytes.capacity();
+            for (const auto& plugin : fragment.plugins)
+                result += sizeof(plugin)
+                    + plugin.nodeId.capacity()
+                    + plugin.pluginId.capacity()
+                    + plugin.format.capacity()
+                    + plugin.displayName.capacity()
+                    + plugin.state.capacity();
+            for (const auto& clip : fragment.clips)
+                result += retainedValueSize(clip);
+            for (const auto& [extensionId, state] : fragment.extensionState)
+                result += sizeof(extensionId) + extensionId.capacity()
+                    + sizeof(state) + state.capacity();
+            return result;
+        }
+
         bool clipMarkerEqual(const ClipMarker& lhs, const ClipMarker& rhs) {
             return lhs.markerId == rhs.markerId
                 && lhs.clipPositionOffset == rhs.clipPositionOffset
@@ -392,6 +412,94 @@ namespace uapmd {
             Remove remove_{};
             Restore restore_{};
         };
+
+        class TrackStructureUndoOperation final : public ProjectUndoableOperation {
+        public:
+            enum class InitialDirection {
+                Addition,
+                Removal
+            };
+            using Remove = std::function<bool(std::string_view trackReferenceId)>;
+            using Restore = std::function<void(
+                const ProjectTrackFragment& fragment,
+                int32_t insertionIndex,
+                ProjectUndoCompletion completion)>;
+
+            TrackStructureUndoOperation(
+                InitialDirection initialDirection,
+                int32_t insertionIndex,
+                ProjectTrackFragment fragment,
+                Remove remove,
+                Restore restore)
+                : initial_direction_(initialDirection)
+                , insertion_index_(insertionIndex)
+                , fragment_(std::move(fragment))
+                , remove_(std::move(remove))
+                , restore_(std::move(restore)) {
+            }
+
+            std::string description() const override {
+                return initial_direction_ == InitialDirection::Addition
+                    ? "Add track"
+                    : "Delete track";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this) + retainedValueSize(fragment_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (initial_direction_ == InitialDirection::Addition)
+                    restore(std::move(completion));
+                else
+                    remove(std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (initial_direction_ == InitialDirection::Addition)
+                    remove(std::move(completion));
+                else
+                    restore(std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                perform(context, std::move(completion));
+            }
+
+        private:
+            void remove(ProjectUndoCompletion completion) {
+                if (remove_ && remove_(fragment_.referenceId)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "Could not remove track " + fragment_.referenceId + "."));
+            }
+
+            void restore(ProjectUndoCompletion completion) {
+                if (restore_) {
+                    restore_(fragment_, insertion_index_, std::move(completion));
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "Could not restore track " + fragment_.referenceId + "."));
+            }
+
+            InitialDirection initial_direction_{};
+            int32_t insertion_index_{-1};
+            ProjectTrackFragment fragment_{};
+            Remove remove_{};
+            Restore restore_{};
+        };
     } // namespace
 
     class TimelineFacadeImpl : public TimelineFacade, public ProjectDocumentView {
@@ -643,6 +751,51 @@ namespace uapmd {
                 ? recorded->value().error
                 : "Could not record the added clip in undo history";
             return result;
+        }
+
+        static void dispatchToModelThread(ProjectUndoTask task) {
+            if (!task)
+                return;
+            if (remidy::EventLoop::runningOnMainThread())
+                task();
+            else
+                remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
+        }
+
+        std::shared_ptr<ProjectUndoableOperation> makeTrackStructureOperation(
+            TrackStructureUndoOperation::InitialDirection initialDirection,
+            int32_t insertionIndex,
+            ProjectTrackFragment fragment) {
+            return std::make_shared<TrackStructureUndoOperation>(
+                initialDirection,
+                insertionIndex,
+                std::move(fragment),
+                [this](std::string_view trackReferenceId) {
+                    const auto currentIndex = trackIndexForPersistentId(trackReferenceId);
+                    return currentIndex >= 0 && engine_.removeTrack(currentIndex);
+                },
+                [this](const ProjectTrackFragment& captured,
+                       int32_t restoreIndex,
+                       ProjectUndoCompletion completion) {
+                    ProjectTrackAttachOptions options;
+                    options.idPolicy = ProjectObjectIdPolicy::Restore;
+                    options.insertionIndex = restoreIndex;
+                    attachTrackFragment(
+                        captured,
+                        options,
+                        [completion = std::move(completion)](
+                            int32_t attachedIndex,
+                            std::string error) mutable {
+                            if (!completion)
+                                return;
+                            if (attachedIndex >= 0 && error.empty()) {
+                                completion(ProjectUndoResult::success());
+                                return;
+                            }
+                            completion(ProjectUndoResult::failure(
+                                error.empty() ? "Could not restore the track" : std::move(error)));
+                        });
+                });
         }
 
         template<typename Mutation>
@@ -997,17 +1150,25 @@ namespace uapmd {
             // Graph topology, held by value. The .graph.json a project save
             // writes is an artifact of saving; the serialization itself
             // produces bytes.
-            if (auto* provider = audio_graph_provider_registry_.get(sequencerTrack->graph())) {
-                auto graphData = createSerializedProjectGraph(
-                    *provider,
-                    sequencerTrack->orderedInstanceIds(),
-                    sequencerTrack->graph(),
-                    [this](int32_t instanceId) { return engine_.getPluginInstance(instanceId); },
-                    nullptr);
-                if (graphData) {
-                    fragment->graphType = provider->id();
-                    provider->saveProjectGraph(graphData.get(), fragment->graphBytes);
-                }
+            auto* provider = audio_graph_provider_registry_.get(sequencerTrack->graph());
+            if (!provider) {
+                callback(std::nullopt, "The track's graph provider is unavailable");
+                return;
+            }
+            auto graphData = createSerializedProjectGraph(
+                *provider,
+                sequencerTrack->orderedInstanceIds(),
+                sequencerTrack->graph(),
+                [this](int32_t instanceId) { return engine_.getPluginInstance(instanceId); },
+                nullptr);
+            if (!graphData) {
+                callback(std::nullopt, "Could not capture the track graph");
+                return;
+            }
+            fragment->graphType = provider->id();
+            if (!provider->saveProjectGraph(graphData.get(), fragment->graphBytes)) {
+                callback(std::nullopt, "Could not serialize the track graph");
+                return;
             }
 
             // Plugin descriptors now; their state is read asynchronously below.
@@ -1093,57 +1254,132 @@ namespace uapmd {
 
             if (options.idPolicy == ProjectObjectIdPolicy::Restore)
                 pending_track_reference_id_ = source->referenceId;
-            const int32_t trackIndex = engine_.addEmptyTrack();
+            const int32_t trackIndex = engine_.addEmptyTrack(options.insertionIndex);
             pending_track_reference_id_.clear();
             if (trackIndex < 0) {
                 (*sharedCallback)(-1, "Failed to create track");
                 return;
             }
 
+            auto completed = std::make_shared<bool>(false);
+            auto fail = std::make_shared<std::function<void(std::string)>>();
+            *fail = [this, trackIndex, sharedCallback, completed](std::string error) {
+                if (*completed)
+                    return;
+                *completed = true;
+                if (!engine_.removeTrack(trackIndex))
+                    error += " The partially attached track could not be removed.";
+                (*sharedCallback)(-1, std::move(error));
+            };
+
             if (auto* sequencerTrack = resolveSequencerTrack(trackIndex)) {
                 sequencerTrack->trackGain(source->volume);
                 sequencerTrack->muted(source->muted);
                 sequencerTrack->solo(source->solo);
+            } else {
+                (*fail)("The created sequencer track is unavailable");
+                return;
+            }
+            if (options.includePlugins
+                && !source->graphType.empty()
+                && !replaceTrackGraphType(
+                    trackIndex, source->graphType, engine_.umpBufferSizeInBytes())) {
+                (*fail)(std::format(
+                    "Could not create graph type {} while attaching the track",
+                    source->graphType));
+                return;
             }
 
             // Applied once every plugin has been created and, if requested,
             // had its state restored. Clips and extension state are synchronous
             // and share one transaction so observers see the finished track
             // rather than it filling in.
-            auto finish = [this, source, options, trackIndex, sharedCallback]() {
+            auto finish = [this, source, options, trackIndex, sharedCallback, completed, fail]() {
+                std::string error;
                 {
                     ProjectDocumentTransaction transaction(project_document_events_);
-                    if (options.includeClips)
-                        for (const auto& clipFragment : source->clips)
-                            attachClipFragment(trackIndex, clipFragment, options.idPolicy);
+                    if (options.includeClips) {
+                        for (const auto& clipFragment : source->clips) {
+                            auto result = attachClipFragment(
+                                trackIndex, clipFragment, options.idPolicy);
+                            if (!result.success) {
+                                error = result.error.empty()
+                                    ? "Failed to restore a clip while attaching the track"
+                                    : std::move(result.error);
+                                break;
+                            }
+                        }
+                    }
 
-                    if (auto* timelineTrack = resolveTrack(trackIndex)) {
-                        for (auto* extension : projectSerializationExtensionsSnapshot()) {
-                            const auto it = source->extensionState.find(std::string(extension->extensionId()));
-                            static const std::vector<uint8_t> kNoState{};
-                            const auto& state = it == source->extensionState.end() ? kNoState : it->second;
-                            std::string extensionError;
-                            if (!extension->restoreTrackFragmentState(
-                                    timelineTrack->referenceId(), state, extensionError))
-                                std::cerr << "Warning: Extension " << extension->extensionId()
-                                          << " failed to restore state for track "
-                                          << timelineTrack->referenceId() << ": " << extensionError << std::endl;
+                    if (error.empty()) {
+                        auto* timelineTrack = resolveTrack(trackIndex);
+                        if (!timelineTrack) {
+                            error = "The created timeline track is unavailable";
+                        } else {
+                            for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                                const auto it = source->extensionState.find(std::string(extension->extensionId()));
+                                static const std::vector<uint8_t> kNoState{};
+                                const auto& state = it == source->extensionState.end() ? kNoState : it->second;
+                                std::string extensionError;
+                                if (!extension->restoreTrackFragmentState(
+                                        timelineTrack->referenceId(), state, extensionError)) {
+                                    error = std::format(
+                                        "Extension {} failed to restore state for track {}: {}",
+                                        extension->extensionId(),
+                                        timelineTrack->referenceId(),
+                                        extensionError);
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
+                if (!error.empty()) {
+                    (*fail)(std::move(error));
+                    return;
+                }
+                if (*completed)
+                    return;
+                *completed = true;
                 (*sharedCallback)(trackIndex, std::string{});
             };
 
-            if (!options.includePlugins || source->plugins.empty()) {
-                finish();
+            auto finishHolder = std::make_shared<std::function<void()>>(
+                [this, source, options, trackIndex, finish = std::move(finish), fail]() mutable {
+                    if (options.includePlugins && !source->graphBytes.empty()) {
+                        auto* provider = audio_graph_provider_registry_.get(source->graphType);
+                        auto* sequencerTrack = resolveSequencerTrack(trackIndex);
+                        auto metadata = UapmdProjectPluginGraphData::create();
+                        if (!provider || !sequencerTrack || !metadata) {
+                            (*fail)("Could not resolve the captured track graph");
+                            return;
+                        }
+                        metadata->graphType(source->graphType);
+                        auto graphData = loadSerializedProjectGraph(
+                            *provider, *metadata, source->graphBytes);
+                        if (!graphData || !provider->deserializeRuntimeGraph(
+                                graphData.get(),
+                                sequencerTrack->graph(),
+                                sequencerTrack->orderedInstanceIds())) {
+                            (*fail)("Could not restore the captured track graph topology");
+                            return;
+                        }
+                    }
+                    finish();
+                });
+            if (!options.includePlugins) {
+                (*finishHolder)();
+                return;
+            }
+            if (source->plugins.empty()) {
+                (*finishHolder)();
                 return;
             }
 
             // Instantiating a plugin is callback-based, so plugins are added
             // one at a time rather than in a loop.
-            auto finishHolder = std::make_shared<std::function<void()>>(std::move(finish));
             auto step = std::make_shared<std::function<void(size_t)>>();
-            *step = [this, source, options, trackIndex, finishHolder, step](size_t index) {
+            *step = [this, source, options, trackIndex, finishHolder, step, fail](size_t index) {
                 if (index >= source->plugins.size()) {
                     (*finishHolder)();
                     return;
@@ -1160,34 +1396,182 @@ namespace uapmd {
                 auto pluginId = plugin.pluginId;
                 engine_.addPluginToTrack(
                     trackIndex, format, pluginId,
-                    [this, source, options, step, index](int32_t instanceId, int32_t, std::string error) {
+                    [this, source, options, step, index, fail](int32_t instanceId, int32_t, std::string error) {
                         auto& added = source->plugins[index];
                         if (!error.empty() || instanceId < 0) {
-                            std::cerr << "Warning: Failed to instantiate " << added.displayName
-                                      << " while attaching a track fragment: " << error << std::endl;
-                            (*step)(index + 1);
+                            (*fail)(std::format(
+                                "Failed to instantiate {} while attaching the track: {}",
+                                added.displayName.empty() ? added.pluginId : added.displayName,
+                                error));
                             return;
                         }
-                        if (added.groupIndex >= 0 && added.groupIndex <= 15)
-                            engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(added.groupIndex));
+                        if (added.groupIndex >= 0 && added.groupIndex <= 15
+                            && !engine_.setInstanceGroup(
+                                instanceId, static_cast<uint8_t>(added.groupIndex))) {
+                            (*fail)(std::format(
+                                "Failed to restore the MIDI group for {}",
+                                added.displayName.empty() ? added.pluginId : added.displayName));
+                            return;
+                        }
 
                         auto* instance = engine_.getPluginInstance(instanceId);
-                        if (!options.includePluginState || added.state.empty() || !instance) {
+                        if (!instance) {
+                            (*fail)(std::format(
+                                "The restored plugin instance for {} is unavailable",
+                                added.displayName.empty() ? added.pluginId : added.displayName));
+                            return;
+                        }
+                        if (!options.includePluginState || added.state.empty()) {
                             (*step)(index + 1);
                             return;
                         }
                         instance->loadState(
                             added.state, StateContextType::Project, false, nullptr,
-                            [step, index, displayName = added.displayName](std::string loadError, void*) {
-                                if (!loadError.empty())
-                                    std::cerr << "Warning: Failed to restore state for " << displayName
-                                              << " while attaching a track fragment: " << loadError << std::endl;
+                            [step, index, fail,
+                             displayName = added.displayName,
+                             pluginId = added.pluginId](std::string loadError, void*) {
+                                if (!loadError.empty()) {
+                                    (*fail)(std::format(
+                                        "Failed to restore state for {} while attaching the track: {}",
+                                        displayName.empty() ? pluginId : displayName,
+                                        loadError));
+                                    return;
+                                }
                                 (*step)(index + 1);
                             });
                     },
                     std::move(restoreNodeId));
             };
             (*step)(0);
+        }
+
+        void addEmptyTrack(
+            ProjectMutationOrigin origin,
+            TrackAttachCallback callback) override {
+            if (!callback)
+                return;
+            const bool recordsHistory = origin == ProjectMutationOrigin::User
+                || origin == ProjectMutationOrigin::Remote;
+            if (recordsHistory && undo_engine_.state().busy) {
+                callback(-1, "An undo history operation is already pending");
+                return;
+            }
+
+            const auto trackIndex = engine_.addEmptyTrack();
+            if (trackIndex < 0) {
+                callback(-1, "Failed to create track");
+                return;
+            }
+            if (!recordsHistory) {
+                callback(trackIndex, {});
+                return;
+            }
+
+            captureTrackFragment(
+                trackIndex,
+                [this, trackIndex, origin, callback = std::move(callback)](
+                    std::optional<ProjectTrackFragment> fragment,
+                    std::string error) mutable {
+                    auto finish = [this, trackIndex, origin,
+                                   callback = std::move(callback),
+                                   fragment = std::move(fragment),
+                                   error = std::move(error)]() mutable {
+                        if (!fragment) {
+                            engine_.removeTrack(trackIndex);
+                            callback(
+                                -1,
+                                error.empty()
+                                    ? "Could not capture the added track for undo history"
+                                    : std::move(error));
+                            return;
+                        }
+                        auto operation = makeTrackStructureOperation(
+                            TrackStructureUndoOperation::InitialDirection::Addition,
+                            trackIndex,
+                            std::move(*fragment));
+                        undo_engine_.recordPerformed(
+                            std::move(operation),
+                            origin,
+                            [this, trackIndex, callback = std::move(callback)](
+                                ProjectUndoResult result) mutable {
+                                if (!result.succeeded()) {
+                                    engine_.removeTrack(trackIndex);
+                                    callback(-1, std::move(result.error));
+                                    return;
+                                }
+                                callback(trackIndex, {});
+                            });
+                    };
+                    dispatchToModelThread(std::move(finish));
+                });
+        }
+
+        void removeTrack(
+            int32_t trackIndex,
+            ProjectMutationOrigin origin,
+            TrackAttachCallback callback) override {
+            if (!callback)
+                return;
+            const bool recordsHistory = origin == ProjectMutationOrigin::User
+                || origin == ProjectMutationOrigin::Remote;
+            auto* track = resolveTrack(trackIndex);
+            if (!track || trackIndex == kMasterTrackIndex) {
+                callback(-1, "Invalid track index");
+                return;
+            }
+            if (!recordsHistory) {
+                if (engine_.removeTrack(trackIndex))
+                    callback(trackIndex, {});
+                else
+                    callback(-1, "Failed to remove track");
+                return;
+            }
+            if (undo_engine_.state().busy) {
+                callback(-1, "An undo history operation is already pending");
+                return;
+            }
+
+            const auto expectedReferenceId = track->referenceId();
+            captureTrackFragment(
+                trackIndex,
+                [this, trackIndex, origin, expectedReferenceId,
+                 callback = std::move(callback)](
+                    std::optional<ProjectTrackFragment> fragment,
+                    std::string error) mutable {
+                    auto finish = [this, trackIndex, origin, expectedReferenceId,
+                                   callback = std::move(callback),
+                                   fragment = std::move(fragment),
+                                   error = std::move(error)]() mutable {
+                        if (!fragment) {
+                            callback(
+                                -1,
+                                error.empty() ? "Could not capture the track" : std::move(error));
+                            return;
+                        }
+                        if (fragment->referenceId != expectedReferenceId
+                            || trackIndexForPersistentId(expectedReferenceId) != trackIndex) {
+                            callback(-1, "The track changed position while it was being captured");
+                            return;
+                        }
+
+                        auto operation = makeTrackStructureOperation(
+                            TrackStructureUndoOperation::InitialDirection::Removal,
+                            trackIndex,
+                            std::move(*fragment));
+                        undo_engine_.perform(
+                            std::move(operation),
+                            origin,
+                            [trackIndex, callback = std::move(callback)](
+                                ProjectUndoResult result) mutable {
+                                if (!result.succeeded()) {
+                                    callback(-1, std::move(result.error));
+                                    return;
+                                }
+                                callback(trackIndex, {});
+                            });
+                    };
+                    dispatchToModelThread(std::move(finish));
+                });
         }
 
         void beginDocumentTransaction() override {
@@ -3711,7 +4095,11 @@ namespace uapmd {
             }
         }
 
-        void onTrackAdded(uint32_t outputChannels, double sampleRate, uint32_t bufferSizeInFrames) override {
+        void onTrackAdded(
+            uint32_t outputChannels,
+            double sampleRate,
+            uint32_t bufferSizeInFrames,
+            int32_t insertionIndex) override {
             sampleRate_ = static_cast<int32_t>(sampleRate);
             bufferSizeInFrames_ = bufferSizeInFrames;
             master_timeline_track_->reconfigureBuffers(0, bufferSizeInFrames);
@@ -3759,9 +4147,15 @@ namespace uapmd {
                     }
                 });
 
-            const auto trackIndex = static_cast<int32_t>(timeline_tracks_.size());
+            const auto trackIndex = insertionIndex < 0
+                ? static_cast<int32_t>(timeline_tracks_.size())
+                : insertionIndex;
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) > timeline_tracks_.size())
+                return;
             const auto eventTrackId = newTrack->referenceId();
-            timeline_tracks_.emplace_back(std::move(newTrack));
+            timeline_tracks_.insert(
+                timeline_tracks_.begin() + trackIndex,
+                std::move(newTrack));
             rebuildTrackSnapshot();
 
             ProjectDocumentEvent event(ProjectDocumentEventKind::TrackAdded, "track-added");
