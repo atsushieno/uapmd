@@ -222,6 +222,7 @@ namespace uapmd {
         struct CompoundBuilder {
             std::string description{};
             ProjectMutationOrigin origin{ProjectMutationOrigin::User};
+            bool coalesceCompatibleOperations{false};
             std::vector<std::shared_ptr<ProjectUndoableOperation>> children{};
         };
 
@@ -246,6 +247,7 @@ namespace uapmd {
             return {
                 .busy = pending_.has_value() || compound_.has_value(),
                 .compoundOpen = compound_.has_value(),
+                .gestureOpen = compound_ && compound_->coalesceCompatibleOperations,
                 .canUndo = !pending_ && !compound_ && !undo_stack_.empty() && !stopped_,
                 .canRedo = !pending_ && !compound_ && !redo_stack_.empty() && !stopped_,
                 .dirty = compound_.has_value() || current_state_id_ != saved_state_id_,
@@ -334,6 +336,19 @@ namespace uapmd {
         ProjectUndoResult beginCompound(
             std::string description,
             ProjectMutationOrigin origin) {
+            return beginScope(std::move(description), origin, false);
+        }
+
+        ProjectUndoResult beginGesture(
+            std::string description,
+            ProjectMutationOrigin origin) {
+            return beginScope(std::move(description), origin, true);
+        }
+
+        ProjectUndoResult beginScope(
+            std::string description,
+            ProjectMutationOrigin origin,
+            bool coalesceCompatibleOperations) {
             if (stopped_)
                 return resultWithStatus(ProjectUndoStatus::Stopped);
             if (pending_ || compound_)
@@ -346,7 +361,8 @@ namespace uapmd {
                 return ProjectUndoResult::failure("A compound undo step requires a description.");
             compound_ = CompoundBuilder{
                 .description = std::move(description),
-                .origin = origin
+                .origin = origin,
+                .coalesceCompatibleOperations = coalesceCompatibleOperations
             };
             return ProjectUndoResult::success();
         }
@@ -528,10 +544,20 @@ namespace uapmd {
             if (result.succeeded()) {
                 switch (pending.direction) {
                     case PendingDirection::Perform:
-                        if (compound_)
-                            compound_->children.push_back(std::move(pending.operation));
-                        else
+                        if (compound_) {
+                            auto& children = compound_->children;
+                            const bool merged = compound_->coalesceCompatibleOperations
+                                && !children.empty()
+                                && children.back()->mergeWith(*pending.operation);
+                            if (merged) {
+                                if (!children.back()->hasEffect())
+                                    children.pop_back();
+                            } else if (pending.operation->hasEffect()) {
+                                children.push_back(std::move(pending.operation));
+                            }
+                        } else {
                             finishPerform(std::move(pending.operation));
+                        }
                         break;
                     case PendingDirection::Undo:
                         finishUndo();
@@ -667,6 +693,20 @@ namespace uapmd {
     }
 
     void ProjectUndoEngine::cancelCompound(ProjectUndoCompletion completion) {
+        impl_->cancelCompound(std::move(completion));
+    }
+
+    ProjectUndoResult ProjectUndoEngine::beginGesture(
+        std::string description,
+        ProjectMutationOrigin origin) {
+        return impl_->beginGesture(std::move(description), origin);
+    }
+
+    void ProjectUndoEngine::endGesture(ProjectUndoCompletion completion) {
+        impl_->endCompound(std::move(completion));
+    }
+
+    void ProjectUndoEngine::cancelGesture(ProjectUndoCompletion completion) {
         impl_->cancelCompound(std::move(completion));
     }
 

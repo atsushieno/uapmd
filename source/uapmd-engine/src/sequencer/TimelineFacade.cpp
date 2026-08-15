@@ -123,17 +123,21 @@ namespace uapmd {
 
             ClipPropertyUndoOperation(
                 std::string description,
+                std::string propertyKey,
                 std::string trackReferenceId,
                 std::string clipReferenceId,
                 Value before,
                 Value after,
-                Apply apply)
+                Apply apply,
+                std::function<bool(const Value&, const Value&)> equal)
                 : description_(std::move(description))
+                , property_key_(std::move(propertyKey))
                 , track_reference_id_(std::move(trackReferenceId))
                 , clip_reference_id_(std::move(clipReferenceId))
                 , before_(std::move(before))
                 , after_(std::move(after))
-                , apply_(std::move(apply)) {
+                , apply_(std::move(apply))
+                , equal_(std::move(equal)) {
             }
 
             std::string description() const override {
@@ -143,10 +147,29 @@ namespace uapmd {
             size_t historySizeInBytes() const override {
                 return sizeof(*this)
                     + description_.capacity()
+                    + property_key_.capacity()
                     + track_reference_id_.capacity()
                     + clip_reference_id_.capacity()
                     + retainedValueSize(before_)
                     + retainedValueSize(after_);
+            }
+
+            bool mergeWith(const ProjectUndoableOperation& subsequent) override {
+                const auto* next = dynamic_cast<const ClipPropertyUndoOperation*>(&subsequent);
+                if (!next
+                    || property_key_ != next->property_key_
+                    || track_reference_id_ != next->track_reference_id_
+                    || clip_reference_id_ != next->clip_reference_id_)
+                    return false;
+                description_ = next->description_;
+                after_ = next->after_;
+                apply_ = next->apply_;
+                equal_ = next->equal_;
+                return true;
+            }
+
+            bool hasEffect() const override {
+                return !equal_ || !equal_(before_, after_);
             }
 
             void perform(
@@ -181,11 +204,13 @@ namespace uapmd {
             }
 
             std::string description_{};
+            std::string property_key_{};
             std::string track_reference_id_{};
             std::string clip_reference_id_{};
             Value before_{};
             Value after_{};
             Apply apply_{};
+            std::function<bool(const Value&, const Value&)> equal_{};
         };
     } // namespace
 
@@ -358,6 +383,7 @@ namespace uapmd {
 
             auto trackReferenceId = targetTrack->referenceId();
             auto clipReferenceId = clip->referenceId;
+            auto propertyKey = changeType;
             auto apply = [this,
                           changeType = std::move(changeType),
                           mutate = std::forward<Mutation>(mutate)](
@@ -378,11 +404,13 @@ namespace uapmd {
 
             auto operation = std::make_shared<ClipPropertyUndoOperation<Value>>(
                 std::move(description),
+                std::move(propertyKey),
                 std::move(trackReferenceId),
                 std::move(clipReferenceId),
                 std::move(before),
                 std::move(after),
-                std::move(apply));
+                std::move(apply),
+                std::forward<Equal>(equal));
             auto result = std::make_shared<std::optional<ProjectUndoResult>>();
             undo_engine_.perform(
                 std::move(operation),

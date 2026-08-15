@@ -297,8 +297,18 @@ children remain provisional until the scope ends, then enter history as one
 step. Undo runs children in reverse and redo in forward order. Failed replay
 compensates already completed children in the opposite direction; cancelling
 an open scope uses the same asynchronous rollback. Nested scopes are rejected
-for now. The next implementation slice is continuous gestures, followed by
-structural clip operations.
+for now.
+
+Task 5's engine support is implemented as explicit gesture scopes. Within a
+gesture, adjacent compatible operations merge only when their concrete value
+type, persistent track identity, persistent clip identity and property key all
+match. The retained operation keeps the first before-value and latest
+after-value; returning to the initial value removes it. Intermediate mutations
+still publish their ordinary document events. The present timeline drag UI
+commits clip movement only on release, so it has no stream of intermediate
+document mutations to wrap yet. Automatic time-window coalescing without a
+gesture boundary remains deferred until a caller actually needs it. The next
+implementation slice is structural clip operations.
 
 ## Remaining work
 

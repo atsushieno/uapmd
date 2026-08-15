@@ -78,6 +78,16 @@ namespace uapmd {
         virtual std::string description() const = 0;
         virtual size_t historySizeInBytes() const = 0;
 
+        // Called only for already-performed adjacent operations inside an
+        // explicit gesture scope. Implementations return true after extending
+        // this operation to include `subsequent`.
+        virtual bool mergeWith(const ProjectUndoableOperation& subsequent) {
+            return false;
+        }
+        virtual bool hasEffect() const {
+            return true;
+        }
+
         virtual void perform(
             const ProjectUndoExecutionContext& context,
             ProjectUndoCompletion completion) = 0;
@@ -92,6 +102,7 @@ namespace uapmd {
     struct ProjectUndoState {
         bool busy{false};
         bool compoundOpen{false};
+        bool gestureOpen{false};
         bool canUndo{false};
         bool canRedo{false};
         bool dirty{false};
@@ -144,6 +155,15 @@ namespace uapmd {
         // Reverts every successfully performed child in reverse order. If
         // compensation fails, the compound remains open for explicit recovery.
         void cancelCompound(ProjectUndoCompletion completion = {});
+
+        // A gesture is a named compound scope that coalesces adjacent,
+        // compatible operations. Intermediate values are applied normally,
+        // while history retains only the initial and final values.
+        ProjectUndoResult beginGesture(
+            std::string description,
+            ProjectMutationOrigin origin = ProjectMutationOrigin::User);
+        void endGesture(ProjectUndoCompletion completion = {});
+        void cancelGesture(ProjectUndoCompletion completion = {});
 
         // Fails while an operation is pending or a compound step is open.
         // Clearing releases all retained fragments and establishes the current
