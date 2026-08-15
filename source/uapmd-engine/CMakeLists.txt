@@ -201,6 +201,7 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/FrozenTrackManager.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/ProjectSerialization.cpp
+        src/sequencer/ProjectUndo.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp

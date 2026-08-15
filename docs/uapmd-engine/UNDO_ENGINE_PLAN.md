@@ -146,6 +146,147 @@ created from a document that is not being edited, while a restore must happen
 inside an edit cycle. Restoring during attach is therefore correct, and capture
 refuses when called inside a transaction.
 
+## Phase 1 — Undo and redo
+
+Undo history belongs to `uapmd-engine`, at the mutation boundary shared by the
+application, scripts and future remote clients. The application supplies
+gesture boundaries and user-facing descriptions; the engine owns inverse
+capture, execution, replay suppression and stack consistency.
+
+There is one asynchronous undo engine from the outset. It has no separate
+synchronous undo manager. A simple property edit completes its operation inline;
+track and plug-in work completes later through the same callback-based
+contract. This keeps synchronous edits cheap without baking a false promise
+that `undo()` or `redo()` always finishes before returning.
+
+History is a typed command/memento journal, not RFC 6902 and not a sequence of
+whole-project snapshots. Operations address objects by persistent identifier,
+never by a mutable array index or textual tree path. Property operations retain
+before and after values; structural operations retain detached fragments and
+opaque extension state. A JSON-patch representation may later be derived for
+IPC, but it is not the engine's internal undo model.
+
+The authoritative project model remains mutable. Existing immutable RT
+snapshots remain a separate publication mechanism for the audio thread. Undo
+does not replace them with one atomically swapped project tree: live plug-in
+instances, readers and render state are execution resources derived from
+document changes, not copyable document values.
+
+### Execution contract
+
+An undoable operation has asynchronous `perform`, `undo` and `redo` entry
+points, each completing exactly once with success or an error. Synchronous
+operations invoke that completion inline. History state and document commits
+are serialized on the engine's model thread; callbacks from plug-in APIs must
+be posted back there before touching either. The audio thread never participates
+in history execution.
+
+The history cursor moves only after the requested direction completes
+successfully. While a history operation is pending, another undo, redo or user
+mutation is rejected or queued by one explicit policy; it must not race the
+pending operation. Audio playback may continue from the previously published
+RT state.
+
+Asynchronous operations separate preparation from document commit. Capturing
+ARA/plugin state, opening assets and creating or configuring replacement
+instances happen before the visible mutation where possible. A compound undo
+step prepares all fallible resources first, then commits its actions in reverse
+order for undo and forward order for redo inside one document event batch. If a
+commit can still fail after changing the document, the operation must provide
+compensation; reporting failure while leaving half of a step applied is not a
+valid result.
+
+Undo and redo replay through the same mutation primitives with history
+recording disabled, but ordinary document events, graph updates and derived
+cache invalidation remain enabled. Replay suppression is carried by an
+operation context rather than a process-wide boolean, so it survives nested and
+asynchronous work safely.
+
+`ProjectDocumentTransaction` remains observer batching, not undo management.
+It neither captures an inverse nor rolls back failed work. A named undo step is
+a distinct scope. The two scopes usually cover the same final commit, but
+capture and other asynchronous preparation necessarily happen before either
+document editing or event delivery begins.
+
+### Phase 1 tasks
+
+1. **Asynchronous history core.** Add engine-owned undo and redo stacks,
+   descriptions, branch truncation, a configurable memory budget, busy state
+   and completion callbacks. Define the model-thread executor used to resume
+   plug-in callbacks. Loading or closing a project cancels or drains pending
+   work and clears history deterministically.
+
+2. **Operation and context API.** Define typed operations plus execution
+   context (`User`, `UndoRedo`, `Load`, `Remote`, `Internal`) and the
+   prepare/commit/compensate contract. A new user edit after undo discards the
+   redo branch. Failed operations do not enter history; failed undo/redo does
+   not move the cursor.
+
+3. **Clip property operations.** Move synchronous clip properties first. They
+   capture before/after values at the mutation point, complete inline through
+   the asynchronous API, and prove that replay emits the same document events
+   without recursively recording history.
+
+4. **Named compound steps.** Group multiple operations as one user action.
+   Undo runs the children in reverse order and redo in forward order. Resource
+   preparation and failure handling follow the execution contract above rather
+   than relying on event batching for atomicity.
+
+5. **Continuous gestures.** Capture the initial value when a gesture begins,
+   apply intermediate values without appending steps, and commit one operation
+   containing the initial and final values when it ends. Where no gesture
+   boundary exists, coalesce only compatible operations matching type, object
+   identity and property.
+
+6. **Clip structure.** Implement add, delete and restore with
+   `ProjectClipFragment`. Capture occurs before the document edit so ARA
+   archiving remains legal. Undo restore reuses persistent identity. Paste and
+   duplicate use `Mint` and remain Phase 2 clipboard work.
+
+7. **Track structure.** Implement track add, delete and restore with
+   `ProjectTrackFragment`. Capture and attachment already expose the
+   asynchronous work that motivates the common execution contract. Missing
+   plug-ins, failed state restoration and partial graph construction must be
+   surfaced without advancing history or exposing a half-committed track.
+
+8. **Plug-in graph and parameter operations.** Move graph edits behind the
+   mutation layer, then record topology, instance lifecycle and state changes.
+   Parameter playback automation never enters undo. User gestures originating
+   in either the host UI or a hosted plug-in use their begin/end boundaries to
+   produce one step; automation-data editing is a document operation of its
+   own.
+
+9. **Application surface.** Expose busy, can-undo/can-redo, descriptions and
+   asynchronous undo/redo completion through the engine. Wire menu items,
+   shortcuts, progress and errors in `uapmd-app`. A script or MCP mutation is
+   one step unless it explicitly opens a named compound step.
+
+10. **Save point and dirty state.** Mark the history state reached by a
+    successful save. Compare history-node identity rather than only a numeric
+    cursor, because undo followed by a new edit creates a different branch.
+    Project load, resynchronization, cache maintenance and other internal work
+    do not enter user history.
+
+11. **Resource and retention policy.** Give every operation a history-size
+    estimate and evict complete oldest steps under the memory budget. Define
+    failure behaviour for missing files and unavailable plug-ins. Dropping a
+    history entry releases its fragments and opaque archives off the audio
+    thread.
+
+### Implementation status
+
+The asynchronous history foundation is implemented in `ProjectUndoEngine`.
+It provides the operation and execution-context API, serialized completion on
+the model thread, busy rejection, undo/redo branch management, state-identity
+based dirty tracking, memory-budget eviction and deterministic shutdown. It is
+owned and exposed by `TimelineFacade`; no synchronous undo manager exists.
+
+No project mutation records history yet. The next implementation slice is task
+3: route the simple clip-property setters through typed operations while
+keeping their underlying mutation-and-event primitive available for replay.
+Save/load integration, compound steps and structural or plug-in operations
+remain subsequent work as ordered above.
+
 ## Remaining work
 
 Both items are ARA-only and deferred by choice, not blocked.

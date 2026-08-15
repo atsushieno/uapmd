@@ -116,6 +116,17 @@ namespace uapmd {
         bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
         ProjectDocumentEventDispatcher project_document_events_{};
+        ProjectUndoEngine undo_engine_{{
+            .maximumHistorySizeInBytes = 64u * 1024u * 1024u,
+            .dispatchToModelThread = [](ProjectUndoTask task) {
+                if (!task)
+                    return;
+                if (remidy::EventLoop::runningOnMainThread())
+                    task();
+                else
+                    remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
+            }
+        }};
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
@@ -622,6 +633,10 @@ namespace uapmd {
 
         ProjectDocumentEventSource& projectDocumentEvents() override {
             return project_document_events_;
+        }
+
+        ProjectUndoEngine& undoEngine() override {
+            return undo_engine_;
         }
 
         ProjectDocumentView& projectDocumentView() override {

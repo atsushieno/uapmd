@@ -14,6 +14,7 @@
 namespace uapmd {
 
 class SequencerEngine;
+class ProjectUndoEngine;
 
 // Facade for timeline clip management and project loading.
 // Owned by SequencerEngineImpl; accessed via SequencerEngine::timeline().
@@ -210,6 +211,7 @@ public:
 
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
     virtual ProjectDocumentView& projectDocumentView() = 0;
+    virtual ProjectUndoEngine& undoEngine() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
     virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;
     virtual bool replaceTrackGraphType(
