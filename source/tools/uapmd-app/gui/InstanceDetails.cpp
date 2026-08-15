@@ -121,16 +121,12 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             if (!pal) {
                 return;
             }
-            if (perNoteSelection->type == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
-                pal->setPerNoteControllerValue(
-                    static_cast<uint8_t>(perNoteSelection->context.note),
-                    static_cast<uint8_t>(parameterIndex),
-                    value);
-                appModel.markPluginInstanceTrackDirty(instanceId);
-                return;
-            }
-            if (auto* parameterSupport = pal->parameterSupport()) {
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value);
+            if (seq.engine()->timeline().setPluginPerNoteControllerValue(
+                    instanceId,
+                    perNoteSelection->type,
+                    perNoteSelection->context,
+                    static_cast<int32_t>(parameterIndex),
+                    value)) {
                 appModel.markPluginInstanceTrackDirty(instanceId);
             }
         });

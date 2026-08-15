@@ -356,6 +356,16 @@ namespace uapmd_plugin_hosting {
             notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
         }
 
+        bool getPerNoteControllerValue(uint8_t note, uint8_t index, double* value) override {
+            if (!value)
+                return false;
+            return instance->parameters()->getPerNoteController(
+                       {.note = note},
+                       index,
+                       value)
+                == remidy::StatusCode::OK;
+        }
+
         void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
             instance->parameters()->enqueuePerNoteControllerRT({.note = note }, index, value, timestamp);
         }

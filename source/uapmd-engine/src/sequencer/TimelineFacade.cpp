@@ -4085,6 +4085,121 @@ namespace uapmd {
                 });
         }
 
+        bool setPluginPerNoteControllerValue(
+            int32_t instanceId,
+            remidy::PerNoteControllerContextTypes contextType,
+            remidy::PerNoteControllerContext context,
+            int32_t parameterIndex,
+            double value,
+            ProjectMutationOrigin origin) override {
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!instance || parameterIndex < 0)
+                return false;
+
+            auto* parameterSupport = instance->parameterSupport();
+            double before = std::numeric_limits<double>::quiet_NaN();
+            if (parameterSupport
+                && parameterSupport->getPerNoteController(
+                       context,
+                       static_cast<uint32_t>(parameterIndex),
+                       &before)
+                    == remidy::StatusCode::OK) {
+                // The plug-in supplied a readable value for the requested
+                // context; keep using the support API for both directions.
+            } else if (contextType
+                       == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE
+                       && context.note <= UINT8_MAX
+                       && parameterIndex <= UINT8_MAX
+                       && instance->getPerNoteControllerValue(
+                           static_cast<uint8_t>(context.note),
+                           static_cast<uint8_t>(parameterIndex),
+                           &before)) {
+                // Older adapters expose note-scoped values only through the
+                // AudioPluginInstanceAPI convenience method.
+            } else {
+                return false;
+            }
+            if (!std::isfinite(before) || before == value)
+                return true;
+
+            const auto target = pluginTargetForInstance(instanceId);
+            if (!target)
+                return false;
+            const auto propertyKey = std::format(
+                "plugin-per-note-{}-{}-{}-{}-{}-changed",
+                static_cast<int>(contextType),
+                context.note,
+                context.channel,
+                context.group,
+                parameterIndex);
+            const auto description = "Change per-note plug-in parameter";
+            auto apply = [this,
+                          contextType,
+                          context,
+                          parameterIndex](
+                             std::string_view persistentTrackId,
+                             std::string_view persistentNodeId,
+                             const double& currentValue) {
+                const auto currentInstanceId = resolvePluginInstanceId(
+                    persistentTrackId,
+                    persistentNodeId);
+                auto* currentInstance = engine_.getPluginInstance(currentInstanceId);
+                if (!currentInstance
+                    || engine_.frozenTrackManager().isInstanceBusy(currentInstanceId))
+                    return false;
+                auto* support = currentInstance->parameterSupport();
+                if (support
+                    && support->setPerNoteController(
+                           context,
+                           static_cast<uint32_t>(parameterIndex),
+                           currentValue)
+                        == remidy::StatusCode::OK) {
+                    emitTrackChanged(persistentTrackId, "plugin-per-note-parameter-changed");
+                    notifyTimelineChanged();
+                    return true;
+                }
+                if (contextType
+                        == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
+                    if (context.note > UINT8_MAX || parameterIndex > UINT8_MAX)
+                        return false;
+                    currentInstance->setPerNoteControllerValue(
+                        static_cast<uint8_t>(context.note),
+                        static_cast<uint8_t>(parameterIndex),
+                        currentValue);
+                    emitTrackChanged(persistentTrackId, "plugin-per-note-parameter-changed");
+                    notifyTimelineChanged();
+                    return true;
+                }
+                return false;
+            };
+            auto operation = std::make_shared<PluginPropertyUndoOperation<double>>(
+                description,
+                propertyKey,
+                target->trackReferenceId,
+                target->nodeId,
+                before,
+                value,
+                std::move(apply));
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote) {
+                std::optional<ProjectUndoResult> result;
+                operation->perform(
+                    ProjectUndoExecutionContext{.origin = origin},
+                    [&result](ProjectUndoResult completed) {
+                        result = std::move(completed);
+                    });
+                return result.has_value() && result->succeeded();
+            }
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
         bool setPluginGroup(
             int32_t instanceId,
             uint8_t group,

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
+#include <remidy/remidy.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
 #include "ProjectUndo.hpp"
@@ -262,6 +263,17 @@ public:
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setPluginParameterValue(
         int32_t instanceId,
+        int32_t parameterIndex,
+        double value,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    // Changes a parameter in a per-note controller context.  Per-note edits
+    // use the same persistent plug-in identity and gesture history as global
+    // parameter edits, so changing the selected key/channel/group does not
+    // silently bypass undo.
+    virtual bool setPluginPerNoteControllerValue(
+        int32_t instanceId,
+        remidy::PerNoteControllerContextTypes contextType,
+        remidy::PerNoteControllerContext context,
         int32_t parameterIndex,
         double value,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;

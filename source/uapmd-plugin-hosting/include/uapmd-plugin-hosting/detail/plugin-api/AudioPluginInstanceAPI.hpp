@@ -101,6 +101,16 @@ namespace uapmd_plugin_hosting {
 
         // set per-note controller value from non-RT thread (such as GUI).
         virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
+        // Retrieves a per-note controller value when the hosting format can
+        // query it without going through PluginParameterSupport.  The
+        // default keeps existing third-party adapters source-compatible;
+        // adapters with richer support should override it.
+        virtual bool getPerNoteControllerValue(uint8_t note, uint8_t index, double* value) {
+            (void) note;
+            (void) index;
+            (void) value;
+            return false;
+        }
         // enqueue per-note controller value on RT thread (such as UmpInputDispatcher message processor).
         virtual void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) = 0;
         virtual std::string getPerNoteControllerValueString(uint8_t node, uint8_t index, double value) = 0;

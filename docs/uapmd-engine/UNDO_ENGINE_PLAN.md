@@ -438,10 +438,21 @@ derived runtime state.
 
 ### Plug-ins and graphs
 
+#### Step 3 first slice: parameter editing
+
+Global parameter edits already use the persistent plug-in property operation.
+Per-note controller edits now use the same operation, keyed by the persistent
+track/node identity and controller context (group, channel or note). The host
+GUI therefore records global and per-note edits alike, and its existing
+parameter gesture callbacks coalesce a drag into one history item. Adapters
+that only expose the legacy note-scoped API are supported through the new
+read-back fallback; adapters without a readable value reject the edit rather
+than creating an undo entry that cannot be replayed.
+
 - Plug-in creation and deletion, including implicit track creation.
 - Plug-in bypass.
-- Plug-in parameters changed by the host UI, hosted plug-in UI, JavaScript or
-  MCP, including per-note parameter editing.
+- Plug-in parameters changed by hosted plug-in UI, JavaScript or MCP, including
+  any parameter-notification path not yet routed through the facade.
 - Loading plug-in state and unsolicited persistent state changes reported by a
   plug-in.
 - UMP group assignment and persisted device/instance labels or configuration.
@@ -462,8 +473,9 @@ revoke themselves.
 - JavaScript/WebAssembly track add, remove, clear and synchronous multi-track
   MIDI import still use the `Legacy` APIs.
 - MCP track creation still uses `addTrackLegacy()`.
-- JavaScript and MCP content, plug-in, graph, routing and parameter mutations
-  listed above bypass history through raw engine or app-model entry points.
+- JavaScript parameter, bypass and graph calls now reach the facade; creation,
+  deletion, state loading, and any remaining raw hosted-UI notification paths
+  still need the callback-based history funnel.
 - JavaScript and MCP cannot invoke undo or redo and cannot open, finish or
   cancel an explicit named compound scope.
 - Long-running native operations expose only minimal busy feedback in the
