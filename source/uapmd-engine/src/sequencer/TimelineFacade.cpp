@@ -84,6 +84,24 @@ namespace uapmd {
             return result;
         }
 
+        size_t retainedValueSize(const ProjectClipFragment& fragment) {
+            size_t result = sizeof(fragment)
+                + fragment.clip.referenceId.capacity()
+                + fragment.clip.name.capacity()
+                + fragment.clip.filepath.capacity()
+                + fragment.clip.anchorReferenceId.capacity()
+                + retainedValueSize(fragment.clip.markers)
+                + retainedValueSize(fragment.clip.audioWarps)
+                + fragment.umpEvents.capacity() * sizeof(uapmd_ump_t)
+                + fragment.umpTickTimestamps.capacity() * sizeof(uint64_t)
+                + fragment.tempoChanges.capacity() * sizeof(MidiTempoChange)
+                + fragment.timeSignatureChanges.capacity() * sizeof(MidiTimeSignatureChange);
+            for (const auto& [extensionId, state] : fragment.extensionState)
+                result += sizeof(extensionId) + extensionId.capacity()
+                    + sizeof(state) + state.capacity();
+            return result;
+        }
+
         bool clipMarkerEqual(const ClipMarker& lhs, const ClipMarker& rhs) {
             return lhs.markerId == rhs.markerId
                 && lhs.clipPositionOffset == rhs.clipPositionOffset
@@ -212,6 +230,168 @@ namespace uapmd {
             Apply apply_{};
             std::function<bool(const Value&, const Value&)> equal_{};
         };
+
+        class ClipRemovalUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Remove = std::function<bool(
+                std::string_view trackReferenceId,
+                std::string_view clipReferenceId)>;
+            using Restore = std::function<TimelineFacade::ClipAddResult(
+                std::string_view trackReferenceId,
+                const ProjectClipFragment& fragment)>;
+
+            ClipRemovalUndoOperation(
+                std::string trackReferenceId,
+                ProjectClipFragment fragment,
+                Remove remove,
+                Restore restore)
+                : track_reference_id_(std::move(trackReferenceId))
+                , fragment_(std::move(fragment))
+                , remove_(std::move(remove))
+                , restore_(std::move(restore)) {
+            }
+
+            std::string description() const override {
+                return "Delete clip";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + retainedValueSize(fragment_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                remove(std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (!restore_) {
+                    completeFailure(std::move(completion), "Clip restoration is unavailable.");
+                    return;
+                }
+                auto result = restore_(track_reference_id_, fragment_);
+                if (!result.success) {
+                    completeFailure(
+                        std::move(completion),
+                        result.error.empty() ? "Could not restore the deleted clip." : std::move(result.error));
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::success());
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                remove(std::move(completion));
+            }
+
+        private:
+            void remove(ProjectUndoCompletion completion) {
+                if (remove_ && remove_(track_reference_id_, fragment_.clip.referenceId)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                completeFailure(std::move(completion), "Could not remove the clip.");
+            }
+
+            void completeFailure(ProjectUndoCompletion completion, std::string message) const {
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        std::move(message) + " Clip " + fragment_.clip.referenceId
+                        + " on track " + track_reference_id_ + "."));
+            }
+
+            std::string track_reference_id_{};
+            ProjectClipFragment fragment_{};
+            Remove remove_{};
+            Restore restore_{};
+        };
+
+        class ClipAdditionUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Remove = ClipRemovalUndoOperation::Remove;
+            using Restore = ClipRemovalUndoOperation::Restore;
+
+            ClipAdditionUndoOperation(
+                std::string trackReferenceId,
+                ProjectClipFragment fragment,
+                Remove remove,
+                Restore restore)
+                : track_reference_id_(std::move(trackReferenceId))
+                , fragment_(std::move(fragment))
+                , remove_(std::move(remove))
+                , restore_(std::move(restore)) {
+            }
+
+            std::string description() const override {
+                return "Add clip";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + retainedValueSize(fragment_);
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                restore(std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (remove_ && remove_(track_reference_id_, fragment_.clip.referenceId)) {
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                    return;
+                }
+                completeFailure(std::move(completion), "Could not remove the added clip.");
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                restore(std::move(completion));
+            }
+
+        private:
+            void restore(ProjectUndoCompletion completion) {
+                if (!restore_) {
+                    completeFailure(std::move(completion), "Clip restoration is unavailable.");
+                    return;
+                }
+                auto result = restore_(track_reference_id_, fragment_);
+                if (!result.success) {
+                    completeFailure(
+                        std::move(completion),
+                        result.error.empty() ? "Could not restore the added clip." : std::move(result.error));
+                    return;
+                }
+                if (completion)
+                    completion(ProjectUndoResult::success());
+            }
+
+            void completeFailure(ProjectUndoCompletion completion, std::string message) const {
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        std::move(message) + " Clip " + fragment_.clip.referenceId
+                        + " on track " + track_reference_id_ + "."));
+            }
+
+            std::string track_reference_id_{};
+            ProjectClipFragment fragment_{};
+            Remove remove_{};
+            Restore restore_{};
+        };
     } // namespace
 
     class TimelineFacadeImpl : public TimelineFacade, public ProjectDocumentView {
@@ -337,6 +517,132 @@ namespace uapmd {
                 if (clip.referenceId == clipReferenceId)
                     return clip.clipId;
             return -1;
+        }
+
+        int32_t trackIndexForPersistentId(std::string_view trackReferenceId) const {
+            if (master_timeline_track_ && master_timeline_track_->referenceId() == trackReferenceId)
+                return kMasterTrackIndex;
+            for (size_t index = 0; index < timeline_tracks_.size(); ++index)
+                if (timeline_tracks_[index]
+                    && timeline_tracks_[index]->referenceId() == trackReferenceId)
+                    return static_cast<int32_t>(index);
+            return -1;
+        }
+
+        bool removeClipRaw(TimelineTrack& targetTrack, int32_t clipId) {
+            const auto* clip = targetTrack.clipManager().getClip(clipId);
+            if (!clip)
+                return false;
+            auto removedClip = *clip;
+            if (!targetTrack.removeClip(clipId))
+                return false;
+            applyAuthoritativeTempoMapToMusicalClips();
+            emitClipRemoved(targetTrack, removedClip);
+            if (removedClip.clipType == ClipType::Midi)
+                emitMasterTrackChanged("master-track-content-changed");
+            notifyTimelineChanged();
+            return true;
+        }
+
+        bool removeClipByReferenceId(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId) {
+            auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+            if (!targetTrack)
+                return false;
+            const auto clipId = clipIdForReferenceId(*targetTrack, clipReferenceId);
+            return clipId >= 0 && removeClipRaw(*targetTrack, clipId);
+        }
+
+        ClipAddResult restoreClipByReferenceId(
+            std::string_view trackReferenceId,
+            const ProjectClipFragment& fragment) {
+            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+            if (trackIndex < 0 && trackIndex != kMasterTrackIndex)
+                return {.error = "The clip's track no longer exists"};
+            return attachClipFragment(trackIndex, fragment, ProjectObjectIdPolicy::Restore);
+        }
+
+        bool performCapturedClipRemoval(
+            std::string trackReferenceId,
+            ProjectClipFragment fragment,
+            ProjectMutationOrigin origin) {
+            if (origin != ProjectMutationOrigin::User && origin != ProjectMutationOrigin::Remote)
+                return removeClipByReferenceId(trackReferenceId, fragment.clip.referenceId);
+
+            auto operation = std::make_shared<ClipRemovalUndoOperation>(
+                std::move(trackReferenceId),
+                std::move(fragment),
+                [this](std::string_view persistentTrackId, std::string_view persistentClipId) {
+                    return removeClipByReferenceId(persistentTrackId, persistentClipId);
+                },
+                [this](std::string_view persistentTrackId, const ProjectClipFragment& captured) {
+                    return restoreClipByReferenceId(persistentTrackId, captured);
+                });
+            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.perform(
+                std::move(operation),
+                origin,
+                [result](ProjectUndoResult completed) {
+                    *result = std::move(completed);
+                });
+            return result->has_value() && result->value().succeeded();
+        }
+
+        ClipAddResult recordAddedClip(
+            int32_t trackIndex,
+            ClipAddResult result,
+            ProjectMutationOrigin origin) {
+            if (!result.success
+                || (origin != ProjectMutationOrigin::User
+                    && origin != ProjectMutationOrigin::Remote))
+                return result;
+
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack) {
+                result.success = false;
+                result.error = "The added clip's track no longer exists";
+                return result;
+            }
+
+            // The persistent identity and extension-owned state do not exist
+            // until construction succeeds. Capture immediately afterwards,
+            // outside a document transaction, then register the already-
+            // performed operation. If either step fails, remove the new clip
+            // so an untracked user mutation never leaks into the document.
+            auto fragment = captureClipFragment(trackIndex, result.clipId);
+            if (!fragment) {
+                removeClipRaw(*targetTrack, result.clipId);
+                result.success = false;
+                result.error = "Could not capture the added clip for undo history";
+                return result;
+            }
+
+            auto operation = std::make_shared<ClipAdditionUndoOperation>(
+                targetTrack->referenceId(),
+                std::move(*fragment),
+                [this](std::string_view persistentTrackId, std::string_view persistentClipId) {
+                    return removeClipByReferenceId(persistentTrackId, persistentClipId);
+                },
+                [this](std::string_view persistentTrackId, const ProjectClipFragment& captured) {
+                    return restoreClipByReferenceId(persistentTrackId, captured);
+                });
+            auto recorded = std::make_shared<std::optional<ProjectUndoResult>>();
+            undo_engine_.recordPerformed(
+                std::move(operation),
+                origin,
+                [recorded](ProjectUndoResult completed) {
+                    *recorded = std::move(completed);
+                });
+            if (recorded->has_value() && recorded->value().succeeded())
+                return result;
+
+            removeClipRaw(*targetTrack, result.clipId);
+            result.success = false;
+            result.error = recorded->has_value() && !recorded->value().error.empty()
+                ? recorded->value().error
+                : "Could not record the added clip in undo history";
+            return result;
         }
 
         template<typename Mutation>
@@ -644,10 +950,7 @@ namespace uapmd {
         }
 
         int32_t trackIndexForReferenceId(std::string_view trackId) const override {
-            for (size_t index = 0; index < timeline_tracks_.size(); ++index)
-                if (timeline_tracks_[index] && timeline_tracks_[index]->referenceId() == trackId)
-                    return static_cast<int32_t>(index);
-            return -1;
+            return trackIndexForPersistentId(trackId);
         }
 
         AudioGraphProviderRegistry& audioGraphProviderRegistry() override {
@@ -1722,27 +2025,32 @@ namespace uapmd {
             int32_t trackIndex,
             const TimelinePosition& position,
             std::unique_ptr<AudioFileReader> reader,
-            const std::string& filepath) override
+            const std::string& filepath,
+            ProjectMutationOrigin origin) override
         {
             ClipAddResult result;
             if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
                 result.error = "Invalid track index";
                 return result;
             }
-            return addAudioClipToTrack(
-                *timeline_tracks_[static_cast<size_t>(trackIndex)],
-                position,
-                std::move(reader),
-                filepath,
-                {},
-                {});
+            return recordAddedClip(
+                trackIndex,
+                addAudioClipToTrack(
+                    *timeline_tracks_[static_cast<size_t>(trackIndex)],
+                    position,
+                    std::move(reader),
+                    filepath,
+                    {},
+                    {}),
+                origin);
         }
 
         ClipAddResult addMidiClipToTrack(
             int32_t trackIndex,
             const TimelinePosition& position,
             const std::string& filepath,
-            bool nrpnToParameterMapping = false) override
+            bool nrpnToParameterMapping,
+            ProjectMutationOrigin origin) override
         {
             ClipAddResult result;
             if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
@@ -1759,6 +2067,18 @@ namespace uapmd {
             auto separated = MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
             auto& musicalClip = separated.musicalClip;
             auto& track = *timeline_tracks_[static_cast<size_t>(trackIndex)];
+            const bool recordsHistory = origin == ProjectMutationOrigin::User
+                || origin == ProjectMutationOrigin::Remote;
+            const bool ownsCompound = recordsHistory
+                && separated.hasMasterTrackClip()
+                && !undo_engine_.state().compoundOpen;
+            if (ownsCompound) {
+                auto opened = undo_engine_.beginCompound("Import MIDI file", origin);
+                if (!opened.succeeded()) {
+                    result.error = std::move(opened.error);
+                    return result;
+                }
+            }
             result = addMidiClipToTimelineTrack(
                 track,
                 position,
@@ -1773,10 +2093,19 @@ namespace uapmd {
                 nrpnToParameterMapping,
                 separated.hasMasterTrackClip());
 
+            result = recordAddedClip(trackIndex, std::move(result), origin);
+            if (!result.success) {
+                if (ownsCompound)
+                    undo_engine_.cancelCompound();
+                return result;
+            }
+
             if (result.success && separated.hasMasterTrackClip()) {
                 auto& masterClip = separated.masterTrackClip;
-                auto masterResult = addMasterMidiClip(
+                auto masterResult = addMidiClipToTimelineTrack(
+                    *master_timeline_track_,
                     position,
+                    "",
                     {},
                     {},
                     masterClip.tick_resolution,
@@ -1785,15 +2114,33 @@ namespace uapmd {
                     std::move(masterClip.time_signature_changes),
                     std::format("{} Meta", std::filesystem::path(filepath).stem().string()),
                     false,
-                    "");
+                    false);
                 if (masterResult.success) {
-                    if (const auto* regularClip = track.clipManager().getClip(result.clipId))
-                        master_timeline_track_->clipManager().setClipAnchor(
+                    if (const auto* regularClip = track.clipManager().getClip(result.clipId)) {
+                        if (!master_timeline_track_->clipManager().setClipAnchor(
                             masterResult.clipId,
                             TimeReference::fromContainerStart(regularClip->referenceId, 0.0),
-                            sampleRate_);
+                            sampleRate_)) {
+                            removeClipRaw(*master_timeline_track_, masterResult.clipId);
+                            masterResult.success = false;
+                            masterResult.error = "Could not anchor the imported master MIDI clip";
+                        }
+                    }
+                }
+                masterResult = recordAddedClip(
+                    kMasterTrackIndex, std::move(masterResult), origin);
+                if (!masterResult.success) {
+                    if (ownsCompound)
+                        undo_engine_.cancelCompound();
+                    result.success = false;
+                    result.error = masterResult.error.empty()
+                        ? "Could not add the imported master MIDI clip"
+                        : std::move(masterResult.error);
+                    return result;
                 }
             }
+            if (ownsCompound)
+                undo_engine_.endCompound();
             return result;
         }
 
@@ -1808,26 +2155,30 @@ namespace uapmd {
             std::vector<MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName,
             bool nrpnToParameterMapping,
-            bool needsFileSave) override
+            bool needsFileSave,
+            ProjectMutationOrigin origin) override
         {
             if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
                 ClipAddResult result;
                 result.error = "Invalid track index";
                 return result;
             }
-            return addMidiClipToTimelineTrack(
-                *timeline_tracks_[static_cast<size_t>(trackIndex)],
-                position,
-                "",
-                std::move(umpEvents),
-                std::move(umpTickTimestamps),
-                tickResolution,
-                clipTempo,
-                std::move(tempoChanges),
-                std::move(timeSignatureChanges),
-                clipName,
-                nrpnToParameterMapping,
-                needsFileSave);
+            return recordAddedClip(
+                trackIndex,
+                addMidiClipToTimelineTrack(
+                    *timeline_tracks_[static_cast<size_t>(trackIndex)],
+                    position,
+                    "",
+                    std::move(umpEvents),
+                    std::move(umpTickTimestamps),
+                    tickResolution,
+                    clipTempo,
+                    std::move(tempoChanges),
+                    std::move(timeSignatureChanges),
+                    clipName,
+                    nrpnToParameterMapping,
+                    needsFileSave),
+                origin);
         }
 
         ClipAddResult addMasterMidiClip(
@@ -1840,63 +2191,94 @@ namespace uapmd {
             std::vector<MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName,
             bool needsFileSave,
-            const std::string& filepath) override
+            const std::string& filepath,
+            ProjectMutationOrigin origin) override
         {
-            return addMidiClipToTimelineTrack(
-                *master_timeline_track_,
-                position,
-                filepath,
-                std::move(umpEvents),
-                std::move(umpTickTimestamps),
-                tickResolution,
-                clipTempo,
-                std::move(tempoChanges),
-                std::move(timeSignatureChanges),
-                clipName,
-                false,
-                needsFileSave);
+            return recordAddedClip(
+                kMasterTrackIndex,
+                addMidiClipToTimelineTrack(
+                    *master_timeline_track_,
+                    position,
+                    filepath,
+                    std::move(umpEvents),
+                    std::move(umpTickTimestamps),
+                    tickResolution,
+                    clipTempo,
+                    std::move(tempoChanges),
+                    std::move(timeSignatureChanges),
+                    clipName,
+                    false,
+                    needsFileSave),
+                origin);
         }
 
-        bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) override {
-            bool removed = false;
-            TimelineTrack* targetTrack = nullptr;
-            std::optional<ClipData> removedClip{};
-            if (trackIndex == kMasterTrackIndex) {
-                targetTrack = master_timeline_track_.get();
-            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
-                targetTrack = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
-            }
-            if (targetTrack) {
-                if (auto* clip = targetTrack->clipManager().getClip(clipId))
-                    removedClip = *clip;
-                removed = targetTrack->removeClip(clipId);
-            }
-            if (removed) {
-                applyAuthoritativeTempoMapToMusicalClips();
-                if (targetTrack && removedClip)
-                    emitClipRemoved(*targetTrack, *removedClip);
-                if (removedClip && removedClip->clipType == ClipType::Midi)
-                    emitMasterTrackChanged("master-track-content-changed");
-                notifyTimelineChanged();
-            }
-            return removed;
-        }
-
-        bool clearClipsFromTrack(int32_t trackIndex) override {
+        bool removeClipFromTrack(
+            int32_t trackIndex,
+            int32_t clipId,
+            ProjectMutationOrigin origin) override {
             auto* targetTrack = resolveTrack(trackIndex);
             if (!targetTrack)
                 return false;
+            if (origin != ProjectMutationOrigin::User && origin != ProjectMutationOrigin::Remote)
+                return removeClipRaw(*targetTrack, clipId);
+
+            // Capture before beginning any document transaction: ARA archives
+            // may not be created while the document is being edited.
+            auto fragment = captureClipFragment(trackIndex, clipId);
+            if (!fragment)
+                return false;
+            return performCapturedClipRemoval(
+                targetTrack->referenceId(), std::move(*fragment), origin);
+        }
+
+        bool clearClipsFromTrack(
+            int32_t trackIndex,
+            ProjectMutationOrigin origin) override {
+            auto* targetTrack = resolveTrack(trackIndex);
+            if (!targetTrack)
+                return false;
+            const auto clips = targetTrack->clipManager().getAllClips();
+            if (clips.empty())
+                return false;
+
+            if (origin != ProjectMutationOrigin::User && origin != ProjectMutationOrigin::Remote) {
+                ProjectDocumentTransaction transaction(project_document_events_);
+                bool removedAny = false;
+                for (const auto& clip : clips)
+                    removedAny |= removeClipRaw(*targetTrack, clip.clipId);
+                return removedAny;
+            }
+
+            std::vector<ProjectClipFragment> fragments;
+            fragments.reserve(clips.size());
+            for (const auto& clip : clips) {
+                auto fragment = captureClipFragment(trackIndex, clip.clipId);
+                if (!fragment)
+                    return false;
+                fragments.push_back(std::move(*fragment));
+            }
+
+            const bool ownsCompound = !undo_engine_.state().compoundOpen;
+            if (ownsCompound) {
+                auto opened = undo_engine_.beginCompound("Clear clips", origin);
+                if (!opened.succeeded())
+                    return false;
+            }
             // Removed one at a time rather than by clearing the clip manager,
             // so that every clip produces its own removal event. Clearing
             // directly leaves observers holding clips that no longer exist.
-            // getAllClips() returns a copy, so removing while iterating is safe.
-            // The whole sweep is one transaction: clearing a track is a single
-            // user action, and observers should not see it clip by clip.
             ProjectDocumentTransaction transaction(project_document_events_);
-            bool removedAny = false;
-            for (const auto& clip : targetTrack->clipManager().getAllClips())
-                removedAny |= removeClipFromTrack(trackIndex, clip.clipId);
-            return removedAny;
+            for (auto& fragment : fragments) {
+                if (performCapturedClipRemoval(
+                        targetTrack->referenceId(), std::move(fragment), origin))
+                    continue;
+                if (ownsCompound)
+                    undo_engine_.cancelCompound();
+                return false;
+            }
+            if (ownsCompound)
+                undo_engine_.endCompound();
+            return true;
         }
 
         bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") override {
@@ -2230,7 +2612,15 @@ namespace uapmd {
                     source.nrpnToParameterMapping,
                     source.needsFileSave);
             } else {
-                auto reader = createAudioFileReaderFromPath(source.filepath);
+                std::unique_ptr<AudioFileReader> reader;
+                if (source.filepath.empty()) {
+                    reader = std::make_unique<SilentAudioFileReader>(
+                        static_cast<uint64_t>(std::max<int64_t>(1, source.durationSamples)),
+                        std::max<uint32_t>(1, targetTrack->channelCount()),
+                        static_cast<uint32_t>(std::max(1, sampleRate_)));
+                } else {
+                    reader = createAudioFileReaderFromPath(source.filepath);
+                }
                 if (!reader) {
                     pending_clip_reference_id_.clear();
                     result.error = "Could not reopen the audio file for the clip";
@@ -2257,14 +2647,19 @@ namespace uapmd {
             auto& clips = targetTrack->clipManager();
             clips.setClipGain(result.clipId, source.gain);
             clips.setClipMuted(result.clipId, source.muted);
+            if (!clips.setClipAnchor(result.clipId, source.timeReference(sampleRate_), sampleRate_)) {
+                removeClipRaw(*targetTrack, result.clipId);
+                result.success = false;
+                result.error = "Could not restore the clip's timeline anchor";
+                return result;
+            }
             setClipEnabled(
                 trackIndex, result.clipId, source.enabled,
                 ProjectMutationOrigin::Internal);
-            if (!fragment.isMidi())
-                resizeClip(
-                    trackIndex, result.clipId, source.durationSamples,
-                    ProjectMutationOrigin::Internal);
-            else if (!source.markers.empty())
+            resizeClip(
+                trackIndex, result.clipId, source.durationSamples,
+                ProjectMutationOrigin::Internal);
+            if (fragment.isMidi() && !source.markers.empty())
                 setClipMarkers(
                     trackIndex, result.clipId, source.markers,
                     ProjectMutationOrigin::Internal);
@@ -2278,10 +2673,17 @@ namespace uapmd {
                     static const std::vector<uint8_t> kNoState{};
                     const auto& state = it == fragment.extensionState.end() ? kNoState : it->second;
                     std::string extensionError;
-                    if (!extension->restoreClipFragmentState(attachedClip->referenceId, state, extensionError))
-                        std::cerr << "Warning: Extension " << extension->extensionId()
-                                  << " failed to restore state for clip "
-                                  << attachedClip->referenceId << ": " << extensionError << std::endl;
+                    if (!extension->restoreClipFragmentState(attachedClip->referenceId, state, extensionError)) {
+                        const auto failedClipReferenceId = attachedClip->referenceId;
+                        removeClipRaw(*targetTrack, result.clipId);
+                        result.success = false;
+                        result.error = std::format(
+                            "Extension {} failed to restore state for clip {}: {}",
+                            extension->extensionId(),
+                            failedClipReferenceId,
+                            extensionError);
+                        return result;
+                    }
                 }
             }
             return result;
@@ -2644,7 +3046,8 @@ namespace uapmd {
                                 std::move(musicalClip.time_signature_changes),
                                 resolvedPath.filename().string(),
                                 clip->nrpnToParameterMapping(),
-                                separated.hasMasterTrackClip());
+                                separated.hasMasterTrackClip(),
+                                ProjectMutationOrigin::Load);
                             if (!loadResult.success) {
                                 earlyError = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
                                 break;
@@ -2670,7 +3073,8 @@ namespace uapmd {
                                 std::move(masterClip.time_signature_changes),
                                 std::format("{} Meta", resolvedPath.filename().string()),
                                 false,
-                                "");
+                                "",
+                                ProjectMutationOrigin::Load);
                             if (!masterLoadResult.success) {
                                 earlyError = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
                                 break;
@@ -2754,7 +3158,8 @@ namespace uapmd {
                         std::move(clipInfo.time_signature_changes),
                         resolvedPath.filename().string(),
                         false,
-                        resolvedPath.string());
+                        resolvedPath.string(),
+                        ProjectMutationOrigin::Load);
                     if (!masterLoadResult.success) {
                         earlyError = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
                         break;

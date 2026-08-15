@@ -289,6 +289,53 @@ namespace uapmd {
             operation->perform(context, operationCompletion(pending_->token));
         }
 
+        void recordPerformed(
+            std::shared_ptr<ProjectUndoableOperation> operation,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion) {
+            if (!operation) {
+                completeClient(
+                    std::move(completion),
+                    ProjectUndoResult::failure("Cannot record an empty undo operation."));
+                return;
+            }
+            if (stopped_) {
+                completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
+                return;
+            }
+            if (pending_) {
+                completeClient(std::move(completion), resultWithStatus(
+                    ProjectUndoStatus::Busy,
+                    "An undo history operation is already pending."));
+                return;
+            }
+            if (compound_ && compound_->origin != origin) {
+                completeClient(
+                    std::move(completion),
+                    ProjectUndoResult::failure(
+                        "An operation origin cannot change inside a compound undo step."));
+                return;
+            }
+
+            if (operation->hasEffect()) {
+                if (compound_) {
+                    auto& children = compound_->children;
+                    const bool merged = compound_->coalesceCompatibleOperations
+                        && !children.empty()
+                        && children.back()->mergeWith(*operation);
+                    if (merged) {
+                        if (!children.back()->hasEffect())
+                            children.pop_back();
+                    } else {
+                        children.push_back(std::move(operation));
+                    }
+                } else {
+                    finishPerform(std::move(operation));
+                }
+            }
+            completeClient(std::move(completion), ProjectUndoResult::success());
+        }
+
         void undo(ProjectUndoCompletion completion) {
             if (stopped_) {
                 completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
@@ -672,6 +719,13 @@ namespace uapmd {
         ProjectMutationOrigin origin,
         ProjectUndoCompletion completion) {
         impl_->perform(std::move(operation), origin, std::move(completion));
+    }
+
+    void ProjectUndoEngine::recordPerformed(
+        std::shared_ptr<ProjectUndoableOperation> operation,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) {
+        impl_->recordPerformed(std::move(operation), origin, std::move(completion));
     }
 
     void ProjectUndoEngine::undo(ProjectUndoCompletion completion) {

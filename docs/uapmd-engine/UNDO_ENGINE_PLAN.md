@@ -3,8 +3,8 @@
 ## Status
 
 Phase 0 is done for its purpose: the mutation funnel, transactions, persistent
-identity and detachable fragments all exist, so Phase 1 is unblocked. The undo
-stack itself is Phase 1 and the clipboard is Phase 2; neither has started.
+identity and detachable fragments all exist. Phase 1 is in progress through
+structural clip operations; the clipboard remains Phase 2 and has not started.
 
 Two pieces of ARA work are deliberately left for later and are described under
 Remaining work. Neither gates Phase 1. The ARA work as a whole is unverified
@@ -307,8 +307,31 @@ after-value; returning to the initial value removes it. Intermediate mutations
 still publish their ordinary document events. The present timeline drag UI
 commits clip movement only on release, so it has no stream of intermediate
 document mutations to wrap yet. Automatic time-window coalescing without a
-gesture boundary remains deferred until a caller actually needs it. The next
-implementation slice is structural clip operations.
+gesture boundary remains deferred until a caller actually needs it.
+
+Task 6 is implemented for ordinary clip creation, deletion, clearing and undo
+restoration. Deletion captures a complete `ProjectClipFragment` before the
+document edit, so extension and ARA archiving never occurs inside an edit
+transaction. Undo restores the original persistent clip identity; redo removes
+that identity again. Clearing a track captures every clip before mutation and
+records the removals as one named compound step.
+
+Creation paths capture the successfully constructed clip, including its minted
+identity and extension-owned state, then use `recordPerformed()` to register
+the inverse without invoking the forward mutation a second time. Failure to
+capture or register history removes the new clip rather than leaving an
+untracked user edit. MIDI files containing both musical and master-track clips,
+and empty MIDI clip creation followed by its default resize, are compound undo
+steps. Load and internal attachment bypass history explicitly.
+
+Fragment restoration now reapplies the captured anchor, exact duration,
+enablement, gain, mute, markers, warps and extension state. A failed extension
+restore removes the partially attached clip and reports failure, leaving the
+history cursor unchanged. Redo of file-backed audio still depends on reopening
+the source file; a missing file is therefore a visible replay failure, as
+required by the resource-failure policy. `Mint` attachment for paste and
+duplicate remains Phase 2. The next implementation slice is structural track
+operations.
 
 ## Remaining work
 

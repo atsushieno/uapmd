@@ -142,6 +142,15 @@ namespace uapmd {
             std::shared_ptr<ProjectUndoableOperation> operation,
             ProjectMutationOrigin origin,
             ProjectUndoCompletion completion = {});
+        // Records an operation whose forward mutation has already completed.
+        // This is for creation paths where the resulting persistent object and
+        // its extension-owned state can only be captured after construction.
+        // The operation's perform() is not invoked; undo() and redo() retain
+        // their ordinary meanings.
+        void recordPerformed(
+            std::shared_ptr<ProjectUndoableOperation> operation,
+            ProjectMutationOrigin origin = ProjectMutationOrigin::User,
+            ProjectUndoCompletion completion = {});
         void undo(ProjectUndoCompletion completion = {});
         void redo(ProjectUndoCompletion completion = {});
 

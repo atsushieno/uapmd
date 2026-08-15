@@ -45,13 +45,15 @@ public:
         int32_t trackIndex,
         const TimelinePosition& position,
         std::unique_ptr<AudioFileReader> reader,
-        const std::string& filepath = "") = 0;
+        const std::string& filepath = "",
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual ClipAddResult addMidiClipToTrack(
         int32_t trackIndex,
         const TimelinePosition& position,
         const std::string& filepath,
-        bool nrpnToParameterMapping = false) = 0;
+        bool nrpnToParameterMapping = false,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual ClipAddResult addMidiClipToTrack(
         int32_t trackIndex,
@@ -64,7 +66,8 @@ public:
         std::vector<MidiTimeSignatureChange> timeSignatureChanges,
         const std::string& clipName = "",
         bool nrpnToParameterMapping = false,
-        bool needsFileSave = false) = 0;
+        bool needsFileSave = false,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual ClipAddResult addMasterMidiClip(
         const TimelinePosition& position,
@@ -76,11 +79,17 @@ public:
         std::vector<MidiTimeSignatureChange> timeSignatureChanges,
         const std::string& clipName = "",
         bool needsFileSave = false,
-        const std::string& filepath = "") = 0;
+        const std::string& filepath = "",
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
-    virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
+    virtual bool removeClipFromTrack(
+        int32_t trackIndex,
+        int32_t clipId,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     // Removes every clip on the track. Returns true when at least one was removed.
-    virtual bool clearClipsFromTrack(int32_t trackIndex) = 0;
+    virtual bool clearClipsFromTrack(
+        int32_t trackIndex,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") = 0;
 
     // Clip mutations.

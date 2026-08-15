@@ -1836,6 +1836,18 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     if (clipTempo <= 0.0)
         clipTempo = 120.0;
 
+    auto& undo = sequencer_.engine()->timeline().undoEngine();
+    const bool ownsCompound = separated.hasMusicalClip()
+        && separated.hasMasterTrackClip()
+        && !undo.state().compoundOpen;
+    if (ownsCompound) {
+        auto opened = undo.beginCompound("Import MIDI file");
+        if (!opened.succeeded()) {
+            result.error = std::move(opened.error);
+            return result;
+        }
+    }
+
     if (separated.hasMusicalClip()) {
         auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
             trackIndex, position,
@@ -1852,8 +1864,11 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
         result.sourceNodeId = engineResult.sourceNodeId;
         result.success = engineResult.success;
         result.error = engineResult.error;
-        if (!result.success)
+        if (!result.success) {
+            if (ownsCompound)
+                undo.cancelCompound();
             return result;
+        }
         markTrackDirty(trackIndex);
     } else {
         result.success = true;
@@ -1873,10 +1888,15 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
         if (!masterResult.success) {
             result.success = false;
             result.error = masterResult.error;
+            if (ownsCompound)
+                undo.cancelCompound();
+            return result;
         } else {
             markTrackDirty(kMasterTrackIndex);
         }
     }
+    if (ownsCompound)
+        undo.endCompound();
     return result;
 }
 
@@ -1897,6 +1917,15 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     const int64_t emptyMidiDurationSamples = emptyMidiClip
         ? defaultEmptyMidiClipDurationSamples(sample_rate_, clipTempo, timeSignatureChanges)
         : 0;
+    auto& undo = sequencer_.engine()->timeline().undoEngine();
+    const bool ownsCompound = emptyMidiClip && !undo.state().compoundOpen;
+    if (ownsCompound) {
+        auto opened = undo.beginCompound("Add MIDI clip");
+        if (!opened.succeeded()) {
+            result.error = std::move(opened.error);
+            return result;
+        }
+    }
     auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
         trackIndex, position,
         std::move(umpEvents), std::move(umpTickTimestamps),
@@ -1909,13 +1938,24 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
     result.error = engineResult.error;
-    if (result.success && emptyMidiClip) {
-        sequencer_.engine()->timeline().resizeClip(
-            trackIndex, result.clipId, emptyMidiDurationSamples,
-            ProjectMutationOrigin::Internal);
+    if (!result.success) {
+        if (ownsCompound)
+            undo.cancelCompound();
+        return result;
     }
-    if (result.success)
-        markTrackDirty(trackIndex);
+    if (emptyMidiClip
+        && !sequencer_.engine()->timeline().resizeClip(
+            trackIndex, result.clipId, emptyMidiDurationSamples,
+            ProjectMutationOrigin::User)) {
+        result.success = false;
+        result.error = "Could not set the new MIDI clip duration";
+        if (ownsCompound)
+            undo.cancelCompound();
+        return result;
+    }
+    if (ownsCompound)
+        undo.endCompound();
+    markTrackDirty(trackIndex);
 
     return result;
 }
