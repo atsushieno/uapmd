@@ -2940,9 +2940,23 @@ int32_t uapmd_app::AppModel::addDeviceInputToTrack(
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timelineTracks.size()))
         return -1;
 
-    // Engine doesn't expose a next_source_node_id_ for DeviceInput nodes yet;
-    // use a local counter for device input nodes in AppModel scope.
-    int32_t sourceNodeId = next_source_node_id_++;
+    // Device inputs share a track's source-node namespace with clip sources.
+    // The engine owns clip allocation, so skip every ID already present before
+    // handing one to the mutation layer. This remains valid after project load
+    // and undo/redo, where the local counter has no knowledge of engine IDs.
+    int32_t sourceNodeId = next_source_node_id_;
+    for (;;) {
+        const bool inUse = std::any_of(
+            timelineTracks.begin(),
+            timelineTracks.end(),
+            [sourceNodeId](uapmd::TimelineTrack* track) {
+                return track && track->getSourceNode(sourceNodeId) != nullptr;
+            });
+        if (!inUse)
+            break;
+        ++sourceNodeId;
+    }
+    next_source_node_id_ = sourceNodeId + 1;
     if (sequencer_.engine()->timeline().addDeviceInputToTrack(
             trackIndex,
             sourceNodeId,

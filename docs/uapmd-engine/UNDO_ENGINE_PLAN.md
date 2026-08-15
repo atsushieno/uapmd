@@ -4,7 +4,8 @@
 
 Phase 0 is done for its purpose: the mutation funnel, transactions, persistent
 identity and detachable fragments all exist. Phase 1 is in progress through
-structural clip operations; the clipboard remains Phase 2 and has not started.
+structural clip operations and track-property history; the clipboard remains
+Phase 2 and has not started.
 
 Two pieces of ARA work are deliberately left for later and are described under
 Remaining work. Neither gates Phase 1. The ARA work as a whole is unverified
@@ -394,7 +395,8 @@ because its enclosing clip or track can be deleted and restored: changing that
 property directly must itself create a correctly described history step, and
 every GUI, JavaScript and MCP entry point must use the same mutation primitive.
 
-The following known document mutations still bypass history.
+The following subsections record completed adoption steps and the mutations
+that still bypass history.
 
 ### Step 1 completed: clip timing and authored content
 
@@ -407,22 +409,32 @@ that content operation. Master markers, clip gain and clip mute also have
 undoable mutation entry points. Multi-track MIDI import records the master-clip
 anchor separately inside its compound step, so redo reproduces it.
 
-### Track properties and routing
+### Step 2 completed: track properties and routing
 
-- Track and master-track volume.
-- Track mute, solo and the implicit clearing of solo on other tracks.
-- Track processing bypass.
-- Track freeze policy.
-- Per-track record-arm and input-monitoring state.
-- Device-input source creation and its channel routing.
-- Project latency-compensation settings, including playback-compensation mode
-  and input-monitoring policy.
+Track and master-track gain, mute, solo, bypass and freeze-policy changes now
+enter history through persistent track identity. Gain gestures merge into one
+step, and the GUI's non-additive solo action uses one document transaction and
+one named compound step for clearing other solos plus enabling the target.
 
-Volume controls need gesture scopes so a drag produces one step. A solo action
-that changes several tracks is one compound step. Freeze state requires a
-specific policy: the saved policy is document state, while a rendered cache,
-queued render and render progress are derived runtime state and must not enter
-history.
+Record-arm, input-monitoring, playback-compensation and latency settings use a
+single snapshot operation, so changing several related settings is undoable as
+one action. Device-input creation, channel routing and removal use a typed
+operation that restores the source node and channels on replay. AppModel device
+input allocation now avoids clip and other source-node IDs, while the track
+rejects duplicate source IDs defensively.
+
+The engine and native GUI paths for these properties use the same mutation
+layer; derived freeze render state remains outside history. Regression coverage
+now exercises property undo/redo, freeze policy and device routing, including
+source-ID collision rejection.
+
+### Track properties and routing follow-up
+
+The remaining work is limited to adopting callback jobs or request identifiers
+in any future JavaScript/MCP device-routing surface; those callers must not
+block the model thread to simulate synchronous completion. Freeze state keeps
+the policy in history while rendered caches, queued renders and progress remain
+derived runtime state.
 
 ### Plug-ins and graphs
 

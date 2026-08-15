@@ -602,6 +602,121 @@ TEST_F(SequencerEngineOutputTest, MidiClipContentUndoRestoresClipIdentityAndEven
     EXPECT_EQ(redoneMidi->eventTimestampsTicks(), replacementTicks);
 }
 
+TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto firstTrack = engine->addEmptyTrack();
+    const auto secondTrack = engine->addEmptyTrack();
+    ASSERT_GE(firstTrack, 0);
+    ASSERT_GE(secondTrack, 0);
+
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.setTrackGain(firstTrack, 0.5));
+    ASSERT_TRUE(timeline.undoEngine().state().canUndo);
+    std::optional<uapmd::ProjectUndoResult> result;
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(engine->tracks()[static_cast<size_t>(firstTrack)]->trackGain(), 1.0);
+    timeline.undoEngine().redo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(engine->tracks()[static_cast<size_t>(firstTrack)]->trackGain(), 0.5);
+
+    ASSERT_TRUE(timeline.setTrackMuted(firstTrack, true));
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FALSE(engine->tracks()[static_cast<size_t>(firstTrack)]->muted());
+
+    ASSERT_TRUE(timeline.setTrackBypassed(firstTrack, true));
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FALSE(engine->tracks()[static_cast<size_t>(firstTrack)]->bypassed());
+
+    ASSERT_TRUE(timeline.setTrackFreezePolicyEnabled(firstTrack, true));
+    EXPECT_EQ(
+        engine->frozenTrackManager().freezePolicyForTrack(firstTrack),
+        uapmd::FrozenTrackManager::FreezePolicy::On);
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(
+        engine->frozenTrackManager().freezePolicyForTrack(firstTrack),
+        uapmd::FrozenTrackManager::FreezePolicy::Off);
+
+    auto latencySettings = engine->latencyCompensationManager()->projectSettings();
+    latencySettings.playback_compensation_mode =
+        uapmd::PlaybackCompensationMode::LOW_LATENCY;
+    latencySettings.input_monitoring_policy = uapmd::InputMonitoringPolicy::OFF;
+    latencySettings.record_armed_track_indexes = {firstTrack};
+    latencySettings.monitored_track_indexes = {secondTrack};
+    ASSERT_TRUE(timeline.setLatencyCompensationSettings(latencySettings));
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    const auto restoredLatencySettings =
+        engine->latencyCompensationManager()->projectSettings();
+    EXPECT_NE(
+        restoredLatencySettings.playback_compensation_mode,
+        uapmd::PlaybackCompensationMode::LOW_LATENCY);
+    EXPECT_NE(
+        restoredLatencySettings.input_monitoring_policy,
+        uapmd::InputMonitoringPolicy::OFF);
+    EXPECT_TRUE(restoredLatencySettings.record_armed_track_indexes.empty());
+    EXPECT_TRUE(restoredLatencySettings.monitored_track_indexes.empty());
+
+    const auto clip = addFragmentTestClip(*engine, firstTrack, 48000);
+    ASSERT_TRUE(clip.success) << clip.error;
+    EXPECT_FALSE(timeline.addDeviceInputToTrack(firstTrack, clip.sourceNodeId, {0, 1}));
+
+    constexpr int32_t sourceNodeId = 9001;
+    ASSERT_TRUE(timeline.addDeviceInputToTrack(firstTrack, sourceNodeId, {2, 3}));
+    auto track = timeline.tracks()[static_cast<size_t>(firstTrack)];
+    auto input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
+        track->getSourceNode(sourceNodeId));
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2, 3}));
+
+    ASSERT_TRUE(timeline.setDeviceInputChannels(firstTrack, sourceNodeId, {4}));
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
+        track->getSourceNode(sourceNodeId));
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2, 3}));
+
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(track->getSourceNode(sourceNodeId), nullptr);
+    timeline.undoEngine().redo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_NE(track->getSourceNode(sourceNodeId), nullptr);
+
+    ASSERT_TRUE(timeline.setTrackSolo(firstTrack, true));
+    ASSERT_TRUE(timeline.setTrackSolo(secondTrack, true));
+    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(engine->tracks()[static_cast<size_t>(firstTrack)]->solo());
+    EXPECT_FALSE(engine->tracks()[static_cast<size_t>(secondTrack)]->solo());
+}
+
 TEST_F(SequencerEngineOutputTest, ClipFragmentCarriesExtensionOwnedState) {
     // Stands in for a feature that owns state the document cannot see, such as
     // a plug-in's opaque per-clip state.

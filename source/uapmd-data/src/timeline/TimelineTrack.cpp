@@ -195,6 +195,15 @@ namespace uapmd {
         auto sharedNode = std::shared_ptr<DeviceInputSourceNode>(std::move(sourceNode));
         {
             std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            const auto instanceId = sharedNode->instanceId();
+            const auto alreadyExists = std::find_if(
+                source_nodes_.begin(),
+                source_nodes_.end(),
+                [instanceId](const std::shared_ptr<SourceNode>& node) {
+                    return node && node->instanceId() == instanceId;
+                });
+            if (alreadyExists != source_nodes_.end())
+                return false;
             source_nodes_.push_back(sharedNode);
             rebuildSourceNodeSnapshotLocked();
         }

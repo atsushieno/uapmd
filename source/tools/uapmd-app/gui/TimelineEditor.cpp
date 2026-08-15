@@ -1306,9 +1306,15 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 const bool enableSolo = !solo;
                 const bool ownsCompound = !additive && !undo.state().compoundOpen;
                 bool compoundOpened = false;
-                if (ownsCompound)
+                bool documentTransactionOpened = false;
+                if (ownsCompound) {
                     compoundOpened = undo.beginCompound(
                         enableSolo ? "Solo track" : "Unsolo track").succeeded();
+                    if (compoundOpened) {
+                        sequencer.engine()->timeline().beginDocumentTransaction();
+                        documentTransactionOpened = true;
+                    }
+                }
                 bool succeeded = true;
                 if (enableSolo && !additive) {
                     for (size_t i = 0; i < tracksRef.size(); ++i)
@@ -1330,6 +1336,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     else
                         undo.cancelCompound();
                 }
+                if (documentTransactionOpened)
+                    sequencer.engine()->timeline().endDocumentTransaction();
             }
             if (solo)
                 ImGui::PopStyleColor(3);
