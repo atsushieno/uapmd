@@ -1159,7 +1159,9 @@ namespace uapmd {
         };
     } // namespace
 
-    class TimelineFacadeImpl : public TimelineFacade, public ProjectDocumentView {
+    class TimelineFacadeImpl : public TimelineFacade,
+                               public ProjectDocumentView,
+                               public PluginInstanceLifecycleListener {
         SequencerEngine& engine_;
         int32_t sampleRate_;
         uint32_t bufferSizeInFrames_;
@@ -1297,6 +1299,9 @@ namespace uapmd {
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
+        std::unordered_map<int32_t, std::unordered_map<int32_t, double>> plugin_parameter_values_{};
+        std::unordered_map<int32_t, remidy::EventListenerId> plugin_parameter_listener_ids_{};
+        std::atomic<uint32_t> plugin_parameter_mutation_depth_{0};
 
         // Identity staged by the project loader for the next track or clip it
         // creates, so that loaded objects keep the reference IDs they were
@@ -1782,12 +1787,23 @@ namespace uapmd {
             , bufferSizeInFrames_(0)
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
         {
+            engine_.addPluginInstanceLifecycleListener(*this);
             audio_graph_provider_registry_ = AudioGraphProviderRegistry::create();
             timeline_.tempo = 120.0;
             timeline_.timeSignatureNumerator = 4;
             timeline_.timeSignatureDenominator = 4;
             timeline_.isPlaying = false;
             timeline_.loopEnabled = false;
+        }
+
+        ~TimelineFacadeImpl() override {
+            engine_.removePluginInstanceLifecycleListener(*this);
+            for (const auto& [instanceId, listenerId] : plugin_parameter_listener_ids_) {
+                if (auto* instance = engine_.getPluginInstance(instanceId)) {
+                    if (auto* support = instance->parameterSupport())
+                        support->parameterChangeEvent().removeListener(listenerId);
+                }
+            }
         }
 
         void notifyTimelineChanged() {
@@ -3979,6 +3995,113 @@ namespace uapmd {
             return -1;
         }
 
+        bool applyPluginParameterValue(
+            std::string_view persistentTrackId,
+            std::string_view persistentNodeId,
+            int32_t parameterIndex,
+            double value) {
+            const auto currentInstanceId = resolvePluginInstanceId(
+                persistentTrackId,
+                persistentNodeId);
+            auto* currentInstance = engine_.getPluginInstance(currentInstanceId);
+            if (!currentInstance
+                || engine_.frozenTrackManager().isInstanceBusy(currentInstanceId))
+                return false;
+            plugin_parameter_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
+            engine_.setParameterValue(currentInstanceId, parameterIndex, value);
+            plugin_parameter_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
+            plugin_parameter_values_[currentInstanceId][parameterIndex] = value;
+            emitTrackChanged(persistentTrackId, std::format(
+                "plugin-parameter-{}-changed", parameterIndex));
+            notifyTimelineChanged();
+            return true;
+        }
+
+        void recordExternalPluginParameterChange(
+            int32_t instanceId,
+            int32_t parameterIndex,
+            double before,
+            double after) {
+            auto target = pluginTargetForInstance(instanceId);
+            if (!target || before == after)
+                return;
+            auto operation = std::make_shared<PluginPropertyUndoOperation<double>>(
+                "Change plug-in parameter",
+                std::format("plugin-parameter-{}-changed", parameterIndex),
+                target->trackReferenceId,
+                target->nodeId,
+                before,
+                after,
+                [this, parameterIndex](
+                    std::string_view persistentTrackId,
+                    std::string_view persistentNodeId,
+                    const double& value) {
+                    return applyPluginParameterValue(
+                        persistentTrackId,
+                        persistentNodeId,
+                        parameterIndex,
+                        value);
+                });
+            undo_engine_.recordPerformed(
+                std::move(operation),
+                ProjectMutationOrigin::User);
+            emitTrackChanged(
+                target->trackReferenceId,
+                std::format("plugin-parameter-{}-changed", parameterIndex));
+            notifyTimelineChanged();
+        }
+
+        void onPluginParameterChanged(
+            int32_t instanceId,
+            uint32_t parameterIndex,
+            double value) {
+            if (plugin_parameter_mutation_depth_.load(std::memory_order_acquire) != 0)
+                return;
+            if (!remidy::EventLoop::runningOnMainThread()) {
+                dispatchToModelThread([this, instanceId, parameterIndex, value] {
+                    onPluginParameterChanged(instanceId, parameterIndex, value);
+                });
+                return;
+            }
+            const auto index = static_cast<int32_t>(parameterIndex);
+            auto& values = plugin_parameter_values_[instanceId];
+            const auto previous = values.find(index);
+            const auto before = previous == values.end() ? value : previous->second;
+            values[index] = value;
+            if (previous == values.end())
+                return;
+            recordExternalPluginParameterChange(instanceId, index, before, value);
+        }
+
+        void pluginInstanceAdded(
+            int32_t instanceId,
+            AudioPluginInstanceAPI& instance) override {
+            auto& values = plugin_parameter_values_[instanceId];
+            for (const auto& parameter : instance.parameterMetadataList())
+                values[static_cast<int32_t>(parameter.index)] =
+                    instance.getParameterValue(static_cast<int32_t>(parameter.index));
+            auto* support = instance.parameterSupport();
+            if (!support)
+                return;
+            plugin_parameter_listener_ids_[instanceId] =
+                support->parameterChangeEvent().addListener(
+                [this, instanceId](uint32_t parameterIndex, double value) {
+                    onPluginParameterChanged(instanceId, parameterIndex, value);
+                });
+        }
+
+        void pluginInstanceWillBeDestroyed(int32_t instanceId) override {
+            const auto listener = plugin_parameter_listener_ids_.find(instanceId);
+            if (listener != plugin_parameter_listener_ids_.end()) {
+                if (auto* instance = engine_.getPluginInstance(instanceId)) {
+                    if (auto* support = instance->parameterSupport())
+                        support->parameterChangeEvent().removeListener(listener->second);
+                }
+                plugin_parameter_listener_ids_.erase(listener);
+            }
+            plugin_parameter_values_.erase(instanceId);
+        }
+
         template<typename Value, typename Read, typename Mutation>
         bool setUndoablePluginProperty(
             int32_t instanceId,
@@ -4074,14 +4197,13 @@ namespace uapmd {
                     int32_t currentInstanceId,
                     AudioPluginInstanceAPI&,
                     double currentValue) {
-                    if (engine_.frozenTrackManager().isInstanceBusy(
-                            currentInstanceId))
-                        return false;
-                    engine_.setParameterValue(
-                        currentInstanceId,
-                        parameterIndex,
-                        currentValue);
-                    return true;
+                    const auto target = pluginTargetForInstance(currentInstanceId);
+                    return target
+                        && applyPluginParameterValue(
+                            target->trackReferenceId,
+                            target->nodeId,
+                            parameterIndex,
+                            currentValue);
                 });
         }
 
@@ -6074,7 +6196,9 @@ namespace uapmd {
                         } else {
                             value = static_cast<double>(rawValue) / UINT32_MAX;
                         }
+                        plugin_parameter_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
                         engine_.setParameterValue(instanceId, static_cast<int32_t>(paramIdx), value);
+                        plugin_parameter_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
                     }
                 });
 

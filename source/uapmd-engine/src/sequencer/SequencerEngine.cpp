@@ -726,6 +726,9 @@ namespace uapmd {
         // delayed destructions won't access freed PluginParameterSupport objects.
         function_block_manager.detachAllOutputMappers();
         function_block_manager.clearAllDevices();
+        // Detach the timeline's plug-in parameter observers before graph
+        // destruction invalidates the hosted instances they reference.
+        timeline_.reset();
         // Make sure to clean up all track graphs before plugin_host so that
         // AudioPluginNodeImpl destructors can still touch the live instances.
         tracks_.clear();

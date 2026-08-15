@@ -449,10 +449,16 @@ that only expose the legacy note-scoped API are supported through the new
 read-back fallback; adapters without a readable value reject the edit rather
 than creating an undo entry that cannot be replayed.
 
+The engine now observes hosted plug-in parameter-change notifications as well.
+It keeps the last model-thread value per instance/parameter, records an
+already-applied external change as one history operation, and suppresses the
+observer while applying a facade edit or playback NRPN automation. Thus host
+UI edits enter history without turning playback automation into authored edits.
+
 - Plug-in creation and deletion, including implicit track creation.
 - Plug-in bypass.
-- Plug-in parameters changed by hosted plug-in UI, JavaScript or MCP, including
-  any parameter-notification path not yet routed through the facade.
+- Plug-in parameters changed by JavaScript or MCP, including any parameter
+  notification path not yet routed through the facade.
 - Loading plug-in state and unsolicited persistent state changes reported by a
   plug-in.
 - UMP group assignment and persisted device/instance labels or configuration.
