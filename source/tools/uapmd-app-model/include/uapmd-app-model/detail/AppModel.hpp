@@ -171,6 +171,7 @@ namespace uapmd_app {
         void notifyTrackLayoutChanged(const TrackLayoutChange& change);
         PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
                                                             const std::optional<PluginInstanceConfig>& configOverride);
+        void forgetRemovedPluginInstance(int32_t instanceId);
         void clearDeviceEntries();
         void maybeStartInitialPluginScan();
         bool pauseTransportForPluginMutation();
@@ -468,8 +469,13 @@ namespace uapmd_app {
         size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
         // Track management
-        int32_t addTrack();
-        bool removeTrack(int32_t trackIndex);
+        using TrackMutationCallback = std::function<void(int32_t trackIndex, std::string error)>;
+        void addTrack(TrackMutationCallback callback);
+        void removeTrack(int32_t trackIndex, TrackMutationCallback callback);
+        // Transitional synchronous entry points used by scripting and bulk
+        // import code until those surfaces adopt asynchronous completion.
+        int32_t addTrackLegacy();
+        bool removeTrackLegacy(int32_t trackIndex);
         void removeAllTracks();
         bool isTrackHidden(int32_t trackIndex) const { return hidden_tracks_.contains(trackIndex); }
 

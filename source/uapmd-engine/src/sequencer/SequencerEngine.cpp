@@ -1896,11 +1896,22 @@ namespace uapmd {
         const auto trackId = timelineTracks[index]->referenceId();
         removePlatformMidiTrackConnections(trackId);
         if (tracks_[index]) {
-            std::lock_guard<std::mutex> lock(instance_map_mutex_);
-            for (const auto instanceId : tracks_[index]->orderedInstanceIds()) {
+            const auto instanceIds = tracks_[index]->orderedInstanceIds();
+            for (const auto instanceId : instanceIds) {
+                if (auto* instance = getPluginInstance(instanceId)) {
+                    if (instance->hasUISupport() && instance->isUIVisible())
+                        instance->hideUI();
+                    instance->destroyUI();
+                }
+                if (const auto fbDevice = function_block_manager.getFunctionDeviceForInstance(instanceId))
+                    fbDevice->destroyDevice(instanceId);
                 notifyPluginInstanceWillBeDestroyed(instanceId);
-                plugin_instances_.erase(instanceId);
+                {
+                    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+                    plugin_instances_.erase(instanceId);
+                }
             }
+            function_block_manager.deleteEmptyDevices();
         }
         StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));

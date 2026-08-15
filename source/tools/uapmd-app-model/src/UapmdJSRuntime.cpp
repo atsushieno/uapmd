@@ -785,7 +785,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
     jsContext_.registerFunction ("__remidy_sequencer_add_track", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto index = uapmd_app::AppModel::instance().addTrack();
+        auto index = uapmd_app::AppModel::instance().addTrackLegacy();
         return choc::value::createInt32(index);
     });
 
@@ -794,7 +794,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         auto trackIndex = args.get<int32_t> (0, -1);
         bool removed = false;
         if (trackIndex >= 0) {
-            removed = uapmd_app::AppModel::instance().removeTrack(trackIndex);
+            removed = uapmd_app::AppModel::instance().removeTrackLegacy(trackIndex);
         }
         return choc::value::createBool(removed);
     });

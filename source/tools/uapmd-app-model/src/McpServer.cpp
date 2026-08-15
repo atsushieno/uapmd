@@ -650,7 +650,7 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
 
 static choc::value::Value toolCreateTrack(const choc::value::Value&)
 {
-    auto trackIndex = AppModel::instance().addTrack();
+    auto trackIndex = AppModel::instance().addTrackLegacy();
     auto result = choc::value::createObject ("");
     result.setMember ("trackIndex", trackIndex);
     return result;

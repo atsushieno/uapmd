@@ -311,7 +311,7 @@ void uapmd_debug_import_audio(const char* path) {
     auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (tracks.empty()) {
-        auto trackIndex = appModel.addTrack();
+        auto trackIndex = appModel.addTrackLegacy();
         if (trackIndex < 0) {
             std::cout << "[wasm-debug] import_audio: failed to create track\n";
             return;

@@ -1024,9 +1024,10 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     ImGui::EndChild();
 
     if (ImGui::Button(icons::Plus)) {
-        int32_t newIndex = appModel.addTrack();
-        if (newIndex >= 0)
-            refreshSequenceEditorForTrack(newIndex);
+        appModel.addTrack([](int32_t, std::string error) {
+            if (!error.empty())
+                platformError("Add Track Failed", error);
+        });
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Add track");
@@ -1540,7 +1541,12 @@ void TimelineEditor::renderTrackRow(int32_t /*trackIndex*/, const SequenceEditor
 }
 
 void TimelineEditor::deleteTrack(int32_t trackIndex) {
-    uapmd_app::AppModel::instance().removeTrack(trackIndex);
+    uapmd_app::AppModel::instance().removeTrack(
+        trackIndex,
+        [](int32_t, std::string error) {
+            if (!error.empty())
+                platformError("Delete Track Failed", error);
+        });
 }
 
 void TimelineEditor::refreshAllSequenceEditorTracks() {
@@ -2924,7 +2930,7 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
     size_t importedCount = 0;
 
     for (const auto& stem : result.stems) {
-        int32_t newTrackIndex = appModel.addTrack();
+        int32_t newTrackIndex = appModel.addTrackLegacy();
         if (newTrackIndex < 0) {
             warnings.push_back(std::format("{}: Failed to create track", stem.clipDisplayName));
             continue;

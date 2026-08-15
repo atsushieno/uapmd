@@ -401,7 +401,7 @@ uapmd_app::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSi
     // (Timeline state and preprocess callback are now managed by SequencerEngine)
     constexpr int kInitialTrackCount = 3;
     for (int i = 0; i < kInitialTrackCount; ++i) {
-        addTrack();
+        addTrackLegacy();
     }
     clearProjectDirtyState();
 }
@@ -1039,7 +1039,10 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
 
     if (!targetMasterTrack) {
         if (trackIndex < 0) {
-            trackIndex = addTrack();
+            // Kept on the raw path until plugin insertion itself participates
+            // in the same compound history step. Recording the empty track now
+            // would make redo restore it without the subsequently added plugin.
+            trackIndex = addTrackLegacy();
             if (trackIndex < 0) {
                 instantiateCallback(-1, -1, "Failed to add track for new plugin instance");
                 return;
@@ -1053,7 +1056,11 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
         }
     }
 
-    sequencer_.engine()->addPluginToTrack(targetMasterTrack ? kMasterTrackIndex : trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
+    sequencer_.engine()->addPluginToTrack(
+        targetMasterTrack ? kMasterTrackIndex : trackIndex,
+        formatCopy,
+        pluginIdCopy,
+        std::move(instantiateCallback));
 }
 
 uapmd_app::AppModel::PluginInstanceResult uapmd_app::AppModel::registerPluginInstanceInternal(
@@ -1140,6 +1147,25 @@ void uapmd_app::AppModel::clearDeviceEntries() {
     std::lock_guard lock(devicesMutex_);
     devices_.clear();
     nextDeviceId_ = 1;
+}
+
+void uapmd_app::AppModel::forgetRemovedPluginInstance(int32_t instanceId) {
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto it = devices_.begin(); it != devices_.end(); ++it) {
+            auto state = it->state;
+            if (!state)
+                continue;
+            std::lock_guard guard(state->mutex);
+            if (!state->pluginInstances.contains(instanceId))
+                continue;
+            devices_.erase(it);
+            break;
+        }
+    }
+    if (!shutting_down_)
+        for (auto& cb : instanceRemoved)
+            cb(instanceId);
 }
 
 void uapmd_app::AppModel::removePluginInstance(int32_t instanceId) {
@@ -2462,7 +2488,7 @@ uapmd_app::AppModel::MidiTracksImportResult uapmd_app::AppModel::importMidiTrack
 
     for (size_t i = 0; i < importResult.tracks.size(); ++i) {
         auto& track = importResult.tracks[i];
-        int32_t newTrackIndex = addTrack();
+        int32_t newTrackIndex = addTrackLegacy();
         if (newTrackIndex < 0) {
             result.warnings.push_back(std::format("{}: Failed to create track", track.clipName));
             result.importedTracks.push_back({-1, track.clipName, false, "Failed to create track"});
@@ -2613,7 +2639,7 @@ void uapmd_app::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& chan
     }
 }
 
-int32_t uapmd_app::AppModel::addTrack() {
+int32_t uapmd_app::AppModel::addTrackLegacy() {
     if (!hidden_tracks_.empty()) {
         auto it = hidden_tracks_.begin();
         int32_t reusedIndex = *it;
@@ -2632,7 +2658,26 @@ int32_t uapmd_app::AppModel::addTrack() {
     return trackIndex;
 }
 
-bool uapmd_app::AppModel::removeTrack(int32_t trackIndex) {
+void uapmd_app::AppModel::addTrack(TrackMutationCallback callback) {
+    if (!callback)
+        return;
+    sequencer_.engine()->timeline().addEmptyTrack(
+        ProjectMutationOrigin::User,
+        [this, callback = std::move(callback)](
+            int32_t trackIndex,
+            std::string error) mutable {
+            if (trackIndex < 0 || !error.empty()) {
+                callback(-1, std::move(error));
+                return;
+            }
+            notifyTrackLayoutChanged(
+                TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
+            markProjectDirty();
+            callback(trackIndex, {});
+        });
+}
+
+bool uapmd_app::AppModel::removeTrackLegacy(int32_t trackIndex) {
     auto& uapmdTracks = sequencer_.engine()->tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(uapmdTracks.size()))
         return false;
@@ -2652,10 +2697,70 @@ bool uapmd_app::AppModel::removeTrack(int32_t trackIndex) {
     return true;
 }
 
+void uapmd_app::AppModel::removeTrack(
+    int32_t trackIndex,
+    TrackMutationCallback callback) {
+    if (!callback)
+        return;
+    auto& tracks = sequencer_.engine()->tracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        callback(-1, "Invalid track index");
+        return;
+    }
+    if (sequencer_.engine()->frozenTrackManager().isTrackBusy(trackIndex)) {
+        callback(-1, "The track is busy rendering");
+        return;
+    }
+
+    const auto instanceIds = tracks[static_cast<size_t>(trackIndex)]->orderedInstanceIds();
+    const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+    sequencer_.engine()->timeline().removeTrack(
+        trackIndex,
+        ProjectMutationOrigin::User,
+        [this, trackIndex, instanceIds, resumeTransportAfterMutation,
+         callback = std::move(callback)](
+            int32_t removedIndex,
+            std::string error) mutable {
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+            if (removedIndex < 0 || !error.empty()) {
+                callback(-1, std::move(error));
+                return;
+            }
+
+            for (const auto instanceId : instanceIds)
+                forgetRemovedPluginInstance(instanceId);
+
+            std::set<int32_t> shiftedHiddenTracks;
+            for (const auto hiddenIndex : hidden_tracks_) {
+                if (hiddenIndex == trackIndex)
+                    continue;
+                shiftedHiddenTracks.insert(
+                    hiddenIndex > trackIndex ? hiddenIndex - 1 : hiddenIndex);
+            }
+            hidden_tracks_ = std::move(shiftedHiddenTracks);
+            {
+                std::lock_guard lock(dirtyStateMutex_);
+                std::unordered_set<int32_t> shiftedDirtyTracks;
+                for (const auto dirtyIndex : dirty_tracks_) {
+                    if (dirtyIndex == trackIndex)
+                        continue;
+                    shiftedDirtyTracks.insert(
+                        dirtyIndex > trackIndex ? dirtyIndex - 1 : dirtyIndex);
+                }
+                dirty_tracks_ = std::move(shiftedDirtyTracks);
+            }
+
+            markProjectDirty();
+            notifyTrackLayoutChanged(
+                TrackLayoutChange{TrackLayoutChange::Type::Removed, trackIndex});
+            callback(trackIndex, {});
+        });
+}
+
 void uapmd_app::AppModel::removeAllTracks() {
     auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
     for (int32_t i = 0; i < trackCount; ++i) {
-        removeTrack(i);
+        removeTrackLegacy(i);
     }
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
 }

@@ -353,17 +353,25 @@ currently constructed only after a live engine track exists, so observers can
 briefly see that provisional track during an asynchronous attach even though a
 failure rolls it back. Fully satisfying the prepare-before-visible-commit rule
 requires a detached track/plugin construction facility. Second,
-`uapmd-app-model` still implements deletion by emptying and hiding a stable
-track slot; it does not yet call the new asynchronous structural API. Replacing
-that tombstone policy requires replacing the synchronous return contracts of
-`AppModel::addTrack()` and `AppModel::removeTrack()` with callback-based
-completion. Layout changes, plugin registration and removal, dirty-state
-updates, and user-visible failures must occur from that asynchronous completion
-rather than being reported before the engine operation finishes. The operation
-as a whole remains asynchronous: resource preparation may take arbitrarily
-long, while only insertion of a fully prepared track into the live document and
-publication of its events should be a short synchronous commit. That
-application integration is the next slice.
+`uapmd-app-model` adoption has started. Its primary GUI creation and deletion
+paths now use callback-based `addTrack()` and `removeTrack()`, which update layout,
+plugin registration/removal metadata, dirty state and user-visible errors only
+from the engine operation's completion. Physical track removal now performs the
+same hosted-plugin UI and virtual-MIDI cleanup as individual plugin removal.
+The operation as a whole remains asynchronous: resource preparation may take
+arbitrarily long, while only insertion of a fully prepared track into the live
+document and publication of its events should be a short synchronous commit.
+
+The synchronous `AppModel::addTrackLegacy()`, `removeTrackLegacy()` and
+`removeAllTracks()` remain temporarily for scripting, MCP, startup and bulk
+import callers. They still use the tombstone/raw-engine policy and must be
+removed, not wrapped around an asynchronous wait. Plugin creation that
+implicitly creates a track also remains on that path until plugin insertion can
+join the track creation in one compound history step; recording the empty track
+alone would make redo lose the subsequently added plugin. Undo/redo application
+completion must additionally reconcile restored plugin instances and publish
+the corresponding layout change. These remaining application migrations are
+the next slice.
 
 ## Remaining work
 
@@ -472,12 +480,14 @@ behaviour of capture are covered by tests. Not covered: anything requiring a
 real ARA plug-in, and the asynchronous plugin chains in track capture and
 attach, which need a plug-in to instantiate. Those remain unverified.
 
-Two defects found along the way are recorded but not fixed. Anchors targeting
+Two defects found along the way are recorded here. Anchors targeting
 master-track clips never resolve, because the writer and reader disagree on the
 identifier spelling and the master-track resolution loop is guarded by an
-inverted condition. And `AppModel::removeTrack` does not remove a track — it
-destroys the plugin instances, clears the clips and tombstones the index in
-`hidden_tracks_`, so a track slot is never reclaimed.
+inverted condition. The remaining `AppModel::removeTrackLegacy` compatibility
+path does not remove a track: it destroys the plugin instances, clears the clips
+and tombstones the index in `hidden_tracks_`, so a track slot is never reclaimed.
+The callback-based `AppModel::removeTrack` uses physical structural removal and
+does not have that defect.
 
 ## Related documents
 
