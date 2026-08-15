@@ -105,7 +105,8 @@ void markTimelineTrackClipsNeedsFileSave(AppModel& appModel, TimelineTrack* trac
 
     auto& timelineFacade = appModel.sequencer().engine()->timeline();
     for (const auto& clip : track->clipManager().getAllClips())
-        timelineFacade.setClipNeedsFileSave(trackIndex, clip.clipId, true);
+        timelineFacade.setClipNeedsFileSave(
+            trackIndex, clip.clipId, true, ProjectMutationOrigin::Internal);
 }
 
 void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
@@ -185,7 +186,9 @@ public:
                 for (const auto& clip : currentTrack->clipManager().getAllClips())
                     if (clip.referenceId == clipReference)
                         app_model_.sequencer().engine()->timeline()
-                            .setClipEnabled(currentTrackIndex, clip.clipId, false);
+                            .setClipEnabled(
+                                currentTrackIndex, clip.clipId, false,
+                                ProjectMutationOrigin::Load);
             }
         }
         return true;
@@ -1907,7 +1910,9 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     result.success = engineResult.success;
     result.error = engineResult.error;
     if (result.success && emptyMidiClip) {
-        sequencer_.engine()->timeline().resizeClip(trackIndex, result.clipId, emptyMidiDurationSamples);
+        sequencer_.engine()->timeline().resizeClip(
+            trackIndex, result.clipId, emptyMidiDurationSamples,
+            ProjectMutationOrigin::Internal);
     }
     if (result.success)
         markTrackDirty(trackIndex);

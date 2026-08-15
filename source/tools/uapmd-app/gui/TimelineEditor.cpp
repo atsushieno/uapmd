@@ -2716,7 +2716,9 @@ void TimelineEditor::addBlankMidiClipInRange(int32_t trackIndex, double startSec
     // Resize to the selected range's length (blank clips default to a small fixed length).
     const int64_t durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, endSeconds - startSeconds) * sampleRate));
     appModel.sequencer().engine()->timeline()
-        .resizeClip(trackIndex, result.clipId, std::max<int64_t>(1, durationSamples));
+        .resizeClip(
+            trackIndex, result.clipId, std::max<int64_t>(1, durationSamples),
+            ProjectMutationOrigin::Internal);
 
     refreshSequenceEditorForTrack(trackIndex);
 }

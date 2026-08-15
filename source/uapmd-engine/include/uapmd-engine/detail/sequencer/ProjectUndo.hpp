@@ -125,6 +125,10 @@ namespace uapmd {
         void perform(
             std::shared_ptr<ProjectUndoableOperation> operation,
             ProjectUndoCompletion completion = {});
+        void perform(
+            std::shared_ptr<ProjectUndoableOperation> operation,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion = {});
         void undo(ProjectUndoCompletion completion = {});
         void redo(ProjectUndoCompletion completion = {});
 
@@ -132,6 +136,7 @@ namespace uapmd {
         // fragments and establishes the current document as a new history root.
         bool clear(bool markCurrentStateSaved = true);
         bool markSaved();
+        bool markStateSaved(uint64_t stateId);
         bool setMaximumHistorySizeInBytes(size_t value);
 
         // Rejects new work and completes pending client notification as

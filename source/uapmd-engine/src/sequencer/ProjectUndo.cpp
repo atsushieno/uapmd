@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,7 +41,8 @@ namespace uapmd {
     public:
         explicit Impl(Configuration configuration)
             : maximum_history_size_in_bytes_(configuration.maximumHistorySizeInBytes)
-            , dispatch_to_model_thread_(std::move(configuration.dispatchToModelThread)) {
+            , dispatch_to_model_thread_(std::move(configuration.dispatchToModelThread))
+            , model_thread_id_(std::this_thread::get_id()) {
             if (!dispatch_to_model_thread_)
                 dispatch_to_model_thread_ = [](ProjectUndoTask task) {
                     if (task)
@@ -69,6 +71,7 @@ namespace uapmd {
 
         void perform(
             std::shared_ptr<ProjectUndoableOperation> operation,
+            ProjectMutationOrigin origin,
             ProjectUndoCompletion completion) {
             if (!operation) {
                 completeClient(
@@ -79,7 +82,7 @@ namespace uapmd {
             if (!begin(PendingDirection::Perform, operation, std::move(completion)))
                 return;
 
-            auto context = executionContext(ProjectMutationOrigin::User, true);
+            auto context = executionContext(origin, true);
             operation->perform(context, operationCompletion(pending_->token));
         }
 
@@ -139,9 +142,13 @@ namespace uapmd {
         }
 
         bool markSaved() {
-            if (pending_ || stopped_)
+            return markStateSaved(current_state_id_);
+        }
+
+        bool markStateSaved(uint64_t stateId) {
+            if (stopped_)
                 return false;
-            saved_state_id_ = current_state_id_;
+            saved_state_id_ = stateId;
             return true;
         }
 
@@ -212,6 +219,10 @@ namespace uapmd {
                 auto self = weakSelf.lock();
                 if (!self)
                     return;
+                if (std::this_thread::get_id() == self->model_thread_id_) {
+                    self->finish(token, std::move(result));
+                    return;
+                }
                 self->dispatch_to_model_thread_(
                     [weakSelf, token, result = std::move(result)]() mutable {
                         if (auto locked = weakSelf.lock())
@@ -300,6 +311,7 @@ namespace uapmd {
         size_t maximum_history_size_in_bytes_{0};
         size_t history_size_in_bytes_{0};
         ProjectModelThreadDispatcher dispatch_to_model_thread_{};
+        std::thread::id model_thread_id_{};
         std::vector<Entry> undo_stack_{};
         std::vector<Entry> redo_stack_{};
         std::optional<Pending> pending_{};
@@ -329,7 +341,17 @@ namespace uapmd {
     void ProjectUndoEngine::perform(
         std::shared_ptr<ProjectUndoableOperation> operation,
         ProjectUndoCompletion completion) {
-        impl_->perform(std::move(operation), std::move(completion));
+        impl_->perform(
+            std::move(operation),
+            ProjectMutationOrigin::User,
+            std::move(completion));
+    }
+
+    void ProjectUndoEngine::perform(
+        std::shared_ptr<ProjectUndoableOperation> operation,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) {
+        impl_->perform(std::move(operation), origin, std::move(completion));
     }
 
     void ProjectUndoEngine::undo(ProjectUndoCompletion completion) {
@@ -346,6 +368,10 @@ namespace uapmd {
 
     bool ProjectUndoEngine::markSaved() {
         return impl_->markSaved();
+    }
+
+    bool ProjectUndoEngine::markStateSaved(uint64_t stateId) {
+        return impl_->markStateSaved(stateId);
     }
 
     bool ProjectUndoEngine::setMaximumHistorySizeInBytes(size_t value) {

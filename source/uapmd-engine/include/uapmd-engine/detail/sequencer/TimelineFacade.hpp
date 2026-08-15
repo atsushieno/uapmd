@@ -10,11 +10,11 @@
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
+#include "ProjectUndo.hpp"
 
 namespace uapmd {
 
 class SequencerEngine;
-class ProjectUndoEngine;
 
 // Facade for timeline clip management and project loading.
 // Owned by SequencerEngineImpl; accessed via SequencerEngine::timeline().
@@ -94,13 +94,20 @@ public:
     //
     // Each returns false when the track or clip does not exist, or when the
     // underlying change was rejected.
-    virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled) = 0;
-    virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples) = 0;
-    virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name) = 0;
-    virtual bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath) = 0;
-    virtual bool setClipNeedsFileSave(int32_t trackIndex, int32_t clipId, bool needsSave) = 0;
-    virtual bool setClipMarkers(int32_t trackIndex, int32_t clipId, std::vector<ClipMarker> markers) = 0;
-    virtual bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps) = 0;
+    virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled,
+                                ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples,
+                            ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name,
+                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath,
+                                 ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipNeedsFileSave(int32_t trackIndex, int32_t clipId, bool needsSave,
+                                      ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipMarkers(int32_t trackIndex, int32_t clipId, std::vector<ClipMarker> markers,
+                                ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps,
+                                   ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
 

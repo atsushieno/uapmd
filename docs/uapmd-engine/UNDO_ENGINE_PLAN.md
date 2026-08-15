@@ -281,11 +281,18 @@ the model thread, busy rejection, undo/redo branch management, state-identity
 based dirty tracking, memory-budget eviction and deterministic shutdown. It is
 owned and exposed by `TimelineFacade`; no synchronous undo manager exists.
 
-No project mutation records history yet. The next implementation slice is task
-3: route the simple clip-property setters through typed operations while
-keeping their underlying mutation-and-event primitive available for replay.
-Save/load integration, compound steps and structural or plug-in operations
-remain subsequent work as ordered above.
+Task 3 is implemented for clip enablement, duration, name, file path, file-save
+state, markers and audio warps. These operations retain before/after values,
+resolve the target by persistent track and clip identifiers, and replay through
+the same event-emitting mutation primitive. Load and internal restoration use
+an explicit mutation origin and do not enter user history.
+
+Project load now rejects pending history work and replaces the old history with
+a clean root only after loading succeeds. Project save records the history-node
+identity captured when serialization began, so an edit made while asynchronous
+plug-in state is being saved still leaves the current project dirty. The next
+implementation slice is named compound steps, followed by continuous gestures
+and structural clip operations.
 
 ## Remaining work
 
