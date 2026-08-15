@@ -1452,7 +1452,8 @@ namespace uapmd {
                 return;
             const bool recordsHistory = origin == ProjectMutationOrigin::User
                 || origin == ProjectMutationOrigin::Remote;
-            if (recordsHistory && undo_engine_.state().busy) {
+            const auto undoState = undo_engine_.state();
+            if (recordsHistory && undoState.busy && !undoState.compoundOpen) {
                 callback(-1, "An undo history operation is already pending");
                 return;
             }
@@ -1526,7 +1527,8 @@ namespace uapmd {
                     callback(-1, "Failed to remove track");
                 return;
             }
-            if (undo_engine_.state().busy) {
+            const auto undoState = undo_engine_.state();
+            if (undoState.busy && !undoState.compoundOpen) {
                 callback(-1, "An undo history operation is already pending");
                 return;
             }

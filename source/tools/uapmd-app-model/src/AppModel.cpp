@@ -400,9 +400,8 @@ uapmd_app::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSi
     // Start with a few empty tracks for the DAW layout
     // (Timeline state and preprocess callback are now managed by SequencerEngine)
     constexpr int kInitialTrackCount = 3;
-    for (int i = 0; i < kInitialTrackCount; ++i) {
-        addTrackLegacy();
-    }
+    for (int i = 0; i < kInitialTrackCount; ++i)
+        sequencer_.engine()->addEmptyTrack();
     clearProjectDirtyState();
 }
 
@@ -928,7 +927,8 @@ void uapmd_app::AppModel::resumeTransportAfterPluginMutation(bool resumeTranspor
 
 bool uapmd_app::AppModel::isProjectDirty() const {
     std::lock_guard lock(dirtyStateMutex_);
-    return project_structure_dirty_ || !dirty_tracks_.empty();
+    return project_structure_dirty_ || !dirty_tracks_.empty()
+        || sequencer_.engine()->timeline().undoEngine().state().dirty;
 }
 
 bool uapmd_app::AppModel::isTrackDirty(int32_t trackIndex) const {
@@ -978,6 +978,81 @@ void uapmd_app::AppModel::clearProjectDirtyState() {
         project_structure_dirty_ = false;
         dirty_tracks_.clear();
     }
+}
+
+uapmd::ProjectUndoState uapmd_app::AppModel::historyState() const {
+    return sequencer_.engine()->timeline().undoEngine().state();
+}
+
+std::unordered_set<int32_t> uapmd_app::AppModel::currentPluginInstanceIds() const {
+    std::unordered_set<int32_t> ids;
+    if (auto* host = sequencer_.engine()->pluginHost()) {
+        const auto hostedIds = host->instanceIds();
+        ids.insert(hostedIds.begin(), hostedIds.end());
+    }
+    return ids;
+}
+
+void uapmd_app::AppModel::reconcileAfterHistoryMutation(
+    const std::unordered_set<int32_t>& previousPluginInstanceIds) {
+    const auto currentIds = currentPluginInstanceIds();
+    for (const auto instanceId : previousPluginInstanceIds)
+        if (!currentIds.contains(instanceId))
+            forgetRemovedPluginInstance(instanceId);
+
+    for (const auto instanceId : currentIds) {
+        if (previousPluginInstanceIds.contains(instanceId))
+            continue;
+        auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
+        if (!result.error.empty())
+            std::cerr << "Failed to register restored plugin instance "
+                      << instanceId << ": " << result.error << std::endl;
+        for (auto& cb : instanceCreated)
+            cb(result);
+    }
+
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+    const auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+    for (int32_t i = 0; i < numTracks; ++i) {
+        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
+        sequencer_.engine()->frozenTrackManager().projectTrackBecameDirty(i);
+    }
+}
+
+void uapmd_app::AppModel::undo(HistoryMutationCallback callback) {
+    if (!callback)
+        return;
+    const auto previousPluginInstanceIds = currentPluginInstanceIds();
+    const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+    sequencer_.engine()->timeline().undoEngine().undo(
+        [this, previousPluginInstanceIds, resumeTransportAfterMutation,
+         callback = std::move(callback)](uapmd::ProjectUndoResult result) mutable {
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+            if (!result.succeeded()) {
+                callback(std::move(result.error));
+                return;
+            }
+            reconcileAfterHistoryMutation(previousPluginInstanceIds);
+            callback({});
+        });
+}
+
+void uapmd_app::AppModel::redo(HistoryMutationCallback callback) {
+    if (!callback)
+        return;
+    const auto previousPluginInstanceIds = currentPluginInstanceIds();
+    const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+    sequencer_.engine()->timeline().undoEngine().redo(
+        [this, previousPluginInstanceIds, resumeTransportAfterMutation,
+         callback = std::move(callback)](uapmd::ProjectUndoResult result) mutable {
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+            if (!result.succeeded()) {
+                callback(std::move(result.error));
+                return;
+            }
+            reconcileAfterHistoryMutation(previousPluginInstanceIds);
+            callback({});
+        });
 }
 
 void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
@@ -2471,34 +2546,177 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::createEmptyMidiClip(
     return addMidiClipToTrack(trackIndex, pos, {}, {}, tickResolution, bpm, {}, {});
 }
 
-uapmd_app::AppModel::MidiTracksImportResult uapmd_app::AppModel::importMidiTracksFromFile(const std::string& filepath) {
-    MidiTracksImportResult result;
+void uapmd_app::AppModel::importMidiTracksFromFile(
+    const std::string& filepath,
+    MidiTracksImportCallback callback) {
+    if (!callback)
+        return;
 
+    struct ImportState {
+        uapmd::import::MidiImportResult source;
+        MidiTracksImportResult result;
+        std::vector<std::string> regularClipReferenceIds;
+        MidiTracksImportCallback callback;
+        size_t nextTrack{0};
+        bool ownsCompound{false};
+        bool anchoredAnyMasterClip{false};
+    };
+
+    auto state = std::make_shared<ImportState>();
+    state->source = uapmd::import::TrackImporter::importMidiFile(filepath);
+    state->result.warnings = state->source.warnings;
+    state->callback = std::move(callback);
+    if (!state->source.success) {
+        state->result.error = state->source.error.empty()
+            ? "Failed to import MIDI tracks."
+            : std::move(state->source.error);
+        state->callback(std::move(state->result));
+        return;
+    }
+    state->regularClipReferenceIds.resize(state->source.tracks.size());
+
+    auto& undo = sequencer_.engine()->timeline().undoEngine();
+    state->ownsCompound = !undo.state().compoundOpen;
+    if (state->ownsCompound) {
+        auto opened = undo.beginCompound("Import MIDI tracks");
+        if (!opened.succeeded()) {
+            state->result.error = std::move(opened.error);
+            state->callback(std::move(state->result));
+            return;
+        }
+    }
+
+    auto finish = [this, state]() mutable {
+        for (auto& masterTrackClip : state->source.masterTrackClips) {
+            uapmd::TimelinePosition position;
+            position.samples = 0;
+            position.legacy_beats = 0.0;
+            auto masterClipResult = addMasterMidiClip(
+                position,
+                {},
+                {},
+                masterTrackClip.tickResolution,
+                masterTrackClip.detectedTempo,
+                std::move(masterTrackClip.tempoChanges),
+                std::move(masterTrackClip.timeSignatureChanges),
+                masterTrackClip.clipName);
+            if (!masterClipResult.success) {
+                state->result.warnings.push_back(std::format(
+                    "{}: {}", masterTrackClip.clipName, masterClipResult.error));
+                continue;
+            }
+
+            const int32_t sourceIndex = masterTrackClip.sourceTrackIndex;
+            if (sourceIndex < 0
+                || sourceIndex >= static_cast<int32_t>(state->regularClipReferenceIds.size())
+                || state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)].empty())
+                continue;
+            if (auto* masterTrack = getMasterTimelineTrack()) {
+                masterTrack->clipManager().setClipAnchor(
+                    masterClipResult.clipId,
+                    uapmd::TimeReference::fromContainerStart(
+                        state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)], 0.0),
+                    static_cast<int32_t>(sampleRate()));
+                state->anchoredAnyMasterClip = true;
+            }
+        }
+        if (state->anchoredAnyMasterClip)
+            resolveAllClipAnchorsInAppModel(*this);
+
+        state->result.success = !state->result.importedTracks.empty()
+            || !state->source.masterTrackClips.empty();
+        if (!state->result.success && state->result.error.empty())
+            state->result.error = "No MIDI tracks were imported.";
+        if (state->ownsCompound)
+            sequencer_.engine()->timeline().undoEngine().endCompound();
+        state->callback(std::move(state->result));
+    };
+
+    auto importNextTrack = [this, state, finish](auto&& self) mutable -> void {
+        if (state->nextTrack >= state->source.tracks.size()) {
+            finish();
+            return;
+        }
+        const auto sourceIndex = state->nextTrack++;
+        addTrack(
+            [this, state, finish, self, sourceIndex](
+                int32_t newTrackIndex,
+                std::string error) mutable {
+                auto& track = state->source.tracks[sourceIndex];
+                if (newTrackIndex < 0 || !error.empty()) {
+                    auto message = error.empty() ? "Failed to create track" : std::move(error);
+                    state->result.warnings.push_back(
+                        std::format("{}: {}", track.clipName, message));
+                    state->result.importedTracks.push_back(
+                        {-1, track.clipName, false, std::move(message)});
+                    self(self);
+                    return;
+                }
+
+                uapmd::TimelinePosition position;
+                position.samples = 0;
+                position.legacy_beats = 0.0;
+                auto clipResult = addMidiClipToTrack(
+                    newTrackIndex,
+                    position,
+                    std::move(track.umpEvents),
+                    std::move(track.umpTickTimestamps),
+                    track.tickResolution,
+                    track.detectedTempo,
+                    std::move(track.tempoChanges),
+                    std::move(track.timeSignatureChanges),
+                    track.clipName,
+                    track.needsFileSave);
+                if (!clipResult.success) {
+                    state->result.warnings.push_back(
+                        std::format("{}: {}", track.clipName, clipResult.error));
+                    state->result.importedTracks.push_back(
+                        {newTrackIndex, track.clipName, false, clipResult.error});
+                    self(self);
+                    return;
+                }
+
+                auto tracks = getTimelineTracks();
+                if (newTrackIndex >= 0
+                    && newTrackIndex < static_cast<int32_t>(tracks.size()))
+                    if (auto* createdClip = tracks[newTrackIndex]
+                            ->clipManager().getClip(clipResult.clipId))
+                        state->regularClipReferenceIds[sourceIndex] = createdClip->referenceId;
+                state->result.importedTracks.push_back(
+                    {newTrackIndex, track.clipName, true, {}});
+                self(self);
+            });
+    };
+    importNextTrack(importNextTrack);
+}
+
+uapmd_app::AppModel::MidiTracksImportResult
+uapmd_app::AppModel::importMidiTracksFromFileLegacy(const std::string& filepath) {
+    MidiTracksImportResult result;
     auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
     result.warnings = importResult.warnings;
-
     if (!importResult.success) {
-        result.error = importResult.error.empty() ? "Failed to import MIDI tracks." : importResult.error;
+        result.error = importResult.error.empty()
+            ? "Failed to import MIDI tracks."
+            : importResult.error;
         return result;
     }
 
-    // Aligned with importResult.tracks -- records each successfully-created regular clip's
-    // referenceId (empty if creation failed), so master clips below can anchor to their source.
     std::vector<std::string> regularClipReferenceIds(importResult.tracks.size());
-
-    for (size_t i = 0; i < importResult.tracks.size(); ++i) {
-        auto& track = importResult.tracks[i];
-        int32_t newTrackIndex = addTrackLegacy();
+    for (size_t index = 0; index < importResult.tracks.size(); ++index) {
+        auto& track = importResult.tracks[index];
+        const auto newTrackIndex = addTrackLegacy();
         if (newTrackIndex < 0) {
-            result.warnings.push_back(std::format("{}: Failed to create track", track.clipName));
-            result.importedTracks.push_back({-1, track.clipName, false, "Failed to create track"});
+            result.warnings.push_back(
+                std::format("{}: Failed to create track", track.clipName));
+            result.importedTracks.push_back(
+                {-1, track.clipName, false, "Failed to create track"});
             continue;
         }
 
         uapmd::TimelinePosition position;
         position.samples = 0;
         position.legacy_beats = 0.0;
-
         auto clipResult = addMidiClipToTrack(
             newTrackIndex,
             position,
@@ -2509,21 +2727,23 @@ uapmd_app::AppModel::MidiTracksImportResult uapmd_app::AppModel::importMidiTrack
             std::move(track.tempoChanges),
             std::move(track.timeSignatureChanges),
             track.clipName,
-            track.needsFileSave
-        );
-
+            track.needsFileSave);
         if (!clipResult.success) {
-            result.warnings.push_back(std::format("{}: {}", track.clipName, clipResult.error));
-            result.importedTracks.push_back({newTrackIndex, track.clipName, false, clipResult.error});
+            result.warnings.push_back(
+                std::format("{}: {}", track.clipName, clipResult.error));
+            result.importedTracks.push_back(
+                {newTrackIndex, track.clipName, false, clipResult.error});
             continue;
         }
 
-        if (auto tracks = getTimelineTracks(); newTrackIndex >= 0 && newTrackIndex < static_cast<int32_t>(tracks.size())) {
-            if (auto* createdClip = tracks[newTrackIndex]->clipManager().getClip(clipResult.clipId))
-                regularClipReferenceIds[i] = createdClip->referenceId;
-        }
-
-        result.importedTracks.push_back({newTrackIndex, track.clipName, true, ""});
+        auto tracks = getTimelineTracks();
+        if (newTrackIndex >= 0
+            && newTrackIndex < static_cast<int32_t>(tracks.size()))
+            if (auto* createdClip = tracks[newTrackIndex]
+                    ->clipManager().getClip(clipResult.clipId))
+                regularClipReferenceIds[index] = createdClip->referenceId;
+        result.importedTracks.push_back(
+            {newTrackIndex, track.clipName, true, {}});
     }
 
     bool anchoredAnyMasterClip = false;
@@ -2539,29 +2759,32 @@ uapmd_app::AppModel::MidiTracksImportResult uapmd_app::AppModel::importMidiTrack
             masterTrackClip.detectedTempo,
             std::move(masterTrackClip.tempoChanges),
             std::move(masterTrackClip.timeSignatureChanges),
-            masterTrackClip.clipName
-        );
+            masterTrackClip.clipName);
         if (!masterClipResult.success) {
-            result.warnings.push_back(std::format("{}: {}", masterTrackClip.clipName, masterClipResult.error));
+            result.warnings.push_back(std::format(
+                "{}: {}", masterTrackClip.clipName, masterClipResult.error));
             continue;
         }
 
-        const int32_t sourceIdx = masterTrackClip.sourceTrackIndex;
-        if (sourceIdx >= 0 && sourceIdx < static_cast<int32_t>(regularClipReferenceIds.size()) &&
-            !regularClipReferenceIds[static_cast<size_t>(sourceIdx)].empty()) {
-            if (auto* masterTrack = getMasterTimelineTrack()) {
-                masterTrack->clipManager().setClipAnchor(
-                    masterClipResult.clipId,
-                    uapmd::TimeReference::fromContainerStart(regularClipReferenceIds[static_cast<size_t>(sourceIdx)], 0.0),
-                    static_cast<int32_t>(sampleRate()));
-                anchoredAnyMasterClip = true;
-            }
+        const auto sourceIndex = masterTrackClip.sourceTrackIndex;
+        if (sourceIndex < 0
+            || sourceIndex >= static_cast<int32_t>(regularClipReferenceIds.size())
+            || regularClipReferenceIds[static_cast<size_t>(sourceIndex)].empty())
+            continue;
+        if (auto* masterTrack = getMasterTimelineTrack()) {
+            masterTrack->clipManager().setClipAnchor(
+                masterClipResult.clipId,
+                uapmd::TimeReference::fromContainerStart(
+                    regularClipReferenceIds[static_cast<size_t>(sourceIndex)], 0.0),
+                static_cast<int32_t>(sampleRate()));
+            anchoredAnyMasterClip = true;
         }
     }
     if (anchoredAnyMasterClip)
         resolveAllClipAnchorsInAppModel(*this);
 
-    result.success = !result.importedTracks.empty() || !importResult.masterTrackClips.empty();
+    result.success = !result.importedTracks.empty()
+        || !importResult.masterTrackClips.empty();
     if (!result.success && result.error.empty())
         result.error = "No MIDI tracks were imported.";
     return result;
@@ -2757,11 +2980,99 @@ void uapmd_app::AppModel::removeTrack(
         });
 }
 
-void uapmd_app::AppModel::removeAllTracks() {
-    auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
-    for (int32_t i = 0; i < trackCount; ++i) {
-        removeTrackLegacy(i);
+void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
+    if (!callback)
+        return;
+
+    struct ClearState {
+        TrackClearCallback callback;
+        std::unordered_set<int32_t> unaffectedPluginInstanceIds;
+        int32_t nextTrackIndex{-1};
+        bool ownsCompound{false};
+    };
+    auto state = std::make_shared<ClearState>();
+    state->callback = std::move(callback);
+    state->unaffectedPluginInstanceIds = currentPluginInstanceIds();
+    state->nextTrackIndex =
+        static_cast<int32_t>(sequencer_.engine()->tracks().size()) - 1;
+
+    auto& undo = sequencer_.engine()->timeline().undoEngine();
+    state->ownsCompound = !undo.state().compoundOpen;
+    if (state->ownsCompound) {
+        auto opened = undo.beginCompound("Clear tracks");
+        if (!opened.succeeded()) {
+            state->callback(std::move(opened.error));
+            return;
+        }
     }
+
+    auto finish = [this, state]() mutable {
+        auto complete = [this, state](uapmd::ProjectUndoResult result) mutable {
+            if (!result.succeeded()) {
+                state->callback(std::move(result.error));
+                return;
+            }
+            notifyTrackLayoutChanged(
+                TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+            state->callback({});
+        };
+        if (state->ownsCompound) {
+            sequencer_.engine()->timeline().undoEngine().endCompound(
+                std::move(complete));
+            return;
+        }
+        complete(uapmd::ProjectUndoResult::success());
+    };
+
+    auto removeNext = [this, state, finish](auto&& self) mutable -> void {
+        if (state->nextTrackIndex < 0) {
+            finish();
+            return;
+        }
+        const auto trackIndex = state->nextTrackIndex--;
+        const auto instanceIds = sequencer_.engine()->tracks()
+            [static_cast<size_t>(trackIndex)]->orderedInstanceIds();
+        removeTrack(
+            trackIndex,
+            [this, state, finish, self, instanceIds](
+                int32_t removedIndex, std::string error) mutable {
+                if (removedIndex < 0 || !error.empty()) {
+                    const auto failure = error.empty()
+                        ? std::string{"Failed to remove track"}
+                        : std::move(error);
+                    if (state->ownsCompound) {
+                        // Cancelling restores every track already removed; the
+                        // completion then republishes the restored app-model state.
+                        auto& undo = AppModel::instance().sequencer().engine()
+                            ->timeline().undoEngine();
+                        undo.cancelCompound(
+                            [this, state, failure](uapmd::ProjectUndoResult result) mutable {
+                                if (!result.succeeded()) {
+                                    state->callback(std::format(
+                                        "{}; rollback failed: {}", failure, result.error));
+                                    return;
+                                }
+                                reconcileAfterHistoryMutation(
+                                    state->unaffectedPluginInstanceIds);
+                                state->callback(std::move(failure));
+                            });
+                        return;
+                    }
+                    state->callback(std::move(failure));
+                    return;
+                }
+                for (const auto instanceId : instanceIds)
+                    state->unaffectedPluginInstanceIds.erase(instanceId);
+                self(self);
+            });
+    };
+    removeNext(removeNext);
+}
+
+void uapmd_app::AppModel::removeAllTracksLegacy() {
+    auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+    for (int32_t i = 0; i < trackCount; ++i)
+        removeTrackLegacy(i);
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
 }
 

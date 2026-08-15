@@ -180,6 +180,8 @@ class MainWindow {
         // Sequence Editor helpers
         void handleSaveProject();
         void handleLoadProject();
+        void handleUndo();
+        void handleRedo();
 
         void renderDeviceSettingsWindow();
         void applyUiScale(float scale);

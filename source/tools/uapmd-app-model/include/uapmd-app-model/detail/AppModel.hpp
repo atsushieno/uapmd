@@ -172,6 +172,9 @@ namespace uapmd_app {
         PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
                                                             const std::optional<PluginInstanceConfig>& configOverride);
         void forgetRemovedPluginInstance(int32_t instanceId);
+        std::unordered_set<int32_t> currentPluginInstanceIds() const;
+        void reconcileAfterHistoryMutation(
+            const std::unordered_set<int32_t>& previousPluginInstanceIds);
         void clearDeviceEntries();
         void maybeStartInitialPluginScan();
         bool pauseTransportForPluginMutation();
@@ -216,6 +219,11 @@ namespace uapmd_app {
         void markTrackDirty(int32_t trackIndex, bool dirty = true);
         void markPluginInstanceTrackDirty(int32_t instanceId);
         void clearProjectDirtyState();
+
+        using HistoryMutationCallback = std::function<void(std::string error)>;
+        uapmd::ProjectUndoState historyState() const;
+        void undo(HistoryMutationCallback callback);
+        void redo(HistoryMutationCallback callback);
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};
@@ -453,7 +461,12 @@ namespace uapmd_app {
         // Imports a (possibly multi-track) SMF file, creating one new track per SMF track and,
         // for each source track that carries its own tempo/time-signature data, a master-track
         // clip anchored to that track's clip so they move together.
-        MidiTracksImportResult importMidiTracksFromFile(const std::string& filepath);
+        using MidiTracksImportCallback = std::function<void(MidiTracksImportResult)>;
+        void importMidiTracksFromFile(
+            const std::string& filepath,
+            MidiTracksImportCallback callback);
+        MidiTracksImportResult importMidiTracksFromFileLegacy(
+            const std::string& filepath);
 
         // Device input routing
         int32_t addDeviceInputToTrack(
@@ -470,13 +483,15 @@ namespace uapmd_app {
 
         // Track management
         using TrackMutationCallback = std::function<void(int32_t trackIndex, std::string error)>;
+        using TrackClearCallback = std::function<void(std::string error)>;
         void addTrack(TrackMutationCallback callback);
         void removeTrack(int32_t trackIndex, TrackMutationCallback callback);
-        // Transitional synchronous entry points used by scripting and bulk
-        // import code until those surfaces adopt asynchronous completion.
+        void removeAllTracks(TrackClearCallback callback);
+        // Transitional synchronous entry points used by scripting and plugin
+        // creation until those surfaces adopt asynchronous completion.
         int32_t addTrackLegacy();
         bool removeTrackLegacy(int32_t trackIndex);
-        void removeAllTracks();
+        void removeAllTracksLegacy();
         bool isTrackHidden(int32_t trackIndex) const { return hidden_tracks_.contains(trackIndex); }
 
         // Sample rate access

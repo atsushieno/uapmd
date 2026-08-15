@@ -2890,23 +2890,26 @@ void TimelineEditor::importMidiTracksWithPicker() {
 
 void TimelineEditor::importMidiTracks(const std::string& filepath) {
     auto& appModel = uapmd_app::AppModel::instance();
-    auto result = appModel.importMidiTracksFromFile(filepath);
+    appModel.importMidiTracksFromFile(
+        filepath,
+        [this](uapmd_app::AppModel::MidiTracksImportResult result) {
+            for (const auto& track : result.importedTracks)
+                if (track.success)
+                    refreshSequenceEditorForTrack(track.trackIndex);
 
-    for (const auto& track : result.importedTracks)
-        if (track.success)
-            refreshSequenceEditorForTrack(track.trackIndex);
-
-    invalidateMasterTrackSnapshot();
-
-    if (!result.success) {
-        std::string message = result.error.empty() ? "No MIDI tracks were imported." : result.error;
-        if (!result.warnings.empty()) {
-            message += "\n\nWarnings:\n";
-            for (const auto& warning : result.warnings)
-                message += warning + "\n";
-        }
-        platformError("Import Failed", message);
-    }
+            invalidateMasterTrackSnapshot();
+            if (!result.success) {
+                std::string message = result.error.empty()
+                    ? "No MIDI tracks were imported."
+                    : result.error;
+                if (!result.warnings.empty()) {
+                    message += "\n\nWarnings:\n";
+                    for (const auto& warning : result.warnings)
+                        message += warning + "\n";
+                }
+                platformError("Import Failed", message);
+            }
+        });
 }
 
 void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult result) {
@@ -2926,58 +2929,101 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
         return;
     }
 
+    struct ApplyState {
+        uapmd::import::AudioImportResult result;
+        std::vector<std::string> warnings;
+        size_t nextStem{0};
+        size_t importedCount{0};
+        bool ownsCompound{false};
+    };
+    auto state = std::make_shared<ApplyState>();
+    state->result = std::move(result);
+    state->warnings = std::move(warnings);
+
     auto& appModel = uapmd_app::AppModel::instance();
-    size_t importedCount = 0;
-
-    for (const auto& stem : result.stems) {
-        int32_t newTrackIndex = appModel.addTrackLegacy();
-        if (newTrackIndex < 0) {
-            warnings.push_back(std::format("{}: Failed to create track", stem.clipDisplayName));
-            continue;
+    auto& undo = appModel.sequencer().engine()->timeline().undoEngine();
+    state->ownsCompound = !undo.state().compoundOpen;
+    if (state->ownsCompound) {
+        auto opened = undo.beginCompound("Import audio stems");
+        if (!opened.succeeded()) {
+            platformError("Import Failed", opened.error);
+            return;
         }
-
-        auto reader = uapmd::createAudioFileReaderFromPath(stem.filepath.string());
-        if (!reader) {
-            warnings.push_back(std::format("{}: Failed to open stem audio", stem.clipDisplayName));
-            continue;
-        }
-
-        uapmd::TimelinePosition position;
-        position.samples = 0;
-        position.legacy_beats = 0.0;
-
-        auto clipResult = appModel.addClipToTrack(
-            newTrackIndex,
-            position,
-            std::move(reader),
-            stem.filepath.string()
-        );
-
-        if (!clipResult.success) {
-            warnings.push_back(std::format("{}: {}", stem.clipDisplayName, clipResult.error));
-            continue;
-        }
-
-        auto tracks = appModel.getTimelineTracks();
-        if (newTrackIndex >= 0 && newTrackIndex < static_cast<int32_t>(tracks.size())) {
-            auto& clipManager = tracks[newTrackIndex]->clipManager();
-            clipManager.setClipName(clipResult.clipId, stem.clipDisplayName);
-            clipManager.setClipNeedsFileSave(clipResult.clipId, true);
-        }
-
-        refreshSequenceEditorForTrack(newTrackIndex);
-        ++importedCount;
     }
 
-    if (importedCount == 0) {
-        std::string message = "No stems were imported.";
-        if (!warnings.empty()) {
-            message += "\n\nWarnings:\n";
-            for (const auto& warning : warnings)
-                message += warning + "\n";
+    auto applyNext = [this, state](auto&& self) -> void {
+        auto& currentAppModel = uapmd_app::AppModel::instance();
+        if (state->nextStem >= state->result.stems.size()) {
+            if (state->ownsCompound)
+                currentAppModel.sequencer().engine()->timeline().undoEngine().endCompound();
+            if (state->importedCount == 0) {
+                std::string message = "No stems were imported.";
+                if (!state->warnings.empty()) {
+                    message += "\n\nWarnings:\n";
+                    for (const auto& warning : state->warnings)
+                        message += warning + "\n";
+                }
+                platformError("Import Failed", message);
+            }
+            return;
         }
-        platformError("Import Failed", message);
-    }
+
+        const auto stemIndex = state->nextStem++;
+        currentAppModel.addTrack(
+            [this, state, self, stemIndex](
+                int32_t newTrackIndex,
+                std::string error) {
+                auto& appModel = uapmd_app::AppModel::instance();
+                const auto& stem = state->result.stems[stemIndex];
+                if (newTrackIndex < 0 || !error.empty()) {
+                    state->warnings.push_back(std::format(
+                        "{}: {}",
+                        stem.clipDisplayName,
+                        error.empty() ? "Failed to create track" : error));
+                    self(self);
+                    return;
+                }
+
+                auto reader = uapmd::createAudioFileReaderFromPath(stem.filepath.string());
+                if (!reader) {
+                    state->warnings.push_back(std::format(
+                        "{}: Failed to open stem audio", stem.clipDisplayName));
+                    self(self);
+                    return;
+                }
+
+                uapmd::TimelinePosition position;
+                position.samples = 0;
+                position.legacy_beats = 0.0;
+                auto clipResult = appModel.addClipToTrack(
+                    newTrackIndex,
+                    position,
+                    std::move(reader),
+                    stem.filepath.string());
+                if (!clipResult.success) {
+                    state->warnings.push_back(std::format(
+                        "{}: {}", stem.clipDisplayName, clipResult.error));
+                    self(self);
+                    return;
+                }
+
+                auto& timeline = appModel.sequencer().engine()->timeline();
+                timeline.setClipName(
+                    newTrackIndex,
+                    clipResult.clipId,
+                    stem.clipDisplayName,
+                    uapmd::ProjectMutationOrigin::User);
+                timeline.setClipNeedsFileSave(
+                    newTrackIndex,
+                    clipResult.clipId,
+                    true,
+                    uapmd::ProjectMutationOrigin::User);
+                refreshSequenceEditorForTrack(newTrackIndex);
+                ++state->importedCount;
+                self(self);
+            });
+    };
+    applyNext(applyNext);
 }
 
 }  // namespace uapmd_app_gui

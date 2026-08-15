@@ -425,6 +425,29 @@ void MainWindow::render(void* window) {
             if (contextActionButton("Command"))
                 ImGui::OpenPopup("CommandActions");
             if (ImGui::BeginPopup("CommandActions")) {
+                const auto history = appModel.historyState();
+                const auto undoLabel = history.undoDescription.empty()
+                    ? std::string{"Undo"}
+                    : std::format("Undo {}", history.undoDescription);
+                const auto redoLabel = history.redoDescription.empty()
+                    ? std::string{"Redo"}
+                    : std::format("Redo {}", history.redoDescription);
+                if (!history.canUndo || history.busy)
+                    ImGui::BeginDisabled();
+                if (contextActionMenuItem(undoLabel.c_str()))
+                    handleUndo();
+                if (!history.canUndo || history.busy)
+                    ImGui::EndDisabled();
+                if (!history.canRedo || history.busy)
+                    ImGui::BeginDisabled();
+                if (contextActionMenuItem(redoLabel.c_str()))
+                    handleRedo();
+                if (!history.canRedo || history.busy)
+                    ImGui::EndDisabled();
+                if (history.busy)
+                    ImGui::TextDisabled("History operation in progress...");
+                ImGui::Separator();
+
                 if (contextActionMenuItem(showDeviceSettingsWindow_ ? "Hide Device Settings" : "Show Device Settings"))
                     showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
 
@@ -449,6 +472,23 @@ void MainWindow::render(void* window) {
                 ImGui::EndPopup();
             }
             ImGui::SameLine();
+
+            const auto history = appModel.historyState();
+            const auto& io = ImGui::GetIO();
+            const bool primaryModifier = io.KeyCtrl || io.KeySuper;
+            if (!io.WantTextInput && primaryModifier
+                && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+                if (io.KeyShift) {
+                    if (history.canRedo && !history.busy)
+                        handleRedo();
+                } else if (history.canUndo && !history.busy) {
+                    handleUndo();
+                }
+            }
+            if (!io.WantTextInput && io.KeyCtrl && !io.KeyShift
+                && ImGui::IsKeyPressed(ImGuiKey_Y, false)
+                && history.canRedo && !history.busy)
+                handleRedo();
 
             // Transport controls
             auto& transport = appModel.transport();
@@ -923,6 +963,23 @@ void MainWindow::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutC
     timelineEditor_.handleTrackLayoutChange(change);
     trackList_.markDirty();
 }
+
+void MainWindow::handleUndo() {
+    uapmd_app::AppModel::instance().undo(
+        [](std::string error) {
+            if (!error.empty())
+                platformError("Undo Failed", error);
+        });
+}
+
+void MainWindow::handleRedo() {
+    uapmd_app::AppModel::instance().redo(
+        [](std::string error) {
+            if (!error.empty())
+                platformError("Redo Failed", error);
+        });
+}
+
 void MainWindow::update() {
     if (auto* provider = uapmd_app::AppModel::instance().documentProvider())
         provider->tick();

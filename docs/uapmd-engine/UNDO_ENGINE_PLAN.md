@@ -358,20 +358,33 @@ paths now use callback-based `addTrack()` and `removeTrack()`, which update layo
 plugin registration/removal metadata, dirty state and user-visible errors only
 from the engine operation's completion. Physical track removal now performs the
 same hosted-plugin UI and virtual-MIDI cleanup as individual plugin removal.
+GUI MIDI and split-audio imports create their tracks sequentially through that
+API and group the resulting tracks and clips into one named history step.
+Callback-based `removeAllTracks()` likewise removes from the end so mutable
+indices cannot invalidate the remaining work and records the clear as one step.
 The operation as a whole remains asynchronous: resource preparation may take
 arbitrarily long, while only insertion of a fully prepared track into the live
 document and publication of its events should be a short synchronous commit.
 
-The synchronous `AppModel::addTrackLegacy()`, `removeTrackLegacy()` and
-`removeAllTracks()` remain temporarily for scripting, MCP, startup and bulk
-import callers. They still use the tombstone/raw-engine policy and must be
-removed, not wrapped around an asynchronous wait. Plugin creation that
-implicitly creates a track also remains on that path until plugin insertion can
-join the track creation in one compound history step; recording the empty track
-alone would make redo lose the subsequently added plugin. Undo/redo application
-completion must additionally reconcile restored plugin instances and publish
-the corresponding layout change. These remaining application migrations are
-the next slice.
+The synchronous `AppModel::addTrackLegacy()`, `removeTrackLegacy()`,
+`removeAllTracksLegacy()` and `importMidiTracksFromFileLegacy()` remain
+temporarily for JavaScript, WebAssembly and MCP callers. They still use the
+tombstone/raw-engine policy and must be removed when those surfaces gain
+callback jobs or promises, not wrapped around an asynchronous wait. Bootstrap
+track creation is now explicitly internal and bypasses history without using a
+public compatibility method. Plugin creation that implicitly creates a track
+also remains on the legacy path until plugin insertion can join track creation
+in one compound history step; recording the empty track alone would make redo
+lose the subsequently added plugin.
+
+Task 9's native application surface is partially implemented. `AppModel`
+exposes history state and callback-based `undo()` and `redo()`. Successful
+completion reconciles instance removal and restoration, republishes the whole
+track layout, and invalidates frozen-track caches. The Command menu displays the
+current undo and redo descriptions, disables unavailable or busy actions, and
+supports Ctrl/Cmd-Z, Ctrl/Cmd-Shift-Z and Ctrl-Y. Failures reach the platform
+error UI. Script and MCP history commands, explicit remote compound scopes and
+a richer long-running progress surface remain open.
 
 ## Remaining work
 

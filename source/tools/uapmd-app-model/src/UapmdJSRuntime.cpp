@@ -801,7 +801,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
     jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd_app::AppModel::instance().removeAllTracks();
+        uapmd_app::AppModel::instance().removeAllTracksLegacy();
         return choc::value::Value();
     });
 
@@ -1860,7 +1860,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             return obj;
         }
 
-        auto result = uapmd_app::AppModel::instance().importMidiTracksFromFile (filepath);
+        auto result = uapmd_app::AppModel::instance().importMidiTracksFromFileLegacy (filepath);
 
         obj.setMember ("success", result.success);
         obj.setMember ("error", result.error);
