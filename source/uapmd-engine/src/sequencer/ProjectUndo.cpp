@@ -15,13 +15,194 @@ namespace uapmd {
                 .error = std::move(error)
             };
         }
+
+        class CompoundUndoOperation final
+            : public ProjectUndoableOperation,
+              public std::enable_shared_from_this<CompoundUndoOperation> {
+            enum class Direction {
+                Perform,
+                Undo,
+                Redo
+            };
+
+            struct RunState {
+                Direction direction{Direction::Perform};
+                ProjectUndoExecutionContext context{};
+                ProjectUndoCompletion completion{};
+                std::vector<size_t> order{};
+                std::vector<size_t> completed{};
+                size_t cursor{0};
+                ProjectUndoResult failure{};
+            };
+
+        public:
+            CompoundUndoOperation(
+                std::string description,
+                std::vector<std::shared_ptr<ProjectUndoableOperation>> children)
+                : description_(std::move(description))
+                , children_(std::move(children)) {
+            }
+
+            std::string description() const override {
+                return description_;
+            }
+
+            size_t historySizeInBytes() const override {
+                size_t result = sizeof(*this)
+                    + description_.capacity()
+                    + children_.capacity() * sizeof(children_.front());
+                for (const auto& child : children_)
+                    if (child)
+                        result += child->historySizeInBytes();
+                return result;
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                run(Direction::Perform, context, std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                run(Direction::Undo, context, std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                run(Direction::Redo, context, std::move(completion));
+            }
+
+        private:
+            void run(
+                Direction direction,
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) {
+                auto state = std::make_shared<RunState>();
+                state->direction = direction;
+                state->context = context;
+                state->context.recordHistory = false;
+                state->completion = std::move(completion);
+                state->order.reserve(children_.size());
+                if (direction == Direction::Undo) {
+                    for (size_t index = children_.size(); index > 0; --index)
+                        state->order.push_back(index - 1);
+                } else {
+                    for (size_t index = 0; index < children_.size(); ++index)
+                        state->order.push_back(index);
+                }
+                runNext(std::move(state));
+            }
+
+            void runNext(std::shared_ptr<RunState> state) {
+                if (state->cursor >= state->order.size()) {
+                    complete(std::move(state), ProjectUndoResult::success());
+                    return;
+                }
+
+                const auto childIndex = state->order[state->cursor];
+                auto child = children_[childIndex];
+                if (!child) {
+                    beginCompensation(
+                        std::move(state),
+                        ProjectUndoResult::failure("A compound undo step contains an empty operation."));
+                    return;
+                }
+
+                auto self = shared_from_this();
+                auto childCompletion = [self, state, childIndex](ProjectUndoResult result) mutable {
+                    state->context.dispatch(
+                        [self, state, childIndex, result = std::move(result)]() mutable {
+                            if (!result.succeeded()) {
+                                self->beginCompensation(std::move(state), std::move(result));
+                                return;
+                            }
+                            state->completed.push_back(childIndex);
+                            ++state->cursor;
+                            self->runNext(std::move(state));
+                        });
+                };
+                invoke(*child, state->direction, state->context, std::move(childCompletion));
+            }
+
+            void beginCompensation(
+                std::shared_ptr<RunState> state,
+                ProjectUndoResult failure) {
+                state->failure = std::move(failure);
+                compensateNext(std::move(state));
+            }
+
+            void compensateNext(std::shared_ptr<RunState> state) {
+                if (state->completed.empty()) {
+                    auto failure = std::move(state->failure);
+                    complete(std::move(state), std::move(failure));
+                    return;
+                }
+
+                const auto childIndex = state->completed.back();
+                state->completed.pop_back();
+                auto child = children_[childIndex];
+                const auto compensationDirection = state->direction == Direction::Undo
+                    ? Direction::Redo
+                    : Direction::Undo;
+                auto self = shared_from_this();
+                auto childCompletion = [self, state, childIndex](ProjectUndoResult result) mutable {
+                    state->context.dispatch(
+                        [self, state, childIndex, result = std::move(result)]() mutable {
+                            if (!result.succeeded()) {
+                                if (!state->failure.error.empty())
+                                    state->failure.error += " ";
+                                state->failure.error += "Compensation failed for child "
+                                    + std::to_string(childIndex) + ": " + result.error;
+                                auto failure = std::move(state->failure);
+                                self->complete(std::move(state), std::move(failure));
+                                return;
+                            }
+                            self->compensateNext(std::move(state));
+                        });
+                };
+                invoke(*child, compensationDirection, state->context, std::move(childCompletion));
+            }
+
+            static void invoke(
+                ProjectUndoableOperation& operation,
+                Direction direction,
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) {
+                switch (direction) {
+                    case Direction::Perform:
+                        operation.perform(context, std::move(completion));
+                        break;
+                    case Direction::Undo:
+                        operation.undo(context, std::move(completion));
+                        break;
+                    case Direction::Redo:
+                        operation.redo(context, std::move(completion));
+                        break;
+                }
+            }
+
+            static void complete(
+                std::shared_ptr<RunState> state,
+                ProjectUndoResult result) {
+                auto completion = std::move(state->completion);
+                if (completion)
+                    completion(std::move(result));
+            }
+
+            std::string description_{};
+            std::vector<std::shared_ptr<ProjectUndoableOperation>> children_{};
+        };
     }
 
     class ProjectUndoEngine::Impl : public std::enable_shared_from_this<ProjectUndoEngine::Impl> {
         enum class PendingDirection {
             Perform,
             Undo,
-            Redo
+            Redo,
+            CancelCompound
         };
 
         struct Entry {
@@ -38,6 +219,12 @@ namespace uapmd {
             ProjectUndoCompletion clientCompletion{};
         };
 
+        struct CompoundBuilder {
+            std::string description{};
+            ProjectMutationOrigin origin{ProjectMutationOrigin::User};
+            std::vector<std::shared_ptr<ProjectUndoableOperation>> children{};
+        };
+
     public:
         explicit Impl(Configuration configuration)
             : maximum_history_size_in_bytes_(configuration.maximumHistorySizeInBytes)
@@ -51,18 +238,25 @@ namespace uapmd {
         }
 
         ProjectUndoState state() const {
+            size_t retainedHistorySize = history_size_in_bytes_;
+            if (compound_)
+                for (const auto& child : compound_->children)
+                    if (child)
+                        retainedHistorySize += child->historySizeInBytes();
             return {
-                .busy = pending_.has_value(),
-                .canUndo = !pending_ && !undo_stack_.empty() && !stopped_,
-                .canRedo = !pending_ && !redo_stack_.empty() && !stopped_,
-                .dirty = current_state_id_ != saved_state_id_,
+                .busy = pending_.has_value() || compound_.has_value(),
+                .compoundOpen = compound_.has_value(),
+                .canUndo = !pending_ && !compound_ && !undo_stack_.empty() && !stopped_,
+                .canRedo = !pending_ && !compound_ && !redo_stack_.empty() && !stopped_,
+                .dirty = compound_.has_value() || current_state_id_ != saved_state_id_,
+                .compoundDescription = compound_ ? compound_->description : std::string{},
                 .undoDescription = undo_stack_.empty()
                     ? std::string{}
                     : undo_stack_.back().operation->description(),
                 .redoDescription = redo_stack_.empty()
                     ? std::string{}
                     : redo_stack_.back().operation->description(),
-                .historySizeInBytes = history_size_in_bytes_,
+                .historySizeInBytes = retainedHistorySize,
                 .maximumHistorySizeInBytes = maximum_history_size_in_bytes_,
                 .currentStateId = current_state_id_,
                 .savedStateId = saved_state_id_
@@ -79,6 +273,13 @@ namespace uapmd {
                     ProjectUndoResult::failure("Cannot perform an empty undo operation."));
                 return;
             }
+            if (compound_ && compound_->origin != origin) {
+                completeClient(
+                    std::move(completion),
+                    ProjectUndoResult::failure(
+                        "An operation origin cannot change inside a compound undo step."));
+                return;
+            }
             if (!begin(PendingDirection::Perform, operation, std::move(completion)))
                 return;
 
@@ -91,7 +292,7 @@ namespace uapmd {
                 completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
                 return;
             }
-            if (pending_) {
+            if (pending_ || compound_) {
                 completeClient(std::move(completion), resultWithStatus(
                     ProjectUndoStatus::Busy,
                     "An undo history operation is already pending."));
@@ -113,7 +314,7 @@ namespace uapmd {
                 completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
                 return;
             }
-            if (pending_) {
+            if (pending_ || compound_) {
                 completeClient(std::move(completion), resultWithStatus(
                     ProjectUndoStatus::Busy,
                     "An undo history operation is already pending."));
@@ -130,8 +331,91 @@ namespace uapmd {
             operation->redo(context, operationCompletion(pending_->token));
         }
 
+        ProjectUndoResult beginCompound(
+            std::string description,
+            ProjectMutationOrigin origin) {
+            if (stopped_)
+                return resultWithStatus(ProjectUndoStatus::Stopped);
+            if (pending_ || compound_)
+                return resultWithStatus(
+                    ProjectUndoStatus::Busy,
+                    compound_
+                        ? "A compound undo step is already open."
+                        : "An undo history operation is already pending.");
+            if (description.empty())
+                return ProjectUndoResult::failure("A compound undo step requires a description.");
+            compound_ = CompoundBuilder{
+                .description = std::move(description),
+                .origin = origin
+            };
+            return ProjectUndoResult::success();
+        }
+
+        void endCompound(ProjectUndoCompletion completion) {
+            if (stopped_) {
+                completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
+                return;
+            }
+            if (pending_) {
+                completeClient(std::move(completion), resultWithStatus(
+                    ProjectUndoStatus::Busy,
+                    "An operation in the compound undo step is still pending."));
+                return;
+            }
+            if (!compound_) {
+                completeClient(
+                    std::move(completion),
+                    ProjectUndoResult::failure("No compound undo step is open."));
+                return;
+            }
+
+            auto compound = std::move(*compound_);
+            compound_.reset();
+            if (compound.children.empty()) {
+                completeClient(std::move(completion), ProjectUndoResult::success());
+                return;
+            }
+            auto operation = std::make_shared<CompoundUndoOperation>(
+                std::move(compound.description),
+                std::move(compound.children));
+            finishPerform(std::move(operation));
+            completeClient(std::move(completion), ProjectUndoResult::success());
+        }
+
+        void cancelCompound(ProjectUndoCompletion completion) {
+            if (stopped_) {
+                completeClient(std::move(completion), resultWithStatus(ProjectUndoStatus::Stopped));
+                return;
+            }
+            if (pending_) {
+                completeClient(std::move(completion), resultWithStatus(
+                    ProjectUndoStatus::Busy,
+                    "An operation in the compound undo step is still pending."));
+                return;
+            }
+            if (!compound_) {
+                completeClient(
+                    std::move(completion),
+                    ProjectUndoResult::failure("No compound undo step is open."));
+                return;
+            }
+            if (compound_->children.empty()) {
+                compound_.reset();
+                completeClient(std::move(completion), ProjectUndoResult::success());
+                return;
+            }
+
+            auto operation = std::make_shared<CompoundUndoOperation>(
+                compound_->description,
+                compound_->children);
+            if (!begin(PendingDirection::CancelCompound, operation, std::move(completion)))
+                return;
+            auto context = executionContext(ProjectMutationOrigin::UndoRedo, false);
+            operation->undo(context, operationCompletion(pending_->token));
+        }
+
         bool clear(bool markCurrentStateSaved) {
-            if (pending_ || stopped_)
+            if (pending_ || compound_ || stopped_)
                 return false;
             clearEntries(undo_stack_);
             clearEntries(redo_stack_);
@@ -142,6 +426,8 @@ namespace uapmd {
         }
 
         bool markSaved() {
+            if (compound_)
+                return false;
             return markStateSaved(current_state_id_);
         }
 
@@ -153,7 +439,7 @@ namespace uapmd {
         }
 
         bool setMaximumHistorySizeInBytes(size_t value) {
-            if (pending_ || stopped_)
+            if (pending_ || compound_ || stopped_)
                 return false;
             maximum_history_size_in_bytes_ = value;
             enforceMemoryBudget();
@@ -171,6 +457,7 @@ namespace uapmd {
                 completion = std::move(pending_->clientCompletion);
                 pending_.reset();
             }
+            compound_.reset();
             clearEntries(undo_stack_);
             clearEntries(redo_stack_);
             completeClient(std::move(completion), resultWithStatus(
@@ -241,13 +528,19 @@ namespace uapmd {
             if (result.succeeded()) {
                 switch (pending.direction) {
                     case PendingDirection::Perform:
-                        finishPerform(std::move(pending.operation));
+                        if (compound_)
+                            compound_->children.push_back(std::move(pending.operation));
+                        else
+                            finishPerform(std::move(pending.operation));
                         break;
                     case PendingDirection::Undo:
                         finishUndo();
                         break;
                     case PendingDirection::Redo:
                         finishRedo();
+                        break;
+                    case PendingDirection::CancelCompound:
+                        compound_.reset();
                         break;
                 }
             }
@@ -315,6 +608,7 @@ namespace uapmd {
         std::vector<Entry> undo_stack_{};
         std::vector<Entry> redo_stack_{};
         std::optional<Pending> pending_{};
+        std::optional<CompoundBuilder> compound_{};
         uint64_t operation_token_{0};
         uint64_t next_state_id_{2};
         uint64_t current_state_id_{1};
@@ -360,6 +654,20 @@ namespace uapmd {
 
     void ProjectUndoEngine::redo(ProjectUndoCompletion completion) {
         impl_->redo(std::move(completion));
+    }
+
+    ProjectUndoResult ProjectUndoEngine::beginCompound(
+        std::string description,
+        ProjectMutationOrigin origin) {
+        return impl_->beginCompound(std::move(description), origin);
+    }
+
+    void ProjectUndoEngine::endCompound(ProjectUndoCompletion completion) {
+        impl_->endCompound(std::move(completion));
+    }
+
+    void ProjectUndoEngine::cancelCompound(ProjectUndoCompletion completion) {
+        impl_->cancelCompound(std::move(completion));
     }
 
     bool ProjectUndoEngine::clear(bool markCurrentStateSaved) {

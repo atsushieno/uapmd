@@ -290,9 +290,15 @@ an explicit mutation origin and do not enter user history.
 Project load now rejects pending history work and replaces the old history with
 a clean root only after loading succeeds. Project save records the history-node
 identity captured when serialization began, so an edit made while asynchronous
-plug-in state is being saved still leaves the current project dirty. The next
-implementation slice is named compound steps, followed by continuous gestures
-and structural clip operations.
+plug-in state is being saved still leaves the current project dirty.
+
+Task 4 is implemented as explicit named compound scopes. Successfully applied
+children remain provisional until the scope ends, then enter history as one
+step. Undo runs children in reverse and redo in forward order. Failed replay
+compensates already completed children in the opposite direction; cancelling
+an open scope uses the same asynchronous rollback. Nested scopes are rejected
+for now. The next implementation slice is continuous gestures, followed by
+structural clip operations.
 
 ## Remaining work
 

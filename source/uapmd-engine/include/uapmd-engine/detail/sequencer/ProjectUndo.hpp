@@ -91,9 +91,11 @@ namespace uapmd {
 
     struct ProjectUndoState {
         bool busy{false};
+        bool compoundOpen{false};
         bool canUndo{false};
         bool canRedo{false};
         bool dirty{false};
+        std::string compoundDescription{};
         std::string undoDescription{};
         std::string redoDescription{};
         size_t historySizeInBytes{0};
@@ -132,8 +134,20 @@ namespace uapmd {
         void undo(ProjectUndoCompletion completion = {});
         void redo(ProjectUndoCompletion completion = {});
 
-        // Fails while an operation is pending. Clearing releases all retained
-        // fragments and establishes the current document as a new history root.
+        // Opens one named history step. Operations performed while it is open
+        // are applied immediately but enter history only when endCompound()
+        // succeeds. Nested compounds are deliberately rejected.
+        ProjectUndoResult beginCompound(
+            std::string description,
+            ProjectMutationOrigin origin = ProjectMutationOrigin::User);
+        void endCompound(ProjectUndoCompletion completion = {});
+        // Reverts every successfully performed child in reverse order. If
+        // compensation fails, the compound remains open for explicit recovery.
+        void cancelCompound(ProjectUndoCompletion completion = {});
+
+        // Fails while an operation is pending or a compound step is open.
+        // Clearing releases all retained fragments and establishes the current
+        // document as a new history root.
         bool clear(bool markCurrentStateSaved = true);
         bool markSaved();
         bool markStateSaved(uint64_t stateId);
