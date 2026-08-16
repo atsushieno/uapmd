@@ -835,6 +835,130 @@ namespace uapmd {
             Apply apply_{};
         };
 
+        class PluginInstanceUndoOperation final : public ProjectUndoableOperation {
+        public:
+            using Add = std::function<void(
+                std::string_view trackReferenceId,
+                std::string_view format,
+                std::string_view pluginId,
+                std::string_view nodeId,
+                uint8_t group,
+                const std::vector<uint8_t>& state,
+                std::function<void(int32_t, std::string)> completion)>;
+            using Remove = std::function<void(
+                int32_t instanceId,
+                std::function<void(std::string)> completion)>;
+
+            PluginInstanceUndoOperation(
+                bool initiallyAdded,
+                int32_t instanceId,
+                std::string trackReferenceId,
+                std::string format,
+                std::string pluginId,
+                std::string nodeId,
+                uint8_t group,
+                std::vector<uint8_t> state,
+                Add add,
+                Remove remove)
+                : initially_added_(initiallyAdded)
+                , instance_id_(instanceId)
+                , track_reference_id_(std::move(trackReferenceId))
+                , format_(std::move(format))
+                , plugin_id_(std::move(pluginId))
+                , node_id_(std::move(nodeId))
+                , group_(group)
+                , state_(std::move(state))
+                , add_(std::move(add))
+                , remove_(std::move(remove)) {
+            }
+
+            std::string description() const override {
+                return initially_added_ ? "Add plug-in" : "Remove plug-in";
+            }
+
+            size_t historySizeInBytes() const override {
+                return sizeof(*this)
+                    + track_reference_id_.capacity()
+                    + format_.capacity()
+                    + plugin_id_.capacity()
+                    + node_id_.capacity()
+                    + state_.capacity();
+            }
+
+            void perform(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (initially_added_)
+                    remove(std::move(completion));
+                else
+                    add(std::move(completion));
+            }
+
+            void undo(
+                const ProjectUndoExecutionContext&,
+                ProjectUndoCompletion completion) override {
+                if (initially_added_)
+                    remove(std::move(completion));
+                else
+                    add(std::move(completion));
+            }
+
+            void redo(
+                const ProjectUndoExecutionContext& context,
+                ProjectUndoCompletion completion) override {
+                perform(context, std::move(completion));
+            }
+
+        private:
+            void remove(ProjectUndoCompletion completion) {
+                if (!remove_) {
+                    if (completion)
+                        completion(ProjectUndoResult::failure("Plug-in removal is unavailable"));
+                    return;
+                }
+                remove_(instance_id_, [this, completion = std::move(completion)](std::string error) mutable {
+                    if (!error.empty()) {
+                        if (completion)
+                            completion(ProjectUndoResult::failure(std::move(error)));
+                        return;
+                    }
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                });
+            }
+
+            void add(ProjectUndoCompletion completion) {
+                if (!add_) {
+                    if (completion)
+                        completion(ProjectUndoResult::failure("Plug-in restoration is unavailable"));
+                    return;
+                }
+                add_(track_reference_id_, format_, plugin_id_, node_id_, group_, state_,
+                     [this, completion = std::move(completion)](int32_t instanceId, std::string error) mutable {
+                    if (!error.empty() || instanceId < 0) {
+                        if (completion)
+                            completion(ProjectUndoResult::failure(
+                                error.empty() ? "Could not restore plug-in" : std::move(error)));
+                        return;
+                    }
+                    instance_id_ = instanceId;
+                    if (completion)
+                        completion(ProjectUndoResult::success());
+                });
+            }
+
+            bool initially_added_{false};
+            int32_t instance_id_{-1};
+            std::string track_reference_id_{};
+            std::string format_{};
+            std::string plugin_id_{};
+            std::string node_id_{};
+            uint8_t group_{0xFF};
+            std::vector<uint8_t> state_{};
+            Add add_{};
+            Remove remove_{};
+        };
+
         class ClipRemovalUndoOperation final : public ProjectUndoableOperation {
         public:
             using Remove = std::function<bool(
@@ -1302,6 +1426,8 @@ namespace uapmd {
         std::unordered_map<int32_t, std::unordered_map<int32_t, double>> plugin_parameter_values_{};
         std::unordered_map<int32_t, remidy::EventListenerId> plugin_parameter_listener_ids_{};
         std::atomic<uint32_t> plugin_parameter_mutation_depth_{0};
+        std::atomic<uint32_t> pending_plugin_mutations_{0};
+        uint32_t suppress_plugin_graph_notifications_{0};
 
         // Identity staged by the project loader for the next track or clip it
         // creates, so that loaded objects keep the reference IDs they were
@@ -2696,11 +2822,19 @@ namespace uapmd {
                 || (trackIndex < 0 && trackIndex != kMasterTrackIndex))
                 return false;
             auto newGraph = provider->createGraph(eventBufferSizeInBytes);
-            if (!newGraph
-                || !engine_.replaceTrackGraph(trackIndex, std::move(newGraph)))
+            if (!newGraph)
                 return false;
-            if (snapshot.graphBytes.empty())
+            ++suppress_plugin_graph_notifications_;
+            const auto replaced = engine_.replaceTrackGraph(
+                trackIndex,
+                std::move(newGraph));
+            --suppress_plugin_graph_notifications_;
+            if (!replaced)
+                return false;
+            if (snapshot.graphBytes.empty()) {
+                onTrackGraphChanged(trackIndex);
                 return true;
+            }
 
             auto* track = resolveSequencerTrack(trackIndex);
             auto metadata = UapmdProjectPluginGraphData::create();
@@ -4465,6 +4599,299 @@ namespace uapmd {
                                 std::move(completion));
                         });
                 });
+        }
+
+        void recordPluginInstanceAddition(
+            int32_t instanceId,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion) override {
+            auto target = pluginTargetForInstance(instanceId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            const auto trackIndex = engine_.findTrackIndexForInstance(instanceId);
+            if (!target || !instance
+                || (trackIndex < 0 && trackIndex != kMasterTrackIndex)) {
+                if (completion)
+                    completion(ProjectUndoResult::failure("The plug-in instance does not exist"));
+                return;
+            }
+            pending_plugin_mutations_.fetch_add(1, std::memory_order_acq_rel);
+            ProjectUndoCompletion finish = [this, completion = std::move(completion)](
+                                               ProjectUndoResult result) mutable {
+                pending_plugin_mutations_.fetch_sub(1, std::memory_order_acq_rel);
+                if (completion)
+                    completion(std::move(result));
+            };
+            instance->requestState(
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this,
+                 origin,
+                 instanceId,
+                 target = std::move(*target),
+                 format = instance->formatName(),
+                 pluginId = instance->pluginId(),
+                 group = engine_.getInstanceGroup(instanceId),
+                 completion = std::move(finish)](
+                    std::vector<uint8_t> state,
+                    std::string error,
+                    void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         origin,
+                         instanceId,
+                         target = std::move(target),
+                         format = std::move(format),
+                         pluginId = std::move(pluginId),
+                         group,
+                         state = std::move(state),
+                         error = std::move(error),
+                         completion = std::move(completion)]() mutable {
+                        if (!error.empty()) {
+                            if (completion)
+                                completion(ProjectUndoResult::failure(std::move(error)));
+                            return;
+                        }
+                        auto add = [this](
+                                       std::string_view trackReferenceId,
+                                       std::string_view format,
+                                       std::string_view pluginId,
+                                       std::string_view nodeId,
+                                       uint8_t group,
+                                       const std::vector<uint8_t>& state,
+                                       std::function<void(int32_t, std::string)> finished) {
+                            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+                            if (trackIndex < 0 && trackIndex != kMasterTrackIndex) {
+                                finished(-1, "The plug-in's track no longer exists");
+                                return;
+                            }
+                            auto formatCopy = std::string(format);
+                            auto pluginIdCopy = std::string(pluginId);
+                            engine_.addPluginToTrack(
+                                trackIndex,
+                                formatCopy,
+                                pluginIdCopy,
+                                [this,
+                                 group,
+                                 nodeId = std::string(nodeId),
+                                 state,
+                                 finished = std::move(finished)](
+                                    int32_t newInstanceId,
+                                    int32_t,
+                                    std::string addError) mutable {
+                                    if (!addError.empty() || newInstanceId < 0) {
+                                        finished(newInstanceId, std::move(addError));
+                                        return;
+                                    }
+                                    if (group != 0xFF
+                                        && !engine_.setInstanceGroup(newInstanceId, group)) {
+                                        engine_.removePluginInstance(newInstanceId);
+                                        finished(-1, "Could not restore the plug-in UMP group");
+                                        return;
+                                    }
+                                    auto* restored = engine_.getPluginInstance(newInstanceId);
+                                    if (!restored) {
+                                        finished(-1, "Restored plug-in instance is unavailable");
+                                        return;
+                                    }
+                                    if (state.empty()) {
+                                        finished(newInstanceId, {});
+                                        return;
+                                    }
+                                    restored->loadState(
+                                        state,
+                                        StateContextType::Project,
+                                        false,
+                                        nullptr,
+                                        [newInstanceId, finished = std::move(finished)](
+                                            std::string stateError,
+                                            void*) mutable {
+                                            finished(
+                                                stateError.empty() ? newInstanceId : -1,
+                                                std::move(stateError));
+                                        });
+                                },
+                                std::string(nodeId));
+                        };
+                        auto remove = [this](
+                                          int32_t currentInstanceId,
+                                          std::function<void(std::string)> finished) {
+                            if (!engine_.removePluginInstance(currentInstanceId)) {
+                                finished("Could not remove the plug-in instance");
+                                return;
+                            }
+                            finished({});
+                        };
+                        auto operation = std::make_shared<PluginInstanceUndoOperation>(
+                            true,
+                            instanceId,
+                            std::move(target.trackReferenceId),
+                            std::move(format),
+                            std::move(pluginId),
+                            std::move(target.nodeId),
+                            group,
+                            std::move(state),
+                            std::move(add),
+                            std::move(remove));
+                        undo_engine_.recordPerformed(
+                            std::move(operation),
+                            origin,
+                            std::move(completion));
+                    });
+                });
+        }
+
+        void removePluginInstance(
+            int32_t instanceId,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion) override {
+            auto target = pluginTargetForInstance(instanceId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!target || !instance) {
+                if (completion)
+                    completion(ProjectUndoResult::failure("The plug-in instance does not exist"));
+                return;
+            }
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote) {
+                const auto removed = engine_.removePluginInstance(instanceId);
+                if (completion)
+                    completion(removed
+                        ? ProjectUndoResult::success()
+                        : ProjectUndoResult::failure("Could not remove the plug-in instance"));
+                return;
+            }
+            pending_plugin_mutations_.fetch_add(1, std::memory_order_acq_rel);
+            ProjectUndoCompletion finish = [this, completion = std::move(completion)](
+                                               ProjectUndoResult result) mutable {
+                pending_plugin_mutations_.fetch_sub(1, std::memory_order_acq_rel);
+                if (completion)
+                    completion(std::move(result));
+            };
+            instance->requestState(
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this,
+                 origin,
+                 instanceId,
+                 target = std::move(*target),
+                 format = instance->formatName(),
+                 pluginId = instance->pluginId(),
+                 group = engine_.getInstanceGroup(instanceId),
+                 completion = std::move(finish)](
+                    std::vector<uint8_t> state,
+                    std::string error,
+                    void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         origin,
+                         instanceId,
+                         target = std::move(target),
+                         format = std::move(format),
+                         pluginId = std::move(pluginId),
+                         group,
+                         state = std::move(state),
+                         error = std::move(error),
+                         completion = std::move(completion)]() mutable {
+                        if (!error.empty()) {
+                            if (completion)
+                                completion(ProjectUndoResult::failure(std::move(error)));
+                            return;
+                        }
+                        if (!engine_.removePluginInstance(instanceId)) {
+                            if (completion)
+                                completion(ProjectUndoResult::failure(
+                                    "Could not remove the plug-in instance"));
+                            return;
+                        }
+                        auto add = [this](
+                                       std::string_view trackReferenceId,
+                                       std::string_view format,
+                                       std::string_view pluginId,
+                                       std::string_view nodeId,
+                                       uint8_t group,
+                                       const std::vector<uint8_t>& state,
+                                       std::function<void(int32_t, std::string)> finished) {
+                            const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+                            if (trackIndex < 0 && trackIndex != kMasterTrackIndex) {
+                                finished(-1, "The plug-in's track no longer exists");
+                                return;
+                            }
+                            auto formatCopy = std::string(format);
+                            auto pluginIdCopy = std::string(pluginId);
+                            engine_.addPluginToTrack(
+                                trackIndex,
+                                formatCopy,
+                                pluginIdCopy,
+                                [this,
+                                 group,
+                                 nodeId = std::string(nodeId),
+                                 state,
+                                 finished = std::move(finished)](
+                                    int32_t newInstanceId,
+                                    int32_t,
+                                    std::string addError) mutable {
+                                    if (!addError.empty() || newInstanceId < 0) {
+                                        finished(newInstanceId, std::move(addError));
+                                        return;
+                                    }
+                                    if (group != 0xFF
+                                        && !engine_.setInstanceGroup(newInstanceId, group)) {
+                                        engine_.removePluginInstance(newInstanceId);
+                                        finished(-1, "Could not restore the plug-in UMP group");
+                                        return;
+                                    }
+                                    auto* restored = engine_.getPluginInstance(newInstanceId);
+                                    if (!restored || state.empty()) {
+                                        finished(newInstanceId, restored ? std::string{} : "Restored plug-in instance is unavailable");
+                                        return;
+                                    }
+                                    restored->loadState(
+                                        state,
+                                        StateContextType::Project,
+                                        false,
+                                        nullptr,
+                                        [newInstanceId, finished = std::move(finished)](
+                                            std::string stateError,
+                                            void*) mutable {
+                                            finished(
+                                                stateError.empty() ? newInstanceId : -1,
+                                                std::move(stateError));
+                                        });
+                                },
+                                std::string(nodeId));
+                        };
+                        auto remove = [this](
+                                          int32_t currentInstanceId,
+                                          std::function<void(std::string)> finished) {
+                            if (!engine_.removePluginInstance(currentInstanceId)) {
+                                finished("Could not remove the plug-in instance");
+                                return;
+                            }
+                            finished({});
+                        };
+                        auto operation = std::make_shared<PluginInstanceUndoOperation>(
+                            false,
+                            instanceId,
+                            std::move(target.trackReferenceId),
+                            std::move(format),
+                            std::move(pluginId),
+                            std::move(target.nodeId),
+                            group,
+                            std::move(state),
+                            std::move(add),
+                            std::move(remove));
+                        undo_engine_.recordPerformed(
+                            std::move(operation),
+                            origin,
+                            std::move(completion));
+                    });
+                });
+        }
+
+        bool hasPendingPluginMutations() const override {
+            return pending_plugin_mutations_.load(std::memory_order_acquire) != 0;
         }
 
         static bool graphEndpointEquivalent(
@@ -6233,6 +6660,8 @@ namespace uapmd {
         }
 
         void onTrackGraphChanged(int32_t trackIndex) override {
+            if (suppress_plugin_graph_notifications_ != 0)
+                return;
             ProjectDocumentEvent event(ProjectDocumentEventKind::PluginGraphChanged, "plugin-graph-changed");
             event.setTrackIndex(trackIndex);
             if (trackIndex == kMasterTrackIndex) {

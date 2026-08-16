@@ -979,7 +979,8 @@ void uapmd_app::AppModel::resumeTransportAfterPluginMutation(bool resumeTranspor
 
 bool uapmd_app::AppModel::isProjectDirty() const {
     std::lock_guard lock(dirtyStateMutex_);
-    return project_structure_dirty_ || !dirty_tracks_.empty()
+    return sequencer_.engine()->timeline().hasPendingPluginMutations()
+        || project_structure_dirty_ || !dirty_tracks_.empty()
         || sequencer_.engine()->timeline().undoEngine().state().dirty;
 }
 
@@ -1033,7 +1034,17 @@ void uapmd_app::AppModel::clearProjectDirtyState() {
 }
 
 uapmd::ProjectUndoState uapmd_app::AppModel::historyState() const {
-    return sequencer_.engine()->timeline().undoEngine().state();
+    auto state = sequencer_.engine()->timeline().undoEngine().state();
+    // Plug-in creation/removal captures plug-in state asynchronously before its
+    // history entry can be committed.  Expose that interval as a busy history
+    // state so keyboard shortcuts and the command menu cannot race the capture.
+    if (sequencer_.engine()->timeline().hasPendingPluginMutations()) {
+        state.busy = true;
+        state.canUndo = false;
+        state.canRedo = false;
+        state.dirty = true;
+    }
+    return state;
 }
 
 std::unordered_set<int32_t> uapmd_app::AppModel::currentPluginInstanceIds() const {
@@ -1074,6 +1085,10 @@ void uapmd_app::AppModel::reconcileAfterHistoryMutation(
 void uapmd_app::AppModel::undo(HistoryMutationCallback callback) {
     if (!callback)
         return;
+    if (sequencer_.engine()->timeline().hasPendingPluginMutations()) {
+        callback("A plug-in mutation is still completing");
+        return;
+    }
     const auto previousPluginInstanceIds = currentPluginInstanceIds();
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
     sequencer_.engine()->timeline().undoEngine().undo(
@@ -1092,6 +1107,10 @@ void uapmd_app::AppModel::undo(HistoryMutationCallback callback) {
 void uapmd_app::AppModel::redo(HistoryMutationCallback callback) {
     if (!callback)
         return;
+    if (sequencer_.engine()->timeline().hasPendingPluginMutations()) {
+        callback("A plug-in mutation is still completing");
+        return;
+    }
     const auto previousPluginInstanceIds = currentPluginInstanceIds();
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
     sequencer_.engine()->timeline().undoEngine().redo(
@@ -1151,17 +1170,39 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
 
         std::optional<PluginInstanceConfig> configOverride{config};
         result = registerPluginInstanceInternal(instanceId, configOverride);
-        if (result.error.empty())
-            markTrackDirty(trackIndex);
-        resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
-
-        if (completionCallback) {
-            completionCallback(result);
+        if (!result.error.empty()) {
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+            if (completionCallback)
+                completionCallback(result);
+            for (auto& cb : instanceCreated)
+                cb(result);
+            return;
         }
 
-        for (auto& cb : instanceCreated) {
-            cb(result);
-        }
+        sequencer_.engine()->timeline().recordPluginInstanceAddition(
+            instanceId,
+            uapmd::ProjectMutationOrigin::User,
+            [this,
+             result = std::move(result),
+             trackIndex,
+             completionCallback,
+             resumeTransportAfterMutation](uapmd::ProjectUndoResult historyResult) mutable {
+                auto completed = std::move(result);
+                if (!historyResult.succeeded()) {
+                    completed.error = historyResult.error.empty()
+                        ? "Could not record plug-in creation in undo history"
+                        : std::move(historyResult.error);
+                    sequencer_.engine()->removePluginInstance(completed.instanceId);
+                    forgetRemovedPluginInstance(completed.instanceId);
+                }
+                if (completed.error.empty())
+                    markTrackDirty(trackIndex);
+                resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+                if (completionCallback)
+                    completionCallback(completed);
+                for (auto& cb : instanceCreated)
+                    cb(completed);
+            });
     };
 
     if (!targetMasterTrack) {
@@ -1331,23 +1372,27 @@ void uapmd_app::AppModel::removePluginInstance(int32_t instanceId) {
         }
     }
 
-    sequencer_.engine()->removePluginInstance(instanceId);
-    if (!shutting_down_) {
-        if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
-            markTrackDirty(trackIndex);
-        else
-            markProjectDirty();
-    }
-    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
-
-    // Notify all registered callbacks
-    if (!shutting_down_) {
-        for (auto& cb : instanceRemoved) {
-            cb(instanceId);
-        }
-    }
-
-    resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+    sequencer_.engine()->timeline().removePluginInstance(
+        instanceId,
+        (shutting_down_ || project_load_in_progress_)
+            ? uapmd::ProjectMutationOrigin::Internal
+            : uapmd::ProjectMutationOrigin::User,
+        [this, instanceId, trackIndex, resumeTransportAfterMutation](uapmd::ProjectUndoResult result) {
+            if (result.succeeded()) {
+                if (!shutting_down_) {
+                    if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
+                        markTrackDirty(trackIndex);
+                    else
+                        markProjectDirty();
+                }
+                sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
+                if (!shutting_down_) {
+                    for (auto& cb : instanceRemoved)
+                        cb(instanceId);
+                }
+            }
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+        });
 }
 
 void uapmd_app::AppModel::enableUmpDevice(int32_t instanceId, const std::string& deviceName) {
@@ -3425,6 +3470,7 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
     // Explicitly tear down every existing instance before replacing the timeline.
     // This destroys each plugin UI while its ContainerWindow is still alive, then
     // emits instanceRemoved so UI subscribers may safely release that container.
+    project_load_in_progress_ = true;
     std::unordered_set<int32_t> removedInstanceIds;
     if (auto* mt = sequencer_.engine()->masterTrack()) {
         auto ids = mt->orderedInstanceIds();
@@ -3443,6 +3489,7 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
                 removePluginInstance(instanceId);
         }
     }
+    project_load_in_progress_ = false;
 
     // Delegate project loading to SequencerEngine asynchronously.
     sequencer_.engine()->timeline().loadProject(projectFile,

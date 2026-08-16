@@ -155,6 +155,7 @@ namespace uapmd_app {
             std::make_shared<PluginStateChangeDispatch>()};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
         bool project_structure_dirty_{false};
+        bool project_load_in_progress_{false};
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
         std::vector<std::unique_ptr<ScopedTempDir>> retiredProjectTempDirs_;
         SlowScanProgressState slowScanProgress_{};

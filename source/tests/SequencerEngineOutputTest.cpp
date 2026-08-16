@@ -1006,6 +1006,46 @@ TEST_F(SequencerEngineOutputTest, ClipMutationsRevokeTheTracksFrozenRender) {
 
     ASSERT_TRUE(timeline.removeClipFromTrack(trackIndex, added.clipId));
     EXPECT_GT(frozen.invalidationGenerationForTrack(trackIndex), generationAfterChange);
+
+    const auto generationBeforeGraphChange =
+        frozen.invalidationGenerationForTrack(trackIndex);
+    ASSERT_TRUE(timeline.replaceTrackGraphType(
+        trackIndex,
+        "urn:uapmd-graph:common/graph/dag/v1",
+        engine->umpBufferSizeInBytes()));
+    EXPECT_GT(
+        frozen.invalidationGenerationForTrack(trackIndex),
+        generationBeforeGraphChange);
+}
+
+TEST_F(SequencerEngineOutputTest, PluginRemovalNotifiesListenersWithoutHoldingInstanceMapLock) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+
+    class InspectingLifecycleListener final : public uapmd::PluginInstanceLifecycleListener {
+    public:
+        explicit InspectingLifecycleListener(uapmd::SequencerEngine& engine)
+            : engine_(engine) {
+        }
+
+        void pluginInstanceWillBeDestroyed(int32_t instanceId) override {
+            observedInstance_ = engine_.getPluginInstance(instanceId);
+        }
+
+        uapmd_plugin_hosting::AudioPluginInstanceAPI* observedInstance_{nullptr};
+
+    private:
+        uapmd::SequencerEngine& engine_;
+    } listener(*engine);
+
+    engine->addPluginInstanceLifecycleListener(listener);
+    // An unknown ID still exercises the lifecycle notification path, without
+    // requiring a platform plug-in to be installed. The listener deliberately
+    // calls back into getPluginInstance(); removePluginInstance() must not hold
+    // instance_map_mutex_ while sending that notification.
+    EXPECT_FALSE(engine->removePluginInstance(123456));
+    engine->removePluginInstanceLifecycleListener(listener);
+    EXPECT_EQ(listener.observedInstance_, nullptr);
 }
 
 } // namespace

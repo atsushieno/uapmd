@@ -2102,9 +2102,11 @@ namespace uapmd {
         // Metadata listener is unregistered automatically in AudioPluginNode destructor
 
         // Plugin instance cleanup
+        // Notify before taking instance_map_mutex_: lifecycle listeners may
+        // inspect the still-live instance while unregistering their observers.
+        notifyPluginInstanceWillBeDestroyed(instanceId);
         {
             std::lock_guard<std::mutex> lock(instance_map_mutex_);
-            notifyPluginInstanceWillBeDestroyed(instanceId);
             plugin_instances_.erase(instanceId);
         }
 

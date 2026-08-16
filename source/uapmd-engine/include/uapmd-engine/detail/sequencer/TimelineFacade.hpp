@@ -286,6 +286,19 @@ public:
         std::vector<uint8_t> state,
         ProjectMutationOrigin origin,
         ProjectUndoCompletion completion) = 0;
+    // Records a plug-in that has already been instantiated, capturing its
+    // opaque project state before publishing the history entry.
+    virtual void recordPluginInstanceAddition(
+        int32_t instanceId,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) = 0;
+    // Captures state, removes the instance, and records the removal as one
+    // asynchronous history operation.
+    virtual void removePluginInstance(
+        int32_t instanceId,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) = 0;
+    virtual bool hasPendingPluginMutations() const = 0;
     virtual bool connectTrackGraph(
         int32_t trackIndex,
         const uapmd_graph::AudioPluginGraphConnection& connection,

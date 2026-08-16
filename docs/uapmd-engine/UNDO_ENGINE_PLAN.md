@@ -455,7 +455,25 @@ already-applied external change as one history operation, and suppresses the
 observer while applying a facade edit or playback NRPN automation. Thus host
 UI edits enter history without turning playback automation into authored edits.
 
-- Plug-in creation and deletion, including implicit track creation.
+Graph replacement now emits one completed graph-change event after topology
+restoration, and frozen-track invalidation consumes that event. The freeze
+renderer’s temporary graph swaps are ignored while a track is Rendering, so a
+user graph edit invalidates the cached render without self-invalidating an
+active render.
+
+#### Step 3 second slice: plug-in instance lifecycle
+
+Existing-track plug-in creation and deletion now use asynchronous history
+operations. Creation captures opaque project state before publishing its
+history entry; deletion captures state before removing the live instance.
+Undo/redo restores the plug-in format, identifier, persistent node identity,
+UMP group and captured state, and the AppModel reconciles its device registry
+after replay. While either capture is in flight, the AppModel reports history
+as busy and ignores undo/redo shortcuts; this prevents a command issued
+immediately after plug-in insertion from racing the pending history commit.
+
+- Plug-in creation and deletion on an existing track (implicit track creation
+  still needs a track-plus-instance compound).
 - Plug-in bypass.
 - Plug-in parameters changed by JavaScript or MCP, including any parameter
   notification path not yet routed through the facade.
@@ -465,14 +483,15 @@ UI edits enter history without turning playback automation into authored edits.
 - Switching a track between the simple and full-DAG graph types.
 - Adding and removing graph connections and other graph-topology replacement.
 
-This is the outstanding substance of task 8. Plug-in insertion on a new track
-must record the track, instance, state, group and graph placement as one
-operation. Parameter changes require begin/end gesture integration; playback
-automation remains excluded, while editing automation data is undoable authored
-content. Loading a whole state requires capturing the previous opaque state
-before applying the replacement. Graph operations must invalidate frozen-track
-caches without allowing the freeze renderer's own temporary graph changes to
-revoke themselves.
+This is the remaining substance of task 8. Plug-in insertion on a new track
+must record the track and instance together; existing-track insertion now
+records the instance, state and group, while exact graph placement and
+connections still need a structural fragment. Parameter changes require
+begin/end gesture integration; playback automation remains excluded, while
+editing automation data is undoable authored content. Loading a whole state
+requires capturing the previous opaque state before applying the replacement.
+Graph cache invalidation is complete without allowing the freeze renderer's
+temporary graph changes to revoke themselves.
 
 ### Application, JavaScript and MCP adoption
 

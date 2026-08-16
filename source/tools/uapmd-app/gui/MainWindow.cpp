@@ -967,9 +967,13 @@ void MainWindow::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutC
 void MainWindow::handleUndo() {
     uapmd_app::AppModel::instance().undo(
         [this](std::string error) {
-            if (!error.empty())
+            // A plug-in can still be asynchronously committing its creation
+            // history when a shortcut event from the same frame arrives. The
+            // model rejects that race deliberately; do not turn it into a
+            // blocking native error dialog, which makes the app look hung.
+            if (!error.empty() && error != "A plug-in mutation is still completing")
                 platformError("Undo Failed", error);
-            else
+            else if (error.empty())
                 timelineEditor_.refreshAfterHistoryMutation();
         });
 }
@@ -977,9 +981,9 @@ void MainWindow::handleUndo() {
 void MainWindow::handleRedo() {
     uapmd_app::AppModel::instance().redo(
         [this](std::string error) {
-            if (!error.empty())
+            if (!error.empty() && error != "A plug-in mutation is still completing")
                 platformError("Redo Failed", error);
-            else
+            else if (error.empty())
                 timelineEditor_.refreshAfterHistoryMutation();
         });
 }

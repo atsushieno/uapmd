@@ -551,9 +551,8 @@ void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
 // monotonic generation counter -- so the existing hand-written
 // AppModel::markTrackDirty calls remain harmless.
 //
-// Plugin graph changes are deliberately not handled the same way: freezing
-// manipulates the track's graph, so invalidating on graph changes risks a
-// render that revokes itself.
+// Plugin graph changes use the same invalidation path, with the graph listener
+// excluding the freeze renderer's temporary transitions while Rendering.
 void FrozenTrackManager::invalidateTrackForDocumentEvent(
     const ProjectDocumentEvent& event) {
     if (!event.trackId())
@@ -584,7 +583,16 @@ void FrozenTrackManager::audioSourceChanged(const ProjectDocumentEvent&) {
 
 void FrozenTrackManager::pluginGraphChanged(
     const ProjectDocumentEvent& event) {
-    (void) event;
+    if (!event.trackId())
+        return;
+    const auto trackIndex = trackIndexForReferenceId(*event.trackId());
+    // The freeze renderer temporarily replaces and restores the live graph
+    // while a track is Rendering. Those internal transitions must not revoke
+    // the render they are currently producing. User graph edits are rejected
+    // while Rendering and are therefore safe to invalidate here otherwise.
+    if (trackIndex >= 0 && isTrackBusy(trackIndex))
+        return;
+    invalidateTrackForDocumentEvent(event);
 }
 
 void FrozenTrackManager::masterTrackChanged(const ProjectDocumentEvent&) {
