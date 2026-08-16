@@ -765,6 +765,113 @@ namespace {
             timeline.undoEngine().undo(std::move(completion));
         return result;
     }
+
+    class SizedUndoOperation final : public uapmd::ProjectUndoableOperation {
+    public:
+        SizedUndoOperation(std::string description, size_t sizeInBytes)
+            : description_(std::move(description))
+            , size_in_bytes_(sizeInBytes) {
+        }
+
+        std::string description() const override {
+            return description_;
+        }
+
+        size_t historySizeInBytes() const override {
+            return size_in_bytes_;
+        }
+
+        void perform(
+            const uapmd::ProjectUndoExecutionContext&,
+            uapmd::ProjectUndoCompletion completion) override {
+            complete(std::move(completion));
+        }
+
+        void undo(
+            const uapmd::ProjectUndoExecutionContext&,
+            uapmd::ProjectUndoCompletion completion) override {
+            complete(std::move(completion));
+        }
+
+        void redo(
+            const uapmd::ProjectUndoExecutionContext&,
+            uapmd::ProjectUndoCompletion completion) override {
+            complete(std::move(completion));
+        }
+
+    private:
+        static void complete(uapmd::ProjectUndoCompletion completion) {
+            if (completion)
+                completion(uapmd::ProjectUndoResult::success());
+        }
+
+        std::string description_;
+        size_t size_in_bytes_;
+    };
+}
+
+TEST(ProjectUndoEngineTest, EvictsOldestCompleteStepsWithinMemoryBudget) {
+    uapmd::ProjectUndoEngine undoEngine({
+        .maximumHistorySizeInBytes = 10
+    });
+
+    undoEngine.perform(std::make_shared<SizedUndoOperation>("First", 6));
+    EXPECT_EQ(undoEngine.state().historySizeInBytes, 6u);
+    undoEngine.perform(std::make_shared<SizedUndoOperation>("Second", 6));
+
+    // The oldest complete step is evicted as a whole. The newest step remains
+    // undoable even though two six-byte estimates do not fit in the budget.
+    auto state = undoEngine.state();
+    EXPECT_EQ(state.historySizeInBytes, 6u);
+    EXPECT_EQ(state.undoDescription, "Second");
+
+    std::optional<uapmd::ProjectUndoResult> result;
+    undoEngine.undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    state = undoEngine.state();
+    EXPECT_FALSE(state.canUndo);
+    EXPECT_TRUE(state.canRedo);
+    EXPECT_EQ(state.redoDescription, "Second");
+}
+
+TEST(ProjectUndoEngineTest, RetainsCompoundStepsAsAtomicBudgetUnits) {
+    uapmd::ProjectUndoEngine undoEngine({
+        .maximumHistorySizeInBytes = 10
+    });
+
+    undoEngine.perform(std::make_shared<SizedUndoOperation>("Before compound", 6));
+    ASSERT_TRUE(undoEngine.beginCompound("Compound").succeeded());
+    undoEngine.perform(std::make_shared<SizedUndoOperation>("Child one", 6));
+    undoEngine.perform(std::make_shared<SizedUndoOperation>("Child two", 6));
+
+    auto state = undoEngine.state();
+    EXPECT_TRUE(state.compoundOpen);
+    EXPECT_EQ(state.historySizeInBytes, 18u);
+
+    std::optional<uapmd::ProjectUndoResult> result;
+    undoEngine.endCompound([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    state = undoEngine.state();
+    // The compound's own description/container overhead is part of its
+    // estimate, so it may exceed the budget as one indivisible step.
+    EXPECT_GT(state.historySizeInBytes, state.maximumHistorySizeInBytes);
+    EXPECT_EQ(state.undoDescription, "Compound");
+
+    result.reset();
+    undoEngine.undo([&result](uapmd::ProjectUndoResult completed) {
+        result = std::move(completed);
+    });
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FALSE(undoEngine.state().canUndo);
+    EXPECT_TRUE(undoEngine.state().canRedo);
+    EXPECT_EQ(undoEngine.state().redoDescription, "Compound");
 }
 
 TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) {
@@ -1527,6 +1634,12 @@ TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata)
                 channel == 0 ? 0.1f : -0.1f;
     ASSERT_TRUE(writer->appendFrames(audioBuffer.getView()));
     ASSERT_TRUE(writer->flush());
+    writer.reset();
+    const auto replacementPath = test_dir_ / "undo-audio-replacement.wav";
+    ASSERT_TRUE(fs::copy_file(
+        audioPath,
+        replacementPath,
+        fs::copy_options::overwrite_existing));
 
     auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
     ASSERT_NE(engine, nullptr);
@@ -1549,7 +1662,7 @@ TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata)
     ASSERT_TRUE(timeline.replaceAudioClipContent(
         trackIndex,
         added.clipId,
-        audioPath.string(),
+        replacementPath.string(),
         markers,
         warps,
         {}));
@@ -1566,6 +1679,23 @@ TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata)
     EXPECT_TRUE(restored->clip.markers.empty());
     EXPECT_TRUE(restored->clip.audioWarps.empty());
 
+    // Redo must report a missing source as a replay failure without consuming
+    // the redo entry. Recreating the source then allows the same redo to be
+    // retried successfully.
+    ASSERT_TRUE(fs::remove(replacementPath));
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->succeeded());
+    EXPECT_FALSE(result->error.empty());
+    // The earlier clip-creation step is still undoable; the failed redo must
+    // leave the replacement entry itself on the redo side.
+    EXPECT_TRUE(timeline.undoEngine().state().canUndo);
+    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+
+    ASSERT_TRUE(fs::copy_file(
+        audioPath,
+        replacementPath,
+        fs::copy_options::overwrite_existing));
     result = moveHistory(timeline, true);
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2030,6 +2160,44 @@ TEST_F(SequencerEngineOutputTest, FailedAsyncPluginStateRestoreNeverPublishesTra
     ASSERT_TRUE(attachedIndex.has_value());
     EXPECT_EQ(*attachedIndex, -1);
     EXPECT_NE(attachError.find("state rejected"), std::string::npos);
+    EXPECT_TRUE(engine->tracks().empty());
+    EXPECT_TRUE(engine->timeline().tracks().empty());
+    EXPECT_TRUE(pluginHostObserver->instanceIds().empty());
+}
+
+TEST_F(SequencerEngineOutputTest, UnavailablePluginNeverPublishesTrackFragment) {
+    ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>(true, true);
+    auto* pluginHostObserver = pluginHost.get();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::move(pluginHost));
+    ASSERT_NE(engine, nullptr);
+
+    uapmd::ProjectTrackFragment fragment;
+    fragment.referenceId = "track_missing_plugin";
+    uapmd::ProjectTrackPluginFragment plugin;
+    plugin.pluginId = "missing.plugin";
+    plugin.format = "Test";
+    fragment.plugins.push_back(std::move(plugin));
+
+    std::optional<int32_t> attachedIndex;
+    std::string attachError;
+    engine->timeline().attachTrackFragment(
+        fragment,
+        {},
+        [&](int32_t trackIndex, std::string error) {
+            attachedIndex = trackIndex;
+            attachError = std::move(error);
+        });
+    ASSERT_TRUE(pluginHostObserver->creationPending());
+
+    pluginHostObserver->completeNextCreation("plugin unavailable");
+    ASSERT_TRUE(attachedIndex.has_value());
+    EXPECT_EQ(*attachedIndex, -1);
+    EXPECT_NE(attachError.find("plugin unavailable"), std::string::npos);
     EXPECT_TRUE(engine->tracks().empty());
     EXPECT_TRUE(engine->timeline().tracks().empty());
     EXPECT_TRUE(pluginHostObserver->instanceIds().empty());

@@ -284,6 +284,17 @@ the model thread, busy rejection, undo/redo branch management, state-identity
 based dirty tracking, memory-budget eviction and deterministic shutdown. It is
 owned and exposed by `TimelineFacade`; no synchronous undo manager exists.
 
+Task 11's retention rule is covered by engine-level tests: when estimates exceed
+the configured budget, complete oldest entries are evicted while the newest
+operation remains available, and a compound step is retained as one atomic
+budget unit rather than being split into children. Retained fragments and
+opaque operation state are released by the history engine during its normal
+model-thread eviction/clear paths. The failure path for an unavailable plug-in
+is also covered: asynchronous track attachment reports the error and leaves
+neither a published track nor a hosted instance behind. File-backed audio redo
+is tested the same way: deleting the source reports a failure while retaining
+the redo entry, and restoring the file permits a retry.
+
 Task 3 is implemented for clip enablement, duration, name, file path, file-save
 state, markers and audio warps. These operations retain before/after values,
 resolve the target by persistent track and clip identifiers, and replay through
