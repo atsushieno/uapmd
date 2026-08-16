@@ -385,8 +385,9 @@ completion reconciles instance removal and restoration, republishes the whole
 track layout, and invalidates frozen-track caches. The Command menu displays the
 current undo and redo descriptions, disables unavailable or busy actions, and
 supports Ctrl/Cmd-Z, Ctrl/Cmd-Shift-Z and Ctrl-Y. Failures reach the platform
-error UI. Script and MCP history commands, explicit remote compound scopes and
-a richer long-running progress surface remain open.
+error UI. JavaScript and MCP now expose asynchronous history jobs and history
+state queries. Explicit remote compound scopes and a richer long-running
+progress surface remain open.
 
 ## Phase 1 remaining work
 
@@ -496,8 +497,9 @@ freeze renderer's temporary graph changes to revoke themselves.
 - JavaScript parameter, bypass, graph and preset calls now reach the facade;
   unsolicited raw hosted-UI state notifications and persisted device metadata
   still need the callback-based history funnel.
-- JavaScript and MCP cannot invoke undo or redo and cannot open, finish or
-  cancel an explicit named compound scope.
+- JavaScript and MCP can invoke undo and redo through pollable mutation jobs,
+  and can query history state. They still cannot open, finish or cancel an
+  explicit named compound scope.
 - Long-running native operations expose only minimal busy feedback in the
   Command popup; persistent progress/cancellation presentation is still absent.
 

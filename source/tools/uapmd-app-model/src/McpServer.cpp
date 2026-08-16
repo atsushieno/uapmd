@@ -380,6 +380,31 @@ static choc::value::Value buildToolDefinitions()
             R"j({"type":"object","properties":{}})j"
         },
         {
+            "get_history_state",
+            "Get undo/redo availability, descriptions, busy state, and dirty state.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "undo",
+            "Undo the latest user mutation. Returns a mutation job to poll.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "redo",
+            "Redo the latest undone mutation. Returns a mutation job to poll.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "get_mutation_job",
+            "Get the state and result of an asynchronous mutation job.",
+            R"j({"type":"object","required":["jobId"],"properties":{"jobId":{"type":"integer"}}})j"
+        },
+        {
+            "clear_mutation_job",
+            "Release a completed asynchronous mutation job.",
+            R"j({"type":"object","required":["jobId"],"properties":{"jobId":{"type":"integer"}}})j"
+        },
+        {
             "get_track_freeze_state",
             "Get the requested freeze policy, runtime state, and active render progress for a track.",
             R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
@@ -1528,6 +1553,34 @@ struct McpServer::Impl {
 
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
+            else if (toolName == "get_history_state") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("uapmd.sequencer.getHistoryState()"));
+            }
+            else if (toolName == "undo") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("uapmd.sequencer.undo()"));
+            }
+            else if (toolName == "redo") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("uapmd.sequencer.redo()"));
+            }
+            else if (toolName == "get_mutation_job") {
+                ensureJSRuntime();
+                const auto jobId = getIntArg(args, "jobId");
+                if (jobId < 0)
+                    throw std::invalid_argument("jobId is required");
+                toolResult = choc::json::parse(evalScript(
+                    "uapmd.mutations.getJob(" + std::to_string(jobId) + ")"));
+            }
+            else if (toolName == "clear_mutation_job") {
+                ensureJSRuntime();
+                const auto jobId = getIntArg(args, "jobId");
+                if (jobId < 0)
+                    throw std::invalid_argument("jobId is required");
+                toolResult = choc::json::parse(evalScript(
+                    "uapmd.mutations.clearJob(" + std::to_string(jobId) + ")"));
+            }
             else if (toolName == "get_track_freeze_state") toolResult = toolGetTrackFreezeState (args);
             else if (toolName == "set_track_freeze_policy") toolResult = toolSetTrackFreezePolicy (args);
             else if (toolName == "create_track")        toolResult = toolCreateTrack (args);

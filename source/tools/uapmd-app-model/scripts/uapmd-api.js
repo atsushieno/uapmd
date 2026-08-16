@@ -213,6 +213,9 @@ globalThis.uapmd = {
         sendNoteOn: (instanceId, note) => __remidy_sequencer_sendNoteOn(instanceId, note),
         sendNoteOff: (instanceId, note) => __remidy_sequencer_sendNoteOff(instanceId, note),
         setParameterValue: (instanceId, paramIndex, value) => __remidy_sequencer_setParameterValue(instanceId, paramIndex, value),
+        getHistoryState: () => __remidy_sequencer_get_history_state(),
+        undo: () => __remidy_sequencer_undo(),
+        redo: () => __remidy_sequencer_redo(),
 
         // Transport control
         startPlayback: () => __remidy_sequencer_startPlayback(),

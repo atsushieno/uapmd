@@ -250,3 +250,61 @@ TEST(AppLayerUndoIntegrationTest, JavaScriptTrackJobParticipatesInHistory) {
     ASSERT_TRUE(result->empty()) << *result;
     EXPECT_EQ(model.trackCount(), initialTrackCount);
 }
+
+TEST(AppLayerUndoIntegrationTest, JavaScriptUndoAndRedoUseMutationJobs) {
+    ScopedTestEventLoop eventLoop;
+    struct ScopedAppModelInstance {
+        ScopedAppModelInstance() { uapmd_app::AppModel::instantiate(); }
+        ~ScopedAppModelInstance() { uapmd_app::AppModel::cleanupInstance(); }
+    } appModelInstance;
+
+    auto& model = uapmd_app::AppModel::instance();
+    const auto initialTrackCount = model.trackCount();
+    uapmd_app::UapmdJSRuntime runtime;
+    runtime.ensureApiBootstrapped();
+
+    auto addJob = choc::json::parse(runtime.evaluateScript("uapmd.sequencer.addTrack()"));
+    ASSERT_TRUE(addJob.isObject());
+    const auto addJobId = addJob["jobId"].get<int32_t>();
+    ASSERT_GT(addJobId, 0);
+    for (int i = 0; i < 200 && addJob["state"].get<std::string>() == "running"; ++i) {
+        remidy::EventLoop::processQueuedTasks();
+        addJob = choc::json::parse(runtime.evaluateScript(
+            "uapmd.mutations.getJob(" + std::to_string(addJobId) + ")"));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(addJob["state"].get<std::string>(), "completed")
+        << addJob["error"].get<std::string>();
+    ASSERT_EQ(model.trackCount(), initialTrackCount + 1);
+
+    auto history = choc::json::parse(runtime.evaluateScript(
+        "uapmd.sequencer.getHistoryState()"));
+    EXPECT_TRUE(history["canUndo"].get<bool>());
+    EXPECT_FALSE(history["canRedo"].get<bool>());
+
+    auto pollHistoryJob = [&runtime](const char* operation) {
+        auto job = choc::json::parse(runtime.evaluateScript(operation));
+        EXPECT_TRUE(job.isObject());
+        const auto jobId = job["jobId"].get<int32_t>();
+        EXPECT_GT(jobId, 0);
+        for (int i = 0; i < 200 && job["state"].get<std::string>() == "running"; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            job = choc::json::parse(runtime.evaluateScript(
+                "uapmd.mutations.getJob(" + std::to_string(jobId) + ")"));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return job;
+    };
+
+    auto undoJob = pollHistoryJob("uapmd.sequencer.undo()");
+    ASSERT_EQ(undoJob["state"].get<std::string>(), "completed")
+        << undoJob["error"].get<std::string>();
+    EXPECT_TRUE(undoJob["result"]["success"].get<bool>());
+    EXPECT_EQ(model.trackCount(), initialTrackCount);
+
+    auto redoJob = pollHistoryJob("uapmd.sequencer.redo()");
+    ASSERT_EQ(redoJob["state"].get<std::string>(), "completed")
+        << redoJob["error"].get<std::string>();
+    EXPECT_TRUE(redoJob["result"]["success"].get<bool>());
+    EXPECT_EQ(model.trackCount(), initialTrackCount + 1);
+}

@@ -778,6 +778,54 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::Value();
     });
 
+    jsContext_.registerFunction ("__remidy_sequencer_get_history_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        const auto state = uapmd_app::AppModel::instance().historyState();
+        auto result = choc::value::createObject("HistoryState");
+        result.setMember("busy", state.busy);
+        result.setMember("compoundOpen", state.compoundOpen);
+        result.setMember("gestureOpen", state.gestureOpen);
+        result.setMember("canUndo", state.canUndo);
+        result.setMember("canRedo", state.canRedo);
+        result.setMember("dirty", state.dirty);
+        result.setMember("compoundDescription", state.compoundDescription);
+        result.setMember("undoDescription", state.undoDescription);
+        result.setMember("redoDescription", state.redoDescription);
+        result.setMember("historySizeInBytes", choc::value::createInt64(
+            static_cast<int64_t>(state.historySizeInBytes)));
+        result.setMember("maximumHistorySizeInBytes", choc::value::createInt64(
+            static_cast<int64_t>(state.maximumHistorySizeInBytes)));
+        result.setMember("currentStateId", choc::value::createInt64(
+            static_cast<int64_t>(state.currentStateId)));
+        result.setMember("savedStateId", choc::value::createInt64(
+            static_cast<int64_t>(state.savedStateId)));
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_undo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto job = createMutationJob();
+        uapmd_app::AppModel::instance().undo(
+            [this, job](std::string error) mutable {
+                auto result = choc::value::createObject("HistoryMutationResult");
+                result.setMember("success", error.empty());
+                completeMutationJob(job, std::move(result), std::move(error));
+            });
+        return mutationJobValue(job);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_redo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto job = createMutationJob();
+        uapmd_app::AppModel::instance().redo(
+            [this, job](std::string error) mutable {
+                auto result = choc::value::createObject("HistoryMutationResult");
+                result.setMember("success", error.empty());
+                completeMutationJob(job, std::move(result), std::move(error));
+            });
+        return mutationJobValue(job);
+    });
+
     jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();

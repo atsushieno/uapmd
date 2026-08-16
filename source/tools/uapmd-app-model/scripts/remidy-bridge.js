@@ -322,6 +322,18 @@ export const sequencer = {
         __remidy_sequencer_setPluginBypassed(instanceId, bypassed);
     },
 
+    getHistoryState: function() {
+        return __remidy_sequencer_get_history_state();
+    },
+
+    undo: function() {
+        return __remidy_sequencer_undo();
+    },
+
+    redo: function() {
+        return __remidy_sequencer_redo();
+    },
+
     getTrackInfos: function() {
         const tracks = __remidy_sequencer_getTrackInfos();
         return tracks.map(t => new TrackInfo(t));
