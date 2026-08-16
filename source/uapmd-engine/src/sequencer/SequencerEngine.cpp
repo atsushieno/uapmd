@@ -9,6 +9,7 @@
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#include <unordered_set>
 #include <umppi/umppi.hpp>
 
 #include <remidy/detail/event-loop.hpp>
@@ -203,6 +204,9 @@ namespace uapmd {
         // Plugin instance management
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
         std::mutex instance_map_mutex_;
+        mutable std::mutex dirty_state_mutex_;
+        std::unordered_set<std::string> dirty_track_reference_ids_;
+        bool master_track_dirty_{false};
 
 
         // Offline rendering mode
@@ -591,6 +595,10 @@ namespace uapmd {
             return timeline_->hasPendingPluginMutations()
                 || timeline_->undoEngine().state().dirty;
         }
+
+        bool isTrackDirty(int32_t trackIndex) const override;
+        void markTrackDirty(int32_t trackIndex, bool dirty) override;
+        void clearTrackDirtyState() override;
 
     private:
         void removeTrack(size_t index);
@@ -2343,11 +2351,65 @@ namespace uapmd {
         return false;
     }
 
+    bool SequencerEngineImpl::isTrackDirty(int32_t trackIndex) const {
+        if (trackIndex == kMasterTrackIndex) {
+            std::lock_guard lock(dirty_state_mutex_);
+            return master_track_dirty_;
+        }
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks_.size()))
+            return false;
+        const auto timelineTracks = timeline_->tracks();
+        if (trackIndex >= static_cast<int32_t>(timelineTracks.size())
+            || !timelineTracks[static_cast<size_t>(trackIndex)])
+            return false;
+        std::lock_guard lock(dirty_state_mutex_);
+        return dirty_track_reference_ids_.contains(
+            timelineTracks[static_cast<size_t>(trackIndex)]->referenceId());
+    }
+
+    void SequencerEngineImpl::markTrackDirty(int32_t trackIndex, bool dirty) {
+        if (trackIndex == kMasterTrackIndex) {
+            {
+                std::lock_guard lock(dirty_state_mutex_);
+                master_track_dirty_ = dirty;
+            }
+            if (dirty && frozen_track_manager_)
+                frozen_track_manager_->projectTrackBecameDirty(trackIndex);
+            return;
+        }
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks_.size()))
+            return;
+        const auto timelineTracks = timeline_->tracks();
+        if (trackIndex >= static_cast<int32_t>(timelineTracks.size())
+            || !timelineTracks[static_cast<size_t>(trackIndex)])
+            return;
+        const auto trackId = timelineTracks[static_cast<size_t>(trackIndex)]->referenceId();
+        {
+            std::lock_guard lock(dirty_state_mutex_);
+            if (dirty)
+                dirty_track_reference_ids_.insert(trackId);
+            else
+                dirty_track_reference_ids_.erase(trackId);
+        }
+        if (dirty && frozen_track_manager_)
+            frozen_track_manager_->projectTrackBecameDirty(trackIndex);
+    }
+
+    void SequencerEngineImpl::clearTrackDirtyState() {
+        std::lock_guard lock(dirty_state_mutex_);
+        dirty_track_reference_ids_.clear();
+        master_track_dirty_ = false;
+    }
+
     void SequencerEngineImpl::removeTrack(size_t index) {
         if (index >= tracks_.size())
             return;
         const auto timelineTracks = timeline_->tracks();
         const auto trackId = timelineTracks[index]->referenceId();
+        {
+            std::lock_guard lock(dirty_state_mutex_);
+            dirty_track_reference_ids_.erase(trackId);
+        }
         removePlatformMidiTrackConnections(trackId);
         StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));

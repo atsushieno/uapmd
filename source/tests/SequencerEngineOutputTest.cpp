@@ -1016,6 +1016,25 @@ TEST_F(SequencerEngineOutputTest, MasterTrackMarkersAreOwnedByTheEngine) {
     EXPECT_DOUBLE_EQ(engine->masterTrackMarkers()[0].clipPositionOffset, 0.5);
 }
 
+TEST_F(SequencerEngineOutputTest, TrackDirtyStateIsOwnedByTheEngine) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+
+    EXPECT_FALSE(engine->isTrackDirty(trackIndex));
+    engine->markTrackDirty(trackIndex);
+    EXPECT_TRUE(engine->isTrackDirty(trackIndex));
+    engine->markTrackDirty(trackIndex, false);
+    EXPECT_FALSE(engine->isTrackDirty(trackIndex));
+
+    engine->markTrackDirty(uapmd::kMasterTrackIndex);
+    EXPECT_TRUE(engine->isTrackDirty(uapmd::kMasterTrackIndex));
+    engine->clearTrackDirtyState();
+    EXPECT_FALSE(engine->isTrackDirty(trackIndex));
+    EXPECT_FALSE(engine->isTrackDirty(uapmd::kMasterTrackIndex));
+}
+
 TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) {
     constexpr int32_t sampleRate = 48000;
     auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);

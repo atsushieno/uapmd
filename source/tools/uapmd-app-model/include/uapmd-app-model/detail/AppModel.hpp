@@ -148,8 +148,6 @@ namespace uapmd_app {
         std::unique_ptr<uapmd::IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
-        mutable std::mutex dirtyStateMutex_;
-        std::unordered_set<int32_t> dirty_tracks_;
         std::shared_ptr<PluginStateChangeDispatch> plugin_state_change_dispatch_{
             std::make_shared<PluginStateChangeDispatch>()};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
@@ -212,10 +210,7 @@ namespace uapmd_app {
         bool getTrackGraphConnections(int32_t trackIndex, std::vector<uapmd_graph::AudioPluginGraphConnection>& connections, std::string& error) const;
         bool connectTrackGraph(int32_t trackIndex, const uapmd_graph::AudioPluginGraphConnection& connection, std::string& error);
         bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
-        bool isTrackDirty(int32_t trackIndex) const;
-        void markTrackDirty(int32_t trackIndex, bool dirty = true);
         void markPluginInstanceTrackDirty(int32_t instanceId);
-        void clearTrackDirtyState();
 
         using HistoryMutationCallback = std::function<void(std::string error)>;
         uapmd::ProjectUndoState historyState() const;

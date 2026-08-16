@@ -599,9 +599,9 @@ The first two items are ARA-only and deferred by choice, not blocked.
 
 3. **Frozen render revocation.** Done. `FrozenTrackManager` revokes a track's
    frozen render from the clip added, removed and changed document events,
-   rather than depending on each call site to remember an
-   `AppModel::markTrackDirty` call. Revocation is idempotent — it bumps a
-   monotonic generation counter — so the existing calls remain harmless.
+   rather than depending on each application call site to remember a dirty
+   notification. Revocation is idempotent — it bumps a monotonic generation
+   counter — so explicit engine notifications remain harmless.
 
    Plugin graph changes deliberately do not trigger this, even though they also
    change what a track renders: freezing manipulates the track's graph, so

@@ -548,8 +548,8 @@ void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
 // A frozen render is a recording of what the track produced at one moment. Any
 // change to the track's clips makes it wrong, so it is revoked here rather than
 // relying on each call site to remember. Revoking is idempotent -- it bumps a
-// monotonic generation counter -- so the existing hand-written
-// AppModel::markTrackDirty calls remain harmless.
+// monotonic generation counter -- so explicit engine dirty notifications and
+// document-event invalidation remain harmless when both observe one edit.
 //
 // Plugin graph changes use the same invalidation path, with the graph listener
 // excluding the freeze renderer's temporary transitions while Rendering.

@@ -773,7 +773,7 @@ void MainWindow::renderUnsavedProjectDialog() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard", ImVec2(100.0f * uiScale_, 0.0f))) {
-            uapmd_app::AppModel::instance().clearTrackDirtyState();
+            uapmd_app::AppModel::instance().sequencer().engine()->clearTrackDirtyState();
             closeRequested_ = false;
             isOpen_ = false;
             ImGui::CloseCurrentPopup();

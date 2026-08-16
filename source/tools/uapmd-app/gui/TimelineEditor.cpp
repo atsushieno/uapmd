@@ -1261,7 +1261,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             sequencer.engine()->timeline().setTrackGain(
                 trackIndex,
                 sliderDbToLinearGain(sliderPosToDb(sliderPos)));
-            uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+            uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
         }
         if (ImGui::IsItemDeactivated())
             undo.endGesture();
@@ -1285,7 +1285,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
                     muted ? "Track muted (click to unmute)" : "Mute track")) {
                 if (sequencer.engine()->timeline().setTrackMuted(trackIndex, !muted))
-                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                    uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
             }
             if (muted)
                 ImGui::PopStyleColor(3);
@@ -1319,13 +1319,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                         if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
                             const auto otherTrackIndex = static_cast<int32_t>(i);
                             if (sequencer.engine()->timeline().setTrackSolo(otherTrackIndex, false))
-                                uapmd_app::AppModel::instance().markTrackDirty(otherTrackIndex);
+                                uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(otherTrackIndex);
                             else
                                 succeeded = false;
                         }
                 }
                 if (succeeded && sequencer.engine()->timeline().setTrackSolo(trackIndex, enableSolo))
-                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                    uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
                 else
                     succeeded = false;
                 if (compoundOpened) {
@@ -1554,7 +1554,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     bypassed ? "Enable Track Processing" : "Bypass Track Processing",
                     bypassed)) {
                 if (sequencer.engine()->timeline().setTrackBypassed(trackIndex, !bypassed))
-                    uapmd_app::AppModel::instance().markTrackDirty(trackIndex);
+                    uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
             }
         }
 
@@ -2137,7 +2137,7 @@ void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
         return;
 
     if (appModel.sequencer().engine()->timeline().clearClipsFromTrack(trackIndex))
-        appModel.markTrackDirty(trackIndex);
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
@@ -2179,7 +2179,7 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
         return;
     }
-    appModel.markTrackDirty(trackIndex);
+    appModel.sequencer().engine()->markTrackDirty(trackIndex);
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }
@@ -2192,7 +2192,7 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
         return;
 
     if (appModel.sequencer().engine()->timeline().setClipName(trackIndex, clipId, name))
-        appModel.markTrackDirty(trackIndex);
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
     refreshSequenceEditorForTrack(trackIndex);
 }
 
@@ -2217,7 +2217,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
                           "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG");
             return;
         }
-        appModel.markTrackDirty(trackIndex);
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
         refreshSequenceEditorForTrack(trackIndex);
     };
 
@@ -2262,7 +2262,7 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         clipId,
         uapmd::TimeReference::fromContainerStart({}, seconds));
     if (changed)
-        appModel.markTrackDirty(trackIndex);
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }

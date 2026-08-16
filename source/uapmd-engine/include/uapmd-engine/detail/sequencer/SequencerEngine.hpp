@@ -246,6 +246,11 @@ namespace uapmd {
         // True when the project document differs from its saved history node
         // or an asynchronous project mutation is still being committed.
         virtual bool isProjectDirty() const = 0;
+        // Track render/cache dirtiness is runtime state owned by the engine,
+        // separate from project-document history dirtiness.
+        virtual bool isTrackDirty(int32_t trackIndex) const = 0;
+        virtual void markTrackDirty(int32_t trackIndex, bool dirty = true) = 0;
+        virtual void clearTrackDirtyState() = 0;
 
         static std::unique_ptr<SequencerEngine> create(
             int32_t sampleRate,
