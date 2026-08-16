@@ -1328,13 +1328,24 @@ static choc::value::Value toolLoadPreset(const choc::value::Value& args)
         throw std::invalid_argument ("instanceId and presetIndex are required");
 
     auto& sequencer = AppModel::instance().sequencer();
-    auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+    auto completion = std::make_shared<std::promise<uapmd::ProjectUndoResult>>();
+    auto future = completion->get_future();
+    sequencer.engine()->timeline().loadPluginPreset(
+        instanceId,
+        presetIndex,
+        uapmd::ProjectMutationOrigin::Remote,
+        [completion](uapmd::ProjectUndoResult result) mutable {
+            completion->set_value(std::move(result));
+        });
 
-    if (! instance)
-        throw std::runtime_error ("Plugin instance not found");
+    if (future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+        throw std::runtime_error("Timed out loading plug-in preset");
 
-    instance->loadPreset (presetIndex);
-    return choc::value::createObject ("");
+    auto mutation = future.get();
+    auto result = choc::value::createObject ("");
+    result.setMember("success", mutation.succeeded());
+    result.setMember("error", mutation.error);
+    return result;
 }
 
 

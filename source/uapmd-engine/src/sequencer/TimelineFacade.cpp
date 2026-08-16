@@ -770,22 +770,27 @@ namespace uapmd {
                 std::string_view nodeId,
                 const std::vector<uint8_t>& state,
                 ProjectUndoCompletion completion)>;
+            using Redo = std::function<void(ProjectUndoCompletion completion)>;
 
             PluginStateUndoOperation(
                 std::string trackReferenceId,
                 std::string nodeId,
                 std::vector<uint8_t> before,
                 std::vector<uint8_t> after,
-                Apply apply)
+                Apply apply,
+                std::string description = "Load plug-in state",
+                Redo redo = {})
                 : track_reference_id_(std::move(trackReferenceId))
                 , node_id_(std::move(nodeId))
                 , before_(std::move(before))
                 , after_(std::move(after))
-                , apply_(std::move(apply)) {
+                , apply_(std::move(apply))
+                , description_(std::move(description))
+                , redo_(std::move(redo)) {
             }
 
             std::string description() const override {
-                return "Load plug-in state";
+                return description_;
             }
 
             size_t historySizeInBytes() const override {
@@ -793,7 +798,8 @@ namespace uapmd {
                     + track_reference_id_.capacity()
                     + node_id_.capacity()
                     + before_.capacity()
-                    + after_.capacity();
+                    + after_.capacity()
+                    + description_.capacity();
             }
 
             void perform(
@@ -811,6 +817,10 @@ namespace uapmd {
             void redo(
                 const ProjectUndoExecutionContext& context,
                 ProjectUndoCompletion completion) override {
+                if (redo_) {
+                    redo_(std::move(completion));
+                    return;
+                }
                 perform(context, std::move(completion));
             }
 
@@ -833,6 +843,8 @@ namespace uapmd {
             std::vector<uint8_t> before_{};
             std::vector<uint8_t> after_{};
             Apply apply_{};
+            std::string description_{};
+            Redo redo_{};
         };
 
         class PluginInstanceUndoOperation final : public ProjectUndoableOperation {
@@ -4259,12 +4271,21 @@ namespace uapmd {
         void onPluginParameterChanged(
             int32_t instanceId,
             uint32_t parameterIndex,
-            double value) {
-            if (plugin_parameter_mutation_depth_.load(std::memory_order_acquire) != 0)
-                return;
+            double value,
+            bool historySuppressed = false) {
+            historySuppressed = historySuppressed
+                || plugin_parameter_mutation_depth_.load(std::memory_order_acquire) != 0;
             if (!remidy::EventLoop::runningOnMainThread()) {
-                dispatchToModelThread([this, instanceId, parameterIndex, value] {
-                    onPluginParameterChanged(instanceId, parameterIndex, value);
+                dispatchToModelThread([this,
+                                       instanceId,
+                                       parameterIndex,
+                                       value,
+                                       historySuppressed] {
+                    onPluginParameterChanged(
+                        instanceId,
+                        parameterIndex,
+                        value,
+                        historySuppressed);
                 });
                 return;
             }
@@ -4273,9 +4294,25 @@ namespace uapmd {
             const auto previous = values.find(index);
             const auto before = previous == values.end() ? value : previous->second;
             values[index] = value;
-            if (previous == values.end())
+            if (previous == values.end() || historySuppressed)
                 return;
             recordExternalPluginParameterChange(instanceId, index, before, value);
+        }
+
+        void refreshPluginParameterCache(int32_t instanceId) {
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!instance)
+                return;
+            auto& values = plugin_parameter_values_[instanceId];
+            for (const auto& parameter : instance->parameterMetadataList())
+                values[static_cast<int32_t>(parameter.index)] =
+                    instance->getParameterValue(static_cast<int32_t>(parameter.index));
+            // Some hosts expose parameter changes before (or without) a
+            // complete metadata list. Refresh indices already observed by the
+            // history bridge as well, so a state restore followed by a late
+            // notification cannot be mistaken for a new user edit.
+            for (auto& [index, value] : values)
+                value = instance->getParameterValue(index);
         }
 
         void pluginInstanceAdded(
@@ -4563,6 +4600,9 @@ namespace uapmd {
                         "The plug-in instance no longer exists"));
                 return;
             }
+            plugin_parameter_mutation_depth_.fetch_add(
+                1,
+                std::memory_order_acq_rel);
             instance->loadState(
                 std::move(state),
                 StateContextType::Project,
@@ -4570,13 +4610,22 @@ namespace uapmd {
                 nullptr,
                 [this,
                  trackReferenceId = std::move(trackReferenceId),
+                 nodeId = std::move(nodeId),
                  completion = std::move(completion)](
                     std::string error, void*) mutable {
                     dispatchToModelThread(
                         [this,
                          trackReferenceId = std::move(trackReferenceId),
+                         nodeId = std::move(nodeId),
                          error = std::move(error),
                          completion = std::move(completion)]() mutable {
+                            refreshPluginParameterCache(
+                                resolvePluginInstanceId(
+                                    trackReferenceId,
+                                    nodeId));
+                            plugin_parameter_mutation_depth_.fetch_sub(
+                                1,
+                                std::memory_order_acq_rel);
                             if (!error.empty()) {
                                 if (completion)
                                     completion(ProjectUndoResult::failure(
@@ -4669,6 +4718,210 @@ namespace uapmd {
                                 origin,
                                 std::move(completion));
                         });
+                });
+        }
+
+        void loadPluginPreset(
+            int32_t instanceId,
+            int32_t presetIndex,
+            ProjectMutationOrigin origin,
+            ProjectUndoCompletion completion) override {
+            auto target = pluginTargetForInstance(instanceId);
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!target || !instance || presetIndex < 0) {
+                if (completion)
+                    completion(ProjectUndoResult::failure(
+                        "The plug-in preset target is invalid"));
+                return;
+            }
+
+            if (origin != ProjectMutationOrigin::User
+                && origin != ProjectMutationOrigin::Remote) {
+                instance->loadPreset(
+                    presetIndex,
+                    [this,
+                     trackReferenceId = target->trackReferenceId,
+                     completion = std::move(completion)](
+                        std::string error,
+                        void*) mutable {
+                        dispatchToModelThread(
+                            [this,
+                             trackReferenceId = std::move(trackReferenceId),
+                             error = std::move(error),
+                             completion = std::move(completion)]() mutable {
+                                if (error.empty()) {
+                                    emitTrackChanged(
+                                        trackReferenceId,
+                                        "plugin-state-changed");
+                                    notifyTimelineChanged();
+                                }
+                                if (completion) {
+                                    completion(error.empty()
+                                        ? ProjectUndoResult::success()
+                                        : ProjectUndoResult::failure(std::move(error)));
+                                }
+                            });
+                    });
+                return;
+            }
+
+            pending_plugin_mutations_.fetch_add(1, std::memory_order_acq_rel);
+            ProjectUndoCompletion finish = [this,
+                                            completion = std::move(completion)](
+                                               ProjectUndoResult result) mutable {
+                pending_plugin_mutations_.fetch_sub(1, std::memory_order_acq_rel);
+                if (completion)
+                    completion(std::move(result));
+            };
+
+            instance->requestState(
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this,
+                 instanceId,
+                 presetIndex,
+                 origin,
+                 target = std::move(*target),
+                 completion = std::move(finish)](
+                    std::vector<uint8_t> before,
+                    std::string error,
+                    void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         instanceId,
+                         presetIndex,
+                         origin,
+                         target = std::move(target),
+                         before = std::move(before),
+                         error = std::move(error),
+                         completion = std::move(completion)]() mutable {
+                        if (!error.empty()) {
+                            if (completion)
+                                completion(ProjectUndoResult::failure(
+                                    std::move(error)));
+                            return;
+                        }
+                        auto* current = engine_.getPluginInstance(instanceId);
+                        if (!current) {
+                            if (completion)
+                                completion(ProjectUndoResult::failure(
+                                    "The plug-in instance no longer exists"));
+                            return;
+                        }
+                        plugin_parameter_mutation_depth_.fetch_add(
+                            1,
+                            std::memory_order_acq_rel);
+                        current->loadPreset(
+                            presetIndex,
+                            [this,
+                             instanceId,
+                             presetIndex,
+                             origin,
+                             target = std::move(target),
+                             before = std::move(before),
+                             completion = std::move(completion)](
+                                std::string presetError,
+                                void*) mutable {
+                                dispatchToModelThread(
+                                    [this,
+                                     instanceId,
+                                     presetIndex,
+                                     origin,
+                                     target = std::move(target),
+                                     before = std::move(before),
+                                     presetError = std::move(presetError),
+                                     completion = std::move(completion)]() mutable {
+                                    refreshPluginParameterCache(instanceId);
+                                    plugin_parameter_mutation_depth_.fetch_sub(
+                                        1,
+                                        std::memory_order_acq_rel);
+                                    if (!presetError.empty()) {
+                                        if (completion)
+                                            completion(ProjectUndoResult::failure(
+                                                std::move(presetError)));
+                                        return;
+                                    }
+                                    auto apply = [this] (
+                                        std::string_view trackReferenceId,
+                                        std::string_view nodeId,
+                                        const std::vector<uint8_t>& state,
+                                        ProjectUndoCompletion applied) {
+                                        applyPluginState(
+                                            std::string(trackReferenceId),
+                                            std::string(nodeId),
+                                            state,
+                                            std::move(applied));
+                                    };
+                                    auto redo = [this,
+                                                 trackReferenceId = target.trackReferenceId,
+                                                 nodeId = target.nodeId,
+                                                 presetIndex](
+                                                    ProjectUndoCompletion redone) {
+                                        const auto currentInstanceId =
+                                            resolvePluginInstanceId(trackReferenceId, nodeId);
+                                        auto* current = engine_.getPluginInstance(currentInstanceId);
+                                        if (!current) {
+                                            if (redone)
+                                                redone(ProjectUndoResult::failure(
+                                                    "The plug-in instance no longer exists"));
+                                            return;
+                                        }
+                                        plugin_parameter_mutation_depth_.fetch_add(
+                                            1,
+                                            std::memory_order_acq_rel);
+                                        current->loadPreset(
+                                            presetIndex,
+                                            [this,
+                                             currentInstanceId,
+                                             trackReferenceId,
+                                             redone = std::move(redone)](
+                                                std::string error,
+                                                void*) mutable {
+                                                dispatchToModelThread(
+                                                    [this,
+                                                     currentInstanceId,
+                                                     trackReferenceId,
+                                                     error = std::move(error),
+                                                     redone = std::move(redone)]() mutable {
+                                                        refreshPluginParameterCache(currentInstanceId);
+                                                        plugin_parameter_mutation_depth_.fetch_sub(
+                                                            1,
+                                                            std::memory_order_acq_rel);
+                                                        if (error.empty()) {
+                                                            emitTrackChanged(
+                                                                trackReferenceId,
+                                                                "plugin-state-changed");
+                                                            notifyTimelineChanged();
+                                                        }
+                                                        if (redone) {
+                                                            redone(error.empty()
+                                                                ? ProjectUndoResult::success()
+                                                                : ProjectUndoResult::failure(std::move(error)));
+                                                        }
+                                                    });
+                                            });
+                                    };
+                                    emitTrackChanged(
+                                        target.trackReferenceId,
+                                        "plugin-state-changed");
+                                    notifyTimelineChanged();
+                                    auto operation =
+                                        std::make_shared<PluginStateUndoOperation>(
+                                            target.trackReferenceId,
+                                            target.nodeId,
+                                            std::move(before),
+                                            std::vector<uint8_t>{},
+                                            std::move(apply),
+                                            "Load plug-in preset",
+                                            std::move(redo));
+                                    undo_engine_.recordPerformed(
+                                        std::move(operation),
+                                        origin,
+                                        std::move(completion));
+                                });
+                            });
+                    });
                 });
         }
 

@@ -600,24 +600,31 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_instance_load_preset", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_instance_load_preset", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto presetIndex = args.get<int32_t> (1, -1);
+        auto job = createMutationJob();
 
-        if (instanceId < 0 || presetIndex < 0)
-            return choc::value::createBool (false);
-
-        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
-
-        if (instance)
-        {
-            instance->loadPreset (presetIndex);
-            return choc::value::createBool (true);
+        if (instanceId < 0 || presetIndex < 0) {
+            completeMutationJob(
+                job,
+                choc::value::createObject("PluginPresetResult"),
+                "Invalid instance ID or preset index");
+            return mutationJobValue(job);
         }
 
-        return choc::value::createBool (false);
+        auto& sequencer = uapmd_app::AppModel::instance().sequencer();
+        sequencer.engine()->timeline().loadPluginPreset(
+            instanceId,
+            presetIndex,
+            uapmd::ProjectMutationOrigin::Remote,
+            [this, job](uapmd::ProjectUndoResult result) mutable {
+                auto value = choc::value::createObject("PluginPresetResult");
+                value.setMember("success", result.succeeded());
+                completeMutationJob(job, std::move(value), std::move(result.error));
+            });
+        return mutationJobValue(job);
     });
 }
 

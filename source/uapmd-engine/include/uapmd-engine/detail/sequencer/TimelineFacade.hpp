@@ -292,6 +292,13 @@ public:
         std::vector<uint8_t> state,
         ProjectMutationOrigin origin,
         ProjectUndoCompletion completion) = 0;
+    // Loads a plug-in preset and records the resulting opaque state as one
+    // asynchronous history operation.
+    virtual void loadPluginPreset(
+        int32_t instanceId,
+        int32_t presetIndex,
+        ProjectMutationOrigin origin,
+        ProjectUndoCompletion completion) = 0;
     // Records a plug-in that has already been instantiated, capturing its
     // opaque project state before publishing the history entry.
     virtual void recordPluginInstanceAddition(

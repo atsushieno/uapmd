@@ -67,6 +67,8 @@ class PluginInstance {
     }
 
     loadPreset(presetIndex) {
+        // Preset loading captures plug-in state asynchronously and returns a
+        // MutationJob, just like other remote document mutations.
         return __remidy_instance_load_preset(this.instanceId, presetIndex);
     }
 }

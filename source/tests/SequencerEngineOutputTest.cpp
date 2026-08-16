@@ -246,8 +246,17 @@ public:
         return {};
     }
     std::vector<uapmd_plugin_hosting::PresetsMetadata> presetMetadataList() override { return {}; }
-    void loadPreset(int32_t) override {}
-    void loadPreset(int32_t, std::function<void(std::string, void*)>) override {}
+    void loadPreset(int32_t presetIndex) override {
+        state_ = {static_cast<uint8_t>(presetIndex)};
+        externallySetParameter(2, static_cast<double>(presetIndex) / 10.0);
+    }
+    void loadPreset(
+        int32_t presetIndex,
+        std::function<void(std::string, void*)> completed) override {
+        loadPreset(presetIndex);
+        if (completed)
+            completed({}, nullptr);
+    }
     std::vector<uint8_t> saveStateSync() override { return state_; }
     void loadStateSync(std::vector<uint8_t>& state) override { state_ = state; }
     void requestState(
@@ -270,7 +279,13 @@ public:
             return;
         }
         state_ = std::move(state);
+        if (emit_parameter_during_state_load_ && !state_.empty())
+            externallySetParameter(2, static_cast<double>(state_.front()) / 10.0);
         completed({}, callbackContext);
+        if (notify_parameter_after_state_completion_)
+            remidy::EventLoop::enqueueTaskOnMainThread([this] {
+                externallySetParameter(2, getParameterValue(2));
+            });
     }
 
     bool stateLoadPending() const { return static_cast<bool>(pending_state_callback_); }
@@ -281,11 +296,25 @@ public:
         auto completed = std::move(pending_state_callback_);
         auto* context = pending_state_context_;
         pending_state_context_ = nullptr;
-        if (error.empty())
+        if (error.empty()) {
             state_ = std::move(pending_state_);
-        else
+            if (emit_parameter_during_state_load_ && !state_.empty())
+                externallySetParameter(2, static_cast<double>(state_.front()) / 10.0);
+        } else
             pending_state_.clear();
+        const bool succeeded = error.empty();
         completed(std::move(error), context);
+        if (succeeded && notify_parameter_after_state_completion_)
+            remidy::EventLoop::enqueueTaskOnMainThread([this] {
+                externallySetParameter(2, getParameterValue(2));
+            });
+    }
+
+    void notifyParameterAfterStateCompletion(bool value) {
+        notify_parameter_after_state_completion_ = value;
+    }
+    void emitParameterDuringStateLoad(bool value) {
+        emit_parameter_during_state_load_ = value;
     }
     double getParameterValue(int32_t index) override {
         double value = 0.0;
@@ -344,6 +373,8 @@ private:
     std::vector<uint8_t> pending_state_{};
     void* pending_state_context_{nullptr};
     std::function<void(std::string, void*)> pending_state_callback_{};
+    bool notify_parameter_after_state_completion_{false};
+    bool emit_parameter_during_state_load_{true};
 };
 
 class TestPluginHostingAPI final : public uapmd_plugin_hosting::AudioPluginHostingAPI {
@@ -1376,6 +1407,33 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(stateResult.has_value());
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
+
+    ASSERT_TRUE(timeline.undoEngine().clear());
+    plugin->notifyParameterAfterStateCompletion(true);
+    plugin->emitParameterDuringStateLoad(false);
+    stateResult.reset();
+    timeline.loadPluginPreset(
+        *instanceId,
+        7,
+        uapmd::ProjectMutationOrigin::User,
+        [&stateResult](uapmd::ProjectUndoResult completed) {
+            stateResult = std::move(completed);
+        });
+    drain();
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{7}));
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.7);
+    stateResult = moveAndDrain(false);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
+    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
+    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+    stateResult = moveAndDrain(true);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{7}));
 
     ASSERT_TRUE(timeline.undoEngine().clear());
     std::optional<uapmd::ProjectUndoResult> lifecycleResult;

@@ -473,30 +473,28 @@ after replay. While either capture is in flight, the AppModel reports history
 as busy and ignores undo/redo shortcuts; this prevents a command issued
 immediately after plug-in insertion from racing the pending history commit.
 
-- Plug-in parameters changed by JavaScript or MCP, including any parameter
-  notification path not yet routed through the facade.
-- Loading plug-in state and unsolicited persistent state changes reported by a
-  plug-in.
-- UMP group assignment and persisted device/instance labels or configuration.
-- Switching a track between the simple and full-DAG graph types.
-- Adding and removing graph connections and other graph-topology replacement.
+- Unsolicited persistent state changes reported by a plug-in, and any future
+  parameter surface that bypasses the facade.
+- Persisted device/instance labels or configuration.
 
 This is the remaining substance of task 8. Plug-in insertion on a new track
 now records the track, instance, state, group and graph together. Existing-track
 insertion records the instance, state and group, while exact graph placement
-and connections still need a structural fragment. Parameter changes require
-begin/end gesture integration; playback automation remains excluded, while
-editing automation data is undoable authored content. Loading a whole state
-requires capturing the previous opaque state before applying the replacement.
-Graph cache invalidation is complete without allowing the freeze renderer's
-temporary graph changes to revoke themselves.
+insertion records the instance, state and group. Preset loading stores the
+opaque before-state and re-executes the original preset command on redo; whole
+state replacement captures before/after state. Graph type replacement and
+connection edits already use structural graph operations and are covered by
+undo/redo tests. Parameter changes require begin/end gesture integration, while
+playback automation remains excluded and editing automation data is undoable
+authored content. Graph cache invalidation is complete without allowing the
+freeze renderer's temporary graph changes to revoke themselves.
 
 ### Application, JavaScript and MCP adoption
 
 - JavaScript/WebAssembly track add, remove, clear and multi-track MIDI import
   use pollable callback jobs, and MCP track creation uses the callback API.
-- JavaScript parameter, bypass and graph calls now reach the facade; creation,
-  deletion, state loading, and any remaining raw hosted-UI notification paths
+- JavaScript parameter, bypass, graph and preset calls now reach the facade;
+  unsolicited raw hosted-UI state notifications and persisted device metadata
   still need the callback-based history funnel.
 - JavaScript and MCP cannot invoke undo or redo and cannot open, finish or
   cancel an explicit named compound scope.

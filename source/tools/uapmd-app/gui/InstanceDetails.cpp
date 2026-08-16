@@ -615,17 +615,27 @@ void InstanceDetails::loadSelectedPreset(int32_t instanceId, DetailsWindowState&
         return;
     }
 
-    auto* pal = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
+    auto& appModel = uapmd_app::AppModel::instance();
+    auto* pal = appModel.sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
 
     const auto& preset = state.presets[state.selectedPreset];
-    pal->loadPreset(preset.index);
-    uapmd_app::AppModel::instance().markPluginInstanceTrackDirty(instanceId);
     std::cout << "Loading preset " << preset.name << " for instance " << instanceId << std::endl;
-
-    refreshParameters(instanceId, state);
+    appModel.sequencer().engine()->timeline().loadPluginPreset(
+        instanceId,
+        static_cast<int32_t>(preset.index),
+        uapmd::ProjectMutationOrigin::User,
+        [this, instanceId](uapmd::ProjectUndoResult result) {
+            if (!result.succeeded()) {
+                std::cerr << "Failed to load preset: " << result.error << std::endl;
+                return;
+            }
+            uapmd_app::AppModel::instance().markPluginInstanceTrackDirty(instanceId);
+            if (auto it = windows_.find(instanceId); it != windows_.end())
+                refreshParameters(instanceId, it->second);
+        });
 }
 
 void InstanceDetails::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
