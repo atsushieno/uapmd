@@ -386,8 +386,8 @@ track layout, and invalidates frozen-track caches. The Command menu displays the
 current undo and redo descriptions, disables unavailable or busy actions, and
 supports Ctrl/Cmd-Z, Ctrl/Cmd-Shift-Z and Ctrl-Y. Failures reach the platform
 error UI. JavaScript and MCP now expose asynchronous history jobs and history
-state queries. Explicit remote compound scopes and a richer long-running
-progress surface remain open.
+state queries, and can open, finish and cancel named remote compound scopes.
+A richer long-running progress surface remains open.
 
 ## Phase 1 remaining work
 
@@ -488,10 +488,6 @@ immediately after plug-in insertion from racing the pending history commit.
   caller that does not already use the host GUI gesture path. Playback
   automation remains excluded, while authored automation data remains
   undoable.
-- Add JavaScript/MCP support for explicitly named compound scopes, including
-  deterministic cancellation of abandoned scopes.
-- Add persistent progress and cancellation reporting for long-running native
-  mutation jobs.
 - Keep virtual MIDI labels and similar `AppModel::DeviceState` metadata out of
   undo: they are runtime/application state, not project-document state.
 
@@ -515,8 +511,8 @@ freeze renderer's temporary graph changes to revoke themselves.
   the callback-based history funnel. Virtual MIDI device metadata remains
   intentionally outside project undo.
 - JavaScript and MCP can invoke undo and redo through pollable mutation jobs,
-  and can query history state. They still cannot open, finish or cancel an
-  explicit named compound scope.
+  query history state, and open, finish or cancel explicit named compound
+  scopes. Compound ending and cancellation return pollable mutation jobs.
 - Long-running native operations expose only minimal busy feedback in the
   Command popup; persistent progress/cancellation presentation is still absent.
 

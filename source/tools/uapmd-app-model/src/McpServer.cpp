@@ -385,6 +385,21 @@ static choc::value::Value buildToolDefinitions()
             R"j({"type":"object","properties":{}})j"
         },
         {
+            "begin_compound",
+            "Begin a named remote compound undo step. Subsequent document mutations are committed as one history item until ended or cancelled.",
+            R"j({"type":"object","required":["description"],"properties":{"description":{"type":"string"}}})j"
+        },
+        {
+            "end_compound",
+            "End the current named remote compound undo step. Returns a mutation job to poll.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "cancel_compound",
+            "Cancel the current named remote compound undo step and asynchronously roll back its completed mutations. Returns a mutation job to poll.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
             "undo",
             "Undo the latest user mutation. Returns a mutation job to poll.",
             R"j({"type":"object","properties":{}})j"
@@ -1556,6 +1571,22 @@ struct McpServer::Impl {
             else if (toolName == "get_history_state") {
                 ensureJSRuntime();
                 toolResult = choc::json::parse(evalScript("uapmd.sequencer.getHistoryState()"));
+            }
+            else if (toolName == "begin_compound") {
+                ensureJSRuntime();
+                const auto description = getStringArg(args, "description");
+                if (description.empty())
+                    throw std::invalid_argument("description is required");
+                toolResult = choc::json::parse(evalScript(
+                    "uapmd.sequencer.beginCompound(" + choc::json::toString(choc::value::createString(description)) + ")"));
+            }
+            else if (toolName == "end_compound") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("uapmd.sequencer.endCompound()"));
+            }
+            else if (toolName == "cancel_compound") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("uapmd.sequencer.cancelCompound()"));
             }
             else if (toolName == "undo") {
                 ensureJSRuntime();

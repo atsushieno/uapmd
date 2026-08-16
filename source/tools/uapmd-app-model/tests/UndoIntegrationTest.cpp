@@ -308,3 +308,54 @@ TEST(AppLayerUndoIntegrationTest, JavaScriptUndoAndRedoUseMutationJobs) {
     EXPECT_TRUE(redoJob["result"]["success"].get<bool>());
     EXPECT_EQ(model.trackCount(), initialTrackCount + 1);
 }
+
+TEST(AppLayerUndoIntegrationTest, JavaScriptNamedCompoundScopeUsesMutationJobs) {
+    ScopedTestEventLoop eventLoop;
+    struct ScopedAppModelInstance {
+        ScopedAppModelInstance() { uapmd_app::AppModel::instantiate(); }
+        ~ScopedAppModelInstance() { uapmd_app::AppModel::cleanupInstance(); }
+    } appModelInstance;
+
+    auto& model = uapmd_app::AppModel::instance();
+    const auto initialTrackCount = model.trackCount();
+    uapmd_app::UapmdJSRuntime runtime;
+    runtime.ensureApiBootstrapped();
+
+    auto scope = choc::json::parse(runtime.evaluateScript(
+        "uapmd.sequencer.beginCompound('Remote batch')"));
+    ASSERT_TRUE(scope["success"].get<bool>()) << scope["error"].get<std::string>();
+
+    auto pollJob = [&runtime](const char* expression) {
+        auto job = choc::json::parse(runtime.evaluateScript(expression));
+        EXPECT_TRUE(job.isObject());
+        if (!job.isObject())
+            return job;
+        const auto jobId = job["jobId"].get<int32_t>();
+        EXPECT_GT(jobId, 0);
+        if (jobId <= 0)
+            return job;
+        for (int i = 0; i < 200 && job["state"].get<std::string>() == "running"; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            job = choc::json::parse(runtime.evaluateScript(
+                "uapmd.mutations.getJob(" + std::to_string(jobId) + ")"));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return job;
+    };
+
+    auto addJob = pollJob("uapmd.sequencer.addTrack()");
+    ASSERT_EQ(addJob["state"].get<std::string>(), "completed")
+        << addJob["error"].get<std::string>();
+    ASSERT_EQ(model.trackCount(), initialTrackCount + 1);
+
+    auto endJob = pollJob("uapmd.sequencer.endCompound()");
+    ASSERT_EQ(endJob["state"].get<std::string>(), "completed")
+        << endJob["error"].get<std::string>();
+    ASSERT_TRUE(endJob["result"]["success"].get<bool>());
+
+    auto undoJob = pollJob("uapmd.sequencer.undo()");
+    ASSERT_EQ(undoJob["state"].get<std::string>(), "completed")
+        << undoJob["error"].get<std::string>();
+    ASSERT_TRUE(undoJob["result"]["success"].get<bool>());
+    EXPECT_EQ(model.trackCount(), initialTrackCount);
+}

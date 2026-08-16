@@ -214,6 +214,9 @@ globalThis.uapmd = {
         sendNoteOff: (instanceId, note) => __remidy_sequencer_sendNoteOff(instanceId, note),
         setParameterValue: (instanceId, paramIndex, value) => __remidy_sequencer_setParameterValue(instanceId, paramIndex, value),
         getHistoryState: () => __remidy_sequencer_get_history_state(),
+        beginCompound: (description) => __remidy_sequencer_begin_compound(description),
+        endCompound: () => __remidy_sequencer_end_compound(),
+        cancelCompound: () => __remidy_sequencer_cancel_compound(),
         undo: () => __remidy_sequencer_undo(),
         redo: () => __remidy_sequencer_redo(),
 

@@ -802,6 +802,41 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return result;
     });
 
+    jsContext_.registerFunction ("__remidy_sequencer_begin_compound", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto description = args.get<std::string> (0, "");
+        auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->timeline().undoEngine();
+        const auto result = undo.beginCompound(description, uapmd::ProjectMutationOrigin::Remote);
+        auto value = choc::value::createObject("HistoryScopeResult");
+        value.setMember("success", result.succeeded());
+        value.setMember("error", result.error);
+        return value;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_end_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto job = createMutationJob();
+        auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->timeline().undoEngine();
+        undo.endCompound([this, job](uapmd::ProjectUndoResult result) mutable {
+            auto value = choc::value::createObject("HistoryMutationResult");
+            value.setMember("success", result.succeeded());
+            completeMutationJob(job, std::move(value), std::move(result.error));
+        });
+        return mutationJobValue(job);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_cancel_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto job = createMutationJob();
+        auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->timeline().undoEngine();
+        undo.cancelCompound([this, job](uapmd::ProjectUndoResult result) mutable {
+            auto value = choc::value::createObject("HistoryMutationResult");
+            value.setMember("success", result.succeeded());
+            completeMutationJob(job, std::move(value), std::move(result.error));
+        });
+        return mutationJobValue(job);
+    });
+
     jsContext_.registerFunction ("__remidy_sequencer_undo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();

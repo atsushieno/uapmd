@@ -326,6 +326,18 @@ export const sequencer = {
         return __remidy_sequencer_get_history_state();
     },
 
+    beginCompound: function(description) {
+        return __remidy_sequencer_begin_compound(description);
+    },
+
+    endCompound: function() {
+        return __remidy_sequencer_end_compound();
+    },
+
+    cancelCompound: function() {
+        return __remidy_sequencer_cancel_compound();
+    },
+
     undo: function() {
         return __remidy_sequencer_undo();
     },

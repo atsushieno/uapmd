@@ -9,6 +9,21 @@
 namespace uapmd {
 
     namespace {
+        bool compatibleCompoundOrigin(
+            ProjectMutationOrigin compoundOrigin,
+            ProjectMutationOrigin operationOrigin) {
+            if (compoundOrigin == operationOrigin)
+                return true;
+            // JavaScript/MCP entry points may call AppModel wrappers whose
+            // legacy facade currently labels their mutation as User. Treat
+            // that as the same authored-document class as a Remote scope;
+            // internal/load/replay origins remain incompatible.
+            return (compoundOrigin == ProjectMutationOrigin::Remote
+                    && operationOrigin == ProjectMutationOrigin::User)
+                || (compoundOrigin == ProjectMutationOrigin::User
+                    && operationOrigin == ProjectMutationOrigin::Remote);
+        }
+
         ProjectUndoResult resultWithStatus(ProjectUndoStatus status, std::string error = {}) {
             return {
                 .status = status,
@@ -275,7 +290,7 @@ namespace uapmd {
                     ProjectUndoResult::failure("Cannot perform an empty undo operation."));
                 return;
             }
-            if (compound_ && compound_->origin != origin) {
+            if (compound_ && !compatibleCompoundOrigin(compound_->origin, origin)) {
                 completeClient(
                     std::move(completion),
                     ProjectUndoResult::failure(
@@ -309,7 +324,7 @@ namespace uapmd {
                     "An undo history operation is already pending."));
                 return;
             }
-            if (compound_ && compound_->origin != origin) {
+            if (compound_ && !compatibleCompoundOrigin(compound_->origin, origin)) {
                 completeClient(
                     std::move(completion),
                     ProjectUndoResult::failure(
