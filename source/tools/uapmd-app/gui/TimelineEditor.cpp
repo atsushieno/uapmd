@@ -882,7 +882,7 @@ void TimelineEditor::render(float uiScale) {
                 clipId,
                 audioEventListEditor_,
                 appModel.getTimelineTracks(),
-                appModel.masterTrackMarkers()
+                appModel.sequencer().engine()->masterTrackMarkers()
             );
         },
         .validateMarkerReference = [this](int32_t trackIndex, int32_t clipId, const std::string& markerId,
@@ -897,7 +897,7 @@ void TimelineEditor::render(float uiScale) {
                 referenceMarkerId,
                 audioEventListEditor_,
                 appModel.getTimelineTracks(),
-                appModel.masterTrackMarkers()
+                appModel.sequencer().engine()->masterTrackMarkers()
             );
         },
         .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
@@ -2215,7 +2215,7 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
 
         if (!appModel.sequencer().engine()->timeline().replaceAudioClipContent(
                 trackIndex, clipId, selectedFile, clip->markers, clip->audioWarps,
-                appModel.masterTrackMarkers())) {
+                appModel.sequencer().engine()->masterTrackMarkers())) {
             platformError("Load Failed",
                           "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG");
             return;
@@ -2488,7 +2488,7 @@ AudioEventListEditor::ClipData TimelineEditor::buildAudioEventListData(int32_t t
         if (masterTrackSnapshot_)
             data.durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, masterTrackSnapshot_->maxTimeSeconds) * data.sampleRate));
         data.markers = audioEventListEditor_.draftMasterMarkers().empty()
-            ? appModel.masterTrackMarkers()
+            ? appModel.sequencer().engine()->masterTrackMarkers()
             : audioEventListEditor_.draftMasterMarkers();
         data.fileLabel = "Master Track";
         data.success = true;
@@ -2532,7 +2532,7 @@ AudioEventListEditor::ClipData TimelineEditor::buildAudioEventListData(int32_t t
         clipId,
         audioEventListEditor_,
         tracks,
-        appModel.masterTrackMarkers()
+        appModel.sequencer().engine()->masterTrackMarkers()
     );
     if (clip->filepath.empty()) {
         data.fileLabel = "(missing file path)";
@@ -2647,7 +2647,7 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
 
     if (!appModel.sequencer().engine()->timeline().replaceAudioClipContent(
             payload.trackIndex, payload.clipId, {}, payload.markers, payload.audioWarps,
-            appModel.masterTrackMarkers())) {
+            appModel.sequencer().engine()->masterTrackMarkers())) {
         error = "Failed to rebuild warped audio source.";
         return false;
     }

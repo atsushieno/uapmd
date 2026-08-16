@@ -131,6 +131,7 @@ namespace uapmd {
         uint32_t default_output_channels_{2};
         std::vector<std::unique_ptr<SequencerTrack>> tracks_{};
         std::unique_ptr<SequencerTrack> master_track_;
+        std::vector<ClipMarker> master_track_markers_{};
         std::unique_ptr<AudioProcessContext> master_track_context_;
         std::unique_ptr<AudioProcessContext> mix_bus_context_;
         SequenceProcessContext sequence{};
@@ -290,7 +291,8 @@ namespace uapmd {
         explicit SequencerEngineImpl(
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
-            size_t umpBufferSizeInInts);
+            size_t umpBufferSizeInInts,
+            std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost = {});
         ~SequencerEngineImpl() override;
 
         AudioPluginHostingAPI* pluginHost() override;
@@ -301,6 +303,8 @@ namespace uapmd {
 
         std::vector<SequencerTrack*>& tracks() const override;
         SequencerTrack* masterTrack() override;
+        const std::vector<ClipMarker>& masterTrackMarkers() const override;
+        void setMasterTrackMarkers(std::vector<ClipMarker> markers) override;
         size_t umpBufferSizeInBytes() const override { return ump_buffer_size_in_ints; }
         uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t masterTrackLatencyInSamples() override;
@@ -607,15 +611,30 @@ namespace uapmd {
             umpBufferSizeInInts);
     }
 
+    std::unique_ptr<SequencerEngine> SequencerEngine::createWithPluginHost(
+        int32_t sampleRate,
+        size_t audioBufferSizeInFrames,
+        size_t umpBufferSizeInInts,
+        std::unique_ptr<AudioPluginHostingAPI> pluginHost) {
+        return std::make_unique<SequencerEngineImpl>(
+            sampleRate,
+            audioBufferSizeInFrames,
+            umpBufferSizeInInts,
+            std::move(pluginHost));
+    }
+
     // SequencerEngineImpl
     SequencerEngineImpl::SequencerEngineImpl(
         int32_t sampleRate,
         size_t audioBufferSizeInFrames,
-        size_t umpBufferSizeInInts) :
+        size_t umpBufferSizeInInts,
+        std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost) :
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
-        plugin_host(AudioPluginHostingAPI::create()),
+        plugin_host(suppliedPluginHost
+            ? std::move(suppliedPluginHost)
+            : AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         input_analyser_ = webaudio_compat::createAnalyserNode({.node_id = "engine-input-analyser"});
         timeline_ = TimelineFacade::create(*this);
@@ -889,6 +908,14 @@ namespace uapmd {
 
     SequencerTrack* SequencerEngineImpl::masterTrack() {
         return master_track_.get();
+    }
+
+    const std::vector<ClipMarker>& SequencerEngineImpl::masterTrackMarkers() const {
+        return master_track_markers_;
+    }
+
+    void SequencerEngineImpl::setMasterTrackMarkers(std::vector<ClipMarker> markers) {
+        master_track_markers_ = std::move(markers);
     }
 
     uint32_t SequencerEngineImpl::trackLatencyInSamples(uapmd_track_index_t trackIndex) {

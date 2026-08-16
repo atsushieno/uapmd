@@ -1812,7 +1812,7 @@ void UapmdJSRuntime::registerTimelineAPI()
     jsContext_.registerFunction ("__remidy_timeline_get_master_markers", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto array = choc::value::createEmptyArray();
-        for (const auto& marker : uapmd_app::AppModel::instance().masterTrackMarkers())
+        for (const auto& marker : uapmd_app::AppModel::instance().sequencer().engine()->masterTrackMarkers())
             array.addArrayElement(serializeMarker(marker, kMasterMarkerReferenceId));
         return array;
     });

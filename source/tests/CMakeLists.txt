@@ -20,6 +20,10 @@ add_executable(uapmd-engine-output-tests
     SequencerEngineOutputTest.cpp
 )
 
+add_executable(uapmd-app-layer-undo-integration-tests
+    ../tools/uapmd-app-model/tests/UndoIntegrationTest.cpp
+)
+
 target_include_directories(uapmd-project-file-tests PRIVATE
         ../remidy/include
         ../uapmd-plugin-hosting/include
@@ -44,6 +48,19 @@ target_include_directories(uapmd-engine-output-tests PRIVATE
         ${midicci_SOURCE_DIR}/include
 )
 
+target_include_directories(uapmd-app-layer-undo-integration-tests PRIVATE
+        ../remidy/include
+        ../uapmd-plugin-hosting/include
+        ../uapmd-midi-service/include
+        ../uapmd-graph/include
+        ../uapmd-file/include
+        ../uapmd-data/include
+        ../uapmd-engine/include
+        ../tools/uapmd-app-model/include
+        ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+)
+
 target_link_libraries(uapmd-project-file-tests
     uapmd-data
     GTest::gtest_main
@@ -56,7 +73,14 @@ target_link_libraries(uapmd-engine-output-tests
     GTest::gtest
 )
 
+target_link_libraries(uapmd-app-layer-undo-integration-tests
+    uapmd-app-model
+    GTest::gtest_main
+    GTest::gtest
+)
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(uapmd-project-file-tests)
 gtest_discover_tests(uapmd-engine-output-tests)
+gtest_discover_tests(uapmd-app-layer-undo-integration-tests)

@@ -2558,7 +2558,7 @@ bool uapmd_app::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
                                          std::string& error) const
 {
     if (trackIndex == uapmd::kMasterTrackIndex) {
-        markers = master_track_markers_;
+        markers = sequencer_.engine()->masterTrackMarkers();
         audioWarps.clear();
         return true;
     }
@@ -2602,7 +2602,7 @@ bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(
     }
 
     auto apply = [this](const std::vector<uapmd::ClipMarker>& value) {
-        master_track_markers_ = value;
+        sequencer_.engine()->setMasterTrackMarkers(value);
         resolveAllClipAnchorsInAppModel(*this);
         markTrackDirty(kMasterTrackIndex);
         return true;
@@ -2612,7 +2612,7 @@ bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(
         return apply(markers);
 
     auto operation = std::make_shared<MasterMarkersUndoOperation>(
-        master_track_markers_, std::move(markers), std::move(apply));
+        sequencer_.engine()->masterTrackMarkers(), std::move(markers), std::move(apply));
     auto result = std::make_shared<std::optional<ProjectUndoResult>>();
     sequencer_.engine()->timeline().undoEngine().perform(
         std::move(operation),
@@ -2668,7 +2668,7 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
     }
 
     auto clipLookup = buildClipReferenceMap(tracks);
-    auto proposedMasterMarkers = master_track_markers_;
+    auto proposedMasterMarkers = sequencer_.engine()->masterTrackMarkers();
     if (!validateMarkerGraphAcyclic(clip->referenceId, markers, clipLookup, proposedMasterMarkers)) {
         error = "Recursive marker references are not allowed.";
         return false;
@@ -2704,7 +2704,11 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
     auto targetClip = *clip;
     targetClip.markers = markers;
     clipLookup[targetClip.referenceId] = targetClip;
-    auto resolvedWarps = resolveAudioWarpPoints(targetClip, audioWarps, clipLookup, master_track_markers_,
+    auto resolvedWarps = resolveAudioWarpPoints(
+        targetClip,
+        audioWarps,
+        clipLookup,
+        sequencer_.engine()->masterTrackMarkers(),
                                                 static_cast<double>(sampleRate()));
     auto newNode = std::make_unique<uapmd::AudioFileSourceNode>(
         clip->sourceNodeInstanceId,
@@ -2714,7 +2718,12 @@ bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
     );
 
     if (!sequencer_.engine()->timeline().replaceAudioClipContent(
-            trackIndex, clipId, {}, markers, audioWarps, master_track_markers_)) {
+            trackIndex,
+            clipId,
+            {},
+            markers,
+            audioWarps,
+            sequencer_.engine()->masterTrackMarkers())) {
         error = "Failed to rebuild warped audio source.";
         return false;
     }
@@ -3445,8 +3454,6 @@ void uapmd_app::AppModel::saveProject(const std::filesystem::path& projectFile, 
 
     TimelineFacade::ProjectSaveOptions options;
     options.excludedTrackIndexes.assign(hidden_tracks_.begin(), hidden_tracks_.end());
-    options.masterTrackMarkers = master_track_markers_;
-
     engine->timeline().saveProject(
         projectFile,
         std::move(options),
@@ -3499,7 +3506,6 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
                 return;
             }
 
-            master_track_markers_ = std::move(engineResult.masterTrackMarkers);
             clearProjectDirtyState();
 
             // Notify UI about all tracks that were created

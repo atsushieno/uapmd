@@ -466,7 +466,7 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
     preview->sourceDurationSamples = clipData ? std::max<int64_t>(0, clipData->durationSamples) : 0;
     if (clipData) {
         const auto clipLookup = buildClipLookup();
-        const auto& masterTrackMarkers = uapmd_app::AppModel::instance().masterTrackMarkers();
+    const auto& masterTrackMarkers = uapmd_app::AppModel::instance().sequencer().engine()->masterTrackMarkers();
         preview->clipMarkers.reserve(clipData->markers.size());
         const double sampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
         for (auto marker : clipData->markers) {

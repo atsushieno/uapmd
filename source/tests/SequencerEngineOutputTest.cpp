@@ -4,6 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <numbers>
@@ -144,6 +145,76 @@ private:
     std::vector<remidy::AudioBusConfiguration*> output_buses_;
 };
 
+class TestPluginParameterSupport final : public remidy::PluginParameterSupport {
+public:
+    std::vector<remidy::PluginParameter*>& parameters() override { return parameters_; }
+
+    std::vector<remidy::PluginParameter*>& perNoteControllers(
+        remidy::PerNoteControllerContextTypes,
+        remidy::PerNoteControllerContext) override {
+        return parameters_;
+    }
+
+    remidy::StatusCode setParameter(uint32_t index, double value) override {
+        parameter_values_[static_cast<int32_t>(index)] = value;
+        return remidy::StatusCode::OK;
+    }
+
+    remidy::StatusCode enqueueParameterRT(uint32_t index, double value, uint64_t) override {
+        return setParameter(index, value);
+    }
+
+    remidy::StatusCode getParameter(uint32_t index, double* value) override {
+        if (!value)
+            return remidy::StatusCode::INVALID_PARAMETER_OPERATION;
+        *value = parameter_values_[static_cast<int32_t>(index)];
+        return remidy::StatusCode::OK;
+    }
+
+    remidy::StatusCode setPerNoteController(
+        remidy::PerNoteControllerContext context,
+        uint32_t index,
+        double value) override {
+        per_note_values_[{static_cast<uint8_t>(context.note), static_cast<uint8_t>(index)}] = value;
+        return remidy::StatusCode::OK;
+    }
+
+    remidy::StatusCode enqueuePerNoteControllerRT(
+        remidy::PerNoteControllerContext context,
+        uint32_t index,
+        double value,
+        uint64_t) override {
+        return setPerNoteController(context, index, value);
+    }
+
+    remidy::StatusCode getPerNoteController(
+        remidy::PerNoteControllerContext context,
+        uint32_t index,
+        double* value) override {
+        if (!value)
+            return remidy::StatusCode::INVALID_PARAMETER_OPERATION;
+        *value = per_note_values_[{
+            static_cast<uint8_t>(context.note), static_cast<uint8_t>(index)}];
+        return remidy::StatusCode::OK;
+    }
+
+    std::string valueToString(uint32_t, double value) override {
+        return std::to_string(value);
+    }
+
+    std::string valueToStringPerNote(
+        remidy::PerNoteControllerContext,
+        uint32_t,
+        double value) override {
+        return std::to_string(value);
+    }
+
+private:
+    std::vector<remidy::PluginParameter*> parameters_{};
+    std::map<int32_t, double> parameter_values_{};
+    std::map<std::pair<uint8_t, uint8_t>, double> per_note_values_{};
+};
+
 class MutableTimingPlugin final : public uapmd_plugin_hosting::AudioPluginInstanceAPI {
 public:
     uint32_t latencyInSamples() const override {
@@ -173,28 +244,43 @@ public:
     std::vector<uapmd_plugin_hosting::PresetsMetadata> presetMetadataList() override { return {}; }
     void loadPreset(int32_t) override {}
     void loadPreset(int32_t, std::function<void(std::string, void*)>) override {}
-    std::vector<uint8_t> saveStateSync() override { return {}; }
-    void loadStateSync(std::vector<uint8_t>&) override {}
+    std::vector<uint8_t> saveStateSync() override { return state_; }
+    void loadStateSync(std::vector<uint8_t>& state) override { state_ = state; }
     void requestState(
         uapmd_plugin_hosting::StateContextType,
         bool,
         void* callbackContext,
         std::function<void(std::vector<uint8_t>, std::string, void*)> receiver) override {
-        receiver({}, {}, callbackContext);
+        receiver(state_, {}, callbackContext);
     }
     void loadState(
-        std::vector<uint8_t>,
+        std::vector<uint8_t> state,
         uapmd_plugin_hosting::StateContextType,
         bool,
         void* callbackContext,
         std::function<void(std::string, void*)> completed) override {
+        state_ = std::move(state);
         completed({}, callbackContext);
     }
-    double getParameterValue(int32_t) override { return 0.0; }
-    void setParameterValue(int32_t, double) override {}
+    double getParameterValue(int32_t index) override {
+        double value = 0.0;
+        parameter_support_.getParameter(static_cast<uint32_t>(index), &value);
+        return value;
+    }
+    void setParameterValue(int32_t index, double value) override {
+        parameter_support_.setParameter(static_cast<uint32_t>(index), value);
+    }
     void enqueueParameterValueRT(int32_t, double, uapmd_timestamp_t) override {}
     std::string getParameterValueString(int32_t, double) override { return {}; }
-    void setPerNoteControllerValue(uint8_t, uint8_t, double) override {}
+    void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
+        parameter_support_.setPerNoteController(
+            {.note = note, .channel = 0, .group = 0, .extra = 0}, index, value);
+    }
+    bool getPerNoteControllerValue(uint8_t note, uint8_t index, double* value) override {
+        return parameter_support_.getPerNoteController(
+                   {.note = note, .channel = 0, .group = 0, .extra = 0}, index, value)
+            == remidy::StatusCode::OK;
+    }
     void enqueuePerNoteControllerValueRT(uint8_t, uint8_t, double, uapmd_timestamp_t) override {}
     std::string getPerNoteControllerValueString(uint8_t, uint8_t, double) override { return {}; }
     bool hasUISupport() override { return false; }
@@ -206,7 +292,7 @@ public:
     bool setUISize(uint32_t, uint32_t) override { return false; }
     bool getUISize(uint32_t&, uint32_t&) override { return false; }
     bool canUIResize() override { return false; }
-    remidy::PluginParameterSupport* parameterSupport() override { return nullptr; }
+    remidy::PluginParameterSupport* parameterSupport() override { return &parameter_support_; }
     remidy::PluginAudioBuses* audioBuses() override { return &audio_buses_; }
     remidy::EventListenerId addTimingInfoChangeListener(
         std::function<void(remidy::PluginTimingInfoChange)>) override {
@@ -214,13 +300,71 @@ public:
     }
     void removeTimingInfoChangeListener(remidy::EventListenerId) override {}
 
+    void externallySetParameter(int32_t index, double value) {
+        parameter_support_.setParameter(static_cast<uint32_t>(index), value);
+        parameter_support_.parameterChangeEvent().notify(
+            static_cast<uint32_t>(index), value);
+    }
+
 private:
     mutable std::string display_name_{"Test Plugin"};
     mutable std::string format_name_{"Test"};
     mutable std::string plugin_id_{"test.plugin"};
     bool bypassed_{false};
     std::atomic<uint32_t> latency_in_samples_{0};
+    std::vector<uint8_t> state_{};
+    TestPluginParameterSupport parameter_support_{};
     TestAudioBuses audio_buses_{};
+};
+
+class TestPluginHostingAPI final : public uapmd_plugin_hosting::AudioPluginHostingAPI {
+public:
+    std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override { return {}; }
+    void savePluginCatalogToFile(std::filesystem::path) override {}
+    void performPluginScanning(bool) override {}
+    void reloadPluginCatalogFromCache() override {}
+
+    void createPluginInstance(
+        uint32_t,
+        uint32_t,
+        std::optional<uint32_t>,
+        std::optional<uint32_t>,
+        bool,
+        std::string&,
+        std::string&,
+        std::function<void(int32_t, std::string)>&& callback) override {
+        const auto instanceId = next_instance_id_++;
+        instances_[instanceId] = std::make_unique<MutableTimingPlugin>();
+        callback(instanceId, {});
+    }
+
+    void deletePluginInstance(int32_t instanceId) override {
+        instances_.erase(instanceId);
+    }
+
+    uapmd_plugin_hosting::AudioPluginInstanceAPI* getInstance(int32_t instanceId) override {
+        const auto it = instances_.find(instanceId);
+        return it == instances_.end() ? nullptr : it->second.get();
+    }
+
+    remidy::EventListenerId addPluginStateChangeListener(std::function<void(int32_t)>) override {
+        return 0;
+    }
+
+    void removePluginStateChangeListener(remidy::EventListenerId) override {}
+
+    std::vector<int32_t> instanceIds() override {
+        std::vector<int32_t> result;
+        result.reserve(instances_.size());
+        for (const auto& [instanceId, instance] : instances_)
+            if (instance)
+                result.push_back(instanceId);
+        return result;
+    }
+
+private:
+    int32_t next_instance_id_{100};
+    std::map<int32_t, std::unique_ptr<MutableTimingPlugin>> instances_{};
 };
 
 RenderedAudio readRenderedAudioFile(const fs::path& outputPath) {
@@ -492,6 +636,162 @@ namespace {
             {},
             "Fragment Source");
     }
+
+    std::optional<uapmd::ProjectUndoResult> moveHistory(
+        uapmd::TimelineFacade& timeline,
+        bool redo) {
+        std::optional<uapmd::ProjectUndoResult> result;
+        auto completion = [&result](uapmd::ProjectUndoResult completed) {
+            result = std::move(completed);
+        };
+        if (redo)
+            timeline.undoEngine().redo(std::move(completion));
+        else
+            timeline.undoEngine().undo(std::move(completion));
+        return result;
+    }
+}
+
+TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) {
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(added.success) << added.error;
+
+    auto exercise = [&](auto mutate, auto verifyBefore, auto verifyAfter) {
+        const auto before = timeline.captureClipFragment(trackIndex, added.clipId);
+        ASSERT_TRUE(before.has_value());
+        ASSERT_TRUE(mutate());
+        const auto after = timeline.captureClipFragment(trackIndex, added.clipId);
+        ASSERT_TRUE(after.has_value());
+
+        const auto undone = moveHistory(timeline, false);
+        ASSERT_TRUE(undone.has_value());
+        ASSERT_TRUE(undone->succeeded()) << undone->error;
+        const auto restored = timeline.captureClipFragment(trackIndex, added.clipId);
+        ASSERT_TRUE(restored.has_value());
+        verifyBefore(*before, *restored);
+
+        const auto redone = moveHistory(timeline, true);
+        ASSERT_TRUE(redone.has_value());
+        ASSERT_TRUE(redone->succeeded()) << redone->error;
+        const auto reapplied = timeline.captureClipFragment(trackIndex, added.clipId);
+        ASSERT_TRUE(reapplied.has_value());
+        verifyAfter(*after, *reapplied);
+    };
+
+    exercise(
+        [&] { return timeline.setClipEnabled(trackIndex, added.clipId, false); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.enabled, before.clip.enabled);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.enabled, after.clip.enabled);
+        });
+    exercise(
+        [&] {
+            return timeline.setClipAnchor(
+                trackIndex,
+                added.clipId,
+                uapmd::TimeReference::fromContainerEnd({}, 0.25));
+        },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.timeReference(48000), before.clip.timeReference(48000));
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.timeReference(48000), after.clip.timeReference(48000));
+        });
+    exercise(
+        [&] { return timeline.setClipGain(trackIndex, added.clipId, 0.25); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_DOUBLE_EQ(actual.clip.gain, before.clip.gain);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_DOUBLE_EQ(actual.clip.gain, after.clip.gain);
+        });
+    exercise(
+        [&] { return timeline.setClipMuted(trackIndex, added.clipId, true); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.muted, before.clip.muted);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.muted, after.clip.muted);
+        });
+    exercise(
+        [&] { return timeline.resizeClip(trackIndex, added.clipId, 12345); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.durationSamples, before.clip.durationSamples);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.durationSamples, after.clip.durationSamples);
+        });
+    exercise(
+        [&] { return timeline.setClipName(trackIndex, added.clipId, "Renamed"); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.name, before.clip.name);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.name, after.clip.name);
+        });
+    exercise(
+        [&] { return timeline.setClipFilepath(trackIndex, added.clipId, "edited.mid"); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.filepath, before.clip.filepath);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.filepath, after.clip.filepath);
+        });
+    exercise(
+        [&] { return timeline.setClipNeedsFileSave(trackIndex, added.clipId, true); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.needsFileSave, before.clip.needsFileSave);
+        },
+        [](const auto& after, const auto& actual) {
+            EXPECT_EQ(actual.clip.needsFileSave, after.clip.needsFileSave);
+        });
+
+    const std::vector<uapmd::ClipMarker> markers{
+        {"marker", 480, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Marker"}};
+    exercise(
+        [&] { return timeline.setClipMarkers(trackIndex, added.clipId, markers); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.markers.size(), before.clip.markers.size());
+        },
+        [](const auto& after, const auto& actual) {
+            ASSERT_EQ(actual.clip.markers.size(), after.clip.markers.size());
+            EXPECT_EQ(actual.clip.markers[0].markerId, after.clip.markers[0].markerId);
+        });
+
+    const std::vector<uapmd::AudioWarpPoint> warps{
+        {0.0, 1.0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}},
+        {0.5, 0.75, uapmd::AudioWarpReferenceType::ClipStart, {}, {}},
+    };
+    exercise(
+        [&] { return timeline.setClipAudioWarps(trackIndex, added.clipId, warps); },
+        [](const auto& before, const auto& actual) {
+            EXPECT_EQ(actual.clip.audioWarps.size(), before.clip.audioWarps.size());
+        },
+        [](const auto& after, const auto& actual) {
+            ASSERT_EQ(actual.clip.audioWarps.size(), after.clip.audioWarps.size());
+            EXPECT_DOUBLE_EQ(actual.clip.audioWarps[1].speedRatio, after.clip.audioWarps[1].speedRatio);
+        });
+}
+
+TEST_F(SequencerEngineOutputTest, MasterTrackMarkersAreOwnedByTheEngine) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+
+    std::vector<uapmd::ClipMarker> markers{
+        {"engine-marker", 0.5, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Marker"}};
+    engine->setMasterTrackMarkers(markers);
+
+    ASSERT_EQ(engine->masterTrackMarkers().size(), 1u);
+    EXPECT_EQ(engine->masterTrackMarkers()[0].markerId, "engine-marker");
+    EXPECT_DOUBLE_EQ(engine->masterTrackMarkers()[0].clipPositionOffset, 0.5);
 }
 
 TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) {
@@ -600,6 +900,521 @@ TEST_F(SequencerEngineOutputTest, MidiClipContentUndoRestoresClipIdentityAndEven
     ASSERT_NE(redoneMidi, nullptr);
     EXPECT_EQ(redoneMidi->umpEvents(), replacementEvents);
     EXPECT_EQ(redoneMidi->eventTimestampsTicks(), replacementTicks);
+}
+
+TEST_F(SequencerEngineOutputTest, MidiEventAppendUndoAndRedo) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    const auto added = addFragmentTestClip(*engine, trackIndex, 48000);
+    ASSERT_TRUE(added.success) << added.error;
+    auto* track = timeline.tracks()[static_cast<size_t>(trackIndex)];
+    auto readSource = [&] {
+        const auto* clip = track->clipManager().getClip(added.clipId);
+        return std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(
+            track->getSourceNode(clip->sourceNodeInstanceId));
+    };
+    auto source = readSource();
+    ASSERT_NE(source, nullptr);
+    const auto before = source->umpEvents();
+    const std::vector<uapmd_ump_t> appended{
+        0x40903F00u, 0x7FFF0000u,
+    };
+    ASSERT_TRUE(timeline.appendMidiEventsToClip(
+        trackIndex,
+        added.clipId,
+        appended,
+        {960, 960}));
+    source = readSource();
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->umpEvents().size(), before.size() + appended.size());
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    source = readSource();
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->umpEvents(), before);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    source = readSource();
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->umpEvents().size(), before.size() + appended.size());
+}
+
+TEST_F(SequencerEngineOutputTest, ClipCreationDeletionAndClearUndoAndRedo) {
+    ScopedTestEventLoop eventLoop;
+    constexpr int32_t sampleRate = 48000;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    const auto directlyAdded = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(directlyAdded.success) << directlyAdded.error;
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 1u);
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 0u);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_NE(
+        timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().getClip(directlyAdded.clipId),
+        nullptr);
+
+    const auto first = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    const auto second = addFragmentTestClip(*engine, trackIndex, sampleRate);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 3u);
+
+    ASSERT_TRUE(timeline.removeClipFromTrack(trackIndex, first.clipId));
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 2u);
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_NE(
+        timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().getClip(first.clipId),
+        nullptr);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(
+        timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().getClip(first.clipId),
+        nullptr);
+
+    ASSERT_TRUE(timeline.clearClipsFromTrack(trackIndex));
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 0u);
+    remidy::EventLoop::processQueuedTasks();
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 2u);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(timeline.tracks()[static_cast<size_t>(trackIndex)]->clipManager().clipCount(), 0u);
+}
+
+TEST_F(SequencerEngineOutputTest, TrackCreationAndDeletionUndoAndRedo) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    auto& timeline = engine->timeline();
+
+    auto waitForTrackMutation = [](std::optional<int32_t>& index) {
+        for (int i = 0; i < 100 && !index.has_value(); ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+
+    std::optional<int32_t> addedIndex;
+    std::string addError;
+    timeline.addEmptyTrack(
+        uapmd::ProjectMutationOrigin::User,
+        [&](int32_t index, std::string error) {
+            addedIndex = index;
+            addError = std::move(error);
+        });
+    waitForTrackMutation(addedIndex);
+    ASSERT_TRUE(addedIndex.has_value()) << addError;
+    ASSERT_GE(*addedIndex, 0);
+    const auto trackCountAfterAdd = engine->tracks().size();
+    ASSERT_GT(trackCountAfterAdd, 0u);
+
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engine->tracks().size(), trackCountAfterAdd - 1);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engine->tracks().size(), trackCountAfterAdd);
+
+    auto engineForRemoval = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engineForRemoval, nullptr);
+    const auto removable = engineForRemoval->addEmptyTrack();
+    ASSERT_GE(removable, 0);
+    auto& removalTimeline = engineForRemoval->timeline();
+    std::optional<int32_t> removedIndex;
+    std::string removeError;
+    removalTimeline.removeTrack(
+        removable,
+        uapmd::ProjectMutationOrigin::User,
+        [&](int32_t index, std::string error) {
+            removedIndex = index;
+            removeError = std::move(error);
+        });
+    waitForTrackMutation(removedIndex);
+    ASSERT_TRUE(removedIndex.has_value()) << removeError;
+    ASSERT_GE(*removedIndex, 0);
+    EXPECT_EQ(engineForRemoval->tracks().size(), 0u);
+    result = moveHistory(removalTimeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engineForRemoval->tracks().size(), 1u);
+    result = moveHistory(removalTimeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engineForRemoval->tracks().size(), 0u);
+}
+
+TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.replaceTrackGraphType(
+        trackIndex,
+        "urn:uapmd-graph:common/graph/dag/v1",
+        engine->umpBufferSizeInBytes()));
+    auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+        &engine->tracks()[static_cast<size_t>(trackIndex)]->graph());
+    ASSERT_NE(graph, nullptr);
+    // The graph-type migration establishes the default simple topology. Clear
+    // that setup topology so this test isolates the authored connection step.
+    graph->clearConnections();
+
+    uapmd_graph::AudioPluginGraphConnection connection;
+    connection.source.type = uapmd_graph::AudioPluginGraphEndpointType::GraphInput;
+    connection.target.type = uapmd_graph::AudioPluginGraphEndpointType::GraphOutput;
+    std::string error;
+    ASSERT_TRUE(timeline.connectTrackGraph(trackIndex, connection, error)) << error;
+    ASSERT_EQ(graph->connections().size(), 1u);
+
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(graph->connections().empty());
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_EQ(graph->connections().size(), 1u);
+    const auto connectionId = graph->connections().front().id;
+
+    ASSERT_TRUE(timeline.disconnectTrackGraphConnection(trackIndex, connectionId, error)) << error;
+    EXPECT_TRUE(graph->connections().empty());
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(graph->connections().size(), 1u);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(graph->connections().empty());
+
+    // The graph-type replacement itself is also a history item beneath the
+    // connection edits. Undoing the three authored steps returns to the
+    // simple graph, and redoing restores the full-DAG graph.
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(
+        dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+            &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+        nullptr);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_NE(
+        dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+            &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+        nullptr);
+}
+
+TEST_F(SequencerEngineOutputTest, DeviceInputCreationChangeAndRemovalUndoAndRedo) {
+    auto engine = uapmd::SequencerEngine::create(48000, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    constexpr int32_t sourceNodeId = 7123;
+    ASSERT_TRUE(timeline.addDeviceInputToTrack(trackIndex, sourceNodeId, {0, 1}));
+    ASSERT_TRUE(timeline.setDeviceInputChannels(trackIndex, sourceNodeId, {2}));
+    auto* track = timeline.tracks()[static_cast<size_t>(trackIndex)];
+    auto input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
+        track->getSourceNode(sourceNodeId));
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2}));
+
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
+        track->getSourceNode(sourceNodeId));
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{0, 1}));
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+
+    ASSERT_TRUE(timeline.removeDeviceInputFromTrack(trackIndex, sourceNodeId));
+    EXPECT_EQ(track->getSourceNode(sourceNodeId), nullptr);
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_NE(track->getSourceNode(sourceNodeId), nullptr);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(track->getSourceNode(sourceNodeId), nullptr);
+}
+
+TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    std::string format = "Test";
+    std::string pluginId = "test.plugin";
+    std::optional<int32_t> instanceId;
+    std::string addError;
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&](int32_t id, int32_t, std::string error) {
+            instanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(instanceId.has_value()) << addError;
+    auto* plugin = dynamic_cast<MutableTimingPlugin*>(engine->getPluginInstance(*instanceId));
+    ASSERT_NE(plugin, nullptr);
+
+    auto drain = [] {
+        for (int i = 0; i < 100; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    auto moveAndDrain = [&](bool redo) {
+        std::optional<uapmd::ProjectUndoResult> result;
+        if (redo)
+            timeline.undoEngine().redo([&result](auto completed) { result = std::move(completed); });
+        else
+            timeline.undoEngine().undo([&result](auto completed) { result = std::move(completed); });
+        drain();
+        return result;
+    };
+
+    ASSERT_TRUE(timeline.undoEngine().clear());
+    plugin->externallySetParameter(2, 0.2);
+    plugin->externallySetParameter(2, 0.8);
+    drain();
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
+    auto result = moveAndDrain(false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.2);
+    result = moveAndDrain(true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
+
+    ASSERT_TRUE(timeline.setPluginBypassed(*instanceId, true));
+    EXPECT_TRUE(plugin->bypassed());
+    result = moveAndDrain(false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FALSE(plugin->bypassed());
+    result = moveAndDrain(true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(plugin->bypassed());
+
+    ASSERT_TRUE(timeline.setPluginParameterValue(*instanceId, 4, 0.75));
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(4), 0.75);
+    result = moveAndDrain(false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(4), 0.0);
+    result = moveAndDrain(true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_DOUBLE_EQ(plugin->getParameterValue(4), 0.75);
+
+    const remidy::PerNoteControllerContext noteContext{60, 1, 2, 0};
+    ASSERT_TRUE(timeline.setPluginPerNoteControllerValue(
+        *instanceId,
+        remidy::PER_NOTE_CONTROLLER_PER_NOTE,
+        noteContext,
+        7,
+        0.6));
+    double noteValue = 0.0;
+    ASSERT_TRUE(plugin->getPerNoteControllerValue(60, 7, &noteValue));
+    EXPECT_DOUBLE_EQ(noteValue, 0.6);
+    result = moveAndDrain(false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_TRUE(plugin->getPerNoteControllerValue(60, 7, &noteValue));
+    EXPECT_DOUBLE_EQ(noteValue, 0.0);
+    result = moveAndDrain(true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_TRUE(plugin->getPerNoteControllerValue(60, 7, &noteValue));
+    EXPECT_DOUBLE_EQ(noteValue, 0.6);
+
+    ASSERT_TRUE(timeline.setPluginGroup(*instanceId, 3));
+    EXPECT_EQ(engine->getInstanceGroup(*instanceId), 3u);
+    result = moveAndDrain(false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engine->getInstanceGroup(*instanceId), 0u);
+    result = moveAndDrain(true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engine->getInstanceGroup(*instanceId), 3u);
+
+    std::optional<uapmd::ProjectUndoResult> stateResult;
+    timeline.setPluginState(
+        *instanceId,
+        {1, 2, 3},
+        uapmd::ProjectMutationOrigin::User,
+        [&stateResult](uapmd::ProjectUndoResult completed) {
+            stateResult = std::move(completed);
+        });
+    drain();
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
+    stateResult = moveAndDrain(false);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_TRUE(plugin->saveStateSync().empty());
+    stateResult = moveAndDrain(true);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
+
+    ASSERT_TRUE(timeline.undoEngine().clear());
+    std::optional<uapmd::ProjectUndoResult> lifecycleResult;
+    timeline.recordPluginInstanceAddition(
+        *instanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&lifecycleResult](uapmd::ProjectUndoResult completed) {
+            lifecycleResult = std::move(completed);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    lifecycleResult = moveAndDrain(false);
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_EQ(engine->findTrackIndexForInstance(*instanceId), -1);
+    lifecycleResult = moveAndDrain(true);
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    ASSERT_EQ(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(), 1u);
+
+    const auto restoredInstanceId =
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front();
+    ASSERT_TRUE(timeline.undoEngine().clear());
+    lifecycleResult.reset();
+    timeline.removePluginInstance(
+        restoredInstanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&lifecycleResult](uapmd::ProjectUndoResult completed) {
+            lifecycleResult = std::move(completed);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_TRUE(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+    lifecycleResult = moveAndDrain(false);
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_EQ(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(), 1u);
+    lifecycleResult = moveAndDrain(true);
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_TRUE(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+}
+
+TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata) {
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint64_t frameCount = 480;
+    const auto audioPath = test_dir_ / "undo-audio.wav";
+    choc::audio::AudioFileProperties properties;
+    properties.sampleRate = sampleRate;
+    properties.numChannels = 2;
+    properties.numFrames = frameCount;
+    properties.bitDepth = choc::audio::BitDepth::float32;
+    auto writer = choc::audio::WAVAudioFileFormat<true>().createWriter(
+        audioPath.string(), properties);
+    ASSERT_NE(writer, nullptr);
+    choc::buffer::ChannelArrayBuffer<float> audioBuffer(2, frameCount);
+    for (uint32_t channel = 0; channel < 2; ++channel)
+        for (uint32_t frame = 0; frame < frameCount; ++frame)
+            audioBuffer.getSample(channel, frame) =
+                channel == 0 ? 0.1f : -0.1f;
+    ASSERT_TRUE(writer->appendFrames(audioBuffer.getView()));
+    ASSERT_TRUE(writer->flush());
+
+    auto engine = uapmd::SequencerEngine::create(sampleRate, 256, 65536);
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    auto added = timeline.addAudioClipToTrack(
+        trackIndex,
+        uapmd::TimelinePosition::fromSamples(0, sampleRate),
+        std::make_unique<SineAudioFileReader>(frameCount, 2, sampleRate, 440.0, 0.2f),
+        audioPath.string());
+    ASSERT_TRUE(added.success) << added.error;
+
+    const std::vector<uapmd::ClipMarker> markers{
+        {"phrase", 120, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Phrase"}};
+    const std::vector<uapmd::AudioWarpPoint> warps{
+        {0.0, 1.0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}},
+        {0.25, 0.5, uapmd::AudioWarpReferenceType::ClipStart, {}, {}},
+    };
+    ASSERT_TRUE(timeline.replaceAudioClipContent(
+        trackIndex,
+        added.clipId,
+        audioPath.string(),
+        markers,
+        warps,
+        {}));
+    auto changed = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(changed.has_value());
+    ASSERT_EQ(changed->clip.markers.size(), 1u);
+    ASSERT_EQ(changed->clip.audioWarps.size(), 2u);
+
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    auto restored = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(restored.has_value());
+    EXPECT_TRUE(restored->clip.markers.empty());
+    EXPECT_TRUE(restored->clip.audioWarps.empty());
+
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    auto redone = timeline.captureClipFragment(trackIndex, added.clipId);
+    ASSERT_TRUE(redone.has_value());
+    EXPECT_EQ(redone->clip.markers.size(), 1u);
+    EXPECT_EQ(redone->clip.audioWarps.size(), 2u);
 }
 
 TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {

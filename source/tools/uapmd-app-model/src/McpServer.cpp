@@ -1129,7 +1129,7 @@ static choc::value::Value toolGetMasterMarkers(const choc::value::Value&)
 {
     auto result = choc::value::createObject ("");
     auto markerArray = choc::value::createEmptyArray();
-    for (const auto& marker : AppModel::instance().masterTrackMarkers())
+    for (const auto& marker : AppModel::instance().sequencer().engine()->masterTrackMarkers())
         markerArray.addArrayElement(serializeMarker(marker, kMasterMarkerReferenceId));
     result.setMember("markers", markerArray);
     return result;

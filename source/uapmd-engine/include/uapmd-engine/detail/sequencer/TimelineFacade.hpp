@@ -135,8 +135,8 @@ public:
     // length; otherwise the clip keeps its length, because a warp rebuild
     // changes what plays rather than how long the clip is.
     //
-    // `masterTrackMarkers` is passed in because markers and warps may reference
-    // the master track's markers, which the engine does not own.
+    // `masterTrackMarkers` is supplied from the engine-owned master-track
+    // project state because markers and warps may reference it.
     virtual bool replaceAudioClipContent(
         int32_t trackIndex,
         int32_t clipId,
@@ -317,11 +317,9 @@ public:
     struct ProjectResult {
         bool success{false};
         std::string error;
-        std::vector<ClipMarker> masterTrackMarkers;
     };
     struct ProjectSaveOptions {
         std::vector<int32_t> excludedTrackIndexes;
-        std::vector<ClipMarker> masterTrackMarkers;
         // Internal snapshots (for example track-freeze renders) must not look like
         // a user project save to document observers.
         bool emitDocumentEvent{true};

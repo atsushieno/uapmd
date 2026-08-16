@@ -904,9 +904,12 @@ namespace uapmd {
             }
 
             void redo(
-                const ProjectUndoExecutionContext& context,
+                const ProjectUndoExecutionContext&,
                 ProjectUndoCompletion completion) override {
-                perform(context, std::move(completion));
+                if (initially_added_)
+                    add(std::move(completion));
+                else
+                    remove(std::move(completion));
             }
 
         private:
@@ -3269,7 +3272,7 @@ namespace uapmd {
 
                 if (auto* masterTrack = operation->project->masterTrack()) {
                     masterTrack->clips().clear();
-                    masterTrack->markers(std::move(options.masterTrackMarkers));
+                    masterTrack->markers(engine_.masterTrackMarkers());
                     if (engine_.masterTrack())
                         masterTrack->volume(engine_.masterTrack()->trackGain());
                     if (master_timeline_track_) {
@@ -6140,7 +6143,8 @@ namespace uapmd {
                     }
                     undo_engine_.clear(true);
                     notifyTimelineChanged();
-                    callback({true, {}, std::move(masterTrackMarkers)});
+                engine_.setMasterTrackMarkers(std::move(masterTrackMarkers));
+                callback({true, {}});
                 };
                 *finish_holder = [finish = std::move(finishLoadedProject)]() mutable {
                     if (remidy::EventLoop::runningOnMainThread())

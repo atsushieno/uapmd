@@ -69,6 +69,10 @@ namespace uapmd {
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
         virtual SequencerTrack* masterTrack() = 0;
+        // Master-track markers are project timeline state and are owned by the
+        // engine alongside the master track, not by an application adapter.
+        virtual const std::vector<ClipMarker>& masterTrackMarkers() const = 0;
+        virtual void setMasterTrackMarkers(std::vector<ClipMarker> markers) = 0;
         virtual size_t umpBufferSizeInBytes() const = 0;
         virtual uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t masterTrackLatencyInSamples() = 0;
@@ -217,6 +221,15 @@ namespace uapmd {
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
             size_t umpBufferSizeInInts);
+
+        // Test/support factory for supplying a deterministic plug-in host.
+        // The normal application path should use create(), which constructs
+        // the platform host automatically.
+        static std::unique_ptr<SequencerEngine> createWithPluginHost(
+            int32_t sampleRate,
+            size_t audioBufferSizeInFrames,
+            size_t umpBufferSizeInInts,
+            std::unique_ptr<uapmd_plugin_hosting::AudioPluginHostingAPI> pluginHost);
     };
 
 }
