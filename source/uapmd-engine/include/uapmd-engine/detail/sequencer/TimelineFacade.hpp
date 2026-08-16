@@ -205,6 +205,12 @@ public:
     virtual void addEmptyTrack(
         ProjectMutationOrigin origin,
         TrackAttachCallback callback) = 0;
+    // Records an already-published, fully constructed track as one addition.
+    // If capture or history registration fails, the track is removed again.
+    virtual void recordTrackAddition(
+        int32_t trackIndex,
+        ProjectMutationOrigin origin,
+        TrackAttachCallback callback) = 0;
     virtual void removeTrack(
         int32_t trackIndex,
         ProjectMutationOrigin origin,

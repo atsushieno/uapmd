@@ -31,6 +31,42 @@ UapmdJSRuntime::UapmdJSRuntime()
     registerAllMetadataListeners();
 }
 
+std::shared_ptr<UapmdJSRuntime::MutationJob> UapmdJSRuntime::createMutationJob()
+{
+    auto job = std::make_shared<MutationJob>();
+    job->id = next_mutation_job_id_.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard lock(mutation_jobs_mutex_);
+    mutation_jobs_[job->id] = job;
+    return job;
+}
+
+choc::value::Value UapmdJSRuntime::mutationJobValue(
+    const std::shared_ptr<MutationJob>& job)
+{
+    auto result = choc::value::createObject("MutationJob");
+    if (!job)
+        return result;
+    std::lock_guard lock(job->mutex);
+    result.setMember("jobId", job->id);
+    result.setMember("state", job->state);
+    result.setMember("error", job->error);
+    result.setMember("result", choc::json::parse(job->resultJson));
+    return result;
+}
+
+void UapmdJSRuntime::completeMutationJob(
+    const std::shared_ptr<MutationJob>& job,
+    choc::value::Value result,
+    std::string error)
+{
+    if (!job)
+        return;
+    std::lock_guard lock(job->mutex);
+    job->resultJson = choc::json::toString(result);
+    job->error = std::move(error);
+    job->state = job->error.empty() ? "completed" : "failed";
+}
+
 void UapmdJSRuntime::reinitialize()
 {
     jsContext_ = choc::javascript::createQuickJSContext();
@@ -779,26 +815,73 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_add_track", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_mutation_job_get", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto index = uapmd_app::AppModel::instance().addTrackLegacy();
-        return choc::value::createInt32(index);
+        const auto jobId = args.get<int32_t> (0, -1);
+        std::shared_ptr<MutationJob> job;
+        {
+            std::lock_guard lock(mutation_jobs_mutex_);
+            const auto it = mutation_jobs_.find(jobId);
+            if (it != mutation_jobs_.end())
+                job = it->second;
+        }
+        return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_remove_track", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_mutation_job_clear", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
+        const auto jobId = args.get<int32_t> (0, -1);
         bool removed = false;
-        if (trackIndex >= 0) {
-            removed = uapmd_app::AppModel::instance().removeTrackLegacy(trackIndex);
+        {
+            std::lock_guard lock(mutation_jobs_mutex_);
+            removed = mutation_jobs_.erase(jobId) != 0;
         }
         return choc::value::createBool(removed);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_sequencer_add_track", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        uapmd_app::AppModel::instance().removeAllTracksLegacy();
-        return choc::value::Value();
+        auto job = createMutationJob();
+        uapmd_app::AppModel::instance().addTrack(
+            [this, job](int32_t trackIndex, std::string error) {
+                auto result = choc::value::createObject("TrackMutationResult");
+                result.setMember("trackIndex", trackIndex);
+                completeMutationJob(job, std::move(result), std::move(error));
+            });
+        return mutationJobValue(job);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_remove_track", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto trackIndex = args.get<int32_t> (0, -1);
+        auto job = createMutationJob();
+        if (trackIndex < 0) {
+            completeMutationJob(
+                job,
+                choc::value::createObject("TrackMutationResult"),
+                "Invalid track index");
+            return mutationJobValue(job);
+        }
+        uapmd_app::AppModel::instance().removeTrack(
+            trackIndex,
+            [this, job](int32_t removedTrackIndex, std::string error) {
+                auto result = choc::value::createObject("TrackMutationResult");
+                result.setMember("trackIndex", removedTrackIndex);
+                completeMutationJob(job, std::move(result), std::move(error));
+            });
+        return mutationJobValue(job);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto job = createMutationJob();
+        uapmd_app::AppModel::instance().removeAllTracks(
+            [this, job](std::string error) {
+                auto result = choc::value::createObject("TrackClearResult");
+                result.setMember("success", error.empty());
+                completeMutationJob(job, std::move(result), std::move(error));
+            });
+        return mutationJobValue(job);
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -1862,41 +1945,46 @@ void UapmdJSRuntime::registerTimelineAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_import_midi_tracks", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_timeline_import_midi_tracks", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto filepath = args.get<std::string> (0, "");
-
-        auto obj = choc::value::createObject ("MidiTracksImportResult");
+        auto job = createMutationJob();
         if (filepath.empty()) {
-            obj.setMember ("success", false);
-            obj.setMember ("error", "invalid arguments");
-            obj.setMember ("warnings", choc::value::createEmptyArray());
-            obj.setMember ("importedTracks", choc::value::createEmptyArray());
-            return obj;
+            completeMutationJob(
+                job,
+                choc::value::createObject("MidiTracksImportResult"),
+                "Invalid file path");
+            return mutationJobValue(job);
         }
 
-        auto result = uapmd_app::AppModel::instance().importMidiTracksFromFileLegacy (filepath);
+        uapmd_app::AppModel::instance().importMidiTracksFromFile(
+            filepath,
+            [this, job](uapmd_app::AppModel::MidiTracksImportResult result) {
+                auto value = choc::value::createObject("MidiTracksImportResult");
+                value.setMember("success", result.success);
+                value.setMember("error", result.error);
 
-        obj.setMember ("success", result.success);
-        obj.setMember ("error", result.error);
+                auto warnings = choc::value::createEmptyArray();
+                for (const auto& warning : result.warnings)
+                    warnings.addArrayElement(warning);
+                value.setMember("warnings", warnings);
 
-        auto warnings = choc::value::createEmptyArray();
-        for (const auto& warning : result.warnings)
-            warnings.addArrayElement (warning);
-        obj.setMember ("warnings", warnings);
-
-        auto importedTracks = choc::value::createEmptyArray();
-        for (const auto& track : result.importedTracks) {
-            auto trackObj = choc::value::createObject ("MidiTrackImportResult");
-            trackObj.setMember ("trackIndex", track.trackIndex);
-            trackObj.setMember ("clipName", track.clipName);
-            trackObj.setMember ("success", track.success);
-            trackObj.setMember ("error", track.error);
-            importedTracks.addArrayElement (trackObj);
-        }
-        obj.setMember ("importedTracks", importedTracks);
-
-        return obj;
+                auto importedTracks = choc::value::createEmptyArray();
+                for (const auto& track : result.importedTracks) {
+                    auto trackValue = choc::value::createObject("MidiTrackImportResult");
+                    trackValue.setMember("trackIndex", track.trackIndex);
+                    trackValue.setMember("clipName", track.clipName);
+                    trackValue.setMember("success", track.success);
+                    trackValue.setMember("error", track.error);
+                    importedTracks.addArrayElement(trackValue);
+                }
+                value.setMember("importedTracks", importedTracks);
+                completeMutationJob(
+                    job,
+                    std::move(value),
+                    result.success ? std::string{} : std::move(result.error));
+            });
+        return mutationJobValue(job);
     });
 
     jsContext_.registerFunction ("__remidy_timeline_remove_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value

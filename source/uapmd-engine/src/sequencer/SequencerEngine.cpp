@@ -122,6 +122,31 @@ namespace uapmd {
         extension->applyBusesLayout(layout);
     }
 
+    class PreparedSequencerTrackImpl final : public PreparedSequencerTrack {
+    public:
+        PreparedSequencerTrackImpl(
+            std::unique_ptr<SequencerTrack> track,
+            AudioPluginHostingAPI& pluginHost)
+            : track_(std::move(track)), plugin_host_(pluginHost) {
+        }
+
+        SequencerTrack& track() override { return *track_; }
+
+        AudioPluginInstanceAPI* pluginInstance(int32_t instanceId) override {
+            return plugin_host_.getInstance(instanceId);
+        }
+
+        AudioPluginHostingAPI& pluginHost() { return plugin_host_; }
+
+        std::unique_ptr<SequencerTrack> releaseTrack() {
+            return std::move(track_);
+        }
+
+    private:
+        std::unique_ptr<SequencerTrack> track_;
+        AudioPluginHostingAPI& plugin_host_;
+    };
+
     // ─────────────────────────────────────────────────────────────────────────
 
     class SequencerEngineImpl : public SequencerEngine {
@@ -324,6 +349,17 @@ namespace uapmd {
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         void setSampleRate(int32_t newSampleRate) override;
         uapmd_track_index_t addEmptyTrack(
+            uapmd_track_index_t insertionIndex = -1) override;
+        std::unique_ptr<PreparedSequencerTrack> prepareTrack(
+            const std::string& graphProviderId = {}) override;
+        void addPluginToPreparedTrack(
+            PreparedSequencerTrack& prepared,
+            std::string& format,
+            std::string& pluginId,
+            std::function<void(int32_t instanceId, std::string error)> callback,
+            std::string restoreNodeId = {}) override;
+        uapmd_track_index_t publishPreparedTrack(
+            std::unique_ptr<PreparedSequencerTrack> prepared,
             uapmd_track_index_t insertionIndex = -1) override;
         bool removeTrack(uapmd_track_index_t trackIndex) override;
         bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) override;
@@ -1856,47 +1892,181 @@ namespace uapmd {
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack(
         uapmd_track_index_t insertionIndex) {
+        return publishPreparedTrack(prepareTrack(), insertionIndex);
+    }
+
+    std::unique_ptr<PreparedSequencerTrack> SequencerEngineImpl::prepareTrack(
+        const std::string& graphProviderId) {
+        auto track = SequencerTrack::create(
+            timeline_->audioGraphProviderRegistry(),
+            ump_buffer_size_in_ints,
+            graphProviderId);
+        if (!track)
+            return nullptr;
+        configureTrackRouting(track.get());
+        return std::make_unique<PreparedSequencerTrackImpl>(
+            std::move(track), *plugin_host);
+    }
+
+    void SequencerEngineImpl::addPluginToPreparedTrack(
+        PreparedSequencerTrack& prepared,
+        std::string& format,
+        std::string& pluginId,
+        std::function<void(int32_t instanceId, std::string error)> callback,
+        std::string restoreNodeId) {
+        auto* preparedImpl = dynamic_cast<PreparedSequencerTrackImpl*>(&prepared);
+        if (!preparedImpl || &preparedImpl->pluginHost() != plugin_host.get()) {
+            callback(-1, "The prepared track belongs to another engine");
+            return;
+        }
+
+        plugin_host->createPluginInstance(
+            static_cast<uint32_t>(sampleRate),
+            static_cast<uint32_t>(audio_buffer_size_in_frames),
+            default_input_channels_,
+            default_output_channels_,
+            false,
+            format,
+            pluginId,
+            [this, preparedImpl, callback = std::move(callback),
+             restoreNodeId = std::move(restoreNodeId)](
+                int32_t instanceId, std::string error) mutable {
+                auto complete = [this, preparedImpl, callback = std::move(callback),
+                                 instanceId, error = std::move(error),
+                                 restoreNodeId = std::move(restoreNodeId)]() mutable {
+                    if (instanceId < 0) {
+                        callback(-1, "Could not create plugin: " + error);
+                        return;
+                    }
+
+                    auto* instance = preparedImpl->pluginInstance(instanceId);
+                    if (!instance) {
+                        callback(-1, "The prepared plugin instance is unavailable");
+                        return;
+                    }
+
+                    auto& track = preparedImpl->track();
+                    const auto status = track.graph().appendNodeSimple(
+                        instanceId,
+                        instance,
+                        [this, instanceId] {
+                            if (auto* instance = plugin_host->getInstance(instanceId))
+                                instance->bypassed(true);
+                            plugin_host->deletePluginInstance(instanceId);
+                        },
+                        std::move(restoreNodeId));
+                    if (status != 0) {
+                        plugin_host->deletePluginInstance(instanceId);
+                        callback(
+                            -1,
+                            std::format(
+                                "Failed to append plugin to prepared track (status {})",
+                                status));
+                        return;
+                    }
+
+                    track.orderedInstanceIds().push_back(instanceId);
+                    const auto autoGroup = track.findAvailableGroup();
+                    if (autoGroup <= 15)
+                        track.setInstanceGroup(instanceId, autoGroup);
+                    callback(instanceId, {});
+                };
+
+                if (remidy::EventLoop::runningOnMainThread())
+                    complete();
+                else
+                    remidy::EventLoop::enqueueTaskOnMainThread(std::move(complete));
+            });
+    }
+
+    uapmd_track_index_t SequencerEngineImpl::publishPreparedTrack(
+        std::unique_ptr<PreparedSequencerTrack> prepared,
+        uapmd_track_index_t insertionIndex) {
+        auto* preparedImpl = dynamic_cast<PreparedSequencerTrackImpl*>(prepared.get());
+        if (!preparedImpl || &preparedImpl->pluginHost() != plugin_host.get())
+            return -1;
         if (insertionIndex < 0)
             insertionIndex = static_cast<uapmd_track_index_t>(tracks_.size());
         if (static_cast<size_t>(insertionIndex) > tracks_.size())
             return -1;
 
-        auto tr = SequencerTrack::create(
-            timeline_->audioGraphProviderRegistry(),
-            ump_buffer_size_in_ints,
-            "");
-        StructureMutationGuard mutationGuard(*this);
-        tracks_.insert(
-            tracks_.begin() + insertionIndex,
-            std::move(tr));
-        sequence.tracks.insert(
-            sequence.tracks.begin() + insertionIndex,
-            new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
-        track_processing_flags_.insert(
-            track_processing_flags_.begin() + insertionIndex,
-            std::make_unique<std::atomic<bool>>(false));
-        for (auto* listener : processing_lifecycle_listeners_)
-            if (listener)
-                listener->trackAdded(insertionIndex);
-        auto trackIndex = insertionIndex;
+        auto track = preparedImpl->releaseTrack();
+        if (!track)
+            return -1;
+        const auto instanceIds = track->orderedInstanceIds();
+        for (const auto instanceId : instanceIds)
+            if (!plugin_host->getInstance(instanceId))
+                return -1;
 
-        // Configure main bus (moved from RealtimeSequencer)
-        auto trackCtx = sequence.tracks[trackIndex];
-        trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
-        applyTrackBusesLayout(tracks_[static_cast<size_t>(trackIndex)].get(), AudioGraphBusesLayout{
-            static_cast<uint32_t>(trackCtx->audioInBusCount()),
-            static_cast<uint32_t>(trackCtx->audioOutBusCount()),
+        auto trackContext = std::make_unique<AudioProcessContext>(
+            sequence.masterContext(), ump_buffer_size_in_ints);
+        trackContext->configureMainBus(
+            default_input_channels_,
+            default_output_channels_,
+            audio_buffer_size_in_frames);
+        for (const auto instanceId : instanceIds)
+            if (auto* instance = plugin_host->getInstance(instanceId))
+                ensureContextBusConfiguration(trackContext.get(), instance->audioBuses());
+        applyTrackBusesLayout(track.get(), AudioGraphBusesLayout{
+            static_cast<uint32_t>(trackContext->audioInBusCount()),
+            static_cast<uint32_t>(trackContext->audioOutBusCount()),
             1,
             1,
         });
 
-        // Create pump ring buffer for this track and configure its slot contexts.
-        auto ring = std::make_unique<PumpTrackRing>(sequence.masterContext(), ump_buffer_size_in_ints);
-        for (auto& slot : ring->slots)
-            slot.ctx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
-        pump_rings_.insert(pump_rings_.begin() + trackIndex, std::move(ring));
-        // Placeholder; set per-quantum in pumpAudio().
-        pump_sequence_.tracks.insert(pump_sequence_.tracks.begin() + trackIndex, nullptr);
+        auto ring = std::make_unique<PumpTrackRing>(
+            sequence.masterContext(), ump_buffer_size_in_ints);
+        for (auto& slot : ring->slots) {
+            slot.ctx->configureMainBus(
+                default_input_channels_,
+                default_output_channels_,
+                audio_buffer_size_in_frames);
+            for (const auto instanceId : instanceIds)
+                if (auto* instance = plugin_host->getInstance(instanceId))
+                    ensureContextBusConfiguration(slot.ctx.get(), instance->audioBuses());
+        }
+
+        StructureMutationGuard mutationGuard(*this);
+        tracks_.insert(
+            tracks_.begin() + insertionIndex,
+            std::move(track));
+        sequence.tracks.insert(
+            sequence.tracks.begin() + insertionIndex,
+            trackContext.release());
+        track_processing_flags_.insert(
+            track_processing_flags_.begin() + insertionIndex,
+            std::make_unique<std::atomic<bool>>(false));
+        pump_rings_.insert(
+            pump_rings_.begin() + insertionIndex,
+            std::move(ring));
+        pump_sequence_.tracks.insert(
+            pump_sequence_.tracks.begin() + insertionIndex,
+            nullptr);
+
+        {
+            std::lock_guard<std::mutex> lock(instance_map_mutex_);
+            for (const auto instanceId : instanceIds)
+                if (auto* instance = plugin_host->getInstance(instanceId))
+                    plugin_instances_[instanceId] = instance;
+        }
+
+        for (size_t nodeIndex = 0; nodeIndex < instanceIds.size(); ++nodeIndex) {
+            const auto instanceId = instanceIds[nodeIndex];
+            plugin_host->onTrackGraphNodeAdded(
+                instanceId,
+                insertionIndex,
+                false,
+                static_cast<uint32_t>(nodeIndex));
+            if (auto* instance = plugin_host->getInstance(instanceId)) {
+                instance->bypassed(false);
+                notifyPluginInstanceAdded(instanceId, *instance);
+            }
+        }
+
+        for (auto* listener : processing_lifecycle_listeners_)
+            if (listener)
+                listener->trackAdded(insertionIndex);
+        auto trackIndex = insertionIndex;
 
         // Keep pre-allocated work vectors in sync.
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
@@ -1910,6 +2080,7 @@ namespace uapmd {
             trackIndex
         );
         refreshPlatformMidiTrackIndices();
+        refreshFunctionBlockMappings();
         notifyPluginGraphChanged();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();

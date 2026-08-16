@@ -8,9 +8,11 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <choc/text/choc_JSON.h>
 
 #include <uapmd-engine/uapmd-engine.hpp>
 #include <uapmd-app-model/detail/AppModel.hpp>
+#include <uapmd-app-model/detail/UapmdJSRuntime.hpp>
 
 namespace {
 
@@ -210,4 +212,41 @@ TEST(AppLayerUndoIntegrationTest, EmptyMidiClipCreationCompoundUndoAndRedo) {
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->empty()) << *result;
     EXPECT_EQ(track->clipManager().clipCount(), 1u);
+}
+
+TEST(AppLayerUndoIntegrationTest, JavaScriptTrackJobParticipatesInHistory) {
+    ScopedTestEventLoop eventLoop;
+    struct ScopedAppModelInstance {
+        ScopedAppModelInstance() { uapmd_app::AppModel::instantiate(); }
+        ~ScopedAppModelInstance() { uapmd_app::AppModel::cleanupInstance(); }
+    } appModelInstance;
+
+    auto& model = uapmd_app::AppModel::instance();
+    const auto initialTrackCount = model.trackCount();
+    uapmd_app::UapmdJSRuntime runtime;
+    runtime.ensureApiBootstrapped();
+    auto job = choc::json::parse(
+        runtime.evaluateScript("uapmd.sequencer.addTrack()"));
+    ASSERT_TRUE(job.isObject());
+    const auto jobId = job["jobId"].get<int32_t>();
+    ASSERT_GT(jobId, 0);
+
+    for (int i = 0; i < 200 && job["state"].get<std::string>() == "running"; ++i) {
+        remidy::EventLoop::processQueuedTasks();
+        job = choc::json::parse(runtime.evaluateScript(
+            "uapmd.mutations.getJob(" + std::to_string(jobId) + ")"));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_EQ(job["state"].get<std::string>(), "completed")
+        << job["error"].get<std::string>();
+    EXPECT_EQ(
+        job["result"]["trackIndex"].get<int32_t>(),
+        static_cast<int32_t>(initialTrackCount));
+    ASSERT_EQ(model.trackCount(), initialTrackCount + 1);
+
+    auto result = moveHistory(model, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->empty()) << *result;
+    EXPECT_EQ(model.trackCount(), initialTrackCount);
 }

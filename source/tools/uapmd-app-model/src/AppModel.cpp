@@ -1151,6 +1151,96 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
     std::string pluginIdCopy = pluginId;
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
 
+    if (!targetMasterTrack && trackIndex < 0) {
+        struct PreparedPluginTrackState {
+            std::unique_ptr<uapmd::PreparedSequencerTrack> prepared;
+        };
+        auto state = std::make_shared<PreparedPluginTrackState>();
+        state->prepared = sequencer_.engine()->prepareTrack();
+
+        auto complete = std::make_shared<
+            std::function<void(PluginInstanceResult)>>(
+            [this, completionCallback, resumeTransportAfterMutation](
+                PluginInstanceResult result) mutable {
+                resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
+                if (completionCallback)
+                    completionCallback(result);
+                for (auto& cb : instanceCreated)
+                    cb(result);
+            });
+
+        if (!state->prepared) {
+            PluginInstanceResult result;
+            result.instanceId = -1;
+            result.pluginName = pluginName;
+            result.error = "Failed to prepare a track for the plug-in";
+            (*complete)(std::move(result));
+            return;
+        }
+
+        sequencer_.engine()->addPluginToPreparedTrack(
+            *state->prepared,
+            formatCopy,
+            pluginIdCopy,
+            [this, state, config, pluginName, complete](
+                int32_t instanceId, std::string error) mutable {
+                PluginInstanceResult result;
+                result.instanceId = instanceId;
+                result.pluginName = pluginName;
+                result.error = std::move(error);
+                if (instanceId < 0 || !result.error.empty()) {
+                    state->prepared.reset();
+                    if (result.error.empty())
+                        result.error = "Failed to create the plug-in instance";
+                    (*complete)(std::move(result));
+                    return;
+                }
+
+                const auto newTrackIndex = sequencer_.engine()->publishPreparedTrack(
+                    std::move(state->prepared));
+                if (newTrackIndex < 0) {
+                    result.instanceId = -1;
+                    result.error = "Failed to publish the prepared plug-in track";
+                    (*complete)(std::move(result));
+                    return;
+                }
+
+                std::optional<PluginInstanceConfig> configOverride{config};
+                result = registerPluginInstanceInternal(instanceId, configOverride);
+                if (!result.error.empty()) {
+                    sequencer_.engine()->removeTrack(newTrackIndex);
+                    forgetRemovedPluginInstance(instanceId);
+                    (*complete)(std::move(result));
+                    return;
+                }
+
+                sequencer_.engine()->timeline().recordTrackAddition(
+                    newTrackIndex,
+                    uapmd::ProjectMutationOrigin::User,
+                    [this, newTrackIndex, instanceId,
+                     result = std::move(result), complete](
+                        int32_t recordedTrackIndex, std::string historyError) mutable {
+                        auto completed = std::move(result);
+                        if (recordedTrackIndex < 0 || !historyError.empty()) {
+                            completed.error = historyError.empty()
+                                ? "Could not record plug-in track creation in undo history"
+                                : std::move(historyError);
+                            forgetRemovedPluginInstance(instanceId);
+                            (*complete)(std::move(completed));
+                            return;
+                        }
+
+                        notifyTrackLayoutChanged(TrackLayoutChange{
+                            TrackLayoutChange::Type::Added,
+                            newTrackIndex});
+                        markProjectDirty();
+                        markTrackDirty(newTrackIndex);
+                        (*complete)(std::move(completed));
+                    });
+            });
+        return;
+    }
+
     auto instantiateCallback = [this, config, pluginName, completionCallback, resumeTransportAfterMutation](int32_t instanceId, int32_t trackIndex, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
@@ -1206,21 +1296,10 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
     };
 
     if (!targetMasterTrack) {
-        if (trackIndex < 0) {
-            // Kept on the raw path until plugin insertion itself participates
-            // in the same compound history step. Recording the empty track now
-            // would make redo restore it without the subsequently added plugin.
-            trackIndex = addTrackLegacy();
-            if (trackIndex < 0) {
-                instantiateCallback(-1, -1, "Failed to add track for new plugin instance");
-                return;
-            }
-        } else {
-            auto& tracks = sequencer_.engine()->tracks();
-            if (trackIndex >= static_cast<int32_t>(tracks.size())) {
-                instantiateCallback(-1, -1, std::format("Invalid track index {}", trackIndex));
-                return;
-            }
+        auto& tracks = sequencer_.engine()->tracks();
+        if (trackIndex >= static_cast<int32_t>(tracks.size())) {
+            instantiateCallback(-1, -1, std::format("Invalid track index {}", trackIndex));
+            return;
         }
     }
 
@@ -2886,106 +2965,6 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
     importNextTrack(importNextTrack);
 }
 
-uapmd_app::AppModel::MidiTracksImportResult
-uapmd_app::AppModel::importMidiTracksFromFileLegacy(const std::string& filepath) {
-    MidiTracksImportResult result;
-    auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
-    result.warnings = importResult.warnings;
-    if (!importResult.success) {
-        result.error = importResult.error.empty()
-            ? "Failed to import MIDI tracks."
-            : importResult.error;
-        return result;
-    }
-
-    std::vector<std::string> regularClipReferenceIds(importResult.tracks.size());
-    for (size_t index = 0; index < importResult.tracks.size(); ++index) {
-        auto& track = importResult.tracks[index];
-        const auto newTrackIndex = addTrackLegacy();
-        if (newTrackIndex < 0) {
-            result.warnings.push_back(
-                std::format("{}: Failed to create track", track.clipName));
-            result.importedTracks.push_back(
-                {-1, track.clipName, false, "Failed to create track"});
-            continue;
-        }
-
-        uapmd::TimelinePosition position;
-        position.samples = 0;
-        position.legacy_beats = 0.0;
-        auto clipResult = addMidiClipToTrack(
-            newTrackIndex,
-            position,
-            std::move(track.umpEvents),
-            std::move(track.umpTickTimestamps),
-            track.tickResolution,
-            track.detectedTempo,
-            std::move(track.tempoChanges),
-            std::move(track.timeSignatureChanges),
-            track.clipName,
-            track.needsFileSave);
-        if (!clipResult.success) {
-            result.warnings.push_back(
-                std::format("{}: {}", track.clipName, clipResult.error));
-            result.importedTracks.push_back(
-                {newTrackIndex, track.clipName, false, clipResult.error});
-            continue;
-        }
-
-        auto tracks = getTimelineTracks();
-        if (newTrackIndex >= 0
-            && newTrackIndex < static_cast<int32_t>(tracks.size()))
-            if (auto* createdClip = tracks[newTrackIndex]
-                    ->clipManager().getClip(clipResult.clipId))
-                regularClipReferenceIds[index] = createdClip->referenceId;
-        result.importedTracks.push_back(
-            {newTrackIndex, track.clipName, true, {}});
-    }
-
-    bool anchoredAnyMasterClip = false;
-    for (auto& masterTrackClip : importResult.masterTrackClips) {
-        uapmd::TimelinePosition position;
-        position.samples = 0;
-        position.legacy_beats = 0.0;
-        auto masterClipResult = addMasterMidiClip(
-            position,
-            {},
-            {},
-            masterTrackClip.tickResolution,
-            masterTrackClip.detectedTempo,
-            std::move(masterTrackClip.tempoChanges),
-            std::move(masterTrackClip.timeSignatureChanges),
-            masterTrackClip.clipName);
-        if (!masterClipResult.success) {
-            result.warnings.push_back(std::format(
-                "{}: {}", masterTrackClip.clipName, masterClipResult.error));
-            continue;
-        }
-
-        const auto sourceIndex = masterTrackClip.sourceTrackIndex;
-        if (sourceIndex < 0
-            || sourceIndex >= static_cast<int32_t>(regularClipReferenceIds.size())
-            || regularClipReferenceIds[static_cast<size_t>(sourceIndex)].empty())
-            continue;
-        if (auto* masterTrack = getMasterTimelineTrack()) {
-            masterTrack->clipManager().setClipAnchor(
-                masterClipResult.clipId,
-                uapmd::TimeReference::fromContainerStart(
-                    regularClipReferenceIds[static_cast<size_t>(sourceIndex)], 0.0),
-                static_cast<int32_t>(sampleRate()));
-            anchoredAnyMasterClip = true;
-        }
-    }
-    if (anchoredAnyMasterClip)
-        resolveAllClipAnchorsInAppModel(*this);
-
-    result.success = !result.importedTracks.empty()
-        || !importResult.masterTrackClips.empty();
-    if (!result.success && result.error.empty())
-        result.error = "No MIDI tracks were imported.";
-    return result;
-}
-
 int32_t uapmd_app::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
@@ -3067,25 +3046,6 @@ void uapmd_app::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& chan
     }
 }
 
-int32_t uapmd_app::AppModel::addTrackLegacy() {
-    if (!hidden_tracks_.empty()) {
-        auto it = hidden_tracks_.begin();
-        int32_t reusedIndex = *it;
-        hidden_tracks_.erase(it);
-        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, reusedIndex});
-        markProjectDirty();
-        return reusedIndex;
-    }
-
-    auto trackIndex = sequencer_.engine()->addEmptyTrack();
-    if (trackIndex < 0)
-        return -1;
-
-    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
-    markProjectDirty();
-    return trackIndex;
-}
-
 void uapmd_app::AppModel::addTrack(TrackMutationCallback callback) {
     if (!callback)
         return;
@@ -3103,26 +3063,6 @@ void uapmd_app::AppModel::addTrack(TrackMutationCallback callback) {
             markProjectDirty();
             callback(trackIndex, {});
         });
-}
-
-bool uapmd_app::AppModel::removeTrackLegacy(int32_t trackIndex) {
-    auto& uapmdTracks = sequencer_.engine()->tracks();
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(uapmdTracks.size()))
-        return false;
-
-    auto instances = uapmdTracks[trackIndex]->orderedInstanceIds();
-    for (int32_t instanceId : instances) {
-        removePluginInstance(instanceId);
-    }
-
-    // Clear clips via engine (which owns the timeline tracks)
-    sequencer_.engine()->timeline().clearClipsFromTrack(trackIndex);
-
-    hidden_tracks_.insert(trackIndex);
-    markProjectDirty();
-    markTrackDirty(trackIndex, false);
-    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Removed, trackIndex});
-    return true;
 }
 
 void uapmd_app::AppModel::removeTrack(
@@ -3272,13 +3212,6 @@ void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
             });
     };
     removeNext(removeNext);
-}
-
-void uapmd_app::AppModel::removeAllTracksLegacy() {
-    auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
-    for (int32_t i = 0; i < trackCount; ++i)
-        removeTrackLegacy(i);
-    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
 }
 
 void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,

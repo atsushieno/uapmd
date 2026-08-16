@@ -326,6 +326,12 @@ export const sequencer = {
         const tracks = __remidy_sequencer_getTrackInfos();
         return tracks.map(t => new TrackInfo(t));
     },
+    getMutationJob: function(jobId) {
+        return __remidy_mutation_job_get(jobId);
+    },
+    clearMutationJob: function(jobId) {
+        return __remidy_mutation_job_clear(jobId);
+    },
     addTrack: function() {
         return __remidy_sequencer_add_track();
     },

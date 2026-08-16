@@ -9,7 +9,12 @@
 
 namespace uapmd {
     class DefaultDeviceIODispatcher : public DeviceIODispatcher {
-        std::vector<std::function<uapmd_status_t(AudioProcessContext& data)>> callbacks{};
+        struct CallbackEntry {
+            uint64_t id{0};
+            std::function<uapmd_status_t(AudioProcessContext& data)> callback;
+        };
+        std::vector<CallbackEntry> callbacks{};
+        uint64_t next_callback_id_{1};
         AudioIODevice* audio_{};
         MidiIODevice* midi_in{};
         MidiIODevice* midi_out{};
@@ -39,7 +44,9 @@ namespace uapmd {
         MidiIODevice* midiIn() override;
         MidiIODevice* midiOut() override;
 
-        void addCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) override;
+        uint64_t addCallback(
+            std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) override;
+        void removeCallback(uint64_t callbackId) override;
         void clearOutputBuffers() override { if (audio_) audio_->clearOutputBuffers(); }
         uapmd_status_t start() override;
         uapmd_status_t stop() override;

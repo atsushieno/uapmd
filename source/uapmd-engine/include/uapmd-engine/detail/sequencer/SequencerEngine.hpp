@@ -19,10 +19,26 @@
 
 namespace uapmd {
     class SequencerEngine;
+    class SequencerTrack;
     class FrozenTrackManager;
     class TailProcessManager;
     class MidiRecorder;
     class PlaybackEngineExtension;
+
+    // A track under construction that is not yet visible to processing,
+    // timeline, or plug-in lifecycle observers.  Plug-in instantiation and
+    // state restoration may take arbitrarily long; publishing the completed
+    // preparation is the short synchronous commit.
+    class PreparedSequencerTrack {
+    protected:
+        PreparedSequencerTrack() = default;
+
+    public:
+        virtual ~PreparedSequencerTrack() = default;
+        virtual SequencerTrack& track() = 0;
+        virtual uapmd_plugin_hosting::AudioPluginInstanceAPI* pluginInstance(
+            int32_t instanceId) = 0;
+    };
 
     struct MidiPortTrackConnection {
         std::string portId;
@@ -92,6 +108,17 @@ namespace uapmd {
         // Appends by default. A non-negative insertion index is used when
         // restoring a removed track so its ordering is preserved.
         virtual uapmd_track_index_t addEmptyTrack(
+            uapmd_track_index_t insertionIndex = -1) = 0;
+        virtual std::unique_ptr<PreparedSequencerTrack> prepareTrack(
+            const std::string& graphProviderId = {}) = 0;
+        virtual void addPluginToPreparedTrack(
+            PreparedSequencerTrack& prepared,
+            std::string& format,
+            std::string& pluginId,
+            std::function<void(int32_t instanceId, std::string error)> callback,
+            std::string restoreNodeId = {}) = 0;
+        virtual uapmd_track_index_t publishPreparedTrack(
+            std::unique_ptr<PreparedSequencerTrack> prepared,
             uapmd_track_index_t insertionIndex = -1) = 0;
         // Add plugin to existing track
         // `restoreNodeId` gives the appended graph node a persistent identity

@@ -41,7 +41,7 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
         audioDevice->useAutoBufferSize(auto_buffer_size_enabled_);
     dispatcher->configure(umpBufferSizeInBytes, audioDevice, nullptr, nullptr, static_cast<uint32_t>(buffer_size_in_frames));
 
-    dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
+    dispatcher_callback_id_ = dispatcher->addCallback([this](uapmd::AudioProcessContext& process) {
         // Delegate all master audio processing to SequencerEngine
         return sequencer->processAudio(process);
     });
@@ -55,6 +55,10 @@ uapmd::RealtimeSequencer::~RealtimeSequencer() {
     // This prevents race conditions where the audio callback might still be
     // accessing the SequencerEngine's AudioProcessContext during destruction
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (dispatcher_callback_id_ != 0) {
+        dispatcher->removeCallback(dispatcher_callback_id_);
+        dispatcher_callback_id_ = 0;
+    }
 }
 
 std::string uapmd::RealtimeSequencer::getPluginFormat(int32_t instanceId) {

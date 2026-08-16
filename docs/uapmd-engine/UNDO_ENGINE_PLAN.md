@@ -3,9 +3,11 @@
 ## Status
 
 Phase 0 is done for its purpose: the mutation funnel, transactions, persistent
-identity and detachable fragments all exist. Phase 1 is in progress through
-structural clip operations and track-property history; the clipboard remains
-Phase 2 and has not started.
+identity and detachable fragments all exist. Phase 1 task 7 is complete,
+including detached asynchronous track restoration and application/remote track
+adoption. Tasks 8 through 11 still contain the remaining plug-in, application,
+dirty-state and resource-policy work. The clipboard remains Phase 2 and has not
+started.
 
 Two pieces of ARA work are deliberately left for later and are described under
 Remaining work. Neither gates Phase 1. The ARA work as a whole is unverified
@@ -333,8 +335,7 @@ the source file; a missing file is therefore a visible replay failure, as
 required by the resource-failure policy. `Mint` attachment for paste and
 duplicate remains Phase 2.
 
-Task 7's engine layer is now implemented, but application adoption and fully
-detached preparation remain open. `TimelineFacade` exposes asynchronous track
+Task 7 is implemented. `TimelineFacade` exposes asynchronous track
 add and remove operations. A delete captures plugin state, clips, graph bytes
 and extension state before removal, then records a persistent-ID operation;
 undo recreates the track at its former index and redo resolves it by persistent
@@ -349,13 +350,16 @@ removes the partially constructed track and reports the error, so the history
 cursor does not advance. Track-fragment capture likewise fails if graph
 serialization is unavailable instead of returning incomplete state.
 
-Two parts keep task 7 from being called complete. First, plugin instances are
-currently constructed only after a live engine track exists, so observers can
-briefly see that provisional track during an asynchronous attach even though a
-failure rolls it back. Fully satisfying the prepare-before-visible-commit rule
-requires a detached track/plugin construction facility. Second,
-`uapmd-app-model` adoption has started. Its primary GUI creation and deletion
-paths now use callback-based `addTrack()` and `removeTrack()`, which update layout,
+Track and plug-in construction now uses `PreparedSequencerTrack`. Plug-in
+instantiation, group assignment, opaque state loading and graph-topology
+restoration all finish on that detached object. Only then does
+`publishPreparedTrack()` insert the completed track into the live processing
+vectors. Clip and extension restoration plus document-event publication share
+the short synchronous commit transaction. A failed asynchronous creation or
+state load destroys the detached preparation without publishing a track.
+
+`uapmd-app-model` GUI creation and deletion paths use callback-based
+`addTrack()` and `removeTrack()`, which update layout,
 plugin registration/removal metadata, dirty state and user-visible errors only
 from the engine operation's completion. Physical track removal now performs the
 same hosted-plugin UI and virtual-MIDI cleanup as individual plugin removal.
@@ -367,16 +371,13 @@ The operation as a whole remains asynchronous: resource preparation may take
 arbitrarily long, while only insertion of a fully prepared track into the live
 document and publication of its events should be a short synchronous commit.
 
-The synchronous `AppModel::addTrackLegacy()`, `removeTrackLegacy()`,
-`removeAllTracksLegacy()` and `importMidiTracksFromFileLegacy()` remain
-temporarily for JavaScript, WebAssembly and MCP callers. They still use the
-tombstone/raw-engine policy and must be removed when those surfaces gain
-callback jobs or promises, not wrapped around an asynchronous wait. Bootstrap
-track creation is now explicitly internal and bypasses history without using a
-public compatibility method. Plugin creation that implicitly creates a track
-also remains on the legacy path until plugin insertion can join track creation
-in one compound history step; recording the empty track alone would make redo
-lose the subsequently added plugin.
+The synchronous `AppModel` `Legacy` track and MIDI-import APIs have been
+removed. JavaScript and WebAssembly track add, remove, clear and multi-track
+MIDI import return pollable mutation jobs. MCP track creation uses callback
+completion on its request thread. Bootstrap creation remains explicitly
+internal. Plug-in insertion with no target track prepares the track and plug-in
+together and records the completed `ProjectTrackFragment` as one structural
+history step, so undo removes both and redo restores both.
 
 Task 9's native application surface is partially implemented. `AppModel`
 exposes history state and callback-based `undo()` and `redo()`. Successful
@@ -472,9 +473,6 @@ after replay. While either capture is in flight, the AppModel reports history
 as busy and ignores undo/redo shortcuts; this prevents a command issued
 immediately after plug-in insertion from racing the pending history commit.
 
-- Plug-in creation and deletion on an existing track (implicit track creation
-  still needs a track-plus-instance compound).
-- Plug-in bypass.
 - Plug-in parameters changed by JavaScript or MCP, including any parameter
   notification path not yet routed through the facade.
 - Loading plug-in state and unsolicited persistent state changes reported by a
@@ -484,9 +482,9 @@ immediately after plug-in insertion from racing the pending history commit.
 - Adding and removing graph connections and other graph-topology replacement.
 
 This is the remaining substance of task 8. Plug-in insertion on a new track
-must record the track and instance together; existing-track insertion now
-records the instance, state and group, while exact graph placement and
-connections still need a structural fragment. Parameter changes require
+now records the track, instance, state, group and graph together. Existing-track
+insertion records the instance, state and group, while exact graph placement
+and connections still need a structural fragment. Parameter changes require
 begin/end gesture integration; playback automation remains excluded, while
 editing automation data is undoable authored content. Loading a whole state
 requires capturing the previous opaque state before applying the replacement.
@@ -495,9 +493,8 @@ temporary graph changes to revoke themselves.
 
 ### Application, JavaScript and MCP adoption
 
-- JavaScript/WebAssembly track add, remove, clear and synchronous multi-track
-  MIDI import still use the `Legacy` APIs.
-- MCP track creation still uses `addTrackLegacy()`.
+- JavaScript/WebAssembly track add, remove, clear and multi-track MIDI import
+  use pollable callback jobs, and MCP track creation uses the callback API.
 - JavaScript parameter, bypass and graph calls now reach the facade; creation,
   deletion, state loading, and any remaining raw hosted-UI notification paths
   still need the callback-based history funnel.
@@ -513,10 +510,6 @@ scope, and abandoned scopes need deterministic cancellation.
 
 ### Known gaps in operations already presented as undoable
 
-- Track attachment publishes a provisional live track before asynchronous
-  plug-in construction and state restoration finish. Detached preparation is
-  still required to prevent observers from seeing a half-built track.
-- Real asynchronous plug-in track restoration has no integration coverage.
 - File-backed audio redo intentionally fails when the source file is missing,
   but resource recovery or relinking UX is absent.
 - App dirty state still combines history-node state with older local dirty
@@ -635,18 +628,19 @@ existing projects. Its backward-compatible read path is covered by
 with no `id` member and so exercise the legacy path directly.
 
 Event batching, fragment round trips, the component mask, and the failure
-behaviour of capture are covered by tests. Not covered: anything requiring a
-real ARA plug-in, and the asynchronous plugin chains in track capture and
-attach, which need a plug-in to instantiate. Those remain unverified.
+behaviour of capture are covered by tests. Deferred plug-in creation and state
+loading are covered with a deterministic host, including the guarantee that no
+track is visible before success and that failure publishes nothing. A prepared
+track-plus-plug-in addition is also covered as one undo step. Not covered:
+anything requiring a real ARA plug-in or platform plug-in implementation.
 
 Two defects found along the way are recorded here. Anchors targeting
 master-track clips never resolve, because the writer and reader disagree on the
 identifier spelling and the master-track resolution loop is guarded by an
-inverted condition. The remaining `AppModel::removeTrackLegacy` compatibility
-path does not remove a track: it destroys the plugin instances, clears the clips
-and tombstones the index in `hidden_tracks_`, so a track slot is never reclaimed.
-The callback-based `AppModel::removeTrack` uses physical structural removal and
-does not have that defect.
+inverted condition. The former `AppModel::removeTrackLegacy` compatibility path
+only tombstoned a track index instead of reclaiming the slot. That compatibility
+path and the other synchronous `Legacy` track APIs have now been removed; the
+callback-based `AppModel::removeTrack` performs physical structural removal.
 
 ## Related documents
 

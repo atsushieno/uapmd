@@ -650,7 +650,18 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
 
 static choc::value::Value toolCreateTrack(const choc::value::Value&)
 {
-    auto trackIndex = AppModel::instance().addTrackLegacy();
+    auto completion = std::make_shared<std::promise<std::pair<int32_t, std::string>>>();
+    auto future = completion->get_future();
+    AppModel::instance().addTrack(
+        [completion](int32_t trackIndex, std::string error) mutable {
+            completion->set_value({trackIndex, std::move(error)});
+        });
+    if (future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+        throw std::runtime_error("Timed out creating track");
+    auto [trackIndex, error] = future.get();
+    if (trackIndex < 0 || !error.empty())
+        throw std::runtime_error(
+            error.empty() ? "Failed to create track" : std::move(error));
     auto result = choc::value::createObject ("");
     result.setMember ("trackIndex", trackIndex);
     return result;

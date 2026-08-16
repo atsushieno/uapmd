@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "DefaultDeviceIODispatcher.hpp"
@@ -24,8 +25,19 @@ namespace uapmd {
     MidiIODevice* DefaultDeviceIODispatcher::midiIn() { return midi_in; }
     MidiIODevice* DefaultDeviceIODispatcher::midiOut() { return midi_out; }
 
-    void DefaultDeviceIODispatcher::addCallback(std::function<uapmd_status_t(AudioProcessContext &)> &&callback) {
-        callbacks.emplace_back(std::move(callback));
+    uint64_t DefaultDeviceIODispatcher::addCallback(
+        std::function<uapmd_status_t(AudioProcessContext&)>&& callback) {
+        const auto callbackId = next_callback_id_++;
+        callbacks.push_back({callbackId, std::move(callback)});
+        return callbackId;
+    }
+
+    void DefaultDeviceIODispatcher::removeCallback(uint64_t callbackId) {
+        std::erase_if(
+            callbacks,
+            [callbackId](const CallbackEntry& entry) {
+                return entry.id == callbackId;
+            });
     }
 
     uapmd_status_t DefaultDeviceIODispatcher::start() {
@@ -89,8 +101,8 @@ namespace uapmd {
             audio_thread_id = std::this_thread::get_id();
             remidy::audioThreadIds().push_back(audio_thread_id.value());
         }
-        for (auto& callback : callbacks)
-            if (auto status = callback(data); status != 0)
+        for (auto& entry : callbacks)
+            if (auto status = entry.callback(data); status != 0)
                 return status;
         return 0;
     }

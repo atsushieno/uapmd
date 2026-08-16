@@ -217,6 +217,10 @@ private:
 
 class MutableTimingPlugin final : public uapmd_plugin_hosting::AudioPluginInstanceAPI {
 public:
+    explicit MutableTimingPlugin(bool deferStateLoad = false)
+        : defer_state_load_(deferStateLoad) {
+    }
+
     uint32_t latencyInSamples() const override {
         return latency_in_samples_.load(std::memory_order_acquire);
     }
@@ -259,8 +263,29 @@ public:
         bool,
         void* callbackContext,
         std::function<void(std::string, void*)> completed) override {
+        if (defer_state_load_) {
+            pending_state_ = std::move(state);
+            pending_state_context_ = callbackContext;
+            pending_state_callback_ = std::move(completed);
+            return;
+        }
         state_ = std::move(state);
         completed({}, callbackContext);
+    }
+
+    bool stateLoadPending() const { return static_cast<bool>(pending_state_callback_); }
+
+    void completeStateLoad(std::string error = {}) {
+        if (!pending_state_callback_)
+            return;
+        auto completed = std::move(pending_state_callback_);
+        auto* context = pending_state_context_;
+        pending_state_context_ = nullptr;
+        if (error.empty())
+            state_ = std::move(pending_state_);
+        else
+            pending_state_.clear();
+        completed(std::move(error), context);
     }
     double getParameterValue(int32_t index) override {
         double value = 0.0;
@@ -315,10 +340,21 @@ private:
     std::vector<uint8_t> state_{};
     TestPluginParameterSupport parameter_support_{};
     TestAudioBuses audio_buses_{};
+    bool defer_state_load_{false};
+    std::vector<uint8_t> pending_state_{};
+    void* pending_state_context_{nullptr};
+    std::function<void(std::string, void*)> pending_state_callback_{};
 };
 
 class TestPluginHostingAPI final : public uapmd_plugin_hosting::AudioPluginHostingAPI {
 public:
+    explicit TestPluginHostingAPI(
+        bool deferCreation = false,
+        bool deferStateLoad = false)
+        : defer_creation_(deferCreation),
+          defer_state_load_(deferStateLoad) {
+    }
+
     std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override { return {}; }
     void savePluginCatalogToFile(std::filesystem::path) override {}
     void performPluginScanning(bool) override {}
@@ -334,7 +370,12 @@ public:
         std::string&,
         std::function<void(int32_t, std::string)>&& callback) override {
         const auto instanceId = next_instance_id_++;
-        instances_[instanceId] = std::make_unique<MutableTimingPlugin>();
+        instances_[instanceId] =
+            std::make_unique<MutableTimingPlugin>(defer_state_load_);
+        if (defer_creation_) {
+            pending_creations_.push_back({instanceId, std::move(callback)});
+            return;
+        }
         callback(instanceId, {});
     }
 
@@ -362,9 +403,39 @@ public:
         return result;
     }
 
+    bool creationPending() const { return !pending_creations_.empty(); }
+
+    void completeNextCreation(std::string error = {}) {
+        if (pending_creations_.empty())
+            return;
+        auto pending = std::move(pending_creations_.front());
+        pending_creations_.erase(pending_creations_.begin());
+        if (!error.empty()) {
+            instances_.erase(pending.instanceId);
+            pending.callback(-1, std::move(error));
+            return;
+        }
+        pending.callback(pending.instanceId, {});
+    }
+
+    MutableTimingPlugin* mutableInstance(int32_t instanceId) {
+        const auto it = instances_.find(instanceId);
+        return it == instances_.end()
+            ? nullptr
+            : dynamic_cast<MutableTimingPlugin*>(it->second.get());
+    }
+
 private:
+    struct PendingCreation {
+        int32_t instanceId{-1};
+        std::function<void(int32_t, std::string)> callback;
+    };
+
     int32_t next_instance_id_{100};
     std::map<int32_t, std::unique_ptr<MutableTimingPlugin>> instances_{};
+    bool defer_creation_{false};
+    bool defer_state_load_{false};
+    std::vector<PendingCreation> pending_creations_{};
 };
 
 RenderedAudio readRenderedAudioFile(const fs::path& outputPath) {
@@ -1764,6 +1835,173 @@ TEST_F(SequencerEngineOutputTest, TrackFragmentAttachHonoursTheComponentMask) {
     EXPECT_EQ(tracks[emptyIndex]->clipManager().clipCount(), 0u);
     // The original is untouched by either capture or attach.
     EXPECT_EQ(tracks[trackIndex]->clipManager().clipCount(), 1u);
+}
+
+TEST_F(SequencerEngineOutputTest, TrackFragmentStaysDetachedDuringAsyncPluginRestoration) {
+    ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>(true, true);
+    auto* pluginHostObserver = pluginHost.get();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::move(pluginHost));
+    ASSERT_NE(engine, nullptr);
+    auto& timeline = engine->timeline();
+
+    uapmd::ProjectTrackFragment fragment;
+    fragment.referenceId = "track_async_restore";
+    fragment.volume = 0.4;
+    fragment.muted = true;
+    uapmd::ProjectTrackPluginFragment plugin;
+    plugin.nodeId = "plugin-node-persistent";
+    plugin.pluginId = "test.plugin";
+    plugin.format = "Test";
+    plugin.displayName = "Test Plugin";
+    plugin.groupIndex = 5;
+    plugin.state = {1, 3, 5, 7};
+    fragment.plugins.push_back(std::move(plugin));
+
+    uapmd::ProjectTrackAttachOptions options;
+    options.idPolicy = uapmd::ProjectObjectIdPolicy::Restore;
+    std::optional<int32_t> attachedIndex;
+    std::string attachError;
+    timeline.attachTrackFragment(
+        fragment,
+        options,
+        [&](int32_t trackIndex, std::string error) {
+            attachedIndex = trackIndex;
+            attachError = std::move(error);
+        });
+
+    ASSERT_TRUE(pluginHostObserver->creationPending());
+    EXPECT_TRUE(engine->tracks().empty());
+    EXPECT_TRUE(timeline.tracks().empty());
+    EXPECT_FALSE(attachedIndex.has_value());
+
+    pluginHostObserver->completeNextCreation();
+    auto instanceIds = pluginHostObserver->instanceIds();
+    ASSERT_EQ(instanceIds.size(), 1u);
+    auto* restoredPlugin = pluginHostObserver->mutableInstance(instanceIds.front());
+    ASSERT_NE(restoredPlugin, nullptr);
+    ASSERT_TRUE(restoredPlugin->stateLoadPending());
+    EXPECT_TRUE(engine->tracks().empty());
+    EXPECT_TRUE(timeline.tracks().empty());
+    EXPECT_EQ(engine->getPluginInstance(instanceIds.front()), nullptr);
+    EXPECT_FALSE(attachedIndex.has_value());
+
+    restoredPlugin->completeStateLoad();
+    ASSERT_TRUE(attachedIndex.has_value()) << attachError;
+    ASSERT_GE(*attachedIndex, 0) << attachError;
+    ASSERT_EQ(engine->tracks().size(), 1u);
+    ASSERT_EQ(timeline.tracks().size(), 1u);
+    EXPECT_EQ(timeline.tracks().front()->referenceId(), fragment.referenceId);
+    EXPECT_DOUBLE_EQ(engine->tracks().front()->trackGain(), 0.4);
+    EXPECT_TRUE(engine->tracks().front()->muted());
+    EXPECT_EQ(engine->getInstanceGroup(instanceIds.front()), 5u);
+    EXPECT_EQ(engine->getPluginInstance(instanceIds.front()), restoredPlugin);
+    EXPECT_EQ(restoredPlugin->saveStateSync(), fragment.plugins.front().state);
+}
+
+TEST_F(SequencerEngineOutputTest, FailedAsyncPluginStateRestoreNeverPublishesTrack) {
+    ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>(true, true);
+    auto* pluginHostObserver = pluginHost.get();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::move(pluginHost));
+    ASSERT_NE(engine, nullptr);
+
+    uapmd::ProjectTrackFragment fragment;
+    fragment.referenceId = "track_failed_restore";
+    uapmd::ProjectTrackPluginFragment plugin;
+    plugin.pluginId = "test.plugin";
+    plugin.format = "Test";
+    plugin.state = {2, 4, 6};
+    fragment.plugins.push_back(std::move(plugin));
+
+    std::optional<int32_t> attachedIndex;
+    std::string attachError;
+    engine->timeline().attachTrackFragment(
+        fragment,
+        {},
+        [&](int32_t trackIndex, std::string error) {
+            attachedIndex = trackIndex;
+            attachError = std::move(error);
+        });
+    ASSERT_TRUE(pluginHostObserver->creationPending());
+    pluginHostObserver->completeNextCreation();
+    const auto instanceIds = pluginHostObserver->instanceIds();
+    ASSERT_EQ(instanceIds.size(), 1u);
+    auto* restoredPlugin = pluginHostObserver->mutableInstance(instanceIds.front());
+    ASSERT_NE(restoredPlugin, nullptr);
+    ASSERT_TRUE(restoredPlugin->stateLoadPending());
+
+    restoredPlugin->completeStateLoad("state rejected");
+    ASSERT_TRUE(attachedIndex.has_value());
+    EXPECT_EQ(*attachedIndex, -1);
+    EXPECT_NE(attachError.find("state rejected"), std::string::npos);
+    EXPECT_TRUE(engine->tracks().empty());
+    EXPECT_TRUE(engine->timeline().tracks().empty());
+    EXPECT_TRUE(pluginHostObserver->instanceIds().empty());
+}
+
+TEST_F(SequencerEngineOutputTest, PreparedPluginTrackAdditionIsOneUndoStep) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+
+    auto prepared = engine->prepareTrack();
+    ASSERT_NE(prepared, nullptr);
+    std::string format = "Test";
+    std::string pluginId = "test.plugin";
+    std::optional<int32_t> instanceId;
+    std::string pluginError;
+    engine->addPluginToPreparedTrack(
+        *prepared,
+        format,
+        pluginId,
+        [&](int32_t restoredInstanceId, std::string error) {
+            instanceId = restoredInstanceId;
+            pluginError = std::move(error);
+        });
+    ASSERT_TRUE(instanceId.has_value()) << pluginError;
+
+    const auto trackIndex = engine->publishPreparedTrack(std::move(prepared));
+    ASSERT_GE(trackIndex, 0);
+    ASSERT_EQ(engine->tracks().size(), 1u);
+    ASSERT_EQ(engine->tracks().front()->orderedInstanceIds().size(), 1u);
+
+    std::optional<int32_t> recordedIndex;
+    std::string recordError;
+    auto& timeline = engine->timeline();
+    timeline.recordTrackAddition(
+        trackIndex,
+        uapmd::ProjectMutationOrigin::User,
+        [&](int32_t completedTrackIndex, std::string error) {
+            recordedIndex = completedTrackIndex;
+            recordError = std::move(error);
+        });
+    ASSERT_TRUE(recordedIndex.has_value()) << recordError;
+    ASSERT_EQ(*recordedIndex, trackIndex) << recordError;
+
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(engine->tracks().empty());
+    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
+
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_EQ(engine->tracks().size(), 1u);
+    EXPECT_EQ(engine->tracks().front()->orderedInstanceIds().size(), 1u);
 }
 
 TEST_F(SequencerEngineOutputTest, TrackFragmentCaptureIsRefusedInsideATransaction) {

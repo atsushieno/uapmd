@@ -1,8 +1,10 @@
 #pragma once
 
 #include <choc/javascript/choc_javascript.h>
+#include <atomic>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -27,6 +29,14 @@ struct ParameterUpdate {
  * any context that needs JavaScript execution with UAPMD APIs.
  */
 class UapmdJSRuntime {
+    struct MutationJob {
+        int32_t id{-1};
+        std::mutex mutex;
+        std::string state{"running"};
+        std::string resultJson{"null"};
+        std::string error;
+    };
+
     choc::javascript::Context jsContext_;
     bool apiBootstrapped_ = false;
 
@@ -39,6 +49,10 @@ class UapmdJSRuntime {
     std::unordered_set<int32_t> js_metadata_refresh_;
     std::mutex js_metadata_mutex_;
     std::map<int32_t, uapmd::EventListenerId> js_metadata_listener_ids_; // std::map for deterministic cleanup order
+
+    std::atomic<int32_t> next_mutation_job_id_{1};
+    std::mutex mutation_jobs_mutex_;
+    std::unordered_map<int32_t, std::shared_ptr<MutationJob>> mutation_jobs_;
 
 public:
     UapmdJSRuntime();
@@ -120,6 +134,12 @@ public:
     void unregisterAllMetadataListeners();
 
 private:
+    std::shared_ptr<MutationJob> createMutationJob();
+    choc::value::Value mutationJobValue(const std::shared_ptr<MutationJob>& job);
+    void completeMutationJob(
+        const std::shared_ptr<MutationJob>& job,
+        choc::value::Value result,
+        std::string error = {});
     void registerConsoleFunctions();
     void registerProjectAPI();
     void registerPluginCatalogAPI();

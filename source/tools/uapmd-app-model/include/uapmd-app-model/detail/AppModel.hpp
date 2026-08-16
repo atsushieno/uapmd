@@ -479,8 +479,6 @@ namespace uapmd_app {
         void importMidiTracksFromFile(
             const std::string& filepath,
             MidiTracksImportCallback callback);
-        MidiTracksImportResult importMidiTracksFromFileLegacy(
-            const std::string& filepath);
 
         // Device input routing
         int32_t addDeviceInputToTrack(
@@ -499,11 +497,6 @@ namespace uapmd_app {
         void addTrack(TrackMutationCallback callback);
         void removeTrack(int32_t trackIndex, TrackMutationCallback callback);
         void removeAllTracks(TrackClearCallback callback);
-        // Transitional synchronous entry points used by scripting and plugin
-        // creation until those surfaces adopt asynchronous completion.
-        int32_t addTrackLegacy();
-        bool removeTrackLegacy(int32_t trackIndex);
-        void removeAllTracksLegacy();
         bool isTrackHidden(int32_t trackIndex) const { return hidden_tracks_.contains(trackIndex); }
 
         // Sample rate access

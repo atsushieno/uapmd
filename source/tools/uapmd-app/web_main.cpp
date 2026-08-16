@@ -299,26 +299,8 @@ static int runWasmApp() {
     return EXIT_SUCCESS;
 }
 
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-void uapmd_debug_import_audio(const char* path) {
-    if (!path || !*path) {
-        std::cout << "[wasm-debug] import_audio: empty path\n";
-        return;
-    }
-
-    const std::string filepath(path);
+static void debugImportAudioIntoFirstTrack(const std::string& filepath) {
     auto& appModel = uapmd_app::AppModel::instance();
-    auto tracks = appModel.getTimelineTracks();
-    if (tracks.empty()) {
-        auto trackIndex = appModel.addTrackLegacy();
-        if (trackIndex < 0) {
-            std::cout << "[wasm-debug] import_audio: failed to create track\n";
-            return;
-        }
-        std::cout << "[wasm-debug] import_audio: created track " << trackIndex << "\n";
-    }
-
     auto reader = uapmd::createAudioFileReaderFromPath(filepath);
     if (!reader) {
         std::cout << "[wasm-debug] import_audio: failed to open '" << filepath << "'\n";
@@ -335,6 +317,34 @@ void uapmd_debug_import_audio(const char* path) {
     }
 
     std::cout << "[wasm-debug] import_audio: clip " << result.clipId << " added\n";
+}
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void uapmd_debug_import_audio(const char* path) {
+    if (!path || !*path) {
+        std::cout << "[wasm-debug] import_audio: empty path\n";
+        return;
+    }
+
+    const std::string filepath(path);
+    auto& appModel = uapmd_app::AppModel::instance();
+    if (!appModel.getTimelineTracks().empty()) {
+        debugImportAudioIntoFirstTrack(filepath);
+        return;
+    }
+
+    appModel.addTrack(
+        [filepath](int32_t trackIndex, std::string error) {
+            if (trackIndex < 0 || !error.empty()) {
+                std::cout << "[wasm-debug] import_audio: failed to create track: "
+                          << error << "\n";
+                return;
+            }
+            std::cout << "[wasm-debug] import_audio: created track "
+                      << trackIndex << "\n";
+            debugImportAudioIntoFirstTrack(filepath);
+        });
 }
 
 EMSCRIPTEN_KEEPALIVE

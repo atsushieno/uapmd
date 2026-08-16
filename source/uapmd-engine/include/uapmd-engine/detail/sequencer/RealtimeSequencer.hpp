@@ -21,6 +21,7 @@ namespace uapmd {
         bool auto_buffer_size_enabled_{false};
 
         DeviceIODispatcher* dispatcher{};
+        uint64_t dispatcher_callback_id_{0};
         std::unique_ptr<SequencerEngine> sequencer;
 
     public:

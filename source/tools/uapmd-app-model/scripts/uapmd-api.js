@@ -119,6 +119,11 @@ function __uapmdPollCreateJob(jobId) {
 }
 
 globalThis.uapmd = {
+    mutations: {
+        getJob: (jobId) => __remidy_mutation_job_get(jobId),
+        clearJob: (jobId) => __remidy_mutation_job_clear(jobId)
+    },
+
     project: {
         save: (path) => __remidy_project_save(path),
         load: (path) => __remidy_project_load(path),
@@ -222,6 +227,9 @@ globalThis.uapmd = {
         isPluginBypassed: (instanceId) => __remidy_sequencer_isPluginBypassed(instanceId),
         setPluginBypassed: (instanceId, bypassed) => __remidy_sequencer_setPluginBypassed(instanceId, bypassed),
         getTrackInfos: () => __remidy_sequencer_getTrackInfos(),
+        // Track mutations return a MutationJob. Poll it through
+        // uapmd.mutations.getJob(jobId); the engine model thread is never
+        // blocked waiting for asynchronous restoration or history capture.
         addTrack: () => __remidy_sequencer_add_track(),
         removeTrack: (trackIndex) => __remidy_sequencer_remove_track(trackIndex),
         clearTracks: () => __remidy_sequencer_clear_tracks(),
