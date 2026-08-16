@@ -778,10 +778,9 @@ static choc::value::Value toolSetTrackFreezePolicy(
     if (!engine || trackIndex < 0 ||
         static_cast<size_t>(trackIndex) >= engine->tracks().size())
         throw std::invalid_argument("trackIndex is invalid");
-    if (engine->timeline().setTrackFreezePolicyEnabled(
-            trackIndex,
-            policy == uapmd::FrozenTrackManager::FreezePolicy::On))
-        AppModel::instance().markProjectDirty();
+    engine->timeline().setTrackFreezePolicyEnabled(
+        trackIndex,
+        policy == uapmd::FrozenTrackManager::FreezePolicy::On);
     return serializeTrackFreezeState(trackIndex);
 }
 
@@ -1047,8 +1046,6 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
     if (hasMutation
         && !engine->timeline().setLatencyCompensationSettings(settings))
         throw std::runtime_error("failed to update latency compensation settings");
-    if (hasMutation)
-        appModel.markProjectDirty();
     auto result = choc::value::createObject("");
     result.setMember("success", true);
     return result;

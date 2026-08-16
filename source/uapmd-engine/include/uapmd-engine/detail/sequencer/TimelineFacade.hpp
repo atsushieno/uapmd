@@ -336,6 +336,10 @@ public:
         // Internal snapshots (for example track-freeze renders) must not look like
         // a user project save to document observers.
         bool emitDocumentEvent{true};
+        // A document provider may stage the project before committing it to its
+        // final storage. Such callers mark the captured history node only after
+        // the provider confirms the final write.
+        bool markHistorySaved{true};
     };
     using ProjectSaveCallback = std::function<void(ProjectResult)>;
     using ProjectLoadCallback = std::function<void(ProjectResult)>;

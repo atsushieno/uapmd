@@ -1,4 +1,5 @@
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -110,6 +111,38 @@ TEST(AppLayerUndoIntegrationTest, MasterMarkersUndoAndRedo) {
     ASSERT_TRUE(result->empty()) << *result;
     ASSERT_EQ(model.sequencer().engine()->masterTrackMarkers().size(), 1u);
     EXPECT_EQ(model.sequencer().engine()->masterTrackMarkers()[0].markerId, "master-marker");
+}
+
+TEST(AppLayerUndoIntegrationTest, ProjectDirtyStateFollowsSavedHistoryNode) {
+    ScopedTestEventLoop eventLoop;
+    auto* dispatcher = uapmd::defaultDeviceIODispatcher();
+    uapmd_app::AppModel model(256, 65536, 48000, dispatcher);
+    const auto projectPath = std::filesystem::temp_directory_path()
+        / "uapmd-undo-dirty-state-test.uapmd";
+    std::error_code cleanupError;
+    std::filesystem::remove(projectPath, cleanupError);
+
+    const auto saveResult = model.saveProjectSync(projectPath);
+    ASSERT_TRUE(saveResult.success) << saveResult.error;
+    EXPECT_FALSE(model.sequencer().engine()->isProjectDirty());
+
+    std::optional<int32_t> added;
+    std::string addError;
+    model.addTrack([&](int32_t index, std::string error) {
+        added = index;
+        addError = std::move(error);
+    });
+    pumpUntil([&] { return added.has_value(); });
+    ASSERT_TRUE(added.has_value()) << addError;
+    ASSERT_GE(*added, 0);
+    EXPECT_TRUE(model.sequencer().engine()->isProjectDirty());
+
+    const auto undoResult = moveHistory(model, false);
+    ASSERT_TRUE(undoResult.has_value());
+    ASSERT_TRUE(undoResult->empty()) << *undoResult;
+    EXPECT_FALSE(model.sequencer().engine()->isProjectDirty());
+
+    std::filesystem::remove(projectPath, cleanupError);
 }
 
 TEST(AppLayerUndoIntegrationTest, TrackAddRemoveAndClearUndoAndRedo) {

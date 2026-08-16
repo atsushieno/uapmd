@@ -50,6 +50,7 @@ namespace uapmd {
             size_t next_pending_state{0};
             uint64_t history_state_id{0};
             bool emit_document_event{true};
+            bool mark_history_saved{true};
             TimelineFacade::ProjectSaveCallback callback;
         };
 
@@ -3262,6 +3263,7 @@ namespace uapmd {
             auto operation = std::make_shared<PendingProjectSaveContext>();
             operation->project_file = projectFile;
             operation->emit_document_event = options.emitDocumentEvent;
+            operation->mark_history_saved = options.markHistorySaved;
             operation->history_state_id = undo_engine_.state().currentStateId;
             operation->callback = std::move(callback);
 
@@ -3476,8 +3478,9 @@ namespace uapmd {
                         return;
                     }
                     auto finishSuccessfulSave = [this, operation, complete]() mutable {
-                        if (operation->emit_document_event) {
+                        if (operation->mark_history_saved)
                             undo_engine_.markStateSaved(operation->history_state_id);
+                        if (operation->emit_document_event) {
                             ProjectDocumentEvent savedEvent(ProjectDocumentEventKind::ProjectSaved, "project-saved");
                             savedEvent.setProjectId(operation->project_file.string())
                                 .setDetail("source.file", operation->project_file.string());

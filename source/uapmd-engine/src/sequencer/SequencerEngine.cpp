@@ -587,6 +587,11 @@ namespace uapmd {
         // Timeline facade
         TimelineFacade& timeline() override { return *timeline_; }
 
+        bool isProjectDirty() const override {
+            return timeline_->hasPendingPluginMutations()
+                || timeline_->undoEngine().state().dirty;
+        }
+
     private:
         void removeTrack(size_t index);
 

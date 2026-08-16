@@ -489,7 +489,7 @@ uapmd_app::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSi
     constexpr int kInitialTrackCount = 3;
     for (int i = 0; i < kInitialTrackCount; ++i)
         sequencer_.engine()->addEmptyTrack();
-    clearProjectDirtyState();
+    clearTrackDirtyState();
 }
 
 void uapmd_app::AppModel::notifyUiReady() {
@@ -977,21 +977,9 @@ void uapmd_app::AppModel::resumeTransportAfterPluginMutation(bool resumeTranspor
     transportController_->resume();
 }
 
-bool uapmd_app::AppModel::isProjectDirty() const {
-    std::lock_guard lock(dirtyStateMutex_);
-    return sequencer_.engine()->timeline().hasPendingPluginMutations()
-        || project_structure_dirty_ || !dirty_tracks_.empty()
-        || sequencer_.engine()->timeline().undoEngine().state().dirty;
-}
-
 bool uapmd_app::AppModel::isTrackDirty(int32_t trackIndex) const {
     std::lock_guard lock(dirtyStateMutex_);
     return dirty_tracks_.contains(trackIndex);
-}
-
-void uapmd_app::AppModel::markProjectDirty() {
-    std::lock_guard lock(dirtyStateMutex_);
-    project_structure_dirty_ = true;
 }
 
 void uapmd_app::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
@@ -1025,10 +1013,9 @@ void uapmd_app::AppModel::handlePluginStateChange(int32_t instanceId) {
     markPluginInstanceTrackDirty(instanceId);
 }
 
-void uapmd_app::AppModel::clearProjectDirtyState() {
+void uapmd_app::AppModel::clearTrackDirtyState() {
     {
         std::lock_guard lock(dirtyStateMutex_);
-        project_structure_dirty_ = false;
         dirty_tracks_.clear();
     }
 }
@@ -1233,7 +1220,6 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
                         notifyTrackLayoutChanged(TrackLayoutChange{
                             TrackLayoutChange::Type::Added,
                             newTrackIndex});
-                        markProjectDirty();
                         markTrackDirty(newTrackIndex);
                         (*complete)(std::move(completed));
                     });
@@ -1461,8 +1447,6 @@ void uapmd_app::AppModel::removePluginInstance(int32_t instanceId) {
                 if (!shutting_down_) {
                     if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
                         markTrackDirty(trackIndex);
-                    else
-                        markProjectDirty();
                 }
                 sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
                 if (!shutting_down_) {
@@ -3065,7 +3049,6 @@ void uapmd_app::AppModel::addTrack(TrackMutationCallback callback) {
             }
             notifyTrackLayoutChanged(
                 TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
-            markProjectDirty();
             callback(trackIndex, {});
         });
 }
@@ -3123,7 +3106,6 @@ void uapmd_app::AppModel::removeTrack(
                 dirty_tracks_ = std::move(shiftedDirtyTracks);
             }
 
-            markProjectDirty();
             notifyTrackLayoutChanged(
                 TrackLayoutChange{TrackLayoutChange::Type::Removed, trackIndex});
             callback(trackIndex, {});
@@ -3240,8 +3222,16 @@ void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
 
     const auto stagePath = stage->get() / std::filesystem::path("project.uapmd");
 
-    saveProject(stagePath,
-                [this, provider, handle = std::move(handle), callback = std::move(callback), stage](ProjectResult saveResult) mutable {
+    auto* engine = sequencer_.engine();
+    TimelineFacade::ProjectSaveOptions options;
+    options.excludedTrackIndexes.assign(hidden_tracks_.begin(), hidden_tracks_.end());
+    options.markHistorySaved = false;
+    const auto historyStateId = engine->timeline().undoEngine().state().currentStateId;
+    engine->timeline().saveProject(
+        stagePath,
+        std::move(options),
+        [this, provider, handle = std::move(handle), callback = std::move(callback), stage,
+         historyStateId](TimelineFacade::ProjectResult saveResult) mutable {
                     if (!saveResult.success) {
                         if (callback)
                             callback({false, saveResult.error});
@@ -3257,11 +3247,13 @@ void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
                     }
 
                     provider->writeDocument(std::move(handle), std::move(archive),
-                                            [this, callback = std::move(callback), stage](DocumentIOResult ioResult) mutable {
-                                                if (ioResult.success)
-                                                    clearProjectDirtyState();
-                                                else
-                                                    markProjectDirty();
+                                            [this, callback = std::move(callback), stage,
+                                             historyStateId](DocumentIOResult ioResult) mutable {
+                                                if (ioResult.success) {
+                                                    sequencer_.engine()->timeline().undoEngine()
+                                                        .markStateSaved(historyStateId);
+                                                    clearTrackDirtyState();
+                                                }
                                                 if (callback)
                                                     callback(ioResult);
                                             });
@@ -3397,7 +3389,7 @@ void uapmd_app::AppModel::saveProject(const std::filesystem::path& projectFile, 
         std::move(options),
         [this, callback = std::move(callback)](TimelineFacade::ProjectResult result) mutable {
             if (result.success)
-                clearProjectDirtyState();
+                clearTrackDirtyState();
             if (callback)
                 callback(ProjectResult{result.success, std::move(result.error)});
         });
@@ -3444,7 +3436,7 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
                 return;
             }
 
-            clearProjectDirtyState();
+            clearTrackDirtyState();
 
             // Notify UI about all tracks that were created
             hidden_tracks_.clear();

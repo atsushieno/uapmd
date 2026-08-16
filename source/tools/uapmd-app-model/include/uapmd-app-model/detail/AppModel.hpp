@@ -153,7 +153,6 @@ namespace uapmd_app {
         std::shared_ptr<PluginStateChangeDispatch> plugin_state_change_dispatch_{
             std::make_shared<PluginStateChangeDispatch>()};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
-        bool project_structure_dirty_{false};
         bool project_load_in_progress_{false};
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
         std::vector<std::unique_ptr<ScopedTempDir>> retiredProjectTempDirs_;
@@ -213,12 +212,10 @@ namespace uapmd_app {
         bool getTrackGraphConnections(int32_t trackIndex, std::vector<uapmd_graph::AudioPluginGraphConnection>& connections, std::string& error) const;
         bool connectTrackGraph(int32_t trackIndex, const uapmd_graph::AudioPluginGraphConnection& connection, std::string& error);
         bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
-        bool isProjectDirty() const;
         bool isTrackDirty(int32_t trackIndex) const;
-        void markProjectDirty();
         void markTrackDirty(int32_t trackIndex, bool dirty = true);
         void markPluginInstanceTrackDirty(int32_t instanceId);
-        void clearProjectDirtyState();
+        void clearTrackDirtyState();
 
         using HistoryMutationCallback = std::function<void(std::string error)>;
         uapmd::ProjectUndoState historyState() const;

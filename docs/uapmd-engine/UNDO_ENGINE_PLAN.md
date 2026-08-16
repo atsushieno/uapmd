@@ -5,9 +5,9 @@
 Phase 0 is done for its purpose: the mutation funnel, transactions, persistent
 identity and detachable fragments all exist. Phase 1 task 7 is complete,
 including detached asynchronous track restoration and application/remote track
-adoption. Tasks 8 through 11 still contain the remaining plug-in, application,
-dirty-state and resource-policy work. The clipboard remains Phase 2 and has not
-started.
+adoption. Tasks 8, 9 and 11 still contain the remaining plug-in, application
+and resource-policy work; Task 10's history-node dirty-state integration is
+complete. The clipboard remains Phase 2 and has not started.
 
 Two pieces of ARA work are deliberately left for later and are described under
 Remaining work. Neither gates Phase 1. The ARA work as a whole is unverified
@@ -389,6 +389,14 @@ error UI. JavaScript and MCP now expose asynchronous history jobs and history
 state queries, and can open, finish and cancel named remote compound scopes.
 A richer long-running progress surface remains open.
 
+Task 10's dirty-state integration now derives `SequencerEngine::isProjectDirty()`
+from the undo history node and pending plug-in mutations; AppModel only queries
+that engine-owned document state, while per-track dirty flags remain
+cache/render invalidation state. File saves capture the history-node ID
+at serialization start and mark that node saved only after success. Document
+provider saves keep the staged history node unsaved until the provider confirms
+the final write, so a failed provider write cannot falsely clear the document.
+
 ## Phase 1 remaining work
 
 The history core is usable, but Phase 1 is not close to complete at the
@@ -525,9 +533,6 @@ scope, and abandoned scopes need deterministic cancellation.
 
 - File-backed audio redo intentionally fails when the source file is missing,
   but resource recovery or relinking UX is absent.
-- App dirty state still combines history-node state with older local dirty
-  flags. Undoing back to the saved history node therefore does not yet
-  guarantee that the application reports a clean document.
 - Replay currently republishes the complete track layout rather than emitting
   a precise app-model delta. This is functional but should be narrowed once
   every mutation is behind the funnel.

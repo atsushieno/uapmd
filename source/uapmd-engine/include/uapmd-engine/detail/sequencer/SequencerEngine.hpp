@@ -243,6 +243,9 @@ namespace uapmd {
 
         // Timeline clip management and project loading
         virtual TimelineFacade& timeline() = 0;
+        // True when the project document differs from its saved history node
+        // or an asynchronous project mutation is still being committed.
+        virtual bool isProjectDirty() const = 0;
 
         static std::unique_ptr<SequencerEngine> create(
             int32_t sampleRate,

@@ -676,8 +676,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
             return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            if (uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
-                uapmd_app::AppModel::instance().markProjectDirty();
+            uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled);
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -756,8 +755,7 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
             return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            if (uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled))
-                uapmd_app::AppModel::instance().markProjectDirty();
+            uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled);
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -1425,11 +1423,10 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 policyTooltip.c_str());
         if (frozen || queued)
             ImGui::PopStyleColor(3);
-        if (freezeClicked &&
+        if (freezeClicked)
             sequencer.engine()->timeline().setTrackFreezePolicyEnabled(
                 trackIndex,
-                nextPolicy == uapmd::FrozenTrackManager::FreezePolicy::On))
-            appModel.markProjectDirty();
+                nextPolicy == uapmd::FrozenTrackManager::FreezePolicy::On);
         ImGui::SameLine();
     }
     if (trackBusy)

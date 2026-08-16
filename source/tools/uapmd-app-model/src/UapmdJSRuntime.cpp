@@ -1721,8 +1721,6 @@ void UapmdJSRuntime::registerTimelineAPI()
             result.setMember("error", "failed to update latency compensation settings");
             return result;
         }
-        if (hasMutation)
-            appModel.markProjectDirty();
         result.setMember("success", true);
         return result;
     });

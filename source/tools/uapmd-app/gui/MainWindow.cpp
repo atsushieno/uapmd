@@ -740,7 +740,7 @@ void MainWindow::render(void* window) {
 }
 
 bool MainWindow::requestClose() {
-    if (noConfirmOnQuit_ || !uapmd_app::AppModel::instance().isProjectDirty()) {
+    if (noConfirmOnQuit_ || !uapmd_app::AppModel::instance().sequencer().engine()->isProjectDirty()) {
         isOpen_ = false;
         return true;
     }
@@ -773,7 +773,7 @@ void MainWindow::renderUnsavedProjectDialog() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard", ImVec2(100.0f * uiScale_, 0.0f))) {
-            uapmd_app::AppModel::instance().clearProjectDirtyState();
+            uapmd_app::AppModel::instance().clearTrackDirtyState();
             closeRequested_ = false;
             isOpen_ = false;
             ImGui::CloseCurrentPopup();
