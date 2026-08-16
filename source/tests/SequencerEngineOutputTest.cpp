@@ -257,6 +257,9 @@ public:
         if (completed)
             completed({}, nullptr);
     }
+    void setStateFromHost(std::vector<uint8_t> state) {
+        state_ = std::move(state);
+    }
     std::vector<uint8_t> saveStateSync() override { return state_; }
     void loadStateSync(std::vector<uint8_t>& state) override { state_ = state; }
     void requestState(
@@ -419,11 +422,20 @@ public:
         return it == instances_.end() ? nullptr : it->second.get();
     }
 
-    remidy::EventListenerId addPluginStateChangeListener(std::function<void(int32_t)>) override {
-        return 0;
+    remidy::EventListenerId addPluginStateChangeListener(
+        std::function<void(int32_t)> listener) override {
+        plugin_state_change_listener_ = std::move(listener);
+        return 1;
     }
 
-    void removePluginStateChangeListener(remidy::EventListenerId) override {}
+    void removePluginStateChangeListener(remidy::EventListenerId) override {
+        plugin_state_change_listener_ = {};
+    }
+
+    void notifyPluginStateChanged(int32_t instanceId) {
+        if (plugin_state_change_listener_)
+            plugin_state_change_listener_(instanceId);
+    }
 
     std::vector<int32_t> instanceIds() override {
         std::vector<int32_t> result;
@@ -467,6 +479,7 @@ private:
     bool defer_creation_{false};
     bool defer_state_load_{false};
     std::vector<PendingCreation> pending_creations_{};
+    std::function<void(int32_t)> plugin_state_change_listener_{};
 };
 
 RenderedAudio readRenderedAudioFile(const fs::path& outputPath) {
@@ -1277,11 +1290,13 @@ TEST_F(SequencerEngineOutputTest, DeviceInputCreationChangeAndRemovalUndoAndRedo
 
 TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) {
     ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>();
+    auto* pluginHostObserver = pluginHost.get();
     auto engine = uapmd::SequencerEngine::createWithPluginHost(
         48000,
         256,
         65536,
-        std::make_unique<TestPluginHostingAPI>());
+        std::move(pluginHost));
     ASSERT_NE(engine, nullptr);
     const auto trackIndex = engine->addEmptyTrack();
     ASSERT_GE(trackIndex, 0);
@@ -1434,6 +1449,20 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(stateResult.has_value());
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{7}));
+
+    plugin->setStateFromHost({9, 8, 7});
+    pluginHostObserver->notifyPluginStateChanged(*instanceId);
+    drain();
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Change plug-in state");
+    stateResult = moveAndDrain(false);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{7}));
+    stateResult = moveAndDrain(true);
+    ASSERT_TRUE(stateResult.has_value());
+    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
+    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
 
     ASSERT_TRUE(timeline.undoEngine().clear());
     std::optional<uapmd::ProjectUndoResult> lifecycleResult;

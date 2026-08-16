@@ -1441,6 +1441,10 @@ namespace uapmd {
         std::unordered_map<int32_t, std::unordered_map<int32_t, double>> plugin_parameter_values_{};
         std::unordered_map<int32_t, remidy::EventListenerId> plugin_parameter_listener_ids_{};
         std::atomic<uint32_t> plugin_parameter_mutation_depth_{0};
+        std::unordered_map<int32_t, std::vector<uint8_t>> plugin_state_values_{};
+        std::unordered_set<int32_t> pending_plugin_state_captures_{};
+        remidy::EventListenerId plugin_state_change_listener_id_{0};
+        std::atomic<uint32_t> plugin_state_mutation_depth_{0};
         std::atomic<uint32_t> pending_plugin_mutations_{0};
         uint32_t suppress_plugin_graph_notifications_{0};
 
@@ -1929,6 +1933,12 @@ namespace uapmd {
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
         {
             engine_.addPluginInstanceLifecycleListener(*this);
+            if (auto* pluginHost = engine_.pluginHost())
+                plugin_state_change_listener_id_ =
+                    pluginHost->addPluginStateChangeListener(
+                        [this](int32_t instanceId) {
+                            onPluginStateChanged(instanceId);
+                        });
             audio_graph_provider_registry_ = AudioGraphProviderRegistry::create();
             timeline_.tempo = 120.0;
             timeline_.timeSignatureNumerator = 4;
@@ -1938,6 +1948,11 @@ namespace uapmd {
         }
 
         ~TimelineFacadeImpl() override {
+            if (plugin_state_change_listener_id_ != 0) {
+                if (auto* pluginHost = engine_.pluginHost())
+                    pluginHost->removePluginStateChangeListener(
+                        plugin_state_change_listener_id_);
+            }
             engine_.removePluginInstanceLifecycleListener(*this);
             for (const auto& [instanceId, listenerId] : plugin_parameter_listener_ids_) {
                 if (auto* instance = engine_.getPluginInstance(instanceId)) {
@@ -2434,7 +2449,7 @@ namespace uapmd {
                 auto pluginId = plugin.pluginId;
                 engine_.addPluginToPreparedTrack(
                     *state->prepared, format, pluginId,
-                    [source, options, state, step, index, fail](
+                    [this, source, options, state, step, index, fail](
                         int32_t instanceId, std::string error) {
                         auto& added = source->plugins[index];
                         if (!error.empty() || instanceId < 0) {
@@ -2476,11 +2491,17 @@ namespace uapmd {
                             (*step)(index + 1);
                             return;
                         }
+                        plugin_state_mutation_depth_.fetch_add(
+                            1,
+                            std::memory_order_acq_rel);
                         instance->loadState(
                             added.state, StateContextType::Project, false, nullptr,
-                            [step, index, fail,
+                            [this, step, index, fail,
                              displayName = added.displayName,
                              pluginId = added.pluginId](std::string loadError, void*) {
+                                plugin_state_mutation_depth_.fetch_sub(
+                                    1,
+                                    std::memory_order_acq_rel);
                                 if (!loadError.empty()) {
                                     (*fail)(std::format(
                                         "Failed to restore state for {} while attaching the track: {}",
@@ -4315,9 +4336,86 @@ namespace uapmd {
                 value = instance->getParameterValue(index);
         }
 
+        void onPluginStateChanged(
+            int32_t instanceId,
+            bool historySuppressed = false) {
+            historySuppressed = historySuppressed
+                || plugin_state_mutation_depth_.load(std::memory_order_acquire) != 0;
+            if (!remidy::EventLoop::runningOnMainThread()) {
+                dispatchToModelThread([this, instanceId, historySuppressed] {
+                    onPluginStateChanged(instanceId, historySuppressed);
+                });
+                return;
+            }
+            if (pending_plugin_state_captures_.contains(instanceId))
+                return;
+            auto* instance = engine_.getPluginInstance(instanceId);
+            if (!instance)
+                return;
+            pending_plugin_state_captures_.insert(instanceId);
+            instance->requestState(
+                StateContextType::Project,
+                false,
+                nullptr,
+                [this, instanceId, historySuppressed](
+                    std::vector<uint8_t> state,
+                    std::string error,
+                    void*) mutable {
+                    dispatchToModelThread(
+                        [this,
+                         instanceId,
+                         historySuppressed,
+                         state = std::move(state),
+                         error = std::move(error)]() mutable {
+                            pending_plugin_state_captures_.erase(instanceId);
+                            if (!error.empty())
+                                return;
+                            auto previous = plugin_state_values_.find(instanceId);
+                            const bool changed = previous != plugin_state_values_.end()
+                                && previous->second != state;
+                            auto before = previous == plugin_state_values_.end()
+                                ? std::vector<uint8_t>{}
+                                : previous->second;
+                            plugin_state_values_[instanceId] = state;
+                            if (!changed || historySuppressed)
+                                return;
+                            auto target = pluginTargetForInstance(instanceId);
+                            if (!target)
+                                return;
+                            auto apply = [this] (
+                                std::string_view trackReferenceId,
+                                std::string_view nodeId,
+                                const std::vector<uint8_t>& value,
+                                ProjectUndoCompletion completion) {
+                                applyPluginState(
+                                    std::string(trackReferenceId),
+                                    std::string(nodeId),
+                                    value,
+                                    std::move(completion));
+                            };
+                            auto operation =
+                                std::make_shared<PluginStateUndoOperation>(
+                                    target->trackReferenceId,
+                                    target->nodeId,
+                                    std::move(before),
+                                    std::move(state),
+                                    std::move(apply),
+                                    "Change plug-in state");
+                            undo_engine_.recordPerformed(
+                                std::move(operation),
+                                ProjectMutationOrigin::User);
+                            emitTrackChanged(
+                                target->trackReferenceId,
+                                "plugin-state-changed");
+                            notifyTimelineChanged();
+                        });
+                });
+        }
+
         void pluginInstanceAdded(
             int32_t instanceId,
             AudioPluginInstanceAPI& instance) override {
+            plugin_state_values_[instanceId] = instance.saveStateSync();
             auto& values = plugin_parameter_values_[instanceId];
             for (const auto& parameter : instance.parameterMetadataList())
                 values[static_cast<int32_t>(parameter.index)] =
@@ -4342,6 +4440,8 @@ namespace uapmd {
                 plugin_parameter_listener_ids_.erase(listener);
             }
             plugin_parameter_values_.erase(instanceId);
+            plugin_state_values_.erase(instanceId);
+            pending_plugin_state_captures_.erase(instanceId);
         }
 
         template<typename Value, typename Read, typename Mutation>
@@ -4603,6 +4703,9 @@ namespace uapmd {
             plugin_parameter_mutation_depth_.fetch_add(
                 1,
                 std::memory_order_acq_rel);
+            plugin_state_mutation_depth_.fetch_add(
+                1,
+                std::memory_order_acq_rel);
             instance->loadState(
                 std::move(state),
                 StateContextType::Project,
@@ -4623,7 +4726,18 @@ namespace uapmd {
                                 resolvePluginInstanceId(
                                     trackReferenceId,
                                     nodeId));
+                            if (error.empty()) {
+                                const auto restoredInstanceId =
+                                    resolvePluginInstanceId(trackReferenceId, nodeId);
+                                if (auto* restored = engine_.getPluginInstance(
+                                        restoredInstanceId))
+                                    plugin_state_values_[restoredInstanceId] =
+                                        restored->saveStateSync();
+                            }
                             plugin_parameter_mutation_depth_.fetch_sub(
+                                1,
+                                std::memory_order_acq_rel);
+                            plugin_state_mutation_depth_.fetch_sub(
                                 1,
                                 std::memory_order_acq_rel);
                             if (!error.empty()) {
@@ -4812,6 +4926,9 @@ namespace uapmd {
                         plugin_parameter_mutation_depth_.fetch_add(
                             1,
                             std::memory_order_acq_rel);
+                        plugin_state_mutation_depth_.fetch_add(
+                            1,
+                            std::memory_order_acq_rel);
                         current->loadPreset(
                             presetIndex,
                             [this,
@@ -4833,7 +4950,14 @@ namespace uapmd {
                                      presetError = std::move(presetError),
                                      completion = std::move(completion)]() mutable {
                                     refreshPluginParameterCache(instanceId);
+                                    if (presetError.empty())
+                                        if (auto* restored = engine_.getPluginInstance(instanceId))
+                                            plugin_state_values_[instanceId] =
+                                                restored->saveStateSync();
                                     plugin_parameter_mutation_depth_.fetch_sub(
+                                        1,
+                                        std::memory_order_acq_rel);
+                                    plugin_state_mutation_depth_.fetch_sub(
                                         1,
                                         std::memory_order_acq_rel);
                                     if (!presetError.empty()) {
@@ -4870,6 +4994,9 @@ namespace uapmd {
                                         plugin_parameter_mutation_depth_.fetch_add(
                                             1,
                                             std::memory_order_acq_rel);
+                                        plugin_state_mutation_depth_.fetch_add(
+                                            1,
+                                            std::memory_order_acq_rel);
                                         current->loadPreset(
                                             presetIndex,
                                             [this,
@@ -4885,7 +5012,14 @@ namespace uapmd {
                                                      error = std::move(error),
                                                      redone = std::move(redone)]() mutable {
                                                         refreshPluginParameterCache(currentInstanceId);
+                                                        if (error.empty())
+                                                            if (auto* restored = engine_.getPluginInstance(currentInstanceId))
+                                                                plugin_state_values_[currentInstanceId] =
+                                                                    restored->saveStateSync();
                                                         plugin_parameter_mutation_depth_.fetch_sub(
+                                                            1,
+                                                            std::memory_order_acq_rel);
+                                                        plugin_state_mutation_depth_.fetch_sub(
                                                             1,
                                                             std::memory_order_acq_rel);
                                                         if (error.empty()) {
@@ -5022,14 +5156,20 @@ namespace uapmd {
                                         finished(newInstanceId, {});
                                         return;
                                     }
+                                    plugin_state_mutation_depth_.fetch_add(
+                                        1,
+                                        std::memory_order_acq_rel);
                                     restored->loadState(
                                         state,
                                         StateContextType::Project,
                                         false,
                                         nullptr,
-                                        [newInstanceId, finished = std::move(finished)](
+                                        [this, newInstanceId, finished = std::move(finished)](
                                             std::string stateError,
                                             void*) mutable {
+                                            plugin_state_mutation_depth_.fetch_sub(
+                                                1,
+                                                std::memory_order_acq_rel);
                                             finished(
                                                 stateError.empty() ? newInstanceId : -1,
                                                 std::move(stateError));
@@ -5171,14 +5311,20 @@ namespace uapmd {
                                         finished(newInstanceId, restored ? std::string{} : "Restored plug-in instance is unavailable");
                                         return;
                                     }
+                                    plugin_state_mutation_depth_.fetch_add(
+                                        1,
+                                        std::memory_order_acq_rel);
                                     restored->loadState(
                                         state,
                                         StateContextType::Project,
                                         false,
                                         nullptr,
-                                        [newInstanceId, finished = std::move(finished)](
+                                        [this, newInstanceId, finished = std::move(finished)](
                                             std::string stateError,
                                             void*) mutable {
+                                            plugin_state_mutation_depth_.fetch_sub(
+                                                1,
+                                                std::memory_order_acq_rel);
                                             finished(
                                                 stateError.empty() ? newInstanceId : -1,
                                                 std::move(stateError));
@@ -6149,7 +6295,13 @@ namespace uapmd {
                                         std::ifstream f(resolvedState, std::ios::binary);
                                         if (f) {
                                             std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
+                                            plugin_state_mutation_depth_.fetch_add(
+                                                1,
+                                                std::memory_order_acq_rel);
                                             instance->loadStateSync(data);
+                                            plugin_state_mutation_depth_.fetch_sub(
+                                                1,
+                                                std::memory_order_acq_rel);
                                         } else {
                                             std::cerr << "Warning: Failed to open state file for plugin "
                                                       << pluginLabel << ": " << resolvedState << std::endl;

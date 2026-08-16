@@ -1829,7 +1829,8 @@ void uapmd_app::AppModel::updateDeviceLabel(int32_t instanceId, const std::strin
     }
     if (!updated)
         return;
-    markPluginInstanceTrackDirty(instanceId);
+    // Virtual MIDI labels belong to the application's runtime device registry,
+    // not to the project document. Do not dirty the project for this change.
 }
 
 void uapmd_app::AppModel::loadPluginState(
@@ -1987,17 +1988,21 @@ uapmd_app::AppModel::PluginStateResult uapmd_app::AppModel::loadPluginStateSync(
         }
         auto promise = std::make_shared<std::promise<PluginStateResult>>();
         auto future = promise->get_future();
-        instance->loadState(
+        sequencer_.engine()->timeline().setPluginState(
+            instanceId,
             std::move(state),
-            StateContextType::Project,
-            false,
-            nullptr,
-            [promise, result](std::string error, void*) mutable {
+            uapmd::ProjectMutationOrigin::Internal,
+            [promise, result](uapmd::ProjectUndoResult undoResult) mutable {
                 auto completed = result;
-                completed.success = error.empty();
-                completed.error = std::move(error);
+                completed.success = undoResult.succeeded();
+                completed.error = std::move(undoResult.error);
                 promise->set_value(std::move(completed));
             });
+        while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            if (remidy::EventLoop::runningOnMainThread())
+                remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         return future.get();
     }
     auto promise = std::make_shared<std::promise<PluginStateResult>>();
