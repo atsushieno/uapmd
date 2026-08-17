@@ -474,9 +474,12 @@ bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     auto graph = AudioPluginFullDAGraph::create(ump_buffer_size_in_bytes_);
     if (!graph)
         return false;
+    auto* provider = sequencer_.engine()->timeline().audioGraphProviderRegistry().get(*graph);
+    if (!provider)
+        return false;
     const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
         trackIndex,
-        graph->providerId(),
+        provider->id(),
         ump_buffer_size_in_bytes_);
     if (changed)
         sequencer_.engine()->markTrackDirty(trackIndex);

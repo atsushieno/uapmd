@@ -4,6 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -236,7 +237,10 @@ public:
     void bypassed(bool value) override { bypassed_ = value; }
     uapmd_status_t startProcessing() override { return 0; }
     uapmd_status_t stopProcessing() override { return 0; }
-    uapmd_status_t processAudio(remidy::AudioProcessContext&) override { return 0; }
+    uapmd_status_t processAudio(remidy::AudioProcessContext& process) override {
+        process.copyInputsToOutputs();
+        return 0;
+    }
     double tailLengthInSeconds() const override { return 0.0; }
     bool requiresReplacingProcess() const override { return false; }
     std::vector<uapmd_plugin_hosting::ParameterMetadata> parameterMetadataList() override { return {}; }
@@ -644,6 +648,247 @@ TEST_F(SequencerEngineOutputTest, OfflineRenderProducesAudibleSamples) {
     EXPECT_GT(peakInFrameRange(rendered, 0, rendered.properties.numFrames), 0.01f);
 }
 
+TEST_F(SequencerEngineOutputTest, OfflineRenderIsIdenticalBeforeAndAfterTrackDAGMigration) {
+    ScopedTestEventLoop eventLoop;
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    constexpr uint32_t outputChannels = 2;
+    constexpr uint32_t umpBufferSize = 65536;
+    constexpr uint64_t clipFrames = sampleRate / 10;
+
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        sampleRate, bufferSize, umpBufferSize, std::move(pluginHost));
+    ASSERT_NE(engine, nullptr);
+    engine->setEngineActive(true);
+
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.addAudioClipToTrack(
+                    trackIndex,
+                    uapmd::TimelinePosition::fromSamples(0, sampleRate),
+                    std::make_unique<SineAudioFileReader>(
+                        clipFrames, outputChannels, sampleRate, 440.0, 0.25f),
+                    "synthetic://migration-sine")
+                    .success);
+
+    std::optional<int32_t> instanceId;
+    std::string addError;
+    std::string format = "Test";
+    std::string pluginId = "test.plugin";
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&](int32_t id, int32_t, std::string error) {
+            instanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(instanceId.has_value()) << addError;
+    ASSERT_NE(engine->getPluginInstance(*instanceId), nullptr);
+    remidy::EventLoop::processQueuedTasks();
+
+    auto render = [&](const fs::path& path) {
+        uapmd::OfflineRenderSettings settings;
+        settings.outputPath = path;
+        settings.startSeconds = 0.0;
+        settings.endSeconds = 0.1;
+        settings.sampleRate = sampleRate;
+        settings.bufferSize = bufferSize;
+        settings.outputChannels = outputChannels;
+        settings.umpBufferSize = umpBufferSize;
+        settings.infiniteTailPolicy = uapmd::OfflineInfiniteTailPolicy::LATENCY_FALLBACK;
+        return uapmd::renderOfflineProject(*engine, settings);
+    };
+
+    const auto simplePath = test_dir_ / "simple-migration-render.wav";
+    const auto dagPath = test_dir_ / "dag-migration-render.wav";
+    auto simpleResult = render(simplePath);
+    ASSERT_TRUE(simpleResult.success) << simpleResult.errorMessage;
+
+    ASSERT_TRUE(timeline.replaceTrackGraphType(
+        trackIndex,
+        "urn:uapmd-graph:common/graph/dag/v1",
+        umpBufferSize));
+    ASSERT_NE(dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+                  &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+              nullptr);
+
+    auto dagResult = render(dagPath);
+    ASSERT_TRUE(dagResult.success) << dagResult.errorMessage;
+    const auto simple = readRenderedAudioFile(simplePath);
+    const auto dag = readRenderedAudioFile(dagPath);
+    ASSERT_EQ(simple.properties.numChannels, dag.properties.numChannels);
+    ASSERT_EQ(simple.properties.numFrames, dag.properties.numFrames);
+    ASSERT_EQ(simple.properties.sampleRate, dag.properties.sampleRate);
+    for (uint32_t channel = 0; channel < simple.properties.numChannels; ++channel)
+        for (uint64_t frame = 0; frame < simple.properties.numFrames; ++frame)
+            ASSERT_FLOAT_EQ(simple.channels[channel][frame], dag.channels[channel][frame])
+                << "channel=" << channel << " frame=" << frame;
+}
+
+TEST_F(SequencerEngineOutputTest, Project4First20SecondsRemainEquivalentAfterDAGMigration) {
+#if !defined(__APPLE__) && !defined(__linux__) && !defined(_WIN32)
+    GTEST_SKIP() << "project archive rendering is only enabled on desktop platforms";
+#else
+    ScopedTestEventLoop eventLoop;
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    constexpr uint32_t outputChannels = 2;
+    constexpr uint32_t umpBufferSize = 65536;
+    constexpr double renderSeconds = 20.0;
+    const auto archivePath = fs::path(__FILE__).parent_path().parent_path().parent_path() /
+        "samples/project4.uapmdz";
+    ASSERT_TRUE(fs::exists(archivePath)) << archivePath;
+
+    const auto simpleProjectDir = test_dir_ / "project4-simple";
+    ASSERT_TRUE(fs::create_directories(simpleProjectDir) || fs::exists(simpleProjectDir));
+    const auto simpleArchive = uapmd::ProjectArchive::extractArchive(archivePath, simpleProjectDir);
+    ASSERT_TRUE(simpleArchive.success) << simpleArchive.error;
+
+    auto loadProject = [](uapmd::SequencerEngine& engine, const fs::path& projectPath) {
+        std::optional<uapmd::TimelineFacade::ProjectResult> loadResult;
+        engine.timeline().loadProject(projectPath, [&](auto result) {
+            loadResult = std::move(result);
+        });
+        for (int attempt = 0; attempt < 10000 && !loadResult.has_value(); ++attempt) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return loadResult;
+    };
+
+    auto simpleEngine = uapmd::SequencerEngine::create(sampleRate, bufferSize, umpBufferSize);
+    ASSERT_NE(simpleEngine, nullptr);
+    simpleEngine->setEngineActive(true);
+    // The application populates the plug-in catalog before loading a project.
+    // SequencerEngine::create() intentionally leaves scanning to its owner.
+    simpleEngine->pluginHost()->performPluginScanning(false);
+
+    auto simpleLoad = loadProject(*simpleEngine, simpleArchive.projectFile);
+    ASSERT_TRUE(simpleLoad.has_value());
+    ASSERT_TRUE(simpleLoad->success) << simpleLoad->error;
+
+    auto convertAllGraphs = [](uapmd::SequencerEngine& engine, const std::string& graphType) {
+        auto& timeline = engine.timeline();
+        for (int32_t trackIndex = 0;
+             trackIndex < static_cast<int32_t>(engine.tracks().size());
+             ++trackIndex) {
+            if (!timeline.replaceTrackGraphType(trackIndex, graphType, engine.umpBufferSizeInBytes()))
+                return false;
+        }
+        return timeline.replaceTrackGraphType(
+            uapmd::kMasterTrackIndex, graphType, engine.umpBufferSizeInBytes());
+    };
+    ASSERT_TRUE(convertAllGraphs(*simpleEngine, ""));
+
+    std::vector<std::pair<int32_t, std::vector<uint8_t>>> initialPluginStates;
+    for (const auto instanceId : simpleEngine->pluginHost()->instanceIds())
+        if (auto* instance = simpleEngine->getPluginInstance(instanceId))
+            initialPluginStates.emplace_back(instanceId, instance->saveStateSync());
+
+    auto render = [&](uapmd::SequencerEngine& engine, const fs::path& outputPath) {
+        uapmd::OfflineRenderSettings settings;
+        settings.outputPath = outputPath;
+        settings.startSeconds = 0.0;
+        settings.endSeconds = renderSeconds;
+        settings.sampleRate = sampleRate;
+        settings.bufferSize = bufferSize;
+        settings.outputChannels = outputChannels;
+        settings.umpBufferSize = umpBufferSize;
+        settings.infiniteTailPolicy = uapmd::OfflineInfiniteTailPolicy::LATENCY_FALLBACK;
+        std::promise<uapmd::OfflineRenderResult> promise;
+        auto result = promise.get_future();
+        std::thread renderThread([&engine, settings, promise = std::move(promise)]() mutable {
+            promise.set_value(uapmd::renderOfflineProject(engine, settings));
+        });
+        while (result.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready)
+            remidy::EventLoop::processQueuedTasks();
+        renderThread.join();
+        remidy::EventLoop::processQueuedTasks();
+        return result.get();
+    };
+    const auto simpleOutput = test_dir_ / "project4-simple.wav";
+    const auto dagOutput = test_dir_ / "project4-dag.wav";
+    auto simpleRender = render(*simpleEngine, simpleOutput);
+    ASSERT_TRUE(simpleRender.success) << simpleRender.errorMessage;
+
+    for (const auto& [instanceId, state] : initialPluginStates)
+        if (auto* instance = simpleEngine->getPluginInstance(instanceId))
+            instance->stopProcessing();
+    for (auto& [instanceId, state] : initialPluginStates)
+        if (auto* instance = simpleEngine->getPluginInstance(instanceId))
+            instance->loadStateSync(state);
+    for (const auto& [instanceId, state] : initialPluginStates)
+        if (auto* instance = simpleEngine->getPluginInstance(instanceId))
+            instance->startProcessing();
+    simpleEngine->resetProcessingState();
+
+    ASSERT_TRUE(convertAllGraphs(*simpleEngine, "urn:uapmd-graph:common/graph/dag/v1"));
+    auto dagRender = render(*simpleEngine, dagOutput);
+    ASSERT_TRUE(dagRender.success) << dagRender.errorMessage;
+
+    const auto simpleAudio = readRenderedAudioFile(simpleOutput);
+    const auto dagAudio = readRenderedAudioFile(dagOutput);
+    const auto framesToCompare = static_cast<uint64_t>(sampleRate * renderSeconds);
+    ASSERT_EQ(simpleAudio.properties.numChannels, dagAudio.properties.numChannels);
+    ASSERT_EQ(simpleAudio.properties.sampleRate, dagAudio.properties.sampleRate);
+    ASSERT_GE(simpleAudio.properties.numFrames, framesToCompare);
+    ASSERT_GE(dagAudio.properties.numFrames, framesToCompare);
+    const auto simplePeak = peakInFrameRange(
+        simpleAudio, 0, framesToCompare);
+    const auto dagPeak = peakInFrameRange(
+        dagAudio, 0, framesToCompare);
+    if (simplePeak <= 0.001f && dagPeak <= 0.001f)
+        GTEST_SKIP() << "project4 rendered silence because its instrument plug-ins are unavailable";
+    ASSERT_GT(simplePeak, 0.001f);
+    ASSERT_GT(dagPeak, 0.001f);
+    constexpr uint64_t comparisonWindowFrames = sampleRate / 10;
+    double maximumChannelRmsRelativeDifference = 0.0;
+    double maximumWindowRmsRelativeDifference = 0.0;
+    for (uint32_t channel = 0; channel < simpleAudio.properties.numChannels; ++channel) {
+        double simpleTotalSquares = 0.0;
+        double dagTotalSquares = 0.0;
+        for (uint64_t windowStart = 0;
+             windowStart < framesToCompare;
+             windowStart += comparisonWindowFrames) {
+            const auto windowEnd = std::min(
+                framesToCompare, windowStart + comparisonWindowFrames);
+            double simpleWindowSquares = 0.0;
+            double dagWindowSquares = 0.0;
+            for (uint64_t frame = windowStart; frame < windowEnd; ++frame) {
+                const auto simpleSample = static_cast<double>(simpleAudio.channels[channel][frame]);
+                const auto dagSample = static_cast<double>(dagAudio.channels[channel][frame]);
+                simpleWindowSquares += simpleSample * simpleSample;
+                dagWindowSquares += dagSample * dagSample;
+            }
+            simpleTotalSquares += simpleWindowSquares;
+            dagTotalSquares += dagWindowSquares;
+            const auto windowFrames = static_cast<double>(windowEnd - windowStart);
+            const auto simpleWindowRms = std::sqrt(simpleWindowSquares / windowFrames);
+            const auto dagWindowRms = std::sqrt(dagWindowSquares / windowFrames);
+            const auto referenceWindowRms = std::max(simpleWindowRms, dagWindowRms);
+            if (referenceWindowRms > 1.0e-4)
+                maximumWindowRmsRelativeDifference = std::max(
+                    maximumWindowRmsRelativeDifference,
+                    std::fabs(simpleWindowRms - dagWindowRms) / referenceWindowRms);
+        }
+        const auto simpleRms = std::sqrt(simpleTotalSquares / static_cast<double>(framesToCompare));
+        const auto dagRms = std::sqrt(dagTotalSquares / static_cast<double>(framesToCompare));
+        maximumChannelRmsRelativeDifference = std::max(
+            maximumChannelRmsRelativeDifference,
+            std::fabs(simpleRms - dagRms) / std::max(simpleRms, dagRms));
+    }
+    // project4 contains oscillator/physical-model synths whose serialized
+    // state does not reproduce sample-identical phases even for simple-to-
+    // simple renders. These limits cover that measured control variance while
+    // still rejecting the pre-fix DAG result (10.6% channel RMS divergence).
+    ASSERT_LT(maximumChannelRmsRelativeDifference, 0.05);
+    ASSERT_LT(maximumWindowRmsRelativeDifference, 0.50);
+#endif
+}
+
 TEST_F(SequencerEngineOutputTest, FullDAGraphRefreshesRuntimeTimingInfo) {
     MutableTimingPlugin plugin;
     plugin.latencyInSamples(64);
@@ -660,6 +905,55 @@ TEST_F(SequencerEngineOutputTest, FullDAGraphRefreshesRuntimeTimingInfo) {
     plugin.latencyInSamples(256);
     graph->refreshTimingInfo();
     EXPECT_EQ(graph->mainOutputLatencyInSamples(), 256u);
+}
+
+TEST_F(SequencerEngineOutputTest, SimpleAndFullDAGRenderIdenticalLinearChain) {
+    constexpr uint32_t eventBufferSize = 4096;
+    constexpr int32_t frameCount = 8;
+
+    MutableTimingPlugin simplePlugin;
+    MutableTimingPlugin dagPlugin;
+    auto simple = AudioPluginGraph::create(eventBufferSize);
+    auto dag = AudioPluginFullDAGraph::create(eventBufferSize);
+    ASSERT_NE(simple, nullptr);
+    ASSERT_NE(dag, nullptr);
+
+    AudioGraphNodeDescriptor gain;
+    gain.node_id = "builtin:track_gain";
+    gain.node_type = std::string(webaudio_compat::kGainNodeType);
+    gain.parameters.emplace("gain", 0.5);
+    ASSERT_EQ(simple->appendNodeSimple(1, &simplePlugin, [] {}), 0);
+    ASSERT_EQ(simple->appendBuiltInNodeSimple(gain), 0);
+    ASSERT_EQ(dag->appendNodeSimple(2, &dagPlugin, [] {}), 0);
+    ASSERT_EQ(dag->appendBuiltInNodeSimple(gain), 0);
+    ASSERT_NE(dag->getExtension<AudioBusesLayoutExtension>(), nullptr);
+    dag->getExtension<AudioBusesLayoutExtension>()->applyBusesLayout({1, 1, 1, 1});
+
+    remidy::MasterContext simpleMaster;
+    remidy::MasterContext dagMaster;
+    remidy::AudioProcessContext simpleProcess(simpleMaster, eventBufferSize);
+    remidy::AudioProcessContext dagProcess(dagMaster, eventBufferSize);
+    simpleProcess.configureMainBus(2, 2, frameCount);
+    dagProcess.configureMainBus(2, 2, frameCount);
+    simpleProcess.frameCount(frameCount);
+    dagProcess.frameCount(frameCount);
+    for (uint32_t channel = 0; channel < 2; ++channel) {
+        auto* simpleInput = simpleProcess.getFloatInBuffer(0, channel);
+        auto* dagInput = dagProcess.getFloatInBuffer(0, channel);
+        for (int32_t frame = 0; frame < frameCount; ++frame) {
+            const auto sample = static_cast<float>((channel + 1) * (frame + 1));
+            simpleInput[frame] = sample;
+            dagInput[frame] = sample;
+        }
+    }
+
+    ASSERT_EQ(simple->processAudio(simpleProcess), 0);
+    ASSERT_EQ(dag->processAudio(dagProcess), 0);
+    for (uint32_t channel = 0; channel < 2; ++channel)
+        for (int32_t frame = 0; frame < frameCount; ++frame)
+            EXPECT_FLOAT_EQ(
+                simpleProcess.getFloatOutBuffer(0, channel)[frame],
+                dagProcess.getFloatOutBuffer(0, channel)[frame]);
 }
 
 TEST_F(SequencerEngineOutputTest, OfflineRenderKeepsWarpedTailAudible) {

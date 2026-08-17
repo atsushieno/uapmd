@@ -263,18 +263,6 @@ namespace uapmd_graph {
             return nullptr;
         }
 
-        std::vector<std::shared_ptr<AudioGraphNode>> allNodes(const GraphState& state) {
-            std::vector<std::shared_ptr<AudioGraphNode>> result;
-            result.reserve(state.nodes.size() + state.builtin_nodes.size());
-            for (const auto& node : state.nodes)
-                if (node)
-                    result.push_back(node);
-            for (const auto& node : state.builtin_nodes)
-                if (node)
-                    result.push_back(node);
-            return result;
-        }
-
         uint32_t nodeInputBusCount(const GraphState& state, const std::shared_ptr<AudioGraphNode>& node, AudioPluginGraphBusType busType) {
             if (!node)
                 return 0;
@@ -521,7 +509,10 @@ namespace uapmd_graph {
             return;
 
         int64_t nextId = 1;
-        auto orderedNodes = allNodes(state);
+        // Built-in nodes are processed by the dedicated post-DAG chain below.
+        // Keep the default linear topology limited to plug-in nodes so a built-in
+        // such as the implicit track gain is not compiled and processed twice.
+        auto& orderedNodes = state.nodes;
         if (orderedNodes.empty()) {
             state.next_connection_id = nextId;
             rebuildCompiledState(state);
@@ -623,7 +614,10 @@ namespace uapmd_graph {
 
         std::unordered_map<std::string, std::vector<std::string>> adjacency;
         std::unordered_map<std::string, uint32_t> indegree;
-        auto orderedNodes = allNodes(state);
+        // Built-in nodes are applied after the plug-in DAG in processAudio().
+        // They must not become DAG runtimes as well, or they would be processed
+        // once in topo_order and once again by the post-DAG chain.
+        auto& orderedNodes = state.nodes;
         for (const auto& node : orderedNodes) {
             if (!node)
                 continue;
@@ -1059,6 +1053,58 @@ namespace uapmd_graph {
             return 0;
         }
 
+        // A freshly migrated graph still represents the same serial chain as
+        // AudioPluginGraph. Process that chain in the track context so plug-ins
+        // observe identical bus layouts, event ordering, and buffer ownership.
+        // Per-node scratch contexts are only required after a custom topology
+        // has actually been authored.
+        if (!state.custom_topology) {
+            process.clearAudioOutputs();
+            for (size_t i = 0; i < state.nodes.size(); ++i) {
+                auto& pluginNode = state.nodes[i];
+                if (!pluginNode)
+                    continue;
+                const auto instanceId = pluginNode->instanceId();
+                const auto group = resolveGroup(instanceId);
+                pluginNode->prepareEventInput(process.eventIn(), group);
+
+                auto* instance = pluginNode->instance();
+                const bool bypassed = instance && instance->bypassed();
+                if (!bypassed)
+                    pluginNode->processInputMapping(process);
+                if (bypassed)
+                    process.copyInputsToOutputs();
+                else {
+                    const auto status = pluginNode->processAudio(process);
+                    if (status != 0)
+                        return status;
+                }
+
+                auto& eventOut = process.eventOut();
+                if (eventOut.position() > 0) {
+                    if (event_output_callback_)
+                        event_output_callback_(
+                            instanceId,
+                            static_cast<uapmd_ump_t*>(eventOut.getMessages()),
+                            eventOut.position());
+                    eventOut.position(0);
+                }
+                if (i + 1 < state.nodes.size() || !state.builtin_nodes.empty())
+                    process.advanceToNextNode();
+            }
+
+            for (size_t i = 0; i < state.builtin_nodes.size(); ++i) {
+                if (state.builtin_nodes[i]) {
+                    const auto status = state.builtin_nodes[i]->processAudio(process);
+                    if (status != 0)
+                        return status;
+                }
+                if (i + 1 < state.builtin_nodes.size())
+                    process.advanceToNextNode();
+            }
+            return 0;
+        }
+
         process.clearAudioOutputs();
 
         for (const auto& nodeId : state.topo_order) {
@@ -1179,6 +1225,19 @@ namespace uapmd_graph {
                                            static_cast<uapmd_ump_t*>(eventOut.getMessages()),
                                            eventOut.position());
                 }
+            }
+        }
+
+        // Built-in nodes are outside the plug-in DAG and form the final serial
+        // stage, matching the ordering used by AudioPluginGraph.
+        if (!state.builtin_nodes.empty()) {
+            if (!state.nodes.empty())
+                process.advanceToNextNode();
+            for (size_t i = 0; i < state.builtin_nodes.size(); ++i) {
+                if (state.builtin_nodes[i])
+                    state.builtin_nodes[i]->processAudio(process);
+                if (i + 1 < state.builtin_nodes.size())
+                    process.advanceToNextNode();
             }
         }
 

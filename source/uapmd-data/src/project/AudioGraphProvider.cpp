@@ -403,8 +403,6 @@ bool saveFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, std::vecto
         obj.addMember("connections", connectionArray);
     }
 
-    serializeGenericNodesPayload(obj, *graph);
-
     writeGraphJsonObject(obj, bytes);
     return true;
 }
