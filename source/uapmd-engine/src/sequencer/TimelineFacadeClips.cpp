@@ -579,95 +579,15 @@ namespace uapmd {
         return true;
     }
 
-    bool TimelineFacadeImpl::setClipEnabled(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool enabled,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipEnabledProperty>(
-            trackIndex, clipId, enabled, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipAnchor(
-            int32_t trackIndex,
-            int32_t clipId,
-            const TimeReference& anchor,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipAnchorProperty>(
-            trackIndex, clipId, anchor, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipGain(
-            int32_t trackIndex,
-            int32_t clipId,
-            double gain,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipGainProperty>(
-            trackIndex, clipId, gain, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipMuted(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool muted,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipMutedProperty>(
-            trackIndex, clipId, muted, origin);
-    }
 
-    bool TimelineFacadeImpl::resizeClip(
-            int32_t trackIndex,
-            int32_t clipId,
-            int64_t newDurationSamples,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipDurationProperty>(
-            trackIndex, clipId, newDurationSamples, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipName(
-            int32_t trackIndex,
-            int32_t clipId,
-            const std::string& name,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipNameProperty>(
-            trackIndex, clipId, name, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipFilepath(
-            int32_t trackIndex,
-            int32_t clipId,
-            const std::string& filepath,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipFilepathProperty>(
-            trackIndex, clipId, filepath, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipNeedsFileSave(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool needsSave,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipNeedsFileSaveProperty>(
-            trackIndex, clipId, needsSave, origin);
-    }
 
-    bool TimelineFacadeImpl::setClipMarkers(
-            int32_t trackIndex,
-            int32_t clipId,
-            std::vector<ClipMarker> markers,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipMarkersProperty>(
-            trackIndex, clipId, std::move(markers), origin);
-    }
 
-    bool TimelineFacadeImpl::setClipAudioWarps(
-            int32_t trackIndex,
-            int32_t clipId,
-            std::vector<AudioWarpPoint> audioWarps,
-            ProjectMutationOrigin origin) {
-                return executeClipProperty<ClipAudioWarpsProperty>(
-            trackIndex, clipId, std::move(audioWarps), origin);
-    }
 
     bool TimelineFacadeImpl::clipEnabled(int32_t trackIndex, int32_t clipId) const {
         const auto* targetTrack = resolveTrack(trackIndex);

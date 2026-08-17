@@ -200,6 +200,7 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/MidiRecorder.cpp
         src/sequencer/FrozenTrackManager.cpp
         src/sequencer/OfflineRenderer.cpp
+        src/sequencer/ProjectCommands.cpp
         src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp

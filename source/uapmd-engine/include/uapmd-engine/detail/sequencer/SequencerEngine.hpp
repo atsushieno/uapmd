@@ -243,6 +243,9 @@ namespace uapmd {
 
         // Timeline clip management and project loading
         virtual TimelineFacade& timeline() = 0;
+        // The undoable edits this project supports. Reading the document goes
+        // through timeline(); changing it as a user action goes through here.
+        virtual ProjectCommands& commands() = 0;
         // True when the project document differs from its saved history node
         // or an asynchronous project mutation is still being committed.
         virtual bool isProjectDirty() const = 0;

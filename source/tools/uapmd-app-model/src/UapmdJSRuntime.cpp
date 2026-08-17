@@ -440,7 +440,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-        sequencer.engine()->timeline().setPluginParameterValue(
+        sequencer.engine()->commands().setPluginParameterValue(
             instanceId, paramId, value);
 
         return choc::value::Value();
@@ -665,7 +665,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && paramIndex >= 0)
         {
             auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-            sequencer.engine()->timeline().setPluginParameterValue(
+            sequencer.engine()->commands().setPluginParameterValue(
                 instanceId, paramIndex, value);
         }
         return choc::value::Value();
@@ -772,7 +772,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId >= 0)
         {
             auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-            sequencer.engine()->timeline().setPluginBypassed(
+            sequencer.engine()->commands().setPluginBypassed(
                 instanceId, bypassed);
         }
         return choc::value::Value();

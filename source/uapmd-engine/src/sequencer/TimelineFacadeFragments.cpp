@@ -695,14 +695,14 @@ namespace uapmd {
             result.error = "Could not restore the clip's timeline anchor";
             return result;
         }
-        setClipEnabled(
+        commands_.setClipEnabled(
             trackIndex, result.clipId, source.enabled,
             ProjectMutationOrigin::Internal);
-        resizeClip(
+        commands_.resizeClip(
             trackIndex, result.clipId, source.durationSamples,
             ProjectMutationOrigin::Internal);
         if (fragment.isMidi() && !source.markers.empty())
-            setClipMarkers(
+            commands_.setClipMarkers(
                 trackIndex, result.clipId, source.markers,
                 ProjectMutationOrigin::Internal);
 

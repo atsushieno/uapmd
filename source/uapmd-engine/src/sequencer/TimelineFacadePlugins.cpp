@@ -669,60 +669,9 @@ namespace uapmd {
         return -1;
     }
 
-    bool TimelineFacadeImpl::setPluginBypassed(
-            int32_t instanceId,
-            bool bypassed,
-            ProjectMutationOrigin origin) {
-                return executePluginProperty<PluginBypassedProperty>(instanceId, bypassed, origin);
-    }
 
-    bool TimelineFacadeImpl::setPluginParameterValue(
-            int32_t instanceId,
-            int32_t parameterIndex,
-            double value,
-            ProjectMutationOrigin origin) {
-                auto plugin = pluginTargetForInstance(instanceId);
-        if (!plugin)
-            return false;
-        return executeProperty<PluginParameterProperty>(
-            PluginParameterAddress{
-                .plugin = std::move(*plugin),
-                .parameterIndex = parameterIndex
-            },
-            value,
-            origin);
-    }
 
-    bool TimelineFacadeImpl::setPluginPerNoteControllerValue(
-            int32_t instanceId,
-            remidy::PerNoteControllerContextTypes contextType,
-            remidy::PerNoteControllerContext context,
-            int32_t parameterIndex,
-            double value,
-            ProjectMutationOrigin origin) {
-                auto plugin = pluginTargetForInstance(instanceId);
-        if (!plugin)
-            return false;
-        return executeProperty<PluginPerNoteProperty>(
-            PluginPerNoteAddress{
-                .plugin = std::move(*plugin),
-                .contextType = contextType,
-                .context = context,
-                .parameterIndex = parameterIndex
-            },
-            value,
-            origin);
-    }
 
-    bool TimelineFacadeImpl::setPluginGroup(
-            int32_t instanceId,
-            uint8_t group,
-            ProjectMutationOrigin origin) {
-                // 0xFF reports "no group", which is not a value the user can set.
-        if (engine_.getInstanceGroup(instanceId) == 0xFF)
-            return false;
-        return executePluginProperty<PluginGroupProperty>(instanceId, group, origin);
-    }
 
     AudioPluginInstanceAPI* TimelineFacadeImpl::pluginInstance(int32_t instanceId) {
         return engine_.getPluginInstance(instanceId);

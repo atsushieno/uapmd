@@ -590,6 +590,7 @@ namespace uapmd {
 
         // Timeline facade
         TimelineFacade& timeline() override { return *timeline_; }
+        ProjectCommands& commands() override { return timeline_->commands(); }
 
         bool isProjectDirty() const override {
             return timeline_->hasPendingPluginMutations()

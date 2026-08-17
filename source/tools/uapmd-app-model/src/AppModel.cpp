@@ -103,9 +103,9 @@ void markTimelineTrackClipsNeedsFileSave(AppModel& appModel, TimelineTrack* trac
     if (!track)
         return;
 
-    auto& timelineFacade = appModel.sequencer().engine()->timeline();
+    auto& commands = appModel.sequencer().engine()->commands();
     for (const auto& clip : track->clipManager().getAllClips())
-        timelineFacade.setClipNeedsFileSave(
+        commands.setClipNeedsFileSave(
             trackIndex, clip.clipId, true, ProjectMutationOrigin::Internal);
 }
 
@@ -185,7 +185,7 @@ public:
                 const auto clipReference = line.substr(5, separator - 5);
                 for (const auto& clip : currentTrack->clipManager().getAllClips())
                     if (clip.referenceId == clipReference)
-                        app_model_.sequencer().engine()->timeline()
+                        app_model_.sequencer().engine()->commands()
                             .setClipEnabled(
                                 currentTrackIndex, clip.clipId, false,
                                 ProjectMutationOrigin::Load);
@@ -743,7 +743,7 @@ bool uapmd_app::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
     if (!engine)
         return false;
     const bool changed =
-        engine->timeline().setPluginGroup(instanceId, group);
+        engine->commands().setPluginGroup(instanceId, group);
     if (changed)
         markPluginInstanceTrackDirty(instanceId);
     return changed;
@@ -2160,7 +2160,7 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
         return result;
     }
     if (emptyMidiClip
-        && !sequencer_.engine()->timeline().resizeClip(
+        && !sequencer_.engine()->commands().resizeClip(
             trackIndex, result.clipId, emptyMidiDurationSamples,
             ProjectMutationOrigin::User)) {
         result.success = false;
@@ -2556,7 +2556,7 @@ bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(
 
     // Applying and recording the change belongs to the timeline; validation
     // above is the part that is specific to this layer.
-    if (!sequencer_.engine()->timeline().setMasterTrackMarkers(std::move(markers), origin)) {
+    if (!sequencer_.engine()->commands().setMasterTrackMarkers(std::move(markers), origin)) {
         error = "Could not record the master marker edit";
         return false;
     }
@@ -2743,7 +2743,7 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
                 || state->regularClipReferenceIds[static_cast<size_t>(sourceIndex)].empty())
                 continue;
             if (getMasterTimelineTrack()) {
-                sequencer_.engine()->timeline().setClipAnchor(
+                sequencer_.engine()->commands().setClipAnchor(
                     kMasterTrackIndex,
                     masterClipResult.clipId,
                     uapmd::TimeReference::fromContainerStart(

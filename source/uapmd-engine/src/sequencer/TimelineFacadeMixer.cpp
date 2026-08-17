@@ -489,43 +489,10 @@ namespace uapmd {
             origin);
     }
 
-    bool TimelineFacadeImpl::setTrackGain(
-            int32_t trackIndex,
-            double gain,
-            ProjectMutationOrigin origin) {
-                return executeTrackProperty<TrackGainProperty>(trackIndex, gain, origin);
-    }
 
-    bool TimelineFacadeImpl::setTrackMuted(
-            int32_t trackIndex,
-            bool muted,
-            ProjectMutationOrigin origin) {
-                return executeTrackProperty<TrackMutedProperty>(trackIndex, muted, origin);
-    }
 
-    bool TimelineFacadeImpl::setTrackSolo(
-            int32_t trackIndex,
-            bool solo,
-            ProjectMutationOrigin origin) {
-                return executeTrackProperty<TrackSoloProperty>(trackIndex, solo, origin);
-    }
 
-    bool TimelineFacadeImpl::setTrackBypassed(
-            int32_t trackIndex,
-            bool bypassed,
-            ProjectMutationOrigin origin) {
-                return executeTrackProperty<TrackBypassedProperty>(trackIndex, bypassed, origin);
-    }
 
-    bool TimelineFacadeImpl::setTrackFreezePolicyEnabled(
-            int32_t trackIndex,
-            bool enabled,
-            ProjectMutationOrigin origin) {
-                // The master track has no freeze policy.
-        if (trackIndex == kMasterTrackIndex)
-            return false;
-        return executeTrackProperty<TrackFreezePolicyProperty>(trackIndex, enabled, origin);
-    }
 
     bool TimelineFacadeImpl::setTrackFreezePolicy(int32_t index, bool enabled) {
         return engine_.frozenTrackManager().setFreezePolicyForTrack(

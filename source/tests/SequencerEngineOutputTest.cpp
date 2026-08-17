@@ -907,7 +907,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
     };
 
     exercise(
-        [&] { return timeline.setClipEnabled(trackIndex, added.clipId, false); },
+        [&] { return timeline.commands().setClipEnabled(trackIndex, added.clipId, false); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.enabled, before.clip.enabled);
         },
@@ -916,7 +916,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
         });
     exercise(
         [&] {
-            return timeline.setClipAnchor(
+            return timeline.commands().setClipAnchor(
                 trackIndex,
                 added.clipId,
                 uapmd::TimeReference::fromContainerEnd({}, 0.25));
@@ -928,7 +928,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.timeReference(48000), after.clip.timeReference(48000));
         });
     exercise(
-        [&] { return timeline.setClipGain(trackIndex, added.clipId, 0.25); },
+        [&] { return timeline.commands().setClipGain(trackIndex, added.clipId, 0.25); },
         [](const auto& before, const auto& actual) {
             EXPECT_DOUBLE_EQ(actual.clip.gain, before.clip.gain);
         },
@@ -936,7 +936,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_DOUBLE_EQ(actual.clip.gain, after.clip.gain);
         });
     exercise(
-        [&] { return timeline.setClipMuted(trackIndex, added.clipId, true); },
+        [&] { return timeline.commands().setClipMuted(trackIndex, added.clipId, true); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.muted, before.clip.muted);
         },
@@ -944,7 +944,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.muted, after.clip.muted);
         });
     exercise(
-        [&] { return timeline.resizeClip(trackIndex, added.clipId, 12345); },
+        [&] { return timeline.commands().resizeClip(trackIndex, added.clipId, 12345); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.durationSamples, before.clip.durationSamples);
         },
@@ -952,7 +952,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.durationSamples, after.clip.durationSamples);
         });
     exercise(
-        [&] { return timeline.setClipName(trackIndex, added.clipId, "Renamed"); },
+        [&] { return timeline.commands().setClipName(trackIndex, added.clipId, "Renamed"); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.name, before.clip.name);
         },
@@ -960,7 +960,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.name, after.clip.name);
         });
     exercise(
-        [&] { return timeline.setClipFilepath(trackIndex, added.clipId, "edited.mid"); },
+        [&] { return timeline.commands().setClipFilepath(trackIndex, added.clipId, "edited.mid"); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.filepath, before.clip.filepath);
         },
@@ -968,7 +968,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.filepath, after.clip.filepath);
         });
     exercise(
-        [&] { return timeline.setClipNeedsFileSave(trackIndex, added.clipId, true); },
+        [&] { return timeline.commands().setClipNeedsFileSave(trackIndex, added.clipId, true); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.needsFileSave, before.clip.needsFileSave);
         },
@@ -979,7 +979,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
     const std::vector<uapmd::ClipMarker> markers{
         {"marker", 480, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Marker"}};
     exercise(
-        [&] { return timeline.setClipMarkers(trackIndex, added.clipId, markers); },
+        [&] { return timeline.commands().setClipMarkers(trackIndex, added.clipId, markers); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.markers.size(), before.clip.markers.size());
         },
@@ -993,7 +993,7 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
         {0.5, 0.75, uapmd::AudioWarpReferenceType::ClipStart, {}, {}},
     };
     exercise(
-        [&] { return timeline.setClipAudioWarps(trackIndex, added.clipId, warps); },
+        [&] { return timeline.commands().setClipAudioWarps(trackIndex, added.clipId, warps); },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.audioWarps.size(), before.clip.audioWarps.size());
         },
@@ -1045,7 +1045,7 @@ TEST_F(SequencerEngineOutputTest, ClipFragmentRestoresUnderItsOriginalIdentity) 
     const auto added = addFragmentTestClip(*engine, trackIndex, sampleRate);
     ASSERT_TRUE(added.success) << added.error;
     auto& timeline = engine->timeline();
-    ASSERT_TRUE(timeline.setClipName(trackIndex, added.clipId, "Renamed"));
+    ASSERT_TRUE(timeline.commands().setClipName(trackIndex, added.clipId, "Renamed"));
 
     const auto fragment = timeline.captureClipFragment(trackIndex, added.clipId);
     ASSERT_TRUE(fragment.has_value());
@@ -1474,7 +1474,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
 
-    ASSERT_TRUE(timeline.setPluginBypassed(*instanceId, true));
+    ASSERT_TRUE(timeline.commands().setPluginBypassed(*instanceId, true));
     EXPECT_TRUE(plugin->bypassed());
     result = moveAndDrain(false);
     ASSERT_TRUE(result.has_value());
@@ -1485,7 +1485,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_TRUE(plugin->bypassed());
 
-    ASSERT_TRUE(timeline.setPluginParameterValue(*instanceId, 4, 0.75));
+    ASSERT_TRUE(timeline.commands().setPluginParameterValue(*instanceId, 4, 0.75));
     EXPECT_DOUBLE_EQ(plugin->getParameterValue(4), 0.75);
     result = moveAndDrain(false);
     ASSERT_TRUE(result.has_value());
@@ -1497,7 +1497,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     EXPECT_DOUBLE_EQ(plugin->getParameterValue(4), 0.75);
 
     const remidy::PerNoteControllerContext noteContext{60, 1, 2, 0};
-    ASSERT_TRUE(timeline.setPluginPerNoteControllerValue(
+    ASSERT_TRUE(timeline.commands().setPluginPerNoteControllerValue(
         *instanceId,
         remidy::PER_NOTE_CONTROLLER_PER_NOTE,
         noteContext,
@@ -1517,7 +1517,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(plugin->getPerNoteControllerValue(60, 7, &noteValue));
     EXPECT_DOUBLE_EQ(noteValue, 0.6);
 
-    ASSERT_TRUE(timeline.setPluginGroup(*instanceId, 3));
+    ASSERT_TRUE(timeline.commands().setPluginGroup(*instanceId, 3));
     EXPECT_EQ(engine->getInstanceGroup(*instanceId), 3u);
     result = moveAndDrain(false);
     ASSERT_TRUE(result.has_value());
@@ -1733,7 +1733,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     ASSERT_GE(secondTrack, 0);
 
     auto& timeline = engine->timeline();
-    ASSERT_TRUE(timeline.setTrackGain(firstTrack, 0.5));
+    ASSERT_TRUE(timeline.commands().setTrackGain(firstTrack, 0.5));
     ASSERT_TRUE(timeline.undoEngine().state().canUndo);
     std::optional<uapmd::ProjectUndoResult> result;
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
@@ -1748,21 +1748,21 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_DOUBLE_EQ(engine->tracks()[static_cast<size_t>(firstTrack)]->trackGain(), 0.5);
 
-    ASSERT_TRUE(timeline.setTrackMuted(firstTrack, true));
+    ASSERT_TRUE(timeline.commands().setTrackMuted(firstTrack, true));
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_FALSE(engine->tracks()[static_cast<size_t>(firstTrack)]->muted());
 
-    ASSERT_TRUE(timeline.setTrackBypassed(firstTrack, true));
+    ASSERT_TRUE(timeline.commands().setTrackBypassed(firstTrack, true));
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_FALSE(engine->tracks()[static_cast<size_t>(firstTrack)]->bypassed());
 
-    ASSERT_TRUE(timeline.setTrackFreezePolicyEnabled(firstTrack, true));
+    ASSERT_TRUE(timeline.commands().setTrackFreezePolicyEnabled(firstTrack, true));
     EXPECT_EQ(
         engine->frozenTrackManager().freezePolicyForTrack(firstTrack),
         uapmd::FrozenTrackManager::FreezePolicy::On);
@@ -1829,8 +1829,8 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_NE(track->getSourceNode(sourceNodeId), nullptr);
 
-    ASSERT_TRUE(timeline.setTrackSolo(firstTrack, true));
-    ASSERT_TRUE(timeline.setTrackSolo(secondTrack, true));
+    ASSERT_TRUE(timeline.commands().setTrackSolo(firstTrack, true));
+    ASSERT_TRUE(timeline.commands().setTrackSolo(secondTrack, true));
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
@@ -2327,7 +2327,7 @@ TEST_F(SequencerEngineOutputTest, ClipMutationsRevokeTheTracksFrozenRender) {
     const auto generationAfterAdd = frozen.invalidationGenerationForTrack(trackIndex);
     EXPECT_GT(generationAfterAdd, generationBeforeAdd);
 
-    ASSERT_TRUE(timeline.setClipName(trackIndex, added.clipId, "Renamed"));
+    ASSERT_TRUE(timeline.commands().setClipName(trackIndex, added.clipId, "Renamed"));
     const auto generationAfterChange = frozen.invalidationGenerationForTrack(trackIndex);
     EXPECT_GT(generationAfterChange, generationAfterAdd);
 

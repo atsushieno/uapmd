@@ -109,7 +109,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             }();
 
             if (!perNoteSelection) {
-                if (seq.engine()->timeline().setPluginParameterValue(
+                if (seq.engine()->commands().setPluginParameterValue(
                         instanceId,
                         parameterIndex,
                         value))
@@ -121,7 +121,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             if (!pal) {
                 return;
             }
-            if (seq.engine()->timeline().setPluginPerNoteControllerValue(
+            if (seq.engine()->commands().setPluginPerNoteControllerValue(
                     instanceId,
                     perNoteSelection->type,
                     perNoteSelection->context,
@@ -374,7 +374,7 @@ void InstanceDetails::render(const RenderContext& context) {
                         std::string toggleLabel = std::format("{}##InstanceBypass{}", toggleIcon, instanceId);
                         if (ImGui::Button(toggleLabel.c_str()))
                             if (uapmd_app::AppModel::instance()
-                                    .sequencer().engine()->timeline()
+                                    .sequencer().engine()->commands()
                                     .setPluginBypassed(instanceId, !pluginBypassed))
                                 uapmd_app::AppModel::instance()
                                     .markPluginInstanceTrackDirty(instanceId);

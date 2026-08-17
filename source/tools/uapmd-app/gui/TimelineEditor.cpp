@@ -676,7 +676,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
             return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled);
+            uapmd_app::AppModel::instance().sequencer().engine()->commands().setClipEnabled(trackIndex, clipId, enabled);
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -755,7 +755,7 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
             return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
         },
         .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            uapmd_app::AppModel::instance().sequencer().engine()->timeline().setClipEnabled(trackIndex, clipId, enabled);
+            uapmd_app::AppModel::instance().sequencer().engine()->commands().setClipEnabled(trackIndex, clipId, enabled);
         },
         .clearAllClips = [this](int32_t trackIndex) {
             clearAllClipsFromTrack(trackIndex);
@@ -1258,7 +1258,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         if (ImGui::IsItemActivated())
             undo.beginGesture("Change track gain");
         if (gainChanged) {
-            sequencer.engine()->timeline().setTrackGain(
+            sequencer.engine()->commands().setTrackGain(
                 trackIndex,
                 sliderDbToLinearGain(sliderPosToDb(sliderPos)));
             uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
@@ -1284,7 +1284,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             if (contextActionButton(
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
                     muted ? "Track muted (click to unmute)" : "Mute track")) {
-                if (sequencer.engine()->timeline().setTrackMuted(trackIndex, !muted))
+                if (sequencer.engine()->commands().setTrackMuted(trackIndex, !muted))
                     uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
             }
             if (muted)
@@ -1318,13 +1318,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     for (size_t i = 0; i < tracksRef.size(); ++i)
                         if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
                             const auto otherTrackIndex = static_cast<int32_t>(i);
-                            if (sequencer.engine()->timeline().setTrackSolo(otherTrackIndex, false))
+                            if (sequencer.engine()->commands().setTrackSolo(otherTrackIndex, false))
                                 uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(otherTrackIndex);
                             else
                                 succeeded = false;
                         }
                 }
-                if (succeeded && sequencer.engine()->timeline().setTrackSolo(trackIndex, enableSolo))
+                if (succeeded && sequencer.engine()->commands().setTrackSolo(trackIndex, enableSolo))
                     uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
                 else
                     succeeded = false;
@@ -1424,7 +1424,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         if (frozen || queued)
             ImGui::PopStyleColor(3);
         if (freezeClicked)
-            sequencer.engine()->timeline().setTrackFreezePolicyEnabled(
+            sequencer.engine()->commands().setTrackFreezePolicyEnabled(
                 trackIndex,
                 nextPolicy == uapmd::FrozenTrackManager::FreezePolicy::On);
         ImGui::SameLine();
@@ -1553,7 +1553,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             if (contextActionMenuItem(
                     bypassed ? "Enable Track Processing" : "Bypass Track Processing",
                     bypassed)) {
-                if (sequencer.engine()->timeline().setTrackBypassed(trackIndex, !bypassed))
+                if (sequencer.engine()->commands().setTrackBypassed(trackIndex, !bypassed))
                     uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
             }
         }
@@ -2174,7 +2174,7 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         return;
     }
 
-    if (!appModel.sequencer().engine()->timeline().setClipAnchor(
+    if (!appModel.sequencer().engine()->commands().setClipAnchor(
             trackIndex, clipId, anchor)) {
         std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
         return;
@@ -2191,7 +2191,7 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    if (appModel.sequencer().engine()->timeline().setClipName(trackIndex, clipId, name))
+    if (appModel.sequencer().engine()->commands().setClipName(trackIndex, clipId, name))
         appModel.sequencer().engine()->markTrackDirty(trackIndex);
     refreshSequenceEditorForTrack(trackIndex);
 }
@@ -2257,7 +2257,7 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         return;
 
     seconds = std::max(0.0, seconds);
-    const bool changed = appModel.sequencer().engine()->timeline().setClipAnchor(
+    const bool changed = appModel.sequencer().engine()->commands().setClipAnchor(
         trackIndex,
         clipId,
         uapmd::TimeReference::fromContainerStart({}, seconds));
@@ -2774,7 +2774,7 @@ void TimelineEditor::addBlankMidiClipInRange(int32_t trackIndex, double startSec
 
     // Resize to the selected range's length (blank clips default to a small fixed length).
     const int64_t durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, endSeconds - startSeconds) * sampleRate));
-    appModel.sequencer().engine()->timeline()
+    appModel.sequencer().engine()->commands()
         .resizeClip(
             trackIndex, result.clipId, std::max<int64_t>(1, durationSamples),
             ProjectMutationOrigin::Internal);
@@ -3061,12 +3061,12 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
                 }
 
                 auto& timeline = appModel.sequencer().engine()->timeline();
-                timeline.setClipName(
+                timeline.commands().setClipName(
                     newTrackIndex,
                     clipResult.clipId,
                     stem.clipDisplayName,
                     uapmd::ProjectMutationOrigin::User);
-                timeline.setClipNeedsFileSave(
+                timeline.commands().setClipNeedsFileSave(
                     newTrackIndex,
                     clipResult.clipId,
                     true,

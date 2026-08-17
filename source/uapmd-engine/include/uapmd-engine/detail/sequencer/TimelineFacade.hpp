@@ -12,6 +12,7 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
 #include "ProjectAddressBook.hpp"
+#include "ProjectCommands.hpp"
 #include "LatencyCompensationTypes.hpp"
 
 namespace uapmd {
@@ -105,26 +106,6 @@ public:
     //
     // Each returns false when the track or clip does not exist, or when the
     // underlying change was rejected.
-    virtual bool setClipEnabled(int32_t trackIndex, int32_t clipId, bool enabled,
-                                ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipAnchor(int32_t trackIndex, int32_t clipId, const TimeReference& anchor,
-                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipGain(int32_t trackIndex, int32_t clipId, double gain,
-                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipMuted(int32_t trackIndex, int32_t clipId, bool muted,
-                              ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples,
-                            ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name,
-                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath,
-                                 ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipNeedsFileSave(int32_t trackIndex, int32_t clipId, bool needsSave,
-                                      ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipMarkers(int32_t trackIndex, int32_t clipId, std::vector<ClipMarker> markers,
-                                ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setClipAudioWarps(int32_t trackIndex, int32_t clipId, std::vector<AudioWarpPoint> audioWarps,
-                                   ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual bool clipEnabled(int32_t trackIndex, int32_t clipId) const = 0;
 
@@ -219,33 +200,10 @@ public:
     // Persistent mixer properties. These address tracks by their stable
     // document identity during replay, so inserting or removing another track
     // does not redirect an undo operation to the wrong track.
-    virtual bool setTrackGain(
-        int32_t trackIndex,
-        double gain,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setTrackMuted(
-        int32_t trackIndex,
-        bool muted,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setTrackSolo(
-        int32_t trackIndex,
-        bool solo,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setTrackBypassed(
-        int32_t trackIndex,
-        bool bypassed,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setTrackFreezePolicyEnabled(
-        int32_t trackIndex,
-        bool enabled,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     // Project-wide markers, owned by the engine alongside the master track.
     // Callers are responsible for validating marker identity and reference
     // cycles before submitting; this records the change and applies it.
-    virtual bool setMasterTrackMarkers(
-        std::vector<ClipMarker> markers,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     // Applies the complete persisted latency/monitoring configuration as one
     // history item. Callers that edit only one field should copy
@@ -270,30 +228,10 @@ public:
         int32_t sourceNodeId,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
-    virtual bool setPluginBypassed(
-        int32_t instanceId,
-        bool bypassed,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setPluginParameterValue(
-        int32_t instanceId,
-        int32_t parameterIndex,
-        double value,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     // Changes a parameter in a per-note controller context.  Per-note edits
     // use the same persistent plug-in identity and gesture history as global
     // parameter edits, so changing the selected key/channel/group does not
     // silently bypass undo.
-    virtual bool setPluginPerNoteControllerValue(
-        int32_t instanceId,
-        remidy::PerNoteControllerContextTypes contextType,
-        remidy::PerNoteControllerContext context,
-        int32_t parameterIndex,
-        double value,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setPluginGroup(
-        int32_t instanceId,
-        uint8_t group,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual void setPluginState(
         int32_t instanceId,
         std::vector<uint8_t> state,
@@ -374,10 +312,10 @@ public:
     // Anything that records a change for later replay must address its target
     // through here rather than by index.
     virtual ProjectAddressBook& addresses() = 0;
-    // The single entry point for changes expressed as commands. Mutations that
-    // have not been converted yet still record into the same history, which
-    // undoEngine() exposes directly.
-    virtual ProjectCommandManager& commands() = 0;
+    // Mutations that are not yet commands still record into the same
+    // history, which undoEngine() exposes directly.
+    // The undoable edits this project supports.
+    virtual ProjectCommands& commands() = 0;
     virtual ProjectUndoEngine& undoEngine() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
     virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;

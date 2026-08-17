@@ -778,7 +778,7 @@ static choc::value::Value toolSetTrackFreezePolicy(
     if (!engine || trackIndex < 0 ||
         static_cast<size_t>(trackIndex) >= engine->tracks().size())
         throw std::invalid_argument("trackIndex is invalid");
-    engine->timeline().setTrackFreezePolicyEnabled(
+    engine->commands().setTrackFreezePolicyEnabled(
         trackIndex,
         policy == uapmd::FrozenTrackManager::FreezePolicy::On);
     return serializeTrackFreezeState(trackIndex);

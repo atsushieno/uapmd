@@ -27,6 +27,7 @@
 #include "TimelineProjectStaging.hpp"
 #include "TimelineProjectSerializer.hpp"
 #include "TimelineProperties.hpp"
+#include "ProjectCommandsImpl.hpp"
 #include "TimelineUndoOperations.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
@@ -102,6 +103,7 @@ namespace uapmd {
             }
         }};
         timeline_detail::TimelineProjectSerializer serializer_{engine_, *this, *this};
+        ProjectCommandsImpl commands_{engine_, *this, command_manager_};
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
@@ -197,55 +199,6 @@ namespace uapmd {
             int32_t insertionIndex,
             ProjectTrackFragment fragment);
 
-        // Builds the command for one property and runs it through the command
-        // manager, which owns the origin policy, the document transaction and
-        // the history entry. This is the whole of the per-property boilerplate.
-        template<typename Property>
-        bool executeProperty(
-            typename Property::Address address,
-            typename Property::Value value,
-            ProjectMutationOrigin origin) {
-            return command_manager_
-                .executeSynchronously(
-                    std::make_shared<PropertyCommand<Property>>(
-                        *this, std::move(address), std::move(value)),
-                    origin)
-                .succeeded();
-        }
-
-        template<typename Property>
-        bool executeClipProperty(
-            int32_t trackIndex,
-            int32_t clipIdentifier,
-            typename Property::Value value,
-            ProjectMutationOrigin origin) {
-            auto address = clipAddress(trackIndex, clipIdentifier);
-            if (!address)
-                return false;
-            return executeProperty<Property>(std::move(*address), std::move(value), origin);
-        }
-
-        template<typename Property>
-        bool executeTrackProperty(
-            int32_t trackIndex,
-            typename Property::Value value,
-            ProjectMutationOrigin origin) {
-            auto address = trackReferenceId(trackIndex);
-            if (!address)
-                return false;
-            return executeProperty<Property>(std::move(*address), std::move(value), origin);
-        }
-
-        template<typename Property>
-        bool executePluginProperty(
-            int32_t instanceId,
-            typename Property::Value value,
-            ProjectMutationOrigin origin) {
-            auto address = pluginTargetForInstance(instanceId);
-            if (!address)
-                return false;
-            return executeProperty<Property>(std::move(*address), std::move(value), origin);
-        }
 
         SequencerTrack* resolveSequencerTrackByReferenceId(
             std::string_view trackReferenceId);
@@ -332,12 +285,6 @@ namespace uapmd {
             return true;
         }
 
-        bool setMasterTrackMarkers(
-            std::vector<ClipMarker> markers,
-            ProjectMutationOrigin origin) override {
-            return executeProperty<MasterTrackMarkersProperty>(
-                std::monostate{}, std::move(markers), origin);
-        }
 
         void replaceMasterTimelineTrack(std::shared_ptr<TimelineTrack> track) override {
             master_timeline_track_ = std::move(track);
@@ -456,8 +403,8 @@ namespace uapmd {
             return *this;
         }
 
-        ProjectCommandManager& commands() override {
-            return command_manager_;
+        ProjectCommands& commands() override {
+            return commands_;
         }
 
         TimelineTrack* timelineTrack(std::string_view trackReferenceId) override;
@@ -767,30 +714,10 @@ namespace uapmd {
             int32_t trackIndex,
             ProjectMutationOrigin origin) override;
 
-        bool setTrackGain(
-            int32_t trackIndex,
-            double gain,
-            ProjectMutationOrigin origin) override;
 
-        bool setTrackMuted(
-            int32_t trackIndex,
-            bool muted,
-            ProjectMutationOrigin origin) override;
 
-        bool setTrackSolo(
-            int32_t trackIndex,
-            bool solo,
-            ProjectMutationOrigin origin) override;
 
-        bool setTrackBypassed(
-            int32_t trackIndex,
-            bool bypassed,
-            ProjectMutationOrigin origin) override;
 
-        bool setTrackFreezePolicyEnabled(
-            int32_t trackIndex,
-            bool enabled,
-            ProjectMutationOrigin origin) override;
 
         bool setLatencyCompensationSettings(
             const LatencyCompensationProjectSettings& settings,
@@ -896,29 +823,9 @@ namespace uapmd {
         }
 
 
-        bool setPluginBypassed(
-            int32_t instanceId,
-            bool bypassed,
-            ProjectMutationOrigin origin) override;
 
-        bool setPluginParameterValue(
-            int32_t instanceId,
-            int32_t parameterIndex,
-            double value,
-            ProjectMutationOrigin origin) override;
 
-        bool setPluginPerNoteControllerValue(
-            int32_t instanceId,
-            remidy::PerNoteControllerContextTypes contextType,
-            remidy::PerNoteControllerContext context,
-            int32_t parameterIndex,
-            double value,
-            ProjectMutationOrigin origin) override;
 
-        bool setPluginGroup(
-            int32_t instanceId,
-            uint8_t group,
-            ProjectMutationOrigin origin) override;
 
         PluginMutationScopePtr beginPluginMutationScope(bool includeParameters);
 
@@ -1058,65 +965,15 @@ namespace uapmd {
             return true;
         }
 
-        bool setClipEnabled(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool enabled,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipAnchor(
-            int32_t trackIndex,
-            int32_t clipId,
-            const TimeReference& anchor,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipGain(
-            int32_t trackIndex,
-            int32_t clipId,
-            double gain,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipMuted(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool muted,
-            ProjectMutationOrigin origin) override;
 
-        bool resizeClip(
-            int32_t trackIndex,
-            int32_t clipId,
-            int64_t newDurationSamples,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipName(
-            int32_t trackIndex,
-            int32_t clipId,
-            const std::string& name,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipFilepath(
-            int32_t trackIndex,
-            int32_t clipId,
-            const std::string& filepath,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipNeedsFileSave(
-            int32_t trackIndex,
-            int32_t clipId,
-            bool needsSave,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipMarkers(
-            int32_t trackIndex,
-            int32_t clipId,
-            std::vector<ClipMarker> markers,
-            ProjectMutationOrigin origin) override;
 
-        bool setClipAudioWarps(
-            int32_t trackIndex,
-            int32_t clipId,
-            std::vector<AudioWarpPoint> audioWarps,
-            ProjectMutationOrigin origin) override;
 
         bool clipEnabled(int32_t trackIndex, int32_t clipId) const override;
 
