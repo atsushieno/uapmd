@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include <uapmd-data/uapmd-data.hpp>
@@ -68,6 +69,12 @@ namespace uapmd::timeline_detail {
             double value) = 0;
         virtual bool setTrackFreezePolicy(int32_t trackIndex, bool enabled) = 0;
         virtual bool trackFreezePolicyEnabled(int32_t trackIndex) const = 0;
+
+        // Project-wide markers live with the master track, which the engine
+        // owns. Applying them also re-resolves anchors, because a marker may
+        // be what a clip is anchored to.
+        virtual std::vector<ClipMarker> masterTrackMarkers() const = 0;
+        virtual bool applyMasterTrackMarkers(std::vector<ClipMarker> markers) = 0;
     };
 
     // One property edit, whatever the property is attached to.
@@ -750,6 +757,50 @@ namespace uapmd::timeline_detail {
 
         static void notify(PropertyCommandTarget& target, const PluginPerNoteSubject& subject) {
             target.onTrackMutated(subject.address.plugin.trackReferenceId, changeType);
+        }
+    };
+
+} // namespace uapmd::timeline_detail
+
+namespace uapmd::timeline_detail {
+
+    // Some properties belong to the project as a whole rather than to an
+    // addressed object, so their address is empty and always resolves.
+    struct ProjectSubject {};
+
+    template<typename Derived, typename ValueType>
+    struct ProjectPropertyDescriptor : PropertyDescriptor<Derived, ValueType> {
+        using Address = std::monostate;
+        using Subject = ProjectSubject;
+
+        static std::optional<ProjectSubject> resolve(
+            PropertyCommandTarget&,
+            const std::monostate&) {
+            return ProjectSubject{};
+        }
+
+        static void notify(PropertyCommandTarget&, const ProjectSubject&) {
+        }
+    };
+
+    struct MasterTrackMarkersProperty
+        : ProjectPropertyDescriptor<MasterTrackMarkersProperty, std::vector<ClipMarker>> {
+        static constexpr std::string_view commandId{"project.setMasterTrackMarkers"};
+        static constexpr std::string_view label{"Edit master markers"};
+
+        static Value read(PropertyCommandTarget& target, const ProjectSubject&) {
+            return target.masterTrackMarkers();
+        }
+
+        static bool equal(const Value& lhs, const Value& rhs) {
+            return clipMarkersEqual(lhs, rhs);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const ProjectSubject&,
+            const Value& value) {
+            return target.applyMasterTrackMarkers(value);
         }
     };
 

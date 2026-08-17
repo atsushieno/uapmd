@@ -240,6 +240,13 @@ public:
         bool enabled,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
+    // Project-wide markers, owned by the engine alongside the master track.
+    // Callers are responsible for validating marker identity and reference
+    // cycles before submitting; this records the change and applies it.
+    virtual bool setMasterTrackMarkers(
+        std::vector<ClipMarker> markers,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
     // Applies the complete persisted latency/monitoring configuration as one
     // history item. Callers that edit only one field should copy
     // latencyCompensationManager()->projectSettings(), alter that field, and

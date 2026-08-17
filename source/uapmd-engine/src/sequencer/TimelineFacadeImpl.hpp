@@ -321,6 +321,24 @@ namespace uapmd {
             plugin_state_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
         }
 
+        std::vector<ClipMarker> masterTrackMarkers() const override {
+            return engine_.masterTrackMarkers();
+        }
+
+        bool applyMasterTrackMarkers(std::vector<ClipMarker> markers) override {
+            engine_.setMasterTrackMarkers(std::move(markers));
+            resolveAllClipAnchors();
+            engine_.markTrackDirty(kMasterTrackIndex);
+            return true;
+        }
+
+        bool setMasterTrackMarkers(
+            std::vector<ClipMarker> markers,
+            ProjectMutationOrigin origin) override {
+            return executeProperty<MasterTrackMarkersProperty>(
+                std::monostate{}, std::move(markers), origin);
+        }
+
         void replaceMasterTimelineTrack(std::shared_ptr<TimelineTrack> track) override {
             master_timeline_track_ = std::move(track);
         }

@@ -116,93 +116,6 @@ void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
     markTimelineTrackClipsNeedsFileSave(appModel, appModel.getMasterTimelineTrack(), kMasterTrackIndex);
 }
 
-bool masterMarkersEqual(
-    const std::vector<ClipMarker>& lhs,
-    const std::vector<ClipMarker>& rhs) {
-    if (lhs.size() != rhs.size())
-        return false;
-    for (size_t i = 0; i < lhs.size(); ++i) {
-        if (lhs[i].markerId != rhs[i].markerId
-            || lhs[i].clipPositionOffset != rhs[i].clipPositionOffset
-            || lhs[i].referenceType != rhs[i].referenceType
-            || lhs[i].referenceClipId != rhs[i].referenceClipId
-            || lhs[i].referenceMarkerId != rhs[i].referenceMarkerId
-            || lhs[i].name != rhs[i].name)
-            return false;
-    }
-    return true;
-}
-
-class MasterMarkersUndoOperation final : public ProjectUndoableOperation {
-public:
-    using Apply = std::function<bool(const std::vector<ClipMarker>&)>;
-
-    MasterMarkersUndoOperation(
-        std::vector<ClipMarker> before,
-        std::vector<ClipMarker> after,
-        Apply apply)
-        : before_(std::move(before))
-        , after_(std::move(after))
-        , apply_(std::move(apply)) {
-    }
-
-    std::string description() const override {
-        return "Edit master markers";
-    }
-
-    size_t historySizeInBytes() const override {
-        auto size = sizeof(*this);
-        for (const auto& marker : before_)
-            size += sizeof(marker) + marker.markerId.capacity()
-                + marker.referenceClipId.capacity()
-                + marker.referenceMarkerId.capacity() + marker.name.capacity();
-        for (const auto& marker : after_)
-            size += sizeof(marker) + marker.markerId.capacity()
-                + marker.referenceClipId.capacity()
-                + marker.referenceMarkerId.capacity() + marker.name.capacity();
-        return size;
-    }
-
-    bool hasEffect() const override {
-        return !masterMarkersEqual(before_, after_);
-    }
-
-    void perform(
-        const ProjectUndoExecutionContext&,
-        ProjectUndoCompletion completion) override {
-        apply(after_, std::move(completion));
-    }
-
-    void undo(
-        const ProjectUndoExecutionContext&,
-        ProjectUndoCompletion completion) override {
-        apply(before_, std::move(completion));
-    }
-
-    void redo(
-        const ProjectUndoExecutionContext&,
-        ProjectUndoCompletion completion) override {
-        apply(after_, std::move(completion));
-    }
-
-private:
-    void apply(
-        const std::vector<ClipMarker>& markers,
-        ProjectUndoCompletion completion) {
-        if (apply_ && apply_(markers)) {
-            if (completion)
-                completion(ProjectUndoResult::success());
-            return;
-        }
-        if (completion)
-            completion(ProjectUndoResult::failure("Could not restore master markers"));
-    }
-
-    std::vector<ClipMarker> before_{};
-    std::vector<ClipMarker> after_{};
-    Apply apply_{};
-};
-
 } // namespace
 
 class ClipEnablementSerializationExtension final : public ProjectSerializationExtension {
@@ -2641,31 +2554,13 @@ bool uapmd_app::AppModel::setMasterTrackMarkersWithValidation(
         return false;
     }
 
-    auto apply = [this](const std::vector<uapmd::ClipMarker>& value) {
-        sequencer_.engine()->setMasterTrackMarkers(value);
-        resolveAllClipAnchorsInAppModel(*this);
-        sequencer_.engine()->markTrackDirty(kMasterTrackIndex);
-        return true;
-    };
-    if (origin != ProjectMutationOrigin::User
-        && origin != ProjectMutationOrigin::Remote)
-        return apply(markers);
-
-    auto operation = std::make_shared<MasterMarkersUndoOperation>(
-        sequencer_.engine()->masterTrackMarkers(), std::move(markers), std::move(apply));
-    auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-    sequencer_.engine()->timeline().undoEngine().perform(
-        std::move(operation),
-        origin,
-        [result](ProjectUndoResult completed) {
-            *result = std::move(completed);
-        });
-    if (result->has_value() && result->value().succeeded())
-        return true;
-    error = result->has_value() && !result->value().error.empty()
-        ? result->value().error
-        : "Could not record the master marker edit";
-    return false;
+    // Applying and recording the change belongs to the timeline; validation
+    // above is the part that is specific to this layer.
+    if (!sequencer_.engine()->timeline().setMasterTrackMarkers(std::move(markers), origin)) {
+        error = "Could not record the master marker edit";
+        return false;
+    }
+    return true;
 }
 
 bool uapmd_app::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
