@@ -208,6 +208,13 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/TailProcessManager.cpp
         src/sequencer/TrackRoutingManager.cpp
         src/sequencer/TimelineFacade.cpp
+        src/sequencer/TimelineFacadeAudio.cpp
+        src/sequencer/TimelineFacadeClips.cpp
+        src/sequencer/TimelineFacadeMixer.cpp
+        src/sequencer/TimelineFacadeDocumentView.cpp
+        src/sequencer/TimelineFacadeFragments.cpp
+        src/sequencer/TimelineFacadePlugins.cpp
+        src/sequencer/TimelineFacadeProject.cpp
 )
 
 if(NOT EMSCRIPTEN AND NOT IOS)

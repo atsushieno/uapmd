@@ -16,6 +16,8 @@ namespace uapmd {
     struct ClipAddress {
         ProjectObjectId trackReferenceId;
         ProjectObjectId clipReferenceId;
+
+        bool operator==(const ClipAddress&) const = default;
     };
 
     // Stable document identity of one plug-in node. A runtime instance id is
@@ -24,6 +26,8 @@ namespace uapmd {
     struct PluginAddress {
         ProjectObjectId trackReferenceId;
         std::string nodeId;
+
+        bool operator==(const PluginAddress&) const = default;
     };
 
     // Translation between the persistent identities that a command payload

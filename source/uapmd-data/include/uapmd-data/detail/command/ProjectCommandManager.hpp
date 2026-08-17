@@ -67,6 +67,18 @@ namespace uapmd {
             ProjectMutationOrigin origin,
             ProjectCommandCompletion completion = {});
 
+        // Records a change whose forward mutation has already happened -- a
+        // plug-in that moved its own parameter, or an object whose state could
+        // only be captured after it was constructed.
+        //
+        // `command` is not executed now: it becomes the redo, and `revert` the
+        // undo. Both keep their ordinary meanings from then on.
+        void recordExecuted(
+            ProjectCommandPtr command,
+            ProjectCommandPtr revert,
+            ProjectMutationOrigin origin = ProjectMutationOrigin::User,
+            ProjectCommandCompletion completion = {});
+
         // For commands that are genuinely inline, such as a clip property
         // edit. Must be called on the model thread; called from anywhere else
         // it returns Busy rather than pretending the command failed.

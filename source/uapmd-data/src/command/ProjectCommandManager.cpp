@@ -106,6 +106,21 @@ namespace uapmd {
                 , end_transaction_(std::move(endTransaction)) {
             }
 
+            // For a change that has already been applied: the revert is
+            // supplied rather than captured by running the forward command.
+            CommandOperation(
+                ProjectCommandPtr command,
+                ProjectCommandPtr revert,
+                ProjectModelThreadDispatcher dispatch,
+                std::function<void()> beginTransaction,
+                std::function<void()> endTransaction)
+                : forward_(std::move(command))
+                , backward_(std::move(revert))
+                , dispatch_(std::move(dispatch))
+                , begin_transaction_(std::move(beginTransaction))
+                , end_transaction_(std::move(endTransaction)) {
+            }
+
             std::string description() const override {
                 return forward_ ? forward_->description() : std::string{};
             }
@@ -240,6 +255,37 @@ namespace uapmd {
                 std::move(completion));
         }
 
+        void recordExecuted(
+            ProjectCommandPtr command,
+            ProjectCommandPtr revert,
+            ProjectMutationOrigin origin,
+            ProjectCommandCompletion completion) {
+            if (!command || !revert) {
+                complete(std::move(completion), ProjectCommandResult::failure(
+                    "Recording an executed change needs both directions."));
+                return;
+            }
+            if (!history_) {
+                complete(std::move(completion), ProjectCommandResult::failure(
+                    "The command manager has no history engine."));
+                return;
+            }
+            if (!recordsHistory(origin)) {
+                // Nothing to apply and nothing to record.
+                complete(std::move(completion), ProjectCommandResult::success());
+                return;
+            }
+            history_->recordPerformed(
+                std::make_shared<CommandOperation>(
+                    std::move(command),
+                    std::move(revert),
+                    dispatch_,
+                    begin_transaction_,
+                    end_transaction_),
+                origin,
+                std::move(completion));
+        }
+
         ProjectCommandResult executeSynchronously(
             ProjectCommandPtr command,
             ProjectMutationOrigin origin) {
@@ -359,6 +405,18 @@ namespace uapmd {
         ProjectMutationOrigin origin,
         ProjectCommandCompletion completion) {
         impl_->execute(std::move(command), origin, std::move(completion));
+    }
+
+    void ProjectCommandManager::recordExecuted(
+        ProjectCommandPtr command,
+        ProjectCommandPtr revert,
+        ProjectMutationOrigin origin,
+        ProjectCommandCompletion completion) {
+        impl_->recordExecuted(
+            std::move(command),
+            std::move(revert),
+            origin,
+            std::move(completion));
     }
 
     ProjectCommandResult ProjectCommandManager::executeSynchronously(
