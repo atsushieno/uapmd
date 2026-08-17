@@ -179,8 +179,13 @@ void FrozenTrackManager::processAudio(
     if (!cachedAudio)
         return;
 
+    // The track context carries the render position for this exact audio
+    // block. Do not use the engine-wide position here: the timeline pump can
+    // prepare contexts ahead of the realtime callback, and transport
+    // transitions can update the global position between those two stages.
     const int64_t cacheFrame =
-        engine.renderPlaybackPosition() - cachedAudio->start_sample;
+        context.masterContext().playbackPositionSamples() -
+        cachedAudio->start_sample;
     const int32_t frameCount = std::max(0, context.frameCount());
     size_t cachedChannel = 0;
     for (int32_t bus = 0; bus < context.audioOutBusCount(); ++bus)
