@@ -83,9 +83,10 @@ namespace uapmd {
 
         ClipManager clip_manager_;
         using SourceNodeList = std::vector<std::shared_ptr<SourceNode>>;
+        using SourceNodeSnapshotPublisher = RtSnapshotPublisher<SourceNodeList>;
         SourceNodeList source_nodes_;
         mutable std::mutex source_nodes_mutex_;
-        std::shared_ptr<const SourceNodeList> source_nodes_snapshot_;
+        SourceNodeSnapshotPublisher source_nodes_snapshot_;
 
         // Temporary buffers for mixing sources
         std::vector<std::vector<float>> mixed_source_buffers_;  // [channel][samples]
@@ -102,7 +103,7 @@ namespace uapmd {
 
         // Source node snapshot helpers
         void rebuildSourceNodeSnapshotLocked();
-        std::shared_ptr<SourceNode> findSourceNode(int32_t instanceId) const;
+        static SourceNode* findSourceNode(const SourceNodeList& sourceNodes, int32_t instanceId);
     };
 
 } // namespace uapmd

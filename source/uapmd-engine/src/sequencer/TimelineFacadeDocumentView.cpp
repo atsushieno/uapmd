@@ -250,6 +250,11 @@ namespace uapmd {
     }
 
     void TimelineFacadeImpl::emitMasterTrackChanged(std::string type) {
+        // Every master content change funnels through here, so this is where
+        // the audio thread's copy is refreshed. Done before the event, and
+        // before any event suppression, so an observer that reads the
+        // snapshot never sees the pre-change one.
+        rebuildMasterTrackSnapshot();
         ProjectDocumentEvent event(ProjectDocumentEventKind::MasterTrackChanged, std::move(type));
         event.setTrackId(master_timeline_track_ ? master_timeline_track_->referenceId() : "master_track")
             .setTrackIndex(kMasterTrackIndex);

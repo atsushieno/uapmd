@@ -59,7 +59,7 @@ namespace uapmd {
     }
 
     void ClipManager::rebuildSnapshotLocked() {
-        auto snap = std::make_shared<ClipSnapshot>();
+        auto snap = std::make_unique<ClipSnapshot>();
         snap->clips.reserve(clips_.size());
         for (const auto& pair : clips_)
             snap->clips.push_back(pair.second);
@@ -69,13 +69,11 @@ namespace uapmd {
             snap->clipMap[clip.clipId] = &clip;
             snap->clipReferenceMap[clip.referenceId] = &clip;
         }
-        std::atomic_store_explicit(&clip_snapshot_,
-            std::shared_ptr<const ClipSnapshot>(snap),
-            std::memory_order_release);
+        clip_snapshot_.publish(std::move(snap));
     }
 
-    std::shared_ptr<const ClipManager::ClipSnapshot> ClipManager::getSnapshotRT() const {
-        return std::atomic_load_explicit(&clip_snapshot_, std::memory_order_acquire);
+    ClipManager::SnapshotGuard ClipManager::getSnapshotRT() const {
+        return clip_snapshot_.protect();
     }
 
     int32_t ClipManager::addClip(const ClipData& clip) {

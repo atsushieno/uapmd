@@ -52,7 +52,14 @@ namespace uapmd {
 
         using TrackList = std::vector<std::shared_ptr<TimelineTrack>>;
         TrackList timeline_tracks_;                          // UI-thread owned
-        std::shared_ptr<const TrackList> timeline_tracks_snapshot_; // RT-thread read via atomic
+        RtSnapshotPublisher<TrackList> timeline_tracks_snapshot_;
+
+        // The tempo/time-signature map the audio callback reads. Building it
+        // walks and sorts every master clip, which allocates, so it is built
+        // on the model thread whenever master content changes and published
+        // here for the RT thread to load -- the same arrangement as
+        // timeline_tracks_snapshot_ above. Never null.
+        RtSnapshotPublisher<MasterTrackSnapshot> master_track_snapshot_;
         std::shared_ptr<TimelineTrack> master_timeline_track_;
 
         // Propagates the master track's tempo/time-signature authority to every regular-track
@@ -67,6 +74,10 @@ namespace uapmd {
                                                  double sampleRate);
 
         void rebuildTrackSnapshot();
+        // Walks the master track's MIDI clips. Model thread only.
+        MasterTrackSnapshot computeMasterTrackSnapshot() const;
+        // Recomputes and publishes for the audio thread. Model thread only.
+        void rebuildMasterTrackSnapshot();
 
         TimelineState timeline_;
         int32_t next_source_node_id_{1};

@@ -171,13 +171,14 @@ namespace uapmd {
         struct PlatformMidiRoute {
             std::string port_id;
             std::shared_ptr<MidiIOFeature> device;
-            std::shared_ptr<const PlatformMidiTargets> targets;
+            RtSnapshotPublisher<PlatformMidiTargets> targets;
             SequencerEngineImpl* owner{};
             moodycamel::ReaderWriterQueue<umppi::Ump> output_queue{256};
         };
         using PlatformMidiRoutes = std::vector<std::shared_ptr<PlatformMidiRoute>>;
-        std::shared_ptr<const PlatformMidiRoutes> platform_midi_input_routes_;
-        std::shared_ptr<const PlatformMidiRoutes> platform_midi_output_routes_;
+        RtSnapshotPublisher<PlatformMidiRoutes> platform_midi_input_routes_;
+        // Reader 0 is the audio callback; reader 1 is the MIDI output worker.
+        RtSnapshotPublisher<PlatformMidiRoutes, 2> platform_midi_output_routes_;
         std::unique_ptr<MidiRecorder> midi_recorder_;
         std::vector<PlaybackEngineExtension*> playback_engine_extensions_;
         std::atomic<bool> platform_midi_output_worker_running_{true};
@@ -229,11 +230,9 @@ namespace uapmd {
         };
         std::unique_ptr<OfflineTrackRenderSession> track_freeze_render_session_;
         using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
-        std::shared_ptr<const TrackAudioProcessorExtensions> track_audio_processor_extensions_{
-            std::make_shared<const TrackAudioProcessorExtensions>()};
+        RtSnapshotPublisher<TrackAudioProcessorExtensions> track_audio_processor_extensions_;
         using AudioProcessingEventHandlers = std::vector<AudioProcessingEventHandler*>;
-        std::shared_ptr<const AudioProcessingEventHandlers> audio_processing_event_handlers_{
-            std::make_shared<const AudioProcessingEventHandlers>()};
+        RtSnapshotPublisher<AudioProcessingEventHandlers> audio_processing_event_handlers_;
         std::vector<SequencerProcessingLifecycleListener*> processing_lifecycle_listeners_;
         std::vector<PluginInstanceLifecycleListener*> plugin_instance_lifecycle_listeners_;
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
@@ -409,50 +408,32 @@ namespace uapmd {
         }
 
         void addTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) override {
-            auto current = std::atomic_load_explicit(
-                &track_audio_processor_extensions_, std::memory_order_acquire);
-            if (current && std::find(current->begin(), current->end(), &extension) != current->end())
+            const auto* current = track_audio_processor_extensions_.currentOnPublisherThread();
+            if (std::find(current->begin(), current->end(), &extension) != current->end())
                 return;
-            auto updated = std::make_shared<TrackAudioProcessorExtensions>(
-                current ? *current : TrackAudioProcessorExtensions{});
+            auto updated = std::make_unique<TrackAudioProcessorExtensions>(*current);
             updated->push_back(&extension);
-            std::shared_ptr<const TrackAudioProcessorExtensions> published = std::move(updated);
-            std::atomic_store_explicit(
-                &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
+            track_audio_processor_extensions_.publish(std::move(updated));
         }
         void removeTrackAudioProcessorExtension(TrackAudioProcessorExtension& extension) override {
-            auto current = std::atomic_load_explicit(
-                &track_audio_processor_extensions_, std::memory_order_acquire);
-            if (!current)
-                return;
-            auto updated = std::make_shared<TrackAudioProcessorExtensions>(*current);
+            const auto* current = track_audio_processor_extensions_.currentOnPublisherThread();
+            auto updated = std::make_unique<TrackAudioProcessorExtensions>(*current);
             std::erase(*updated, &extension);
-            std::shared_ptr<const TrackAudioProcessorExtensions> published = std::move(updated);
-            std::atomic_store_explicit(
-                &track_audio_processor_extensions_, std::move(published), std::memory_order_release);
+            track_audio_processor_extensions_.publish(std::move(updated));
         }
         void addAudioProcessingEventHandler(AudioProcessingEventHandler& handler) override {
-            auto current = std::atomic_load_explicit(
-                &audio_processing_event_handlers_, std::memory_order_acquire);
-            if (current && std::find(current->begin(), current->end(), &handler) != current->end())
+            const auto* current = audio_processing_event_handlers_.currentOnPublisherThread();
+            if (std::find(current->begin(), current->end(), &handler) != current->end())
                 return;
-            auto updated = std::make_shared<AudioProcessingEventHandlers>(
-                current ? *current : AudioProcessingEventHandlers{});
+            auto updated = std::make_unique<AudioProcessingEventHandlers>(*current);
             updated->push_back(&handler);
-            std::shared_ptr<const AudioProcessingEventHandlers> published = std::move(updated);
-            std::atomic_store_explicit(
-                &audio_processing_event_handlers_, std::move(published), std::memory_order_release);
+            audio_processing_event_handlers_.publish(std::move(updated));
         }
         void removeAudioProcessingEventHandler(AudioProcessingEventHandler& handler) override {
-            auto current = std::atomic_load_explicit(
-                &audio_processing_event_handlers_, std::memory_order_acquire);
-            if (!current)
-                return;
-            auto updated = std::make_shared<AudioProcessingEventHandlers>(*current);
+            const auto* current = audio_processing_event_handlers_.currentOnPublisherThread();
+            auto updated = std::make_unique<AudioProcessingEventHandlers>(*current);
             std::erase(*updated, &handler);
-            std::shared_ptr<const AudioProcessingEventHandlers> published = std::move(updated);
-            std::atomic_store_explicit(
-                &audio_processing_event_handlers_, std::move(published), std::memory_order_release);
+            audio_processing_event_handlers_.publish(std::move(updated));
         }
         void addProcessingLifecycleListener(
             SequencerProcessingLifecycleListener& listener) override {
@@ -503,10 +484,7 @@ namespace uapmd {
                     extension->recordingStopped();
         }
         void notifyTrackAudioContentChanged(uapmd_track_index_t trackIndex) {
-            auto extensions = std::atomic_load_explicit(
-                &track_audio_processor_extensions_, std::memory_order_acquire);
-            if (!extensions)
-                return;
+            const auto* extensions = track_audio_processor_extensions_.currentOnPublisherThread();
             for (auto* extension : *extensions)
                 if (extension)
                     extension->audioContentChanged(*this, trackIndex);
@@ -1321,6 +1299,8 @@ namespace uapmd {
         const size_t processTrackCount = std::min(
             std::min(tracks_.size(), sequence.tracks.size()),
             track_processing_flags_.size());
+        auto eventHandlers = audio_processing_event_handlers_.protect();
+        auto extensions = track_audio_processor_extensions_.protect();
         for (size_t i = 0; i < processTrackCount; i++) {
             // Set processing flag BEFORE accessing sequence.tracks[i]
             track_processing_flags_[i]->store(true, std::memory_order_release);
@@ -1332,15 +1312,11 @@ namespace uapmd {
                 tp,
                 trackFrameCount,
             };
-            auto eventHandlers = std::atomic_load_explicit(
-                &audio_processing_event_handlers_, std::memory_order_acquire);
             if (eventHandlers)
                 for (auto* handler : *eventHandlers)
                     if (handler)
                         handler->beforeTrackProcess(event);
             bool processedByExtension = false;
-            auto extensions = std::atomic_load_explicit(
-                &track_audio_processor_extensions_, std::memory_order_acquire);
             if (extensions) {
                 for (auto* extension : *extensions) {
                     if (!extension || !extension->shouldProcessAudio(
@@ -2723,25 +2699,21 @@ namespace uapmd {
         std::string portId, ProjectObjectId trackId) {
         if (portId.empty() || trackId.empty() || timeline_->trackIndexForReferenceId(trackId) < 0)
             return false;
-        auto routes = std::atomic_load_explicit(&platform_midi_input_routes_, std::memory_order_acquire);
-        if (routes)
-            for (const auto& existing : *routes)
-                if (existing && existing->port_id == portId) {
-                    auto targets = std::atomic_load_explicit(&existing->targets, std::memory_order_acquire);
-                    if (targets)
-                        for (const auto& target : *targets)
-                            if (target && target->track_id == trackId)
-                                return true;
-                    auto nextTargets = std::make_shared<PlatformMidiTargets>(targets ? *targets : PlatformMidiTargets{});
-                    auto target = std::make_shared<PlatformMidiTarget>();
-                    target->track_id = std::move(trackId);
-                    target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
-                    nextTargets->push_back(std::move(target));
-                    std::atomic_store_explicit(&existing->targets,
-                                               std::shared_ptr<const PlatformMidiTargets>(nextTargets),
-                                               std::memory_order_release);
-                    return true;
-                }
+        const auto* routes = platform_midi_input_routes_.currentOnPublisherThread();
+        for (const auto& existing : *routes)
+            if (existing && existing->port_id == portId) {
+                const auto* targets = existing->targets.currentOnPublisherThread();
+                for (const auto& target : *targets)
+                    if (target && target->track_id == trackId)
+                        return true;
+                auto nextTargets = std::make_unique<PlatformMidiTargets>(*targets);
+                auto target = std::make_shared<PlatformMidiTarget>();
+                target->track_id = std::move(trackId);
+                target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
+                nextTargets->push_back(std::move(target));
+                existing->targets.publish(std::move(nextTargets));
+                return true;
+            }
         auto route = std::make_shared<PlatformMidiRoute>();
         route->port_id = std::move(portId);
         route->owner = this;
@@ -2751,92 +2723,78 @@ namespace uapmd {
         auto target = std::make_shared<PlatformMidiTarget>();
         target->track_id = std::move(trackId);
         target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
-        route->targets = std::make_shared<PlatformMidiTargets>(PlatformMidiTargets{target});
+        route->targets.publish(
+            std::make_unique<const PlatformMidiTargets>(PlatformMidiTargets{target}));
         route->device->addInputHandler(platformMidiInputTrampoline, route.get());
-        auto next = std::make_shared<PlatformMidiRoutes>(routes ? *routes : PlatformMidiRoutes{});
+        auto next = std::make_unique<PlatformMidiRoutes>(*routes);
         next->push_back(std::move(route));
-        std::atomic_store_explicit(&platform_midi_input_routes_,
-                                   std::shared_ptr<const PlatformMidiRoutes>(next), std::memory_order_release);
+        platform_midi_input_routes_.publish(std::move(next));
         return true;
     }
 
     void SequencerEngineImpl::disconnectPlatformMidiInputFromTrack(std::string_view portId, std::string_view trackId) {
-        const auto routes = std::atomic_load_explicit(&platform_midi_input_routes_, std::memory_order_acquire);
-        if (!routes)
-            return;
-        auto next = std::make_shared<PlatformMidiRoutes>();
+        const auto* routes = platform_midi_input_routes_.currentOnPublisherThread();
+        auto next = std::make_unique<PlatformMidiRoutes>();
         next->reserve(routes->size());
         for (const auto& route : *routes) {
             if (route && route->port_id == portId) {
-                const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
-                auto nextTargets = std::make_shared<PlatformMidiTargets>();
-                if (targets)
-                    for (const auto& target : *targets)
-                        if (target && target->track_id != trackId)
-                            nextTargets->push_back(target);
+                const auto* targets = route->targets.currentOnPublisherThread();
+                auto nextTargets = std::make_unique<PlatformMidiTargets>();
+                for (const auto& target : *targets)
+                    if (target && target->track_id != trackId)
+                        nextTargets->push_back(target);
                 if (nextTargets->empty()) {
                     route->device->removeInputHandler(platformMidiInputTrampoline);
                     continue;
                 }
-                std::atomic_store_explicit(&route->targets,
-                                           std::shared_ptr<const PlatformMidiTargets>(nextTargets),
-                                           std::memory_order_release);
+                route->targets.publish(std::move(nextTargets));
             }
             next->push_back(route);
         }
-        std::atomic_store_explicit(&platform_midi_input_routes_,
-                                   std::shared_ptr<const PlatformMidiRoutes>(next), std::memory_order_release);
+        platform_midi_input_routes_.publish(std::move(next));
     }
 
     std::vector<MidiPortTrackConnection> SequencerEngineImpl::platformMidiInputConnections() const {
         std::vector<MidiPortTrackConnection> connections;
-        const auto routes = std::atomic_load_explicit(&platform_midi_input_routes_, std::memory_order_acquire);
-        if (!routes)
-            return connections;
+        const auto* routes = platform_midi_input_routes_.currentOnPublisherThread();
         for (const auto& route : *routes) {
             if (!route)
                 continue;
-            const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
-            if (targets)
-                for (const auto& target : *targets)
-                    if (target)
-                        connections.push_back({route->port_id, target->track_id});
+            const auto* targets = route->targets.currentOnPublisherThread();
+            for (const auto& target : *targets)
+                if (target)
+                    connections.push_back({route->port_id, target->track_id});
         }
         return connections;
     }
 
     void SequencerEngineImpl::clearPlatformMidiInputRoute() {
-        const auto routes = std::atomic_exchange_explicit(
-            &platform_midi_input_routes_, std::shared_ptr<const PlatformMidiRoutes>{}, std::memory_order_acq_rel);
-        if (routes)
-            for (const auto& route : *routes)
-                if (route && route->device)
-                    route->device->removeInputHandler(platformMidiInputTrampoline);
+        const auto* routes = platform_midi_input_routes_.currentOnPublisherThread();
+        for (const auto& route : *routes)
+            if (route && route->device)
+                route->device->removeInputHandler(platformMidiInputTrampoline);
+        platform_midi_input_routes_.publish(std::make_unique<const PlatformMidiRoutes>());
     }
 
     bool SequencerEngineImpl::connectPlatformMidiOutputToTrack(
         std::string portId, ProjectObjectId trackId) {
         if (portId.empty() || trackId.empty() || timeline_->trackIndexForReferenceId(trackId) < 0)
             return false;
-        auto routes = std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire);
-        if (routes)
-            for (const auto& existing : *routes)
-                if (existing && existing->port_id == portId) {
-                    auto targets = std::atomic_load_explicit(&existing->targets, std::memory_order_acquire);
-                    if (targets)
-                        for (const auto& target : *targets)
-                            if (target && target->track_id == trackId)
-                                return true;
-                    auto nextTargets = std::make_shared<PlatformMidiTargets>(targets ? *targets : PlatformMidiTargets{});
-                    auto target = std::make_shared<PlatformMidiTarget>();
-                    target->track_id = std::move(trackId);
-                    target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
-                    nextTargets->push_back(std::move(target));
-                    std::atomic_store_explicit(&existing->targets,
-                                               std::shared_ptr<const PlatformMidiTargets>(nextTargets),
-                                               std::memory_order_release);
-                    return true;
-                }
+        const auto* routes = platform_midi_output_routes_.currentOnPublisherThread();
+        for (const auto& existing : *routes)
+            if (existing && existing->port_id == portId) {
+                const auto* targets = existing->targets.currentOnPublisherThread();
+                for (const auto& target : *targets)
+                    if (target && target->track_id == trackId)
+                        return true;
+                auto nextTargets = std::make_unique<PlatformMidiTargets>(*targets);
+                auto target = std::make_shared<PlatformMidiTarget>();
+                target->track_id = std::move(trackId);
+                target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
+                nextTargets->push_back(std::move(target));
+                existing->targets.publish(std::move(nextTargets));
+                return true;
+            }
         auto route = std::make_shared<PlatformMidiRoute>();
         route->port_id = std::move(portId);
         route->owner = this;
@@ -2846,62 +2804,52 @@ namespace uapmd {
         auto target = std::make_shared<PlatformMidiTarget>();
         target->track_id = std::move(trackId);
         target->track_index.store(timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
-        route->targets = std::make_shared<PlatformMidiTargets>(PlatformMidiTargets{target});
-        auto next = std::make_shared<PlatformMidiRoutes>(routes ? *routes : PlatformMidiRoutes{});
+        route->targets.publish(
+            std::make_unique<const PlatformMidiTargets>(PlatformMidiTargets{target}));
+        auto next = std::make_unique<PlatformMidiRoutes>(*routes);
         next->push_back(std::move(route));
-        std::atomic_store_explicit(&platform_midi_output_routes_,
-                                   std::shared_ptr<const PlatformMidiRoutes>(next), std::memory_order_release);
+        platform_midi_output_routes_.publish(std::move(next));
         return true;
     }
 
     void SequencerEngineImpl::disconnectPlatformMidiOutputFromTrack(std::string_view portId, std::string_view trackId) {
-        const auto routes = std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire);
-        if (!routes)
-            return;
-        auto next = std::make_shared<PlatformMidiRoutes>();
+        const auto* routes = platform_midi_output_routes_.currentOnPublisherThread();
+        auto next = std::make_unique<PlatformMidiRoutes>();
         next->reserve(routes->size());
         for (const auto& route : *routes) {
             if (!route || route->port_id != portId) {
                 next->push_back(route);
                 continue;
             }
-            const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
-            auto nextTargets = std::make_shared<PlatformMidiTargets>();
-            if (targets)
-                for (const auto& target : *targets)
-                    if (target && target->track_id != trackId)
-                        nextTargets->push_back(target);
+            const auto* targets = route->targets.currentOnPublisherThread();
+            auto nextTargets = std::make_unique<PlatformMidiTargets>();
+            for (const auto& target : *targets)
+                if (target && target->track_id != trackId)
+                    nextTargets->push_back(target);
             if (nextTargets->empty())
                 continue;
-            std::atomic_store_explicit(&route->targets,
-                                       std::shared_ptr<const PlatformMidiTargets>(nextTargets),
-                                       std::memory_order_release);
+            route->targets.publish(std::move(nextTargets));
             next->push_back(route);
         }
-        std::atomic_store_explicit(&platform_midi_output_routes_,
-                                   std::shared_ptr<const PlatformMidiRoutes>(next), std::memory_order_release);
+        platform_midi_output_routes_.publish(std::move(next));
     }
 
     std::vector<MidiPortTrackConnection> SequencerEngineImpl::platformMidiOutputConnections() const {
         std::vector<MidiPortTrackConnection> connections;
-        const auto routes = std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire);
-        if (!routes)
-            return connections;
+        const auto* routes = platform_midi_output_routes_.currentOnPublisherThread();
         for (const auto& route : *routes) {
             if (!route)
                 continue;
-            const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
-            if (targets)
-                for (const auto& target : *targets)
-                    if (target)
-                        connections.push_back({route->port_id, target->track_id});
+            const auto* targets = route->targets.currentOnPublisherThread();
+            for (const auto& target : *targets)
+                if (target)
+                    connections.push_back({route->port_id, target->track_id});
         }
         return connections;
     }
 
     void SequencerEngineImpl::clearPlatformMidiOutputRoute() {
-        std::atomic_store_explicit(&platform_midi_output_routes_,
-                                   std::shared_ptr<const PlatformMidiRoutes>{}, std::memory_order_release);
+        platform_midi_output_routes_.publish(std::make_unique<const PlatformMidiRoutes>());
     }
 
     void SequencerEngineImpl::removePlatformMidiTrackConnections(std::string_view trackId) {
@@ -2916,22 +2864,21 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::refreshPlatformMidiTrackIndices() {
-        const auto refresh = [this](const std::shared_ptr<const PlatformMidiRoutes>& routes) {
+        const auto refresh = [this](const PlatformMidiRoutes* routes) {
             if (!routes)
                 return;
             for (const auto& route : *routes) {
                 if (!route)
                     continue;
-                const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
-                if (targets)
-                    for (const auto& target : *targets)
-                        if (target)
-                            target->track_index.store(
-                                timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
+                const auto* targets = route->targets.currentOnPublisherThread();
+                for (const auto& target : *targets)
+                    if (target)
+                        target->track_index.store(
+                            timeline_->trackIndexForReferenceId(target->track_id), std::memory_order_release);
             }
         };
-        refresh(std::atomic_load_explicit(&platform_midi_input_routes_, std::memory_order_acquire));
-        refresh(std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire));
+        refresh(platform_midi_input_routes_.currentOnPublisherThread());
+        refresh(platform_midi_output_routes_.currentOnPublisherThread());
     }
 
     void SequencerEngineImpl::platformMidiInputTrampoline(
@@ -2946,7 +2893,7 @@ namespace uapmd {
         PlatformMidiRoute& route, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         if (!ump || sizeInBytes == 0)
             return;
-        const auto targets = std::atomic_load_explicit(&route.targets, std::memory_order_acquire);
+        const auto targets = route.targets.protect();
         if (!targets)
             return;
         for (const auto& target : *targets) {
@@ -2974,11 +2921,11 @@ namespace uapmd {
             return;
         umppi::Ump message;
         std::memcpy(&message.int1, ump, sizeInBytes);
-        const auto routes = std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire);
+        const auto routes = platform_midi_output_routes_.protect(0);
         if (routes)
             for (const auto& route : *routes)
                 if (route) {
-                    const auto targets = std::atomic_load_explicit(&route->targets, std::memory_order_acquire);
+                    const auto targets = route->targets.protect();
                     if (targets)
                         for (const auto& target : *targets)
                             if (target && target->track_index.load(std::memory_order_acquire) == trackIndex) {
@@ -2990,18 +2937,19 @@ namespace uapmd {
 
     void SequencerEngineImpl::runPlatformMidiOutputWorker() {
         while (platform_midi_output_worker_running_.load(std::memory_order_acquire)) {
-            const auto routes = std::atomic_load_explicit(&platform_midi_output_routes_, std::memory_order_acquire);
             bool sent = false;
-            if (routes) for (const auto& route : *routes) {
-                umppi::Ump message;
-                if (!route || !route->output_queue.try_dequeue(message))
-                    continue;
-                route->device->send(&message.int1, message.getSizeInBytes(), 0);
-                sent = true;
+            {
+                const auto routes = platform_midi_output_routes_.protect(1);
+                if (routes) for (const auto& route : *routes) {
+                    umppi::Ump message;
+                    if (!route || !route->output_queue.try_dequeue(message))
+                        continue;
+                    route->device->send(&message.int1, message.getSizeInBytes(), 0);
+                    sent = true;
+                }
             }
-            if (!sent) {
+            if (!sent)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
         }
     }
 

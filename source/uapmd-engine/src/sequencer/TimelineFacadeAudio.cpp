@@ -5,11 +5,10 @@
 
 namespace uapmd {
     void TimelineFacadeImpl::processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) {
-        // Hold a snapshot reference for the duration of this callback so that
+        // Protect the snapshot for the duration of this callback so that
         // tracks added or removed on the UI thread cannot destroy TrackList
         // elements while we are iterating them.
-        auto snapshot = std::atomic_load_explicit(
-            &timeline_tracks_snapshot_, std::memory_order_acquire);
+        auto snapshot = timeline_tracks_snapshot_.protect();
 
         auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {
             if (!timeline_.loopEnabled || timeline_.loopEnd.samples <= timeline_.loopStart.samples)
@@ -21,7 +20,11 @@ namespace uapmd {
                 ((samplePosition - timeline_.loopStart.samples) % loopLength);
         };
 
-        const auto masterSnapshot = buildMasterTrackSnapshot();
+        // Published by the model thread; loading it is the whole cost here.
+        // Building it walks and sorts every master clip, which must never
+        // happen on this thread.
+        const auto masterSnapshotGuard = master_track_snapshot_.protect();
+        const auto& masterSnapshot = *masterSnapshotGuard;
         auto updateTransportMetaForPlayhead = [&masterSnapshot, this](TimelineState& state) {
             if (masterSnapshot.empty())
                 return;
@@ -181,6 +184,8 @@ namespace uapmd {
             int32_t insertionIndex) {
                 sampleRate_ = static_cast<int32_t>(sampleRate);
         bufferSizeInFrames_ = bufferSizeInFrames;
+        // Snapshot times are derived from the sample rate.
+        rebuildMasterTrackSnapshot();
         master_timeline_track_->reconfigureBuffers(0, bufferSizeInFrames);
 
         std::string trackReferenceId;
@@ -299,7 +304,7 @@ namespace uapmd {
         return track ? track->hasDeviceInputSource() : false;
     }
 
-    TimelineFacade::MasterTrackSnapshot TimelineFacadeImpl::buildMasterTrackSnapshot() {
+    TimelineFacade::MasterTrackSnapshot TimelineFacadeImpl::computeMasterTrackSnapshot() const {
         MasterTrackSnapshot snapshot;
         const double sr = std::max(1.0, static_cast<double>(sampleRate_));
         auto appendTrackMeta = [&snapshot, sr](const std::shared_ptr<TimelineTrack>& track) {
@@ -409,13 +414,15 @@ namespace uapmd {
         if (!trackPtr)
             return bounds;
 
-        const auto snapshot = trackPtr->clipManager().getSnapshotRT();
-        if (!snapshot)
-            return bounds;
+        const auto clips = trackPtr->clipManager().getAllClips();
+        std::unordered_map<std::string, const ClipData*> clipReferenceMap;
+        clipReferenceMap.reserve(clips.size());
+        for (const auto& clip : clips)
+            clipReferenceMap[clip.referenceId] = &clip;
 
-        for (const auto& clip : snapshot->clips) {
+        for (const auto& clip : clips) {
             const auto absolute =
-                clip.getAbsolutePosition(snapshot->clipReferenceMap);
+                clip.getAbsolutePosition(clipReferenceMap);
             const int64_t startSample = absolute.samples;
             const int64_t durationSamples =
                 std::max<int64_t>(0, clip.durationSamples);
@@ -594,10 +601,20 @@ namespace uapmd {
             timeline_.tempo = tempoChanges.front().bpm;
     }
 
+    void TimelineFacadeImpl::rebuildMasterTrackSnapshot() {
+        master_track_snapshot_.publish(
+            std::make_unique<const MasterTrackSnapshot>(computeMasterTrackSnapshot()));
+    }
+
+    // External callers read the same snapshot the audio thread sees, so a
+    // missed invalidation shows up in the UI rather than only in playback.
+    TimelineFacade::MasterTrackSnapshot TimelineFacadeImpl::buildMasterTrackSnapshot() {
+        return *master_track_snapshot_.currentOnPublisherThread();
+    }
+
     void TimelineFacadeImpl::rebuildTrackSnapshot() {
-        auto snap = std::make_shared<TrackList>(timeline_tracks_);
-        std::atomic_store_explicit(&timeline_tracks_snapshot_,
-            std::shared_ptr<const TrackList>(snap), std::memory_order_release);
+        timeline_tracks_snapshot_.publish(
+            std::make_unique<const TrackList>(timeline_tracks_));
     }
 
 } // namespace uapmd
