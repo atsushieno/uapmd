@@ -214,7 +214,7 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/TimelineFacadeDocumentView.cpp
         src/sequencer/TimelineFacadeFragments.cpp
         src/sequencer/TimelineFacadePlugins.cpp
-        src/sequencer/TimelineFacadeProject.cpp
+        src/sequencer/TimelineProjectSerializer.cpp
 )
 
 if(NOT EMSCRIPTEN AND NOT IOS)

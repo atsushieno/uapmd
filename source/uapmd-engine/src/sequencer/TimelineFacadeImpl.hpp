@@ -25,6 +25,7 @@
 #include "ProjectSerialization.hpp"
 #include "TimelineHistoryValues.hpp"
 #include "TimelineProjectStaging.hpp"
+#include "TimelineProjectSerializer.hpp"
 #include "TimelineProperties.hpp"
 #include "TimelineUndoOperations.hpp"
 #include "remidy/remidy.hpp"
@@ -42,6 +43,7 @@ namespace uapmd {
                                public ProjectDocumentView,
                                public ProjectAddressBook,
                                public PropertyCommandTarget,
+                               public timeline_detail::TimelineProjectSerializerHost,
                                public PluginInstanceLifecycleListener {
         SequencerEngine& engine_;
         int32_t sampleRate_;
@@ -99,6 +101,7 @@ namespace uapmd {
                 project_document_events_.endTransaction();
             }
         }};
+        timeline_detail::TimelineProjectSerializer serializer_{engine_, *this, *this};
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
@@ -275,6 +278,67 @@ namespace uapmd {
                 return;
             if (value >= next_timeline_track_reference_)
                 next_timeline_track_reference_ = value + 1;
+        }
+
+        // TimelineProjectSerializerHost -- the timeline-private state a
+        // project read or write needs. Everything else the serializer uses
+        // goes through the public TimelineFacade surface.
+
+        double sampleRate() const override {
+            return static_cast<double>(sampleRate_);
+        }
+
+        uint32_t bufferSizeInFrames() const override {
+            return bufferSizeInFrames_;
+        }
+
+        std::vector<ProjectSerializationExtension*> serializationExtensions() const override {
+            return projectSerializationExtensionsSnapshot();
+        }
+
+        void stageTrackReferenceId(std::string referenceId) override {
+            pending_track_reference_id_ = std::move(referenceId);
+        }
+
+        void stageClipReferenceId(std::string referenceId) override {
+            pending_clip_reference_id_ = std::move(referenceId);
+        }
+
+        void resetTrackReferenceAllocator() override {
+            next_timeline_track_reference_ = 1;
+        }
+
+        void setLoadInProgress(bool value) override {
+            suppress_timeline_notification_ = value;
+            suppress_project_document_events_ = value;
+        }
+
+        void beginPluginStateRestore() override {
+            plugin_state_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
+        }
+
+        void endPluginStateRestore() override {
+            plugin_state_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
+        }
+
+        void replaceMasterTimelineTrack(std::shared_ptr<TimelineTrack> track) override {
+            master_timeline_track_ = std::move(track);
+        }
+
+        ClipAddResult addAudioClipToTimelineTrack(
+            TimelineTrack& timelineTrack,
+            const TimelinePosition& position,
+            std::unique_ptr<AudioFileReader> reader,
+            const std::string& filepath,
+            std::vector<ClipMarker> markers,
+            std::vector<AudioWarpPoint> audioWarps) override {
+            return addAudioClipToTrack(
+                timelineTrack,
+                position,
+                std::move(reader),
+                filepath,
+                std::move(markers),
+                std::move(audioWarps));
         }
 
     public:
@@ -550,7 +614,9 @@ namespace uapmd {
         bool materializeProjectGraph(
             UapmdProjectTrackData* projectTrack,
             SequencerTrack* sequencerTrack,
-            size_t eventBufferSizeInBytes) override;
+            size_t eventBufferSizeInBytes) override {
+            return serializer_.materializeProjectGraph(projectTrack, sequencerTrack, eventBufferSizeInBytes);
+        }
 
         bool saveProjectGraph(
             UapmdProjectTrackData* projectTrack,
@@ -558,7 +624,10 @@ namespace uapmd {
             const std::filesystem::path& projectDir,
             const std::filesystem::path& graphDir,
             const std::string& scopeLabel,
-            std::string& error) override;
+            std::string& error) override {
+            return serializer_.saveProjectGraph(
+                projectTrack, sequencerTrack, projectDir, graphDir, scopeLabel, error);
+        }
 
         void addProjectSerializationExtension(ProjectSerializationExtension& extension) override {
             std::lock_guard<std::mutex> lock(project_serialization_extensions_mutex_);
@@ -574,32 +643,37 @@ namespace uapmd {
 
         bool saveProjectDataExtensions(
             UapmdProjectData& project,
-            std::string& error) override;
+            std::string& error) override {
+            return serializer_.saveProjectDataExtensions(project, error);
+        }
 
         bool loadProjectDataExtensions(
             UapmdProjectData& project,
-            std::string& error) override;
+            std::string& error) override {
+            return serializer_.loadProjectDataExtensions(project, error);
+        }
 
         bool saveProjectExtensionData(
             const std::filesystem::path& projectFile,
             const std::filesystem::path& projectDir,
-            std::string& error) override;
+            std::string& error) override {
+            return serializer_.saveProjectExtensionData(projectFile, projectDir, error);
+        }
 
         bool loadProjectExtensionData(
             const std::filesystem::path& projectFile,
             const std::filesystem::path& projectDir,
-            std::string& error) override;
+            std::string& error) override {
+            return serializer_.loadProjectExtensionData(projectFile, projectDir, error);
+        }
 
-        void queueProjectGraphSerialization(
-            PendingProjectSaveContext& operation,
-            SequencerTrack* sequencerTrack,
-            UapmdProjectTrackData& projectTrack,
-            const std::string& scopeLabel);
 
         void saveProject(
             const std::filesystem::path& projectFile,
             ProjectSaveOptions options,
-            ProjectSaveCallback callback) override;
+            ProjectSaveCallback callback) override {
+            serializer_.saveProject(projectFile, std::move(options), std::move(callback));
+        }
 
         ClipAddResult addMidiClipToTimelineTrack(
             TimelineTrack& timelineTrack,
@@ -1061,7 +1135,9 @@ namespace uapmd {
         bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
             std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) override;
 
-        void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override;
+        void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {
+            serializer_.loadProject(projectFile, std::move(callback));
+        }
 
         MasterTrackSnapshot buildMasterTrackSnapshot() override;
 
@@ -1096,59 +1172,9 @@ namespace uapmd {
         void onTrackGraphChanged(int32_t trackIndex) override;
 
     private:
-        static std::filesystem::path makeRelativePath(
-            const std::filesystem::path& baseDir,
-            const std::filesystem::path& target)
-        {
-            if (baseDir.empty() || target.empty())
-                return target;
 
-            std::error_code ec;
-            auto rel = std::filesystem::relative(target, baseDir, ec);
-            if (ec)
-                return target;
 
-            for (const auto& part : rel) {
-                if (part == "..")
-                    return target;
-            }
-            return rel;
-        }
 
-        static std::filesystem::path makeAbsolutePath(
-            const std::filesystem::path& baseDir,
-            const std::filesystem::path& target)
-        {
-            if (target.empty())
-                return target;
-            if (target.is_absolute() || baseDir.empty())
-                return std::filesystem::absolute(target);
-            return std::filesystem::absolute(baseDir / target);
-        }
-
-        static std::string urlEscapeFilenameComponent(std::string_view value) {
-            static constexpr char kHex[] = "0123456789ABCDEF";
-            std::string escaped;
-            escaped.reserve(value.size() * 3);
-            for (unsigned char ch : value) {
-                if ((ch >= 'A' && ch <= 'Z') ||
-                    (ch >= 'a' && ch <= 'z') ||
-                    (ch >= '0' && ch <= '9') ||
-                    ch == '-' || ch == '_' || ch == '.' || ch == '~') {
-                    escaped.push_back(static_cast<char>(ch));
-                    continue;
-                }
-                escaped.push_back('%');
-                escaped.push_back(kHex[(ch >> 4) & 0xF]);
-                escaped.push_back(kHex[ch & 0xF]);
-            }
-            return escaped;
-        }
-
-        static bool writeBinaryFile(
-            const std::filesystem::path& path,
-            const std::vector<uint8_t>& bytes,
-            std::string& error);
     };
 
 } // namespace uapmd
