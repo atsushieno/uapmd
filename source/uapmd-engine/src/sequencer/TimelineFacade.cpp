@@ -190,104 +190,311 @@ namespace uapmd {
                 && std::equal(lhs.begin(), lhs.end(), rhs.begin(), audioWarpPointEqual);
         }
 
-        template<typename Value>
-        class ClipPropertyUndoOperation final : public ProjectUndoableOperation {
+        // The clip mutation primitives a clip command needs, implemented by
+        // TimelineFacadeImpl.
+        //
+        // A command holds a typed reference to this service instead of an
+        // ad-hoc mutation lambda. The payload then stays inspectable data, and
+        // the knowledge of how to mutate a clip lives in one place rather than
+        // being restated wherever a command is created.
+        class ClipCommandTarget {
         public:
-            using Apply = std::function<bool(
-                std::string_view trackReferenceId,
-                std::string_view clipReferenceId,
-                const Value& value)>;
+            virtual ~ClipCommandTarget() = default;
 
-            ClipPropertyUndoOperation(
-                std::string description,
-                std::string propertyKey,
-                std::string trackReferenceId,
-                std::string clipReferenceId,
-                Value before,
-                Value after,
-                Apply apply,
-                std::function<bool(const Value&, const Value&)> equal)
-                : description_(std::move(description))
-                , property_key_(std::move(propertyKey))
-                , track_reference_id_(std::move(trackReferenceId))
-                , clip_reference_id_(std::move(clipReferenceId))
-                , before_(std::move(before))
-                , after_(std::move(after))
-                , apply_(std::move(apply))
-                , equal_(std::move(equal)) {
+            virtual ProjectAddressBook& addresses() = 0;
+            virtual double timelineSampleRate() const = 0;
+            // Emits the document events for a clip that has just changed.
+            virtual void onClipMutated(
+                TimelineTrack& track,
+                int32_t clipId,
+                std::string_view changeType) = 0;
+            // Re-resolves every clip anchor after one clip has moved, because
+            // an anchor may be expressed relative to another clip.
+            virtual void resolveClipAnchors() = 0;
+        };
+
+        // One clip property edit.
+        //
+        // `Property` supplies the static behaviour -- which field, how to read
+        // and write it, what the change is called -- so an instance is nothing
+        // but an address and a value. Undo is the same command type carrying
+        // the value that was there before, which is why this single class
+        // covers every clip property instead of one class per property.
+        template<typename Property>
+        class ClipPropertyCommand final : public ProjectCommand {
+            using Value = typename Property::Value;
+
+            ClipCommandTarget& target_;
+            ClipAddress address_;
+            Value value_;
+
+        public:
+            ClipPropertyCommand(
+                ClipCommandTarget& target,
+                ClipAddress address,
+                Value value)
+                : target_(target)
+                , address_(std::move(address))
+                , value_(std::move(value)) {
+            }
+
+            std::string_view commandId() const override {
+                return Property::commandId;
             }
 
             std::string description() const override {
-                return description_;
+                return Property::describe(value_);
             }
 
-            size_t historySizeInBytes() const override {
+            size_t retainedSizeInBytes() const override {
                 return sizeof(*this)
-                    + description_.capacity()
-                    + property_key_.capacity()
-                    + track_reference_id_.capacity()
-                    + clip_reference_id_.capacity()
-                    + retainedValueSize(before_)
-                    + retainedValueSize(after_);
+                    + address_.trackReferenceId.capacity()
+                    + address_.clipReferenceId.capacity()
+                    + retainedValueSize(value_);
             }
 
-            bool mergeWith(const ProjectUndoableOperation& subsequent) override {
-                const auto* next = dynamic_cast<const ClipPropertyUndoOperation*>(&subsequent);
-                if (!next
-                    || property_key_ != next->property_key_
-                    || track_reference_id_ != next->track_reference_id_
-                    || clip_reference_id_ != next->clip_reference_id_)
+            bool mergeWith(const ProjectCommand& subsequent) override {
+                // The manager only merges commands sharing a commandId(), so
+                // the type is already known.
+                const auto& next = static_cast<const ClipPropertyCommand&>(subsequent);
+                if (next.address_.trackReferenceId != address_.trackReferenceId
+                    || next.address_.clipReferenceId != address_.clipReferenceId)
                     return false;
-                description_ = next->description_;
-                after_ = next->after_;
-                apply_ = next->apply_;
-                equal_ = next->equal_;
+                value_ = next.value_;
                 return true;
             }
 
-            bool hasEffect() const override {
-                return !equal_ || !equal_(before_, after_);
-            }
-
-            void perform(
-                const ProjectUndoExecutionContext&,
-                ProjectUndoCompletion completion) override {
-                apply(after_, std::move(completion));
-            }
-
-            void undo(
-                const ProjectUndoExecutionContext&,
-                ProjectUndoCompletion completion) override {
-                apply(before_, std::move(completion));
-            }
-
-            void redo(
-                const ProjectUndoExecutionContext&,
-                ProjectUndoCompletion completion) override {
-                apply(after_, std::move(completion));
-            }
-
-        private:
-            void apply(const Value& value, ProjectUndoCompletion completion) {
-                if (apply_ && apply_(track_reference_id_, clip_reference_id_, value)) {
-                    if (completion)
-                        completion(ProjectUndoResult::success());
+            void execute(
+                ProjectCommandContext& context,
+                ProjectCommandCompletion completion) override {
+                auto& addresses = target_.addresses();
+                auto* track = addresses.timelineTrack(address_.trackReferenceId);
+                const auto clipId = addresses.clipId(address_);
+                const auto* clip = track && clipId >= 0
+                    ? track->clipManager().getClip(clipId)
+                    : nullptr;
+                if (!clip) {
+                    completion(ProjectCommandResult::failure(std::format(
+                        "Clip {} no longer exists on track {}.",
+                        address_.clipReferenceId,
+                        address_.trackReferenceId)));
                     return;
                 }
-                if (completion)
-                    completion(ProjectUndoResult::failure(std::format(
-                        "Could not apply '{}' to clip {} on track {}.",
-                        description_, clip_reference_id_, track_reference_id_)));
+
+                auto before = Property::read(*clip, target_);
+                if (Property::equal(before, value_)) {
+                    // No revert recorded, so no history entry is created.
+                    completion(ProjectCommandResult::success());
+                    return;
+                }
+
+                if (!Property::write(target_, track->clipManager(), clipId, value_)) {
+                    completion(ProjectCommandResult::failure(std::format(
+                        "Could not apply '{}' to clip {}.",
+                        Property::commandId,
+                        address_.clipReferenceId)));
+                    return;
+                }
+                target_.onClipMutated(*track, clipId, Property::changeType);
+                context.recordRevert(std::make_shared<ClipPropertyCommand>(
+                    target_, address_, std::move(before)));
+                completion(ProjectCommandResult::success());
+            }
+        };
+
+        // Defaults every clip property descriptor inherits. A descriptor
+        // states only what is peculiar to it: most compare with ==, and most
+        // have a fixed history label.
+        template<typename Derived, typename ValueType>
+        struct ClipPropertyDescriptor {
+            using Value = ValueType;
+
+            static bool equal(const Value& lhs, const Value& rhs) {
+                return lhs == rhs;
             }
 
-            std::string description_{};
-            std::string property_key_{};
-            std::string track_reference_id_{};
-            std::string clip_reference_id_{};
-            Value before_{};
-            Value after_{};
-            Apply apply_{};
-            std::function<bool(const Value&, const Value&)> equal_{};
+            static std::string describe(const Value&) {
+                return std::string(Derived::label);
+            }
+        };
+
+        struct ClipEnabledProperty : ClipPropertyDescriptor<ClipEnabledProperty, bool> {
+            static constexpr std::string_view commandId{"clip.setEnabled"};
+            static constexpr std::string_view changeType{"clip-enablement-changed"};
+
+            static std::string describe(bool value) {
+                return value ? "Enable clip" : "Disable clip";
+            }
+
+            static bool read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.enabled;
+            }
+
+            static bool write(ClipCommandTarget&, ClipManager& clips, int32_t clipId, bool value) {
+                return clips.setClipEnabled(clipId, value);
+            }
+        };
+
+        struct ClipAnchorProperty : ClipPropertyDescriptor<ClipAnchorProperty, TimeReference> {
+            static constexpr std::string_view commandId{"clip.setAnchor"};
+            static constexpr std::string_view changeType{"clip-position-changed"};
+            static constexpr std::string_view label{"Move clip"};
+
+            static TimeReference read(const ClipData& clip, ClipCommandTarget& target) {
+                return clip.timeReference(target.timelineSampleRate());
+            }
+
+            static bool write(
+                ClipCommandTarget& target,
+                ClipManager& clips,
+                int32_t clipId,
+                const TimeReference& value) {
+                if (!clips.setClipAnchor(clipId, value, target.timelineSampleRate()))
+                    return false;
+                target.resolveClipAnchors();
+                return true;
+            }
+        };
+
+        struct ClipGainProperty : ClipPropertyDescriptor<ClipGainProperty, double> {
+            static constexpr std::string_view commandId{"clip.setGain"};
+            static constexpr std::string_view changeType{"clip-gain-changed"};
+            static constexpr std::string_view label{"Change clip gain"};
+
+            static double read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.gain;
+            }
+
+            static bool write(ClipCommandTarget&, ClipManager& clips, int32_t clipId, double value) {
+                return clips.setClipGain(clipId, value);
+            }
+        };
+
+        struct ClipMutedProperty : ClipPropertyDescriptor<ClipMutedProperty, bool> {
+            static constexpr std::string_view commandId{"clip.setMuted"};
+            static constexpr std::string_view changeType{"clip-mute-changed"};
+
+            static std::string describe(bool value) {
+                return value ? "Mute clip" : "Unmute clip";
+            }
+
+            static bool read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.muted;
+            }
+
+            static bool write(ClipCommandTarget&, ClipManager& clips, int32_t clipId, bool value) {
+                return clips.setClipMuted(clipId, value);
+            }
+        };
+
+        struct ClipDurationProperty : ClipPropertyDescriptor<ClipDurationProperty, int64_t> {
+            static constexpr std::string_view commandId{"clip.resize"};
+            static constexpr std::string_view changeType{"clip-duration-changed"};
+            static constexpr std::string_view label{"Resize clip"};
+
+            static int64_t read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.durationSamples;
+            }
+
+            static bool write(ClipCommandTarget&, ClipManager& clips, int32_t clipId, int64_t value) {
+                return clips.resizeClip(clipId, value);
+            }
+        };
+
+        struct ClipNameProperty : ClipPropertyDescriptor<ClipNameProperty, std::string> {
+            static constexpr std::string_view commandId{"clip.setName"};
+            static constexpr std::string_view changeType{"clip-name-changed"};
+            static constexpr std::string_view label{"Rename clip"};
+
+            static std::string read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.name;
+            }
+
+            static bool write(
+                ClipCommandTarget&,
+                ClipManager& clips,
+                int32_t clipId,
+                const std::string& value) {
+                return clips.setClipName(clipId, value);
+            }
+        };
+
+        struct ClipFilepathProperty : ClipPropertyDescriptor<ClipFilepathProperty, std::string> {
+            static constexpr std::string_view commandId{"clip.setFilepath"};
+            static constexpr std::string_view changeType{"clip-content-changed"};
+            static constexpr std::string_view label{"Change clip file"};
+
+            static std::string read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.filepath;
+            }
+
+            static bool write(
+                ClipCommandTarget&,
+                ClipManager& clips,
+                int32_t clipId,
+                const std::string& value) {
+                return clips.setClipFilepath(clipId, value);
+            }
+        };
+
+        struct ClipNeedsFileSaveProperty : ClipPropertyDescriptor<ClipNeedsFileSaveProperty, bool> {
+            static constexpr std::string_view commandId{"clip.setNeedsFileSave"};
+            static constexpr std::string_view changeType{"clip-content-changed"};
+            static constexpr std::string_view label{"Change clip save state"};
+
+            static bool read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.needsFileSave;
+            }
+
+            static bool write(ClipCommandTarget&, ClipManager& clips, int32_t clipId, bool value) {
+                return clips.setClipNeedsFileSave(clipId, value);
+            }
+        };
+
+        struct ClipMarkersProperty
+            : ClipPropertyDescriptor<ClipMarkersProperty, std::vector<ClipMarker>> {
+            static constexpr std::string_view commandId{"clip.setMarkers"};
+            static constexpr std::string_view changeType{"clip-content-changed"};
+            static constexpr std::string_view label{"Edit clip markers"};
+
+            static Value read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.markers;
+            }
+
+            static bool equal(const Value& lhs, const Value& rhs) {
+                return clipMarkersEqual(lhs, rhs);
+            }
+
+            static bool write(
+                ClipCommandTarget&,
+                ClipManager& clips,
+                int32_t clipId,
+                const Value& value) {
+                return clips.setClipMarkers(clipId, value);
+            }
+        };
+
+        struct ClipAudioWarpsProperty
+            : ClipPropertyDescriptor<ClipAudioWarpsProperty, std::vector<AudioWarpPoint>> {
+            static constexpr std::string_view commandId{"clip.setAudioWarps"};
+            static constexpr std::string_view changeType{"clip-content-changed"};
+            static constexpr std::string_view label{"Edit clip warps"};
+
+            static Value read(const ClipData& clip, ClipCommandTarget&) {
+                return clip.audioWarps;
+            }
+
+            static bool equal(const Value& lhs, const Value& rhs) {
+                return audioWarpPointsEqual(lhs, rhs);
+            }
+
+            static bool write(
+                ClipCommandTarget&,
+                ClipManager& clips,
+                int32_t clipId,
+                const Value& value) {
+                return clips.setAudioWarps(clipId, value);
+            }
         };
 
         template<typename Value>
@@ -1301,6 +1508,8 @@ namespace uapmd {
 
     class TimelineFacadeImpl : public TimelineFacade,
                                public ProjectDocumentView,
+                               public ProjectAddressBook,
+                               public ClipCommandTarget,
                                public PluginInstanceLifecycleListener {
         SequencerEngine& engine_;
         int32_t sampleRate_;
@@ -1434,6 +1643,21 @@ namespace uapmd {
                     task();
                 else
                     remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
+            }
+        }};
+        // References undo_engine_ rather than owning a history of its own:
+        // operations that have not become commands yet still record into the
+        // same history, and two histories would silently diverge.
+        ProjectCommandManager command_manager_{{
+            .history = &undo_engine_,
+            .dispatchToModelThread = [](ProjectUndoTask task) {
+                dispatchToModelThread(std::move(task));
+            },
+            .beginDocumentTransaction = [this] {
+                project_document_events_.beginTransaction();
+            },
+            .endDocumentTransaction = [this] {
+                project_document_events_.endTransaction();
             }
         }};
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
@@ -1729,89 +1953,25 @@ namespace uapmd {
                 });
         }
 
-        template<typename Mutation>
-        bool mutateClipByReferenceId(
-            std::string_view trackReferenceId,
-            std::string_view clipReferenceId,
-            std::string changeType,
-            Mutation&& mutate) {
-            auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
-            if (!targetTrack)
-                return false;
-            const auto clipId = clipIdForReferenceId(*targetTrack, clipReferenceId);
-            if (clipId < 0 || !mutate(targetTrack->clipManager(), clipId))
-                return false;
-            auto* clip = targetTrack->clipManager().getClip(clipId);
-            if (!clip)
-                return false;
-            emitClipChanged(*targetTrack, *clip, std::move(changeType));
-            if (clip->clipType == ClipType::Midi)
-                emitMasterTrackChanged("master-track-content-changed");
-            notifyTimelineChanged();
-            return true;
-        }
-
-        template<typename Value, typename Read, typename Mutation, typename Equal = std::equal_to<Value>>
-        bool setUndoableClipProperty(
+        // Builds the command for one clip property and runs it through the
+        // command manager, which owns the origin policy, the document
+        // transaction and the history entry. This is the whole of the
+        // per-property boilerplate.
+        template<typename Property>
+        bool executeClipProperty(
             int32_t trackIndex,
             int32_t clipId,
-            Value after,
-            ProjectMutationOrigin origin,
-            std::string description,
-            std::string changeType,
-            Read&& read,
-            Mutation&& mutate,
-            Equal&& equal = {}) {
-            auto* targetTrack = resolveTrack(trackIndex);
-            auto* clip = targetTrack ? targetTrack->clipManager().getClip(clipId) : nullptr;
-            if (!targetTrack || !clip)
+            typename Property::Value value,
+            ProjectMutationOrigin origin) {
+            auto address = clipAddress(trackIndex, clipId);
+            if (!address)
                 return false;
-
-            Value before = read(*clip);
-            if (equal(before, after))
-                return true;
-
-            auto trackReferenceId = targetTrack->referenceId();
-            auto clipReferenceId = clip->referenceId;
-            auto propertyKey = changeType;
-            auto apply = [this,
-                          changeType = std::move(changeType),
-                          mutate = std::forward<Mutation>(mutate)](
-                             std::string_view persistentTrackId,
-                             std::string_view persistentClipId,
-                             const Value& value) mutable {
-                return mutateClipByReferenceId(
-                    persistentTrackId,
-                    persistentClipId,
-                    changeType,
-                    [&](ClipManager& clips, int32_t currentClipId) {
-                        return mutate(clips, currentClipId, value);
-                    });
-            };
-
-            if (origin != ProjectMutationOrigin::User && origin != ProjectMutationOrigin::Remote)
-                return apply(trackReferenceId, clipReferenceId, after);
-
-            auto operation = std::make_shared<ClipPropertyUndoOperation<Value>>(
-                std::move(description),
-                std::move(propertyKey),
-                std::move(trackReferenceId),
-                std::move(clipReferenceId),
-                std::move(before),
-                std::move(after),
-                std::move(apply),
-                std::forward<Equal>(equal));
-            auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-            undo_engine_.perform(
-                std::move(operation),
-                origin,
-                [result](ProjectUndoResult completed) {
-                    *result = std::move(completed);
-                });
-            // Clip property operations complete inline. Keeping the result in
-            // shared storage also makes an accidental off-thread call safe:
-            // it reports false rather than leaving a dangling callback.
-            return result->has_value() && result->value().succeeded();
+            return command_manager_
+                .executeSynchronously(
+                    std::make_shared<ClipPropertyCommand<Property>>(
+                        *this, std::move(*address), std::move(value)),
+                    origin)
+                .succeeded();
         }
 
         SequencerTrack* resolveSequencerTrackByReferenceId(
@@ -2144,6 +2304,89 @@ namespace uapmd {
 
         int32_t trackIndexForReferenceId(std::string_view trackId) const override {
             return trackIndexForPersistentId(trackId);
+        }
+
+        // ProjectAddressBook -- the one place that translates between the
+        // persistent identities a command carries and the runtime indexes and
+        // pointers the engine works with.
+
+        ProjectAddressBook& addresses() override {
+            return *this;
+        }
+
+        ProjectCommandManager& commands() override {
+            return command_manager_;
+        }
+
+        TimelineTrack* timelineTrack(std::string_view trackReferenceId) override {
+            return resolveTrackByReferenceId(trackReferenceId);
+        }
+
+        SequencerTrack* sequencerTrack(std::string_view trackReferenceId) override {
+            return resolveSequencerTrackByReferenceId(trackReferenceId);
+        }
+
+        int32_t trackIndex(std::string_view trackReferenceId) const override {
+            return trackIndexForPersistentId(trackReferenceId);
+        }
+
+        int32_t clipId(const ClipAddress& address) const override {
+            const auto* track = const_cast<TimelineFacadeImpl*>(this)
+                ->resolveTrackByReferenceId(address.trackReferenceId);
+            return track ? clipIdForReferenceId(*track, address.clipReferenceId) : -1;
+        }
+
+        int32_t pluginInstanceId(const PluginAddress& address) override {
+            return resolvePluginInstanceId(address.trackReferenceId, address.nodeId);
+        }
+
+        std::optional<ProjectObjectId> trackReferenceId(int32_t index) const override {
+            const auto* track = resolveTrack(index);
+            if (!track)
+                return std::nullopt;
+            return track->referenceId();
+        }
+
+        std::optional<ClipAddress> clipAddress(
+            int32_t index,
+            int32_t clipIdentifier) const override {
+            const auto* track = resolveTrack(index);
+            const auto* clip = track
+                ? track->clipManager().getClip(clipIdentifier)
+                : nullptr;
+            if (!clip)
+                return std::nullopt;
+            return ClipAddress{
+                .trackReferenceId = track->referenceId(),
+                .clipReferenceId = clip->referenceId
+            };
+        }
+
+        std::optional<PluginAddress> pluginAddress(int32_t instanceId) override {
+            return pluginTargetForInstance(instanceId);
+        }
+
+        // ClipCommandTarget
+
+        double timelineSampleRate() const override {
+            return static_cast<double>(sampleRate_);
+        }
+
+        void onClipMutated(
+            TimelineTrack& track,
+            int32_t clipIdentifier,
+            std::string_view changeType) override {
+            auto* clip = track.clipManager().getClip(clipIdentifier);
+            if (!clip)
+                return;
+            emitClipChanged(track, *clip, std::string(changeType));
+            if (clip->clipType == ClipType::Midi)
+                emitMasterTrackChanged("master-track-content-changed");
+            notifyTimelineChanged();
+        }
+
+        void resolveClipAnchors() override {
+            resolveAllClipAnchors();
         }
 
         AudioGraphProviderRegistry& audioGraphProviderRegistry() override {
@@ -4201,10 +4444,9 @@ namespace uapmd {
                 "Remove device input");
         }
 
-        struct PluginTarget {
-            std::string trackReferenceId;
-            std::string nodeId;
-        };
+        // A plug-in's document identity is its (track, node) address; the
+        // runtime instance id is regenerated whenever it is restored.
+        using PluginTarget = PluginAddress;
 
         std::optional<PluginTarget> pluginTargetForInstance(
             int32_t instanceId) {
@@ -5579,14 +5821,8 @@ namespace uapmd {
             int32_t clipId,
             bool enabled,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, enabled, origin,
-                enabled ? "Enable clip" : "Disable clip",
-                "clip-enablement-changed",
-                [](const ClipData& clip) { return clip.enabled; },
-                [](ClipManager& clips, int32_t currentClipId, bool value) {
-                    return clips.setClipEnabled(currentClipId, value);
-                });
+            return executeClipProperty<ClipEnabledProperty>(
+                trackIndex, clipId, enabled, origin);
         }
 
         bool setClipAnchor(
@@ -5594,16 +5830,8 @@ namespace uapmd {
             int32_t clipId,
             const TimeReference& anchor,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, anchor, origin,
-                "Move clip", "clip-position-changed",
-                [this](const ClipData& clip) { return clip.timeReference(sampleRate_); },
-                [this](ClipManager& clips, int32_t currentClipId, const TimeReference& value) {
-                    if (!clips.setClipAnchor(currentClipId, value, sampleRate_))
-                        return false;
-                    resolveAllClipAnchors();
-                    return true;
-                });
+            return executeClipProperty<ClipAnchorProperty>(
+                trackIndex, clipId, anchor, origin);
         }
 
         bool setClipGain(
@@ -5611,13 +5839,8 @@ namespace uapmd {
             int32_t clipId,
             double gain,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, gain, origin,
-                "Change clip gain", "clip-gain-changed",
-                [](const ClipData& clip) { return clip.gain; },
-                [](ClipManager& clips, int32_t currentClipId, double value) {
-                    return clips.setClipGain(currentClipId, value);
-                });
+            return executeClipProperty<ClipGainProperty>(
+                trackIndex, clipId, gain, origin);
         }
 
         bool setClipMuted(
@@ -5625,13 +5848,8 @@ namespace uapmd {
             int32_t clipId,
             bool muted,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, muted, origin,
-                muted ? "Mute clip" : "Unmute clip", "clip-mute-changed",
-                [](const ClipData& clip) { return clip.muted; },
-                [](ClipManager& clips, int32_t currentClipId, bool value) {
-                    return clips.setClipMuted(currentClipId, value);
-                });
+            return executeClipProperty<ClipMutedProperty>(
+                trackIndex, clipId, muted, origin);
         }
 
         bool resizeClip(
@@ -5639,13 +5857,8 @@ namespace uapmd {
             int32_t clipId,
             int64_t newDurationSamples,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, newDurationSamples, origin,
-                "Resize clip", "clip-duration-changed",
-                [](const ClipData& clip) { return clip.durationSamples; },
-                [](ClipManager& clips, int32_t currentClipId, int64_t value) {
-                    return clips.resizeClip(currentClipId, value);
-                });
+            return executeClipProperty<ClipDurationProperty>(
+                trackIndex, clipId, newDurationSamples, origin);
         }
 
         bool setClipName(
@@ -5653,13 +5866,8 @@ namespace uapmd {
             int32_t clipId,
             const std::string& name,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, name, origin,
-                "Rename clip", "clip-name-changed",
-                [](const ClipData& clip) { return clip.name; },
-                [](ClipManager& clips, int32_t currentClipId, const std::string& value) {
-                    return clips.setClipName(currentClipId, value);
-                });
+            return executeClipProperty<ClipNameProperty>(
+                trackIndex, clipId, name, origin);
         }
 
         bool setClipFilepath(
@@ -5667,13 +5875,8 @@ namespace uapmd {
             int32_t clipId,
             const std::string& filepath,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, filepath, origin,
-                "Change clip file", "clip-content-changed",
-                [](const ClipData& clip) { return clip.filepath; },
-                [](ClipManager& clips, int32_t currentClipId, const std::string& value) {
-                    return clips.setClipFilepath(currentClipId, value);
-                });
+            return executeClipProperty<ClipFilepathProperty>(
+                trackIndex, clipId, filepath, origin);
         }
 
         bool setClipNeedsFileSave(
@@ -5681,13 +5884,8 @@ namespace uapmd {
             int32_t clipId,
             bool needsSave,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, needsSave, origin,
-                "Change clip save state", "clip-content-changed",
-                [](const ClipData& clip) { return clip.needsFileSave; },
-                [](ClipManager& clips, int32_t currentClipId, bool value) {
-                    return clips.setClipNeedsFileSave(currentClipId, value);
-                });
+            return executeClipProperty<ClipNeedsFileSaveProperty>(
+                trackIndex, clipId, needsSave, origin);
         }
 
         bool setClipMarkers(
@@ -5695,14 +5893,8 @@ namespace uapmd {
             int32_t clipId,
             std::vector<ClipMarker> markers,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, std::move(markers), origin,
-                "Edit clip markers", "clip-content-changed",
-                [](const ClipData& clip) { return clip.markers; },
-                [](ClipManager& clips, int32_t currentClipId, const std::vector<ClipMarker>& value) {
-                    return clips.setClipMarkers(currentClipId, value);
-                },
-                clipMarkersEqual);
+            return executeClipProperty<ClipMarkersProperty>(
+                trackIndex, clipId, std::move(markers), origin);
         }
 
         bool setClipAudioWarps(
@@ -5710,14 +5902,8 @@ namespace uapmd {
             int32_t clipId,
             std::vector<AudioWarpPoint> audioWarps,
             ProjectMutationOrigin origin) override {
-            return setUndoableClipProperty(
-                trackIndex, clipId, std::move(audioWarps), origin,
-                "Edit clip warps", "clip-content-changed",
-                [](const ClipData& clip) { return clip.audioWarps; },
-                [](ClipManager& clips, int32_t currentClipId, const std::vector<AudioWarpPoint>& value) {
-                    return clips.setAudioWarps(currentClipId, value);
-                },
-                audioWarpPointsEqual);
+            return executeClipProperty<ClipAudioWarpsProperty>(
+                trackIndex, clipId, std::move(audioWarps), origin);
         }
 
         bool clipEnabled(int32_t trackIndex, int32_t clipId) const override {

@@ -11,7 +11,7 @@
 #include <remidy/remidy.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
-#include "ProjectUndo.hpp"
+#include "ProjectAddressBook.hpp"
 #include "LatencyCompensationTypes.hpp"
 
 namespace uapmd {
@@ -363,6 +363,14 @@ public:
 
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
     virtual ProjectDocumentView& projectDocumentView() = 0;
+    // Translation between persistent document identities and runtime indexes.
+    // Anything that records a change for later replay must address its target
+    // through here rather than by index.
+    virtual ProjectAddressBook& addresses() = 0;
+    // The single entry point for changes expressed as commands. Mutations that
+    // have not been converted yet still record into the same history, which
+    // undoEngine() exposes directly.
+    virtual ProjectCommandManager& commands() = 0;
     virtual ProjectUndoEngine& undoEngine() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
     virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;
