@@ -2155,6 +2155,246 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     EXPECT_EQ(afterUndoAddition.redoDescription, "Add plug-in");
 }
 
+TEST_F(SequencerEngineOutputTest, PluginUndoableActionsResolveRestoredInstanceByPersistentAddress) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    std::optional<int32_t> originalInstanceId;
+    std::string addError;
+    std::string format = "VST3";
+    std::string pluginId = "Dexed";
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&originalInstanceId, &addError](int32_t id, int32_t, std::string error) {
+            originalInstanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(originalInstanceId.has_value()) << addError;
+    auto* original = dynamic_cast<MutableTimingPlugin*>(
+        engine->getPluginInstance(*originalInstanceId));
+    ASSERT_NE(original, nullptr);
+    original->setStateFromHost({1});
+
+    auto drain = [] {
+        for (int i = 0; i < 100; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    auto undoAndDrain = [&] {
+        std::optional<uapmd::ProjectUndoResult> result;
+        timeline.undoEngine().undo(
+            [&result](uapmd::ProjectUndoResult completed) {
+                result = std::move(completed);
+            });
+        drain();
+        return result;
+    };
+
+    ASSERT_TRUE(timeline.commands().setPluginBypassed(*originalInstanceId, true));
+    ASSERT_TRUE(timeline.commands().setPluginParameterValue(
+        *originalInstanceId, 4, 0.75));
+    const remidy::PerNoteControllerContext noteContext{60, 1, 2, 0};
+    ASSERT_TRUE(timeline.commands().setPluginPerNoteControllerValue(
+        *originalInstanceId,
+        remidy::PER_NOTE_CONTROLLER_PER_NOTE,
+        noteContext,
+        7,
+        0.6));
+    ASSERT_TRUE(timeline.commands().setPluginGroup(*originalInstanceId, 3));
+
+    std::optional<uapmd::ProjectUndoResult> mutationResult;
+    timeline.setPluginState(
+        *originalInstanceId,
+        {2},
+        uapmd::ProjectMutationOrigin::User,
+        [&mutationResult](uapmd::ProjectUndoResult result) {
+            mutationResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(mutationResult.has_value());
+    ASSERT_TRUE(mutationResult->succeeded()) << mutationResult->error;
+
+    mutationResult.reset();
+    timeline.loadPluginPreset(
+        *originalInstanceId,
+        7,
+        uapmd::ProjectMutationOrigin::User,
+        [&mutationResult](uapmd::ProjectUndoResult result) {
+            mutationResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(mutationResult.has_value());
+    ASSERT_TRUE(mutationResult->succeeded()) << mutationResult->error;
+
+    mutationResult.reset();
+    timeline.removePluginInstance(
+        *originalInstanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&mutationResult](uapmd::ProjectUndoResult result) {
+            mutationResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(mutationResult.has_value());
+    ASSERT_TRUE(mutationResult->succeeded()) << mutationResult->error;
+
+    auto result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_EQ(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
+        1u);
+    const auto restoredInstanceId =
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front();
+    ASSERT_NE(restoredInstanceId, *originalInstanceId);
+    auto* restored = dynamic_cast<MutableTimingPlugin*>(
+        engine->getPluginInstance(restoredInstanceId));
+    ASSERT_NE(restored, nullptr);
+    EXPECT_TRUE(restored->bypassed());
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in preset");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(restored->saveStateSync(), (std::vector<uint8_t>{2}));
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in state");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(restored->saveStateSync(), (std::vector<uint8_t>{1}));
+    EXPECT_EQ(
+        timeline.undoEngine().state().undoDescription,
+        "Change plug-in UMP group");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(engine->getInstanceGroup(restoredInstanceId), 0u);
+    EXPECT_EQ(
+        timeline.undoEngine().state().undoDescription,
+        "Change per-note plug-in parameter");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Change plug-in parameter");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Bypass plug-in");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FALSE(restored->bypassed());
+    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
+    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+    EXPECT_EQ(timeline.undoEngine().state().redoDescription, "Bypass plug-in");
+}
+
+TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInstance) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.replaceTrackGraphType(
+        trackIndex,
+        "urn:uapmd-graph:common/graph/dag/v1",
+        engine->umpBufferSizeInBytes()));
+    ASSERT_TRUE(timeline.undoEngine().clear());
+
+    std::optional<int32_t> originalInstanceId;
+    std::string addError;
+    std::string format = "VST3";
+    std::string pluginId = "Dexed";
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&originalInstanceId, &addError](int32_t id, int32_t, std::string error) {
+            originalInstanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(originalInstanceId.has_value()) << addError;
+    const auto address = timeline.addresses().pluginAddress(*originalInstanceId);
+    ASSERT_TRUE(address.has_value());
+
+    auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+        &engine->tracks()[static_cast<size_t>(trackIndex)]->graph());
+    ASSERT_NE(graph, nullptr);
+    graph->clearConnections();
+    uapmd_graph::AudioPluginGraphConnection connection;
+    connection.source.type = uapmd_graph::AudioPluginGraphEndpointType::GraphInput;
+    connection.target.type = uapmd_graph::AudioPluginGraphEndpointType::Plugin;
+    connection.target.instance_id = *originalInstanceId;
+    connection.target.node_id = address->nodeId;
+    std::string connectionError;
+    ASSERT_TRUE(timeline.connectTrackGraph(
+        trackIndex, connection, connectionError)) << connectionError;
+    ASSERT_EQ(graph->connections().size(), 1u);
+
+    auto drain = [] {
+        for (int i = 0; i < 100; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    auto undoAndDrain = [&] {
+        std::optional<uapmd::ProjectUndoResult> result;
+        timeline.undoEngine().undo(
+            [&result](uapmd::ProjectUndoResult completed) {
+                result = std::move(completed);
+            });
+        drain();
+        return result;
+    };
+
+    std::optional<uapmd::ProjectUndoResult> removalResult;
+    timeline.removePluginInstance(
+        *originalInstanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&removalResult](uapmd::ProjectUndoResult result) {
+            removalResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(removalResult.has_value());
+    ASSERT_TRUE(removalResult->succeeded()) << removalResult->error;
+
+    auto result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    ASSERT_EQ(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
+        1u);
+    EXPECT_NE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front(),
+        *originalInstanceId);
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Connect track graph");
+
+    result = undoAndDrain();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_TRUE(graph->connections().empty());
+}
+
 TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata) {
     constexpr int32_t sampleRate = 48000;
     constexpr uint64_t frameCount = 480;

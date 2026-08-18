@@ -129,8 +129,10 @@ namespace uapmd {
             std::string_view format,
             std::string_view pluginId,
             std::string_view nodeId,
+            bool bypassed,
             uint8_t group,
             const std::vector<uint8_t>& state,
+            const std::vector<uapmd_graph::AudioPluginGraphConnection>& connections,
             std::function<void(int32_t, std::string)> finished) {
                 const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
         if (trackIndex < 0 && trackIndex != kMasterTrackIndex) {
@@ -139,6 +141,7 @@ namespace uapmd {
         }
         auto formatCopy = std::string(format);
         auto pluginIdCopy = std::string(pluginId);
+        auto trackReferenceIdCopy = std::string(trackReferenceId);
         // Restoring an instance can produce parameter/state notifications both
         // while the host creates it and while its project state is loaded.
         // Keep the mutation scope alive across the whole asynchronous restore;
@@ -161,30 +164,60 @@ namespace uapmd {
                         [scope = std::move(scope)]() mutable {});
                 });
         };
+        auto restoreConnections =
+            [this,
+             trackReferenceId = std::move(trackReferenceIdCopy),
+             connections,
+             finish = std::move(finish)](
+                int32_t instanceId,
+                std::string error) mutable {
+                if (!error.empty() || instanceId < 0) {
+                    finish(instanceId, std::move(error));
+                    return;
+                }
+                for (const auto& connection : connections) {
+                    std::string connectionError;
+                    if (applyGraphConnectionState(
+                            trackReferenceId,
+                            connection,
+                            true,
+                            connectionError))
+                        continue;
+                    engine_.removePluginInstance(instanceId);
+                    finish(
+                        -1,
+                        connectionError.empty()
+                            ? "Could not restore the plug-in graph connections"
+                            : std::move(connectionError));
+                    return;
+                }
+                finish(instanceId, {});
+            };
         engine_.addPluginToTrack(
             trackIndex,
             formatCopy,
             pluginIdCopy,
-            [this, group, state, finish = std::move(finish)](
+            [this, bypassed, group, state, restoreConnections = std::move(restoreConnections)](
                 int32_t newInstanceId,
                 int32_t,
                 std::string addError) mutable {
                 if (!addError.empty() || newInstanceId < 0) {
-                    finish(newInstanceId, std::move(addError));
+                    restoreConnections(newInstanceId, std::move(addError));
                     return;
                 }
                 if (group != 0xFF && !engine_.setInstanceGroup(newInstanceId, group)) {
                     engine_.removePluginInstance(newInstanceId);
-                    finish(-1, "Could not restore the plug-in UMP group");
+                    restoreConnections(-1, "Could not restore the plug-in UMP group");
                     return;
                 }
                 auto* restored = engine_.getPluginInstance(newInstanceId);
                 if (!restored) {
-                    finish(-1, "Restored plug-in instance is unavailable");
+                    restoreConnections(-1, "Restored plug-in instance is unavailable");
                     return;
                 }
+                restored->bypassed(bypassed);
                 if (state.empty()) {
-                    finish(newInstanceId, {});
+                    restoreConnections(newInstanceId, {});
                     return;
                 }
                 restored->loadState(
@@ -192,9 +225,9 @@ namespace uapmd {
                     StateContextType::Project,
                     false,
                     nullptr,
-                    [newInstanceId, finish = std::move(finish)](
+                    [newInstanceId, restoreConnections = std::move(restoreConnections)](
                         std::string stateError, void*) mutable {
-                        finish(
+                        restoreConnections(
                             stateError.empty() ? newInstanceId : -1,
                             std::move(stateError));
                     });
@@ -226,6 +259,32 @@ namespace uapmd {
                     "The plug-in instance does not exist"));
             return;
         }
+        std::vector<uapmd_graph::AudioPluginGraphConnection> connections;
+        if (auto* track = resolveSequencerTrack(trackIndex))
+            if (auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
+                    &track->graph()))
+                for (auto connection : graph->connections()) {
+                    auto normalizeEndpoint = [track](auto& endpoint) {
+                        if (endpoint.type
+                                != uapmd_graph::AudioPluginGraphEndpointType::Plugin
+                            || !endpoint.node_id.empty())
+                            return;
+                        if (auto* node = track->graph().getPluginNode(
+                                endpoint.instance_id))
+                            endpoint.node_id = node->nodeId();
+                    };
+                    normalizeEndpoint(connection.source);
+                    normalizeEndpoint(connection.target);
+                    const auto touchesInstance =
+                        (connection.source.type
+                                == uapmd_graph::AudioPluginGraphEndpointType::Plugin
+                            && connection.source.node_id == target->nodeId)
+                        || (connection.target.type
+                                == uapmd_graph::AudioPluginGraphEndpointType::Plugin
+                            && connection.target.node_id == target->nodeId);
+                    if (touchesInstance)
+                        connections.push_back(std::move(connection));
+                }
         auto finish = trackPendingPluginMutation(std::move(completion));
         instance->requestState(
             StateContextType::Project,
@@ -238,7 +297,9 @@ namespace uapmd {
              target = std::move(*target),
              format = instance->formatName(),
              pluginId = instance->pluginId(),
+             bypassed = instance->bypassed(),
              group = engine_.getInstanceGroup(instanceId),
+             connections = std::move(connections),
              completion = std::move(finish)](
                 std::vector<uint8_t> state,
                 std::string error,
@@ -251,7 +312,9 @@ namespace uapmd {
                      target = std::move(target),
                      format = std::move(format),
                      pluginId = std::move(pluginId),
+                     bypassed,
                      group,
+                     connections = std::move(connections),
                      state = std::move(state),
                      error = std::move(error),
                      completion = std::move(completion)]() mutable {if (!error.empty()) {
@@ -272,19 +335,24 @@ namespace uapmd {
                                 std::move(format),
                                 std::move(pluginId),
                                 std::move(target.nodeId),
+                                bypassed,
                                 group,
                                 std::move(state),
+                                std::move(connections),
                                 [this](
                                     std::string_view trackReferenceId,
                                     std::string_view format,
                                     std::string_view pluginId,
                                     std::string_view nodeId,
+                                    bool bypassed,
                                     uint8_t group,
                                     const std::vector<uint8_t>& state,
+                                    const std::vector<uapmd_graph::AudioPluginGraphConnection>& connections,
                                     std::function<void(int32_t, std::string)> finished) {
                                     restorePluginInstance(
                                         trackReferenceId, format, pluginId,
-                                        nodeId, group, state, std::move(finished));
+                                        nodeId, bypassed, group, state, connections,
+                                        std::move(finished));
                                 },
                                 [this](
                                     std::string_view trackReferenceId,

@@ -875,8 +875,10 @@ namespace uapmd {
             std::string_view format,
             std::string_view pluginId,
             std::string_view nodeId,
+            bool bypassed,
             uint8_t group,
             const std::vector<uint8_t>& state,
+            const std::vector<uapmd_graph::AudioPluginGraphConnection>& connections,
             std::function<void(int32_t, std::string)> finished);
 
         void removePluginInstanceById(

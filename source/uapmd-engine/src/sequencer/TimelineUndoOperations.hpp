@@ -403,8 +403,10 @@ namespace uapmd::timeline_detail {
             std::string_view format,
             std::string_view pluginId,
             std::string_view nodeId,
+            bool bypassed,
             uint8_t group,
             const std::vector<uint8_t>& state,
+            const std::vector<uapmd_graph::AudioPluginGraphConnection>& connections,
             std::function<void(int32_t, std::string)> completion)>;
         using Remove = std::function<void(
             std::string_view trackReferenceId,
@@ -417,8 +419,10 @@ namespace uapmd::timeline_detail {
             std::string format,
             std::string pluginId,
             std::string nodeId,
+            bool bypassed,
             uint8_t group,
             std::vector<uint8_t> state,
+            std::vector<uapmd_graph::AudioPluginGraphConnection> connections,
             Add add,
             Remove remove)
             : initially_added_(initiallyAdded)
@@ -426,8 +430,10 @@ namespace uapmd::timeline_detail {
             , format_(std::move(format))
             , plugin_id_(std::move(pluginId))
             , node_id_(std::move(nodeId))
+            , bypassed_(bypassed)
             , group_(group)
             , state_(std::move(state))
+            , connections_(std::move(connections))
             , add_(std::move(add))
             , remove_(std::move(remove)) {
         }
@@ -437,12 +443,18 @@ namespace uapmd::timeline_detail {
         }
 
         size_t historySizeInBytes() const override {
-            return sizeof(*this)
+            auto result = sizeof(*this)
                 + track_reference_id_.capacity()
                 + format_.capacity()
                 + plugin_id_.capacity()
                 + node_id_.capacity()
-                + state_.capacity();
+                + state_.capacity()
+                + connections_.capacity()
+                    * sizeof(uapmd_graph::AudioPluginGraphConnection);
+            for (const auto& connection : connections_)
+                result += connection.source.node_id.capacity()
+                    + connection.target.node_id.capacity();
+            return result;
         }
 
         void perform(
@@ -499,7 +511,7 @@ namespace uapmd::timeline_detail {
                     completion(ProjectUndoResult::failure("Plug-in restoration is unavailable"));
                 return;
             }
-            add_(track_reference_id_, format_, plugin_id_, node_id_, group_, state_,
+            add_(track_reference_id_, format_, plugin_id_, node_id_, bypassed_, group_, state_, connections_,
                  [completion = std::move(completion)](int32_t instanceId, std::string error) mutable {
                 if (!error.empty() || instanceId < 0) {
                     if (completion)
@@ -517,8 +529,10 @@ namespace uapmd::timeline_detail {
         std::string format_{};
         std::string plugin_id_{};
         std::string node_id_{};
+        bool bypassed_{false};
         uint8_t group_{0xFF};
         std::vector<uint8_t> state_{};
+        std::vector<uapmd_graph::AudioPluginGraphConnection> connections_{};
         Add add_{};
         Remove remove_{};
     };
