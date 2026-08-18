@@ -61,11 +61,6 @@ namespace uapmd::timeline_detail {
         // exits; giving it a single exit would let it become a scoped guard.
         virtual void setLoadInProgress(bool value) = 0;
 
-        // Bracket plug-in state restoration, so that state notifications
-        // coming back from a plug-in are not mistaken for external edits.
-        virtual void beginPluginStateRestore() = 0;
-        virtual void endPluginStateRestore() = 0;
-
         // A load starts from a fresh master track rather than clearing the
         // existing one in place.
         virtual void replaceMasterTimelineTrack(std::shared_ptr<TimelineTrack> track) = 0;

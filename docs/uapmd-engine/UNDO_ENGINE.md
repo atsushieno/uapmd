@@ -21,7 +21,7 @@ The ARA integration has not been verified against a real ARA plug-in.
 | Clip properties, structure and compounds | Implemented |
 | Gesture scopes and compatible coalescing | Implemented in the engine; additional callers may still need integration |
 | Track add, remove and restore | Implemented, including asynchronous preparation and failure cleanup |
-| Plug-in graph, parameter, state and lifecycle operations | Implemented for current surfaces; future raw surfaces remain to be funnelled |
+| Plug-in graph, parameter, state and lifecycle operations | Implemented for command surfaces; unprovenanceable plug-in notifications are synchronization-only |
 | Native, JavaScript and MCP history control | Implemented; persistent progress UI remains |
 | Save point and dirty state | Implemented in `SequencerEngine` |
 | Resource retention and replay failures | Core policy implemented and tested; relinking UX remains |
@@ -149,10 +149,13 @@ operations and avoid collisions with clip/source-node IDs.
 
 ### Plug-ins and graphs
 
-Global and per-note parameter edits use persistent plug-in identity. Host UI
-parameter notifications are observed and recorded without recording playback
-automation. Hosted plug-in state notifications are captured asynchronously and
-recorded as opaque before/after state changes.
+Global and per-note parameter commands use persistent plug-in identity. Generic
+hosted plug-in parameter notifications only synchronize the engine's cached
+value; they do not create history. The formats do not identify whether such a
+notification came from a human editor gesture, preset loading, state restore,
+initialization or automation, so inferring history from it can corrupt undo and
+redo. Hosted plug-in state-dirty notifications have the same limitation and
+only refresh the cached opaque state.
 
 Plug-in insertion and deletion restore format, identifier, persistent graph
 node identity, UMP group and state. Insertion on a new track records the track,
@@ -197,11 +200,13 @@ track or hosted instance behind.
 
 ### Plug-in and graph adoption
 
-- Route every future raw parameter or state surface through the facade's
-  callback-based history funnel.
-- Add generic begin/end gesture integration for new parameter callers that do
-  not already use the host GUI gesture path. Playback automation remains
-  excluded; authored automation data remains a document operation.
+- Route every authored parameter or state mutation through an explicit facade
+  command so its cause is known before it reaches the plug-in.
+- Define a hosting contract with genuine human-gesture provenance before
+  making native plug-in-editor changes undoable. VST3 begin/perform/end edit is
+  insufficient: a plug-in may emit the same sequence while loading a preset.
+  Playback automation remains excluded; authored automation data remains a
+  document operation.
 - Keep runtime metadata such as virtual MIDI labels outside project undo.
 
 ### Application and remote clients
@@ -242,7 +247,9 @@ Coverage includes project-file backward compatibility, event batching, fragment
 round trips, asynchronous plug-in creation/state restoration, compound and
 gesture behavior, clip and track undo/redo, graph and parameter operations,
 resource failures, memory-budget eviction, save-point dirty state and the
-JavaScript/MCP history jobs.
+JavaScript/MCP history jobs. Plug-in lifecycle tests also send synchronization
+notifications after several event-loop turns and from a worker thread, and
+verify that they do not replace the add/remove history entries.
 
 Tests do not replace verification with a real ARA plug-in or every platform
 plug-in implementation. The current test suite uses deterministic plug-in and

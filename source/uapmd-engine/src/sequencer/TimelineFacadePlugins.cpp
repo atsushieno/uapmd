@@ -4,12 +4,6 @@
 // has to survive a plug-in being destroyed and recreated under a new runtime id.
 
 namespace uapmd {
-    PluginMutationScopePtr TimelineFacadeImpl::beginPluginMutationScope(bool includeParameters) {
-        return std::make_shared<PluginMutationScope>(
-            includeParameters ? &plugin_parameter_mutation_depth_ : nullptr,
-            plugin_state_mutation_depth_);
-    }
-
     ProjectUndoCompletion TimelineFacadeImpl::trackPendingPluginMutation(ProjectUndoCompletion completion) {
         pending_plugin_mutations_.fetch_add(1, std::memory_order_acq_rel);
         return [this, completion = std::move(completion)](
@@ -24,13 +18,11 @@ namespace uapmd {
             int32_t instanceId,
             std::string_view trackReferenceId,
             std::string error,
-            PluginMutationScopePtr scope,
             ProjectUndoCompletion completion) {
                 refreshPluginParameterCache(instanceId);
         if (error.empty())
             if (auto* restored = engine_.getPluginInstance(instanceId))
                 plugin_state_values_[instanceId] = restored->saveStateSync();
-        scope.reset();
         if (!error.empty()) {
             if (completion)
                 completion(ProjectUndoResult::failure(std::move(error)));
@@ -55,7 +47,6 @@ namespace uapmd {
                     "The plug-in instance no longer exists"));
             return;
         }
-        auto scope = beginPluginMutationScope(true);
         instance->loadState(
             std::move(state),
             StateContextType::Project,
@@ -64,21 +55,18 @@ namespace uapmd {
             [this,
              trackReferenceId = std::move(trackReferenceId),
              nodeId = std::move(nodeId),
-             scope = std::move(scope),
              completion = std::move(completion)](
                 std::string error, void*) mutable {
                     dispatchToModelThread(
                     [this,
                      trackReferenceId = std::move(trackReferenceId),
                      nodeId = std::move(nodeId),
-                     scope = std::move(scope),
                      error = std::move(error),
                      completion = std::move(completion)]() mutable {
                          finishPluginMutation(
                             resolvePluginInstanceId(trackReferenceId, nodeId),
                             trackReferenceId,
                             std::move(error),
-                            std::move(scope),
                             std::move(completion));
                     });
             });
@@ -98,27 +86,23 @@ namespace uapmd {
                     "The plug-in instance no longer exists"));
             return;
         }
-        auto scope = beginPluginMutationScope(true);
         instance->loadPreset(
             presetIndex,
             [this,
              instanceId,
              address = std::move(address),
-             scope = std::move(scope),
              completion = std::move(completion)](
                 std::string error, void*) mutable {
                     dispatchToModelThread(
                     [this,
                      instanceId,
                      address = std::move(address),
-                     scope = std::move(scope),
                      error = std::move(error),
                      completion = std::move(completion)]() mutable {
                          finishPluginMutation(
                             instanceId,
                             address.trackReferenceId,
                             std::move(error),
-                            std::move(scope),
                             std::move(completion));
                     });
             });
@@ -142,27 +126,11 @@ namespace uapmd {
         auto formatCopy = std::string(format);
         auto pluginIdCopy = std::string(pluginId);
         auto trackReferenceIdCopy = std::string(trackReferenceId);
-        // Restoring an instance can produce parameter/state notifications both
-        // while the host creates it and while its project state is loaded.
-        // Keep the mutation scope alive across the whole asynchronous restore;
-        // otherwise those notifications are mistaken for a new user edit and
-        // replace the redo entry for the plug-in removal.
-        auto scope = beginPluginMutationScope(true);
-        auto finish = [scope = std::move(scope), finished = std::move(finished)](
+        auto finish = [finished = std::move(finished)](
                           int32_t instanceId,
                           std::string error) mutable {
             if (finished)
                 finished(instanceId, std::move(error));
-            // A host may enqueue its final parameter notifications while
-            // completing loadState(), including after invoking the completion
-            // callback. Use two event-loop turns: the first keeps the scope
-            // alive while callbacks enqueue their follow-up notifications;
-            // the second releases it after those notifications are handled.
-            remidy::EventLoop::enqueueTaskOnMainThread(
-                [scope = std::move(scope)]() mutable {
-                    remidy::EventLoop::enqueueTaskOnMainThread(
-                        [scope = std::move(scope)]() mutable {});
-                });
         };
         auto restoreConnections =
             [this,
@@ -564,42 +532,27 @@ namespace uapmd {
     void TimelineFacadeImpl::onPluginParameterChanged(
             int32_t instanceId,
             uint32_t parameterIndex,
-            double value,
-            bool historySuppressed) {
-                historySuppressed = historySuppressed
-            || plugin_parameter_mutation_depth_.load(std::memory_order_acquire) != 0;
+            double value) {
         if (!remidy::EventLoop::runningOnMainThread()) {
             dispatchToModelThread([this,
                                    instanceId,
                                    parameterIndex,
-                                   value,
-                                   historySuppressed] {
+                                   value] {
                                        onPluginParameterChanged(
                     instanceId,
                     parameterIndex,
-                    value,
-                    historySuppressed);
+                    value);
             });
             return;
         }
         const auto index = static_cast<int32_t>(parameterIndex);
-        auto& values = plugin_parameter_values_[instanceId];
-        const auto previous = values.find(index);
-        const auto before = previous == values.end() ? value : previous->second;
-        values[index] = value;
-        if (previous == values.end() || historySuppressed)
-            return;
-        recordExternalPluginParameterChange(instanceId, index, before, value);
+        plugin_parameter_values_[instanceId][index] = value;
     }
 
-    void TimelineFacadeImpl::onPluginStateChanged(
-            int32_t instanceId,
-            bool historySuppressed) {
-                historySuppressed = historySuppressed
-            || plugin_state_mutation_depth_.load(std::memory_order_acquire) != 0;
+    void TimelineFacadeImpl::onPluginStateChanged(int32_t instanceId) {
         if (!remidy::EventLoop::runningOnMainThread()) {
-            dispatchToModelThread([this, instanceId, historySuppressed] {
-                onPluginStateChanged(instanceId, historySuppressed);
+            dispatchToModelThread([this, instanceId] {
+                onPluginStateChanged(instanceId);
             });
             return;
         }
@@ -613,83 +566,21 @@ namespace uapmd {
             StateContextType::Project,
             false,
             nullptr,
-            [this, instanceId, historySuppressed](
+            [this, instanceId](
                 std::vector<uint8_t> state,
                 std::string error,
                 void*) mutable {
                     dispatchToModelThread(
                     [this,
                      instanceId,
-                     historySuppressed,
                      state = std::move(state),
                      error = std::move(error)]() mutable {
                          pending_plugin_state_captures_.erase(instanceId);
                         if (!error.empty())
                             return;
-                        auto previous = plugin_state_values_.find(instanceId);
-                        const bool changed = previous != plugin_state_values_.end()
-                            && previous->second != state;
-                        auto before = previous == plugin_state_values_.end()
-                            ? std::vector<uint8_t>{}
-                            : previous->second;
                         plugin_state_values_[instanceId] = state;
-                        if (!changed || historySuppressed)
-                            return;
-                        auto target = pluginTargetForInstance(instanceId);
-                        if (!target)
-                            return;
-                        auto apply = [this] (
-                            std::string_view trackReferenceId,
-                            std::string_view nodeId,
-                            const std::vector<uint8_t>& value,
-                            ProjectUndoCompletion completion) {
-                            applyPluginState(
-                                std::string(trackReferenceId),
-                                std::string(nodeId),
-                                value,
-                                std::move(completion));
-                        };
-                        auto operation =
-                            std::make_shared<PluginStateUndoOperation>(
-                                target->trackReferenceId,
-                                target->nodeId,
-                                std::move(before),
-                                std::move(state),
-                                std::move(apply),
-                                "Change plug-in state");
-                        undo_engine_.recordPerformed(
-                            std::move(operation),
-                            ProjectMutationOrigin::User);
-                        emitTrackChanged(
-                            target->trackReferenceId,
-                            "plugin-state-changed");
-                        notifyTimelineChanged();
                     });
             });
-    }
-
-    void TimelineFacadeImpl::recordExternalPluginParameterChange(
-            int32_t instanceId,
-            int32_t parameterIndex,
-            double before,
-            double after) {
-                auto plugin = pluginTargetForInstance(instanceId);
-        if (!plugin || before == after)
-            return;
-        const PluginParameterAddress address{
-            .plugin = *plugin,
-            .parameterIndex = parameterIndex
-        };
-        command_manager_.recordExecuted(
-            std::make_shared<PropertyCommand<PluginParameterProperty>>(
-                *this, address, after),
-            std::make_shared<PropertyCommand<PluginParameterProperty>>(
-                *this, address, before),
-            ProjectMutationOrigin::User);
-        emitTrackChanged(
-            plugin->trackReferenceId,
-            std::format("plugin-parameter-{}-changed", parameterIndex));
-        notifyTimelineChanged();
     }
 
     bool TimelineFacadeImpl::applyPluginParameterValue(
@@ -704,9 +595,7 @@ namespace uapmd {
         if (!currentInstance
             || engine_.frozenTrackManager().isInstanceBusy(currentInstanceId))
             return false;
-        plugin_parameter_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
         engine_.setParameterValue(currentInstanceId, parameterIndex, value);
-        plugin_parameter_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
         plugin_parameter_values_[currentInstanceId][parameterIndex] = value;
         emitTrackChanged(persistentTrackId, std::format(
             "plugin-parameter-{}-changed", parameterIndex));
@@ -722,10 +611,9 @@ namespace uapmd {
         for (const auto& parameter : instance->parameterMetadataList())
             values[static_cast<int32_t>(parameter.index)] =
                 instance->getParameterValue(static_cast<int32_t>(parameter.index));
-        // Some hosts expose parameter changes before (or without) a
-        // complete metadata list. Refresh indices already observed by the
-        // history bridge as well, so a state restore followed by a late
-        // notification cannot be mistaken for a new user edit.
+        // Some hosts expose parameter changes before (or without) a complete
+        // metadata list. Refresh indices already observed by the timeline as
+        // well so subsequent reads use the restored values.
         for (auto& [index, value] : values)
             value = instance->getParameterValue(index);
     }

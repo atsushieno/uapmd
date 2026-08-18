@@ -859,36 +859,4 @@ namespace uapmd::timeline_detail {
         Remove remove_{};
         Restore restore_{};
     };
-    // Raises the plug-in mutation depths while an asynchronous plug-in
-    // mutation is in flight, so that notifications the plug-in sends back
-    // are recognised as our own rather than as external user edits. Held
-    // by shared_ptr because the scope spans callbacks and outlives the
-    // call that opened it.
-    class PluginMutationScope {
-        std::atomic<uint32_t>* parameter_depth_;
-        std::atomic<uint32_t>* state_depth_;
-
-    public:
-        PluginMutationScope(
-            std::atomic<uint32_t>* parameterDepth,
-            std::atomic<uint32_t>& stateDepth)
-            : parameter_depth_(parameterDepth)
-            , state_depth_(&stateDepth) {
-            if (parameter_depth_)
-                parameter_depth_->fetch_add(1, std::memory_order_acq_rel);
-            state_depth_->fetch_add(1, std::memory_order_acq_rel);
-        }
-
-        ~PluginMutationScope() {
-            if (parameter_depth_)
-                parameter_depth_->fetch_sub(1, std::memory_order_acq_rel);
-            state_depth_->fetch_sub(1, std::memory_order_acq_rel);
-        }
-
-        PluginMutationScope(const PluginMutationScope&) = delete;
-        PluginMutationScope& operator=(const PluginMutationScope&) = delete;
-    };
-
-    using PluginMutationScopePtr = std::shared_ptr<PluginMutationScope>;
-
 } // namespace uapmd::timeline_detail

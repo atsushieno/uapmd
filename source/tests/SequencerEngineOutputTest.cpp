@@ -290,12 +290,8 @@ public:
             externallySetParameter(2, static_cast<double>(state_.front()) / 10.0);
         completed({}, callbackContext);
         if (notify_parameter_after_state_completion_)
-            remidy::EventLoop::enqueueTaskOnMainThread([this] {
-                externallySetParameter(
-                    2,
-                    parameter_after_state_completion_value_.value_or(
-                        getParameterValue(2)));
-            });
+            scheduleStateCompletionParameterNotification(
+                parameter_notification_delay_turns_);
     }
 
     bool stateLoadPending() const { return static_cast<bool>(pending_state_callback_); }
@@ -315,12 +311,8 @@ public:
         const bool succeeded = error.empty();
         completed(std::move(error), context);
         if (succeeded && notify_parameter_after_state_completion_)
-            remidy::EventLoop::enqueueTaskOnMainThread([this] {
-                externallySetParameter(
-                    2,
-                    parameter_after_state_completion_value_.value_or(
-                        getParameterValue(2)));
-            });
+            scheduleStateCompletionParameterNotification(
+                parameter_notification_delay_turns_);
     }
 
     void notifyParameterAfterStateCompletion(bool value) {
@@ -328,6 +320,12 @@ public:
     }
     void parameterAfterStateCompletionValue(std::optional<double> value) {
         parameter_after_state_completion_value_ = value;
+    }
+    void parameterNotificationDelayTurns(uint32_t value) {
+        parameter_notification_delay_turns_ = value;
+    }
+    void parameterNotificationFromWorker(bool value) {
+        parameter_notification_from_worker_ = value;
     }
     void emitParameterDuringStateLoad(bool value) {
         emit_parameter_during_state_load_ = value;
@@ -377,6 +375,29 @@ public:
     }
 
 private:
+    void scheduleStateCompletionParameterNotification(uint32_t remainingTurns) {
+        if (remainingTurns != 0) {
+            remidy::EventLoop::enqueueTaskOnMainThread(
+                [this, remainingTurns] {
+                    scheduleStateCompletionParameterNotification(
+                        remainingTurns - 1);
+                });
+            return;
+        }
+        const auto notify = [this] {
+            externallySetParameter(
+                2,
+                parameter_after_state_completion_value_.value_or(
+                    getParameterValue(2)));
+        };
+        if (!parameter_notification_from_worker_) {
+            notify();
+            return;
+        }
+        std::thread worker(notify);
+        worker.join();
+    }
+
     mutable std::string display_name_{"Test Plugin"};
     mutable std::string format_name_{"Test"};
     mutable std::string plugin_id_{"test.plugin"};
@@ -391,6 +412,8 @@ private:
     std::function<void(std::string, void*)> pending_state_callback_{};
     bool notify_parameter_after_state_completion_{false};
     std::optional<double> parameter_after_state_completion_value_{};
+    uint32_t parameter_notification_delay_turns_{1};
+    bool parameter_notification_from_worker_{false};
     bool emit_parameter_during_state_load_{true};
 };
 
@@ -423,6 +446,10 @@ public:
             notify_parameter_after_state_completion_);
         plugin->parameterAfterStateCompletionValue(
             parameter_after_state_completion_value_);
+        plugin->parameterNotificationDelayTurns(
+            parameter_notification_delay_turns_);
+        plugin->parameterNotificationFromWorker(
+            parameter_notification_from_worker_);
         instances_[instanceId] = std::move(plugin);
         if (defer_creation_) {
             pending_creations_.push_back({instanceId, std::move(callback)});
@@ -488,13 +515,19 @@ public:
 
     void configureStateCompletionParameterNotification(
         bool notify,
-        std::optional<double> value) {
+        std::optional<double> value,
+        uint32_t delayTurns = 1,
+        bool fromWorker = false) {
         notify_parameter_after_state_completion_ = notify;
         parameter_after_state_completion_value_ = value;
+        parameter_notification_delay_turns_ = delayTurns;
+        parameter_notification_from_worker_ = fromWorker;
         for (auto& [instanceId, instance] : instances_)
             if (auto* plugin = dynamic_cast<MutableTimingPlugin*>(instance.get())) {
                 plugin->notifyParameterAfterStateCompletion(notify);
                 plugin->parameterAfterStateCompletionValue(value);
+                plugin->parameterNotificationDelayTurns(delayTurns);
+                plugin->parameterNotificationFromWorker(fromWorker);
             }
     }
 
@@ -510,6 +543,8 @@ private:
     bool defer_state_load_{false};
     bool notify_parameter_after_state_completion_{false};
     std::optional<double> parameter_after_state_completion_value_{};
+    uint32_t parameter_notification_delay_turns_{1};
+    bool parameter_notification_from_worker_{false};
     std::vector<PendingCreation> pending_creations_{};
     std::function<void(int32_t)> plugin_state_change_listener_{};
 };
@@ -1787,18 +1822,11 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     plugin->externallySetParameter(2, 0.8);
     drain();
     EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
-    auto result = moveAndDrain(false);
-    ASSERT_TRUE(result.has_value());
-    ASSERT_TRUE(result->succeeded()) << result->error;
-    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.2);
-    result = moveAndDrain(true);
-    ASSERT_TRUE(result.has_value());
-    ASSERT_TRUE(result->succeeded()) << result->error;
-    EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
+    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
 
     ASSERT_TRUE(timeline.commands().setPluginBypassed(*instanceId, true));
     EXPECT_TRUE(plugin->bypassed());
-    result = moveAndDrain(false);
+    auto result = moveAndDrain(false);
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_FALSE(plugin->bypassed());
@@ -1902,15 +1930,9 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     pluginHostObserver->notifyPluginStateChanged(*instanceId);
     drain();
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Change plug-in state");
-    stateResult = moveAndDrain(false);
-    ASSERT_TRUE(stateResult.has_value());
-    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
-    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{7}));
-    stateResult = moveAndDrain(true);
-    ASSERT_TRUE(stateResult.has_value());
-    ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
-    EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
+    // A state-dirty notification has no user-action provenance. It refreshes
+    // the snapshot but must not overwrite the existing preset history.
+    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in preset");
 
     pluginHostObserver->configureStateCompletionParameterNotification(true, 0.9);
     ASSERT_TRUE(timeline.undoEngine().clear());
@@ -1992,10 +2014,14 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
     plugin->setStateFromHost({7});
     plugin->externallySetParameter(2, 0.7);
 
-    // The restored instance emits a different parameter value on the next
-    // event-loop turn. That notification must remain part of restoration,
-    // rather than becoming a second history operation.
-    pluginHostObserver->configureStateCompletionParameterNotification(true, 0.9);
+    // The restored instance emits a different parameter value well after the
+    // completion callback, from another thread. Notification arrival timing
+    // must not turn synchronization traffic into another history operation.
+    pluginHostObserver->configureStateCompletionParameterNotification(
+        true,
+        0.9,
+        7,
+        true);
     ASSERT_TRUE(timeline.undoEngine().clear());
 
     auto drain = [] {
@@ -2057,11 +2083,18 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
 
 TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition) {
     ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>();
+    auto* pluginHostObserver = pluginHost.get();
+    pluginHostObserver->configureStateCompletionParameterNotification(
+        true,
+        0.9,
+        7,
+        true);
     auto engine = uapmd::SequencerEngine::createWithPluginHost(
         48000,
         256,
         65536,
-        std::make_unique<TestPluginHostingAPI>());
+        std::move(pluginHost));
     ASSERT_NE(engine, nullptr);
     const auto trackIndex = engine->addEmptyTrack();
     ASSERT_GE(trackIndex, 0);
@@ -2080,6 +2113,10 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
             addError = std::move(error);
         });
     ASSERT_TRUE(instanceId.has_value()) << addError;
+    auto* addedPlugin = pluginHostObserver->mutableInstance(*instanceId);
+    ASSERT_NE(addedPlugin, nullptr);
+    addedPlugin->setStateFromHost({7});
+    addedPlugin->externallySetParameter(2, 0.7);
 
     auto drain = [] {
         for (int i = 0; i < 100; ++i) {
@@ -2153,6 +2190,38 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     EXPECT_FALSE(afterUndoAddition.canUndo);
     EXPECT_TRUE(afterUndoAddition.canRedo);
     EXPECT_EQ(afterUndoAddition.redoDescription, "Add plug-in");
+
+    lifecycleResult.reset();
+    timeline.undoEngine().redo(
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    ASSERT_EQ(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
+        1u);
+    const auto afterRedoAddition = timeline.undoEngine().state();
+    EXPECT_TRUE(afterRedoAddition.canUndo);
+    EXPECT_TRUE(afterRedoAddition.canRedo);
+    EXPECT_EQ(afterRedoAddition.undoDescription, "Add plug-in");
+    EXPECT_EQ(afterRedoAddition.redoDescription, "Remove plug-in");
+
+    lifecycleResult.reset();
+    timeline.undoEngine().redo(
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_TRUE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+    const auto afterRedoRemoval = timeline.undoEngine().state();
+    EXPECT_TRUE(afterRedoRemoval.canUndo);
+    EXPECT_FALSE(afterRedoRemoval.canRedo);
+    EXPECT_EQ(afterRedoRemoval.undoDescription, "Remove plug-in");
 }
 
 TEST_F(SequencerEngineOutputTest, PluginUndoableActionsResolveRestoredInstanceByPersistentAddress) {

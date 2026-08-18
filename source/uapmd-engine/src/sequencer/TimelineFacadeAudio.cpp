@@ -226,9 +226,7 @@ namespace uapmd {
                                 + static_cast<double>(static_cast<int32_t>(rawValue)) / INT32_MAX;
                     } else {value = static_cast<double>(rawValue) / UINT32_MAX;
                     }
-                    plugin_parameter_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
                     engine_.setParameterValue(instanceId, static_cast<int32_t>(paramIdx), value);
-                    plugin_parameter_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
                 }
             });
 

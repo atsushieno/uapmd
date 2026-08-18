@@ -747,9 +747,7 @@ namespace uapmd::timeline_detail {
             return;
         }
         std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
-        host_.beginPluginStateRestore();
         instance->loadStateSync(data);
-        host_.endPluginStateRestore();
     }
 
     void TimelineProjectSerializer::restoreProjectTracks(ProjectLoadRun& run) {

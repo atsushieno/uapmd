@@ -120,11 +120,9 @@ namespace uapmd {
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
         std::unordered_map<int32_t, std::unordered_map<int32_t, double>> plugin_parameter_values_{};
         std::unordered_map<int32_t, remidy::EventListenerId> plugin_parameter_listener_ids_{};
-        std::atomic<uint32_t> plugin_parameter_mutation_depth_{0};
         std::unordered_map<int32_t, std::vector<uint8_t>> plugin_state_values_{};
         std::unordered_set<int32_t> pending_plugin_state_captures_{};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
-        std::atomic<uint32_t> plugin_state_mutation_depth_{0};
         std::atomic<uint32_t> pending_plugin_mutations_{0};
         uint32_t suppress_plugin_graph_notifications_{0};
 
@@ -275,14 +273,6 @@ namespace uapmd {
         void setLoadInProgress(bool value) override {
             suppress_timeline_notification_ = value;
             suppress_project_document_events_ = value;
-        }
-
-        void beginPluginStateRestore() override {
-            plugin_state_mutation_depth_.fetch_add(1, std::memory_order_acq_rel);
-        }
-
-        void endPluginStateRestore() override {
-            plugin_state_mutation_depth_.fetch_sub(1, std::memory_order_acq_rel);
         }
 
         std::vector<ClipMarker> masterTrackMarkers() const override {
@@ -781,25 +771,14 @@ namespace uapmd {
             int32_t parameterIndex,
             double value);
 
-        // The plug-in moved its own parameter; the change is already applied,
-        // so only the history pair is recorded.
-        void recordExternalPluginParameterChange(
-            int32_t instanceId,
-            int32_t parameterIndex,
-            double before,
-            double after);
-
         void onPluginParameterChanged(
             int32_t instanceId,
             uint32_t parameterIndex,
-            double value,
-            bool historySuppressed = false);
+            double value);
 
         void refreshPluginParameterCache(int32_t instanceId);
 
-        void onPluginStateChanged(
-            int32_t instanceId,
-            bool historySuppressed = false);
+        void onPluginStateChanged(int32_t instanceId);
 
         void pluginInstanceAdded(
             int32_t instanceId,
@@ -838,8 +817,6 @@ namespace uapmd {
 
 
 
-        PluginMutationScopePtr beginPluginMutationScope(bool includeParameters);
-
         // Keeps hasPendingPluginMutations() true while an asynchronous plug-in
         // mutation is in flight, so that a project save waits for it.
         ProjectUndoCompletion trackPendingPluginMutation(ProjectUndoCompletion completion);
@@ -851,7 +828,6 @@ namespace uapmd {
             int32_t instanceId,
             std::string_view trackReferenceId,
             std::string error,
-            PluginMutationScopePtr scope,
             ProjectUndoCompletion completion);
 
         void applyPluginState(

@@ -330,17 +330,11 @@ namespace uapmd {
                         (*step)(index + 1);
                         return;
                     }
-                    plugin_state_mutation_depth_.fetch_add(
-                        1,
-                        std::memory_order_acq_rel);
                     instance->loadState(
                         added.state, StateContextType::Project, false, nullptr,
                         [this, step, index, fail,
                          displayName = added.displayName,
                          pluginId = added.pluginId](std::string loadError, void*) {
-                            plugin_state_mutation_depth_.fetch_sub(
-                                1,
-                                std::memory_order_acq_rel);
                             if (!loadError.empty()) {
                                 (*fail)(std::format(
                                     "Failed to restore state for {} while attaching the track: {}",
