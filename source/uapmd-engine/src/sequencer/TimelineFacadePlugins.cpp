@@ -139,41 +139,62 @@ namespace uapmd {
         }
         auto formatCopy = std::string(format);
         auto pluginIdCopy = std::string(pluginId);
+        // Restoring an instance can produce parameter/state notifications both
+        // while the host creates it and while its project state is loaded.
+        // Keep the mutation scope alive across the whole asynchronous restore;
+        // otherwise those notifications are mistaken for a new user edit and
+        // replace the redo entry for the plug-in removal.
+        auto scope = beginPluginMutationScope(true);
+        auto finish = [scope = std::move(scope), finished = std::move(finished)](
+                          int32_t instanceId,
+                          std::string error) mutable {
+            if (finished)
+                finished(instanceId, std::move(error));
+            // A host may enqueue its final parameter notifications while
+            // completing loadState(), including after invoking the completion
+            // callback. Use two event-loop turns: the first keeps the scope
+            // alive while callbacks enqueue their follow-up notifications;
+            // the second releases it after those notifications are handled.
+            remidy::EventLoop::enqueueTaskOnMainThread(
+                [scope = std::move(scope)]() mutable {
+                    remidy::EventLoop::enqueueTaskOnMainThread(
+                        [scope = std::move(scope)]() mutable {});
+                });
+        };
         engine_.addPluginToTrack(
             trackIndex,
             formatCopy,
             pluginIdCopy,
-            [this, group, state, finished = std::move(finished)](
+            [this, group, state, finish = std::move(finish)](
                 int32_t newInstanceId,
                 int32_t,
-                std::string addError) mutable {if (!addError.empty() || newInstanceId < 0) {
-                    finished(newInstanceId, std::move(addError));
+                std::string addError) mutable {
+                if (!addError.empty() || newInstanceId < 0) {
+                    finish(newInstanceId, std::move(addError));
                     return;
                 }
                 if (group != 0xFF && !engine_.setInstanceGroup(newInstanceId, group)) {
                     engine_.removePluginInstance(newInstanceId);
-                    finished(-1, "Could not restore the plug-in UMP group");
+                    finish(-1, "Could not restore the plug-in UMP group");
                     return;
                 }
                 auto* restored = engine_.getPluginInstance(newInstanceId);
                 if (!restored) {
-                    finished(-1, "Restored plug-in instance is unavailable");
+                    finish(-1, "Restored plug-in instance is unavailable");
                     return;
                 }
                 if (state.empty()) {
-                    finished(newInstanceId, {});
+                    finish(newInstanceId, {});
                     return;
                 }
-                auto scope = beginPluginMutationScope(false);
                 restored->loadState(
                     state,
                     StateContextType::Project,
                     false,
                     nullptr,
-                    [newInstanceId, scope = std::move(scope), finished = std::move(finished)](
+                    [newInstanceId, finish = std::move(finish)](
                         std::string stateError, void*) mutable {
-                            scope.reset();
-                        finished(
+                        finish(
                             stateError.empty() ? newInstanceId : -1,
                             std::move(stateError));
                     });

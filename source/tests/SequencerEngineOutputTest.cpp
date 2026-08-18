@@ -291,7 +291,10 @@ public:
         completed({}, callbackContext);
         if (notify_parameter_after_state_completion_)
             remidy::EventLoop::enqueueTaskOnMainThread([this] {
-                externallySetParameter(2, getParameterValue(2));
+                externallySetParameter(
+                    2,
+                    parameter_after_state_completion_value_.value_or(
+                        getParameterValue(2)));
             });
     }
 
@@ -313,12 +316,18 @@ public:
         completed(std::move(error), context);
         if (succeeded && notify_parameter_after_state_completion_)
             remidy::EventLoop::enqueueTaskOnMainThread([this] {
-                externallySetParameter(2, getParameterValue(2));
+                externallySetParameter(
+                    2,
+                    parameter_after_state_completion_value_.value_or(
+                        getParameterValue(2)));
             });
     }
 
     void notifyParameterAfterStateCompletion(bool value) {
         notify_parameter_after_state_completion_ = value;
+    }
+    void parameterAfterStateCompletionValue(std::optional<double> value) {
+        parameter_after_state_completion_value_ = value;
     }
     void emitParameterDuringStateLoad(bool value) {
         emit_parameter_during_state_load_ = value;
@@ -381,6 +390,7 @@ private:
     void* pending_state_context_{nullptr};
     std::function<void(std::string, void*)> pending_state_callback_{};
     bool notify_parameter_after_state_completion_{false};
+    std::optional<double> parameter_after_state_completion_value_{};
     bool emit_parameter_during_state_load_{true};
 };
 
@@ -408,8 +418,12 @@ public:
         std::string&,
         std::function<void(int32_t, std::string)>&& callback) override {
         const auto instanceId = next_instance_id_++;
-        instances_[instanceId] =
-            std::make_unique<MutableTimingPlugin>(defer_state_load_);
+        auto plugin = std::make_unique<MutableTimingPlugin>(defer_state_load_);
+        plugin->notifyParameterAfterStateCompletion(
+            notify_parameter_after_state_completion_);
+        plugin->parameterAfterStateCompletionValue(
+            parameter_after_state_completion_value_);
+        instances_[instanceId] = std::move(plugin);
         if (defer_creation_) {
             pending_creations_.push_back({instanceId, std::move(callback)});
             return;
@@ -472,6 +486,18 @@ public:
             : dynamic_cast<MutableTimingPlugin*>(it->second.get());
     }
 
+    void configureStateCompletionParameterNotification(
+        bool notify,
+        std::optional<double> value) {
+        notify_parameter_after_state_completion_ = notify;
+        parameter_after_state_completion_value_ = value;
+        for (auto& [instanceId, instance] : instances_)
+            if (auto* plugin = dynamic_cast<MutableTimingPlugin*>(instance.get())) {
+                plugin->notifyParameterAfterStateCompletion(notify);
+                plugin->parameterAfterStateCompletionValue(value);
+            }
+    }
+
 private:
     struct PendingCreation {
         int32_t instanceId{-1};
@@ -482,6 +508,8 @@ private:
     std::map<int32_t, std::unique_ptr<MutableTimingPlugin>> instances_{};
     bool defer_creation_{false};
     bool defer_state_load_{false};
+    bool notify_parameter_after_state_completion_{false};
+    std::optional<double> parameter_after_state_completion_value_{};
     std::vector<PendingCreation> pending_creations_{};
     std::function<void(int32_t)> plugin_state_change_listener_{};
 };
@@ -1884,6 +1912,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
 
+    pluginHostObserver->configureStateCompletionParameterNotification(true, 0.9);
     ASSERT_TRUE(timeline.undoEngine().clear());
     std::optional<uapmd::ProjectUndoResult> lifecycleResult;
     timeline.recordPluginInstanceAddition(
@@ -1922,10 +1951,108 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
     EXPECT_EQ(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(), 1u);
+    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+    EXPECT_EQ(timeline.undoEngine().state().redoDescription, "Remove plug-in");
     lifecycleResult = moveAndDrain(true);
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
     EXPECT_TRUE(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+}
+
+TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEntry) {
+    ScopedTestEventLoop eventLoop;
+    auto pluginHost = std::make_unique<TestPluginHostingAPI>();
+    auto* pluginHostObserver = pluginHost.get();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::move(pluginHost));
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    std::optional<int32_t> instanceId;
+    std::string addError;
+    std::string format = "Test";
+    std::string pluginId = "test.plugin";
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&instanceId, &addError](int32_t id, int32_t, std::string error) {
+            instanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(instanceId.has_value()) << addError;
+    auto* plugin = dynamic_cast<MutableTimingPlugin*>(
+        engine->getPluginInstance(*instanceId));
+    ASSERT_NE(plugin, nullptr);
+    plugin->setStateFromHost({7});
+    plugin->externallySetParameter(2, 0.7);
+
+    // The restored instance emits a different parameter value on the next
+    // event-loop turn. That notification must remain part of restoration,
+    // rather than becoming a second history operation.
+    pluginHostObserver->configureStateCompletionParameterNotification(true, 0.9);
+    ASSERT_TRUE(timeline.undoEngine().clear());
+
+    auto drain = [] {
+        for (int i = 0; i < 100; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    std::optional<uapmd::ProjectUndoResult> lifecycleResult;
+    timeline.removePluginInstance(
+        *instanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+
+    const auto afterRemoval = timeline.undoEngine().state();
+    ASSERT_TRUE(afterRemoval.canUndo);
+    EXPECT_FALSE(afterRemoval.canRedo);
+    EXPECT_EQ(afterRemoval.undoDescription, "Remove plug-in");
+    const auto removalHistorySize = afterRemoval.historySizeInBytes;
+
+    lifecycleResult.reset();
+    timeline.undoEngine().undo([&lifecycleResult](uapmd::ProjectUndoResult result) {
+        lifecycleResult = std::move(result);
+    });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+
+    const auto afterUndo = timeline.undoEngine().state();
+    EXPECT_FALSE(afterUndo.canUndo);
+    EXPECT_TRUE(afterUndo.canRedo);
+    EXPECT_TRUE(afterUndo.undoDescription.empty());
+    EXPECT_EQ(afterUndo.redoDescription, "Remove plug-in");
+    EXPECT_EQ(afterUndo.historySizeInBytes, removalHistorySize);
+    EXPECT_EQ(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
+        1u);
+
+    lifecycleResult.reset();
+    timeline.undoEngine().redo([&lifecycleResult](uapmd::ProjectUndoResult result) {
+        lifecycleResult = std::move(result);
+    });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    const auto afterRedo = timeline.undoEngine().state();
+    ASSERT_TRUE(afterRedo.canUndo);
+    EXPECT_FALSE(afterRedo.canRedo);
+    EXPECT_EQ(afterRedo.undoDescription, "Remove plug-in");
+    EXPECT_TRUE(afterRedo.redoDescription.empty());
+    EXPECT_TRUE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
 }
 
 TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata) {
