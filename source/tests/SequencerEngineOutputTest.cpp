@@ -2055,6 +2055,106 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
 }
 
+TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition) {
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000,
+        256,
+        65536,
+        std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    const auto trackIndex = engine->addEmptyTrack();
+    ASSERT_GE(trackIndex, 0);
+    auto& timeline = engine->timeline();
+
+    std::optional<int32_t> instanceId;
+    std::string addError;
+    std::string format = "VST3";
+    std::string pluginId = "Dexed";
+    engine->addPluginToTrack(
+        trackIndex,
+        format,
+        pluginId,
+        [&instanceId, &addError](int32_t id, int32_t, std::string error) {
+            instanceId = id;
+            addError = std::move(error);
+        });
+    ASSERT_TRUE(instanceId.has_value()) << addError;
+
+    auto drain = [] {
+        for (int i = 0; i < 100; ++i) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+
+    std::optional<uapmd::ProjectUndoResult> lifecycleResult;
+    timeline.recordPluginInstanceAddition(
+        *instanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+
+    lifecycleResult.reset();
+    timeline.removePluginInstance(
+        *instanceId,
+        uapmd::ProjectMutationOrigin::User,
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    ASSERT_TRUE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+
+    const auto commandHistory = timeline.undoEngine().state();
+    EXPECT_TRUE(commandHistory.canUndo);
+    EXPECT_FALSE(commandHistory.canRedo);
+    EXPECT_EQ(commandHistory.undoDescription, "Remove plug-in");
+
+    lifecycleResult.reset();
+    timeline.undoEngine().undo(
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    ASSERT_EQ(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
+        1u);
+    EXPECT_NE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front(),
+        *instanceId);
+
+    const auto afterUndoRemoval = timeline.undoEngine().state();
+    EXPECT_TRUE(afterUndoRemoval.canUndo);
+    EXPECT_TRUE(afterUndoRemoval.canRedo);
+    EXPECT_EQ(afterUndoRemoval.undoDescription, "Add plug-in");
+    EXPECT_EQ(afterUndoRemoval.redoDescription, "Remove plug-in");
+
+    lifecycleResult.reset();
+    timeline.undoEngine().undo(
+        [&lifecycleResult](uapmd::ProjectUndoResult result) {
+            lifecycleResult = std::move(result);
+        });
+    drain();
+    ASSERT_TRUE(lifecycleResult.has_value());
+    ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
+    EXPECT_TRUE(
+        engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
+
+    const auto afterUndoAddition = timeline.undoEngine().state();
+    EXPECT_FALSE(afterUndoAddition.canUndo);
+    EXPECT_TRUE(afterUndoAddition.canRedo);
+    EXPECT_EQ(afterUndoAddition.redoDescription, "Add plug-in");
+}
+
 TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata) {
     constexpr int32_t sampleRate = 48000;
     constexpr uint64_t frameCount = 480;

@@ -407,12 +407,12 @@ namespace uapmd::timeline_detail {
             const std::vector<uint8_t>& state,
             std::function<void(int32_t, std::string)> completion)>;
         using Remove = std::function<void(
-            int32_t instanceId,
+            std::string_view trackReferenceId,
+            std::string_view nodeId,
             std::function<void(std::string)> completion)>;
 
         PluginInstanceUndoOperation(
             bool initiallyAdded,
-            int32_t instanceId,
             std::string trackReferenceId,
             std::string format,
             std::string pluginId,
@@ -422,7 +422,6 @@ namespace uapmd::timeline_detail {
             Add add,
             Remove remove)
             : initially_added_(initiallyAdded)
-            , instance_id_(instanceId)
             , track_reference_id_(std::move(trackReferenceId))
             , format_(std::move(format))
             , plugin_id_(std::move(pluginId))
@@ -480,15 +479,18 @@ namespace uapmd::timeline_detail {
                     completion(ProjectUndoResult::failure("Plug-in removal is unavailable"));
                 return;
             }
-            remove_(instance_id_, [this, completion = std::move(completion)](std::string error) mutable {
-                if (!error.empty()) {
+            remove_(
+                track_reference_id_,
+                node_id_,
+                [completion = std::move(completion)](std::string error) mutable {
+                    if (!error.empty()) {
+                        if (completion)
+                            completion(ProjectUndoResult::failure(std::move(error)));
+                        return;
+                    }
                     if (completion)
-                        completion(ProjectUndoResult::failure(std::move(error)));
-                    return;
-                }
-                if (completion)
-                    completion(ProjectUndoResult::success());
-            });
+                        completion(ProjectUndoResult::success());
+                });
         }
 
         void add(ProjectUndoCompletion completion) {
@@ -498,21 +500,19 @@ namespace uapmd::timeline_detail {
                 return;
             }
             add_(track_reference_id_, format_, plugin_id_, node_id_, group_, state_,
-                 [this, completion = std::move(completion)](int32_t instanceId, std::string error) mutable {
+                 [completion = std::move(completion)](int32_t instanceId, std::string error) mutable {
                 if (!error.empty() || instanceId < 0) {
                     if (completion)
                         completion(ProjectUndoResult::failure(
                             error.empty() ? "Could not restore plug-in" : std::move(error)));
                     return;
                 }
-                instance_id_ = instanceId;
                 if (completion)
                     completion(ProjectUndoResult::success());
             });
         }
 
         bool initially_added_{false};
-        int32_t instance_id_{-1};
         std::string track_reference_id_{};
         std::string format_{};
         std::string plugin_id_{};

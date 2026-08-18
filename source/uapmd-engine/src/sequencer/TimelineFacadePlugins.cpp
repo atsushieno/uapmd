@@ -268,7 +268,6 @@ namespace uapmd {
                         undo_engine_.recordPerformed(
                             std::make_shared<PluginInstanceUndoOperation>(
                                 isAddition,
-                                instanceId,
                                 std::move(target.trackReferenceId),
                                 std::move(format),
                                 std::move(pluginId),
@@ -288,8 +287,11 @@ namespace uapmd {
                                         nodeId, group, state, std::move(finished));
                                 },
                                 [this](
-                                    int32_t currentInstanceId,
+                                    std::string_view trackReferenceId,
+                                    std::string_view nodeId,
                                     std::function<void(std::string)> finished) {
+                                    const auto currentInstanceId =
+                                        resolvePluginInstanceId(trackReferenceId, nodeId);
                                     removePluginInstanceById(
                                         currentInstanceId, std::move(finished));
                                 }),
