@@ -13,6 +13,10 @@ The currently implemented format has these important properties:
 
 - `track.volume` persists the implicit track/master fader even when no audio graph exists;
 - `track.graph` is optional and may be omitted entirely;
+- when a graph is saved, the current writer emits `track.graph` only as a reference to an external
+  graph file; an inline `plugins[]` array is still read, but is no longer written;
+- tracks, clips and plugin nodes carry persistent identity (`id`, and `node_id` for plugin nodes),
+  and readers mint positional identifiers for projects written before that identity existed;
 - the default runtime fader node `builtin:track_gain` is not serialized in `graph.nodes[]`;
 - external DAG graph data uses `node_id` endpoint identifiers when newly written;
 - older DAG graph data that still uses `plugin_index` remains readable for backward compatibility.
@@ -25,10 +29,20 @@ The project file is a JSON object with the following top-level structure:
 
 ```json
 {
+  "settings": { /* project-level settings */ },
   "tracks": [ /* array of track objects */ ],
   "master_track": { /* single track object */ }
 }
 ```
+
+### Fields
+
+- **`settings`** (object, optional): Project-level settings
+  - Each member is one named setting. Values are stored as parsed JSON rather than as strings,
+    so a setting value may be of any JSON type
+  - Written only when the project has at least one setting
+- **`tracks`** (array, optional): Ordinary tracks, written only when the project has at least one
+- **`master_track`** (object, optional): The master track; see Master Track
 
 ## Track Object
 
@@ -40,7 +54,10 @@ Each track represents an independent timeline with its own clips and optional au
 {
   "id": "track_0",
   "volume": 1.0,
+  "muted": true,
+  "solo": true,
   "graph": { /* graph object */ },
+  "markers": [ /* array of marker objects */ ],
   "clips": [ /* array of clip objects */ ]
 }
 ```
@@ -59,8 +76,16 @@ Each track represents an independent timeline with its own clips and optional au
   - Default is `1.0`
   - Recommended UAPMD-supported range is `0.0 .. 8.0`
   - This is the persisted source of truth for the implicit per-track/master fader
+- **`muted`** (boolean, optional): Track mute state
+  - Written only when the track is muted, so an absent field means not muted
+- **`solo`** (boolean, optional): Track solo state
+  - Written only when the track is soloed, so an absent field means not soloed
 - **`graph`** (object, optional): Defines the audio graph for this track
   - The field may be omitted when the track does not need explicit graph topology or plugin state
+  - The current writer emits it only when the graph carries an external file reference, which is
+    how the application saves every graph; see Current Implemented Graph Object
+- **`markers`** (array, optional): Track-level markers
+  - Uses the same marker object as clip `markers`; see Marker Object
 - **`clips`** (array, optional): List of audio or MIDI clips on this track's timeline
 
 ### Track Volume Persistence
@@ -77,11 +102,13 @@ Today a track can persist audio processing state in one of these ways:
 
 - no `graph` field at all
   - valid when only `volume` and clips are needed
-- a simple inline graph object with `plugins[]`
-  - used for linear plugin-chain style graphs
 - an external graph file referenced through `graph.external_file`
-  - used for more complex graph topologies
+  - this is what the current writer produces whenever a graph is saved, for linear chains as well
+    as DAG topologies
   - the external graph payload may contain `plugins[]`, generic authored `nodes[]`, and DAG `connections[]`
+- a simple inline graph object with `plugins[]`
+  - still accepted by the reader, but no longer written: it appears in projects that were saved
+    before graphs were always externalized
 
 When DAG `connections[]` are written by current code, endpoint objects use `node_id`. Readers still accept deprecated `plugin_index` endpoint data from older project files.
 
@@ -96,8 +123,12 @@ Clips represent either audio files or MIDI data positioned on the timeline.
   "id": "track_0_clip_0",
   "anchor": "track_0",
   "position_samples": 48000,
+  "duration_samples": 192000,
   "file": "/path/to/audio.wav",
-  "mime_type": "audio/wav"
+  "mime_type": "audio/wav",
+  "clip_type": "audio",
+  "markers": [ /* array of marker objects */ ],
+  "audio_warps": [ /* array of warp point objects */ ]
 }
 ```
 
@@ -136,6 +167,71 @@ Clips represent either audio files or MIDI data positioned on the timeline.
     - `"audio/wav"` - WAV audio
     - `"audio/aiff"` - AIFF audio
     - `"audio/flac"` - FLAC audio
+
+- **`clip_type`** (string, optional): Kind of clip
+  - Written when known; current values are `"audio"` and `"midi"`
+  - Selects whether the MIDI-only fields below apply
+
+- **`duration_samples`** (integer, optional): Clip length in samples
+  - Written only when greater than zero
+
+- **`markers`** (array, optional): Markers within this clip
+  - See Marker Object
+
+- **`audio_warps`** (array, optional): Warp points that time-stretch this clip
+  - See Audio Warp Point Object
+
+- **`tick_resolution`** (integer, optional): Ticks per quarter note for MIDI content
+  - Written only when `clip_type` is `"midi"`
+
+- **`nrpn_to_parameter_mapping`** (boolean, optional): Map incoming NRPN messages to plugin parameters
+  - Written only when `clip_type` is `"midi"` and the mapping is enabled, so an absent field means disabled
+
+## Marker Object
+
+Markers appear both in a clip's `markers` array and in a track's `markers` array, with the same shape.
+
+```json
+{
+  "id": "marker_0",
+  "position_offset_seconds": 1.5,
+  "reference_type": "clip_start",
+  "reference_clip_id": "track_0_clip_0",
+  "reference_marker_id": "marker_0",
+  "name": "Chorus"
+}
+```
+
+- **`id`** (string, optional): Marker identifier, written when non-empty
+- **`position_offset_seconds`** (number, required): Offset from the reference point, in seconds
+  - Older projects may instead carry `position_offset_samples`, which readers convert
+- **`reference_type`** (string, required): What the offset is measured from
+  - One of `"manual"`, `"clip_start"`, `"clip_end"`, `"clip_marker"`, `"master_marker"`
+- **`reference_clip_id`** (string, optional): Referenced clip, written when non-empty
+- **`reference_marker_id`** (string, optional): Referenced marker, written when non-empty
+- **`name`** (string, optional): Human-readable label, written when non-empty
+
+## Audio Warp Point Object
+
+```json
+{
+  "offset_seconds": 2.0,
+  "speed_ratio": 1.25,
+  "reference_type": "clip_marker",
+  "reference_marker_id": "marker_0",
+  "marker_id": "marker_0"
+}
+```
+
+- **`offset_seconds`** (number, required): Offset of this warp point, in seconds
+  - Older projects may instead carry `clip_position_offset_samples`, `offset_samples`,
+    `source_offset_samples` or `source_position_samples`, which readers convert
+- **`speed_ratio`** (number, required): Playback speed multiplier applied from this point
+- **`reference_type`** (string, required): Same values as the marker `reference_type`
+- **`reference_clip_id`** (string, optional): Referenced clip, written when non-empty
+- **`reference_marker_id`** (string, optional): Referenced marker, written when non-empty
+- **`marker_id`** (string, optional): Legacy duplicate of `reference_marker_id`
+  - Written only when `reference_type` is `"clip_marker"`, so that older readers still resolve the reference
 
 ## Generic Graph Schema Draft
 
@@ -330,271 +426,87 @@ Plugin node notes:
 
 ### Complete Example
 
-```json
-{
-  "schema_version": 1,
-  "graph_type": "urn:uapmd-graph:generic/dag/v1",
-  "nodes": [
-    {
-      "id": "plugin_0",
-      "type": "plugin:vst3",
-      "display_name": "SuperSynth",
-      "plugin": {
-        "plugin_id": "com.example.supersynth",
-        "state_file": "states/plugin_0.bin"
-      }
-    },
-    {
-      "id": "track_gain_0",
-      "type": "webaudio:GainNode",
-      "display_name": "Track Volume",
-      "parameters": {
-        "gain": 1.0
-      }
-    }
-  ],
-  "connections": [
-    {
-      "id": "c0",
-      "kind": "audio",
-      "source": { "node_id": "plugin_0", "port": "out:0" },
-      "target": { "node_id": "track_gain_0", "port": "in" }
-    },
-    {
-      "id": "c1",
-      "kind": "audio",
-      "source": { "node_id": "track_gain_0", "port": "out" },
-      "target": { "node_id": "graph:output", "port": "in:0" }
-    }
-  ]
-}
-```
-
-### Validation Expectations
-
-Version 1 readers and writers should assume the following:
-
-- node IDs are unique within a graph;
-- connection IDs are unique within a graph;
-- connection endpoints reference existing nodes or reserved pseudo-nodes;
-- unknown node types may be preserved but do not have to be instantiated;
-- unknown fields should be ignored where possible;
-- parameter values are plain persisted values, not automation curves;
-- channel routing behavior should be explicit in the graph representation rather than inferred from host-specific defaults.
-
-### Non-Goals for Version 1
-
-The following are intentionally out of scope for the first generic graph schema revision:
-
-- sample-accurate parameter automation inside graph JSON;
-- UI slider taper or editor behavior serialization;
-- full Web Audio API behavioral compatibility;
-- implicit browser-style channel interpretation rules;
-- modulation/control-rate signal connections.
-
-## Current Implemented Graph Object
-
-This section describes the graph object shape that current code can load and save today.
-
-New schema work should still prefer the generic graph draft above, but the current implemented format remains the compatibility contract for existing project files.
-
-### Inline Graph Object
-
-Defines an inline audio graph for a track.
-
-### Schema
-
-```json
-{
-  "external_file": "/path/to/graph.filtergraph",
-  "plugins": [
-    {
-      "plugin_id": "com.example.reverb",
-      "format": "VST3",
-      "display_name": "Studio Reverb",
-      "state_file": "/path/to/state.vstpreset"
-    }
-  ]
-}
-```
-
-### Fields
-
-- **`external_file`** (string, optional): Path to external graph definition file
-  - If specified, represents a complex graph payload stored outside the main project JSON
-  - When present, the inline `plugins` array may still exist for compatibility or simple cases
-- **`plugins`** (array, optional): Linear list of plugin nodes
-  - Plugins are processed in array order for simple chain-style graphs
-
-### External Graph File Behavior
-
-When `external_file` is present, the referenced graph JSON is currently allowed to contain:
-
-- `plugins[]` for plugin-backed nodes
-- `nodes[]` for graph-authored generic nodes such as built-in utility nodes
-- `connections[]` for DAG routing
-
-Newly written DAG endpoint objects use `node_id`. Readers also accept deprecated `plugin_index` endpoint objects for backward compatibility with older project files.
-
-## Legacy Linear Plugin Node Object
-
-The following plugin node payload remains important because it is still part of the currently implemented format and may appear inline or in older external graph files.
-
-#### Plugin Node Object
-
-```json
-{
-  "plugin_id": "com.example.plugin.id",
-  "format": "VST3",
-  "display_name": "Plugin Display Name",
-  "state_file": "/path/to/state.vstpreset"
-}
-```
-
-- **`plugin_id`** (string, required): Unique identifier for the plugin
-  - VST3: Plugin UID string
-  - AU: Component description identifier
-  - LV2: Plugin URI
-  - CLAP: Plugin ID string
-
-- **`format`** (string, required): Plugin format
-  - Supported values: `"VST3"`, `"AU"`, `"LV2"`, `"CLAP"`
-
-- **`display_name`** (string, optional but recommended): Human-readable plugin name
-  - Stored alongside `plugin_id` to make project files easier to inspect
-  - Used when reloading projects as a fallback hint if the original `plugin_id` is no longer available (e.g., plugin was renamed or moved); see `docs/remidy/PLUGIN_ID_AND_CATALOG.md`
-
-- **`state_file`** (string, optional): Path to plugin state/preset file
-  - Format-specific preset/state file
-  - Can be empty if using default plugin state
-
-## Master Track
-
-The master track is a special track that processes the final mix output. It follows the same structure as regular tracks but is defined as a single object rather than an array element.
-
-```json
-{
-  "master_track": {
-    "volume": 1.0,
-    "graph": { /* graph object for master bus */ },
-    "clips": [ /* clips on master timeline */ ]
-  }
-}
-```
-
-## Positioning Examples
-
-### Example 1: Absolute Positioning
-
-Clip starts at 2 seconds (96000 samples at 48kHz) from track start:
-
-```json
-{
-  "position_samples": 96000,
-  "file": "/audio/intro.wav"
-}
-```
-
-### Example 2: Track-Anchored Positioning
-
-Clip starts 1 second after the beginning of track 0:
-
-```json
-{
-  "anchor": "track_0",
-  "position_samples": 48000,
-  "file": "/audio/drums.wav"
-}
-```
-
-### Example 3: Clip-Anchored Positioning
-
-Clip starts immediately after another clip ends (assuming the anchor clip is 192000 samples long):
-
-```json
-{
-  "anchor": "track_1_clip_0",
-  "position_samples": 192000,
-  "file": "/audio/verse.wav"
-}
-```
-
-### Example 4: Negative Offset
-
-Clip starts 0.5 seconds before the anchor point (crossfade scenario):
-
-```json
-{
-  "anchor": "track_0_clip_2",
-  "position_samples": -24000,
-  "file": "/audio/transition.wav"
-}
-```
-
-## Complete Example
+This is the shape the current writer produces: persistent `id` on tracks and clips, and each
+track's graph stored as an external graph file rather than an inline `plugins[]` array.
 
 ```json
 {
   "tracks": [
     {
+      "id": "track_0",
       "volume": 1.0,
       "graph": {
-        "plugins": [
-        {
-          "plugin_id": "com.fabfilter.proq3",
-          "format": "VST3",
-          "display_name": "FabFilter Pro-Q 3",
-          "state_file": "/presets/vocal_eq.vstpreset"
-        },
-        {
-          "plugin_id": "com.fabfilter.proc2",
-          "format": "VST3",
-          "display_name": "FabFilter Pro-C 2",
-          "state_file": "/presets/vocal_comp.vstpreset"
-        }
-      ]
+        "graph_type": "",
+        "external_file": "graphs/track_0.graph.json"
       },
       "clips": [
         {
+          "id": "track_0_clip_0",
           "position_samples": 0,
+          "duration_samples": 480000,
           "file": "/audio/vocal_verse1.wav",
-          "mime_type": "audio/wav"
+          "mime_type": "audio/wav",
+          "clip_type": "audio"
         },
         {
+          "id": "track_0_clip_1",
           "anchor": "track_0_clip_0",
           "position_samples": 480000,
           "file": "/audio/vocal_chorus.wav",
-          "mime_type": "audio/wav"
+          "mime_type": "audio/wav",
+          "clip_type": "audio"
         }
       ]
     },
     {
+      "id": "track_1",
       "volume": 0.8,
-      "graph": {
-        "plugins": []
-      },
+      "muted": true,
       "clips": [
         {
+          "id": "track_1_clip_0",
           "position_samples": 0,
-          "file": "/midi/drums.midi2"
+          "file": "/midi/drums.midi2",
+          "clip_type": "midi",
+          "tick_resolution": 480
         }
       ]
     }
   ],
   "master_track": {
+    "id": "master_track",
     "volume": 0.95,
     "graph": {
-      "plugins": [
-        {
-          "plugin_id": "com.fabfilter.prol2",
-          "format": "VST3",
-          "display_name": "FabFilter Pro-L 2",
-          "state_file": "/presets/mastering_limiter.vstpreset"
-        }
-      ]
-    },
-    "clips": []
+      "graph_type": "",
+      "external_file": "graphs/master_track.graph.json"
+    }
   }
+}
+```
+
+The referenced `graphs/track_0.graph.json` holds the plugin chain itself:
+
+```json
+{
+  "graph_type": "",
+  "plugins": [
+    {
+      "node_id": "plugin:0",
+      "plugin_id": "com.fabfilter.proq3",
+      "format": "VST3",
+      "display_name": "FabFilter Pro-Q 3",
+      "state_file": "/presets/vocal_eq.vstpreset",
+      "group_index": -1
+    },
+    {
+      "node_id": "plugin:1",
+      "plugin_id": "com.fabfilter.proc2",
+      "format": "VST3",
+      "display_name": "FabFilter Pro-C 2",
+      "state_file": "/presets/vocal_comp.vstpreset",
+      "group_index": -1
+    }
+  ]
 }
 ```
 
