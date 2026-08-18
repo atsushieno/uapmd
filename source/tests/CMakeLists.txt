@@ -3,11 +3,13 @@ enable_testing()
 # Find or add GoogleTest
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest." FORCE)
 if(NOT TARGET GTest::gtest OR NOT TARGET GTest::gtest_main)
     CPMAddPackage(
         NAME googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG v1.14.0
+        EXCLUDE_FROM_ALL
     )
 endif()
 
