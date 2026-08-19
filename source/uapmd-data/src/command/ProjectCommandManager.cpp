@@ -199,7 +199,13 @@ namespace uapmd {
                 auto* target = &opposite;
                 command->execute(
                     *context,
-                    [self, context, transaction, target,
+                    // The transaction is moved in, not copied: a synchronous
+                    // command completes while run() is still on the stack, so
+                    // a second owner here would hold the transaction open
+                    // across whatever the completion goes on to do -- the next
+                    // child of a compound step, for one, which would then run
+                    // inside a transaction it never opened.
+                    [self, context, transaction = std::move(transaction), target,
                      completion = std::move(completion)](
                         ProjectCommandResult result) mutable {
                         if (result.succeeded())

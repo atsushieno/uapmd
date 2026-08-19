@@ -123,6 +123,18 @@ namespace uapmd::timeline_detail {
             const TrackGraphSnapshot& snapshot,
             size_t eventBufferSizeInBytes) = 0;
 
+        // A clip read and written as a whole, as an optional fragment:
+        // nullopt means the clip is not on the track. Adding, replacing the
+        // content of, and deleting a clip are then one write, and undoing a
+        // delete is a restore of the very fragment that was captured.
+        virtual std::optional<ProjectClipFragment> clipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId) = 0;
+        virtual bool applyClipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId,
+            const std::optional<ProjectClipFragment>& fragment) = 0;
+
         // Why the most recent write() returned false, when it can fail for
         // more than one reason. Writes are serialized on the model thread, so
         // the value read straight after a failed write is that write's own.
@@ -166,6 +178,10 @@ namespace uapmd::timeline_detail {
 
         std::string_view commandId() const override {
             return Property::commandId;
+        }
+
+        bool batchesDocumentEvents() const override {
+            return Property::batchesDocumentEvents;
         }
 
         std::string description() const override {
@@ -236,6 +252,14 @@ namespace uapmd::timeline_detail {
         static std::string describe(const Value&) {
             return std::string(Derived::label);
         }
+
+        // Most property edits are a single inline mutation, so batching their
+        // events costs nothing and spares observers a half-applied read. A
+        // descriptor whose read or write must not run inside a document
+        // transaction -- anything that captures a fragment, because extension
+        // state such as an ARA archive cannot be taken mid-edit -- sets this
+        // to false.
+        static constexpr bool batchesDocumentEvents = true;
 
         // Most properties can only fail one way, so the generic message says
         // everything there is to say. A property whose write is rejected for
@@ -1002,6 +1026,60 @@ namespace uapmd::timeline_detail {
         }
 
         static void notify(PropertyCommandTarget&, const DeviceInputSubject&) {
+        }
+    };
+
+    // Presence and content of one clip. The address always resolves: an
+    // absent clip is a legitimate state of it, not a missing subject.
+    struct ClipPresenceSubject {
+        ClipAddress address;
+    };
+
+    struct ClipPresenceProperty
+        : PropertyDescriptor<ClipPresenceProperty, std::optional<ProjectClipFragment>> {
+        using Address = ClipAddress;
+        using Subject = ClipPresenceSubject;
+
+        static constexpr std::string_view commandId{"clip.setPresence"};
+        static constexpr std::string_view label{"Change clip"};
+
+        // Reading this property captures a clip fragment, which collects
+        // extension-owned state and therefore cannot run inside a document
+        // transaction. Batching here would silently read an absent clip and
+        // record "delete it" as the way to undo a content change.
+        static constexpr bool batchesDocumentEvents = false;
+
+        static std::string describe(const Value& value) {
+            return value ? "Add clip" : "Delete clip";
+        }
+
+        // Two absences are the same state; anything else is recorded. A
+        // fragment is a deep capture of clip content, and comparing two of
+        // them would cost more than the redundant history entry it saves.
+        static bool equal(const Value& lhs, const Value& rhs) {
+            return !lhs && !rhs;
+        }
+
+        static std::optional<ClipPresenceSubject> resolve(
+            PropertyCommandTarget&,
+            const ClipAddress& address) {
+            return ClipPresenceSubject{address};
+        }
+
+        static Value read(PropertyCommandTarget& target, const ClipPresenceSubject& subject) {
+            return target.clipFragment(
+                subject.address.trackReferenceId, subject.address.clipReferenceId);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const ClipPresenceSubject& subject,
+            const Value& value) {
+            return target.applyClipFragment(
+                subject.address.trackReferenceId, subject.address.clipReferenceId, value);
+        }
+
+        static void notify(PropertyCommandTarget&, const ClipPresenceSubject&) {
         }
     };
 

@@ -357,6 +357,37 @@ namespace uapmd {
                 trackReferenceId, snapshot, eventBufferSizeInBytes);
         }
 
+        // Records a clip change that has already been applied. `after` is what
+        // the clip is now, `before` what it was -- either may be absent, which
+        // is how one helper covers addition, deletion and content replacement.
+        ProjectCommandResult recordClipPresence(
+            const ClipAddress& address,
+            std::optional<ProjectClipFragment> after,
+            std::optional<ProjectClipFragment> before,
+            ProjectMutationOrigin origin,
+            std::string label) {
+            using Command =
+                timeline_detail::PropertyCommand<timeline_detail::ClipPresenceProperty>;
+            ProjectCommandResult recorded{};
+            command_manager_.recordExecuted(
+                std::make_shared<Command>(*this, address, std::move(after), label),
+                std::make_shared<Command>(*this, address, std::move(before), std::move(label)),
+                origin,
+                [&recorded](ProjectCommandResult result) {
+                    recorded = std::move(result);
+                });
+            return recorded;
+        }
+
+        std::optional<ProjectClipFragment> clipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId) override;
+
+        bool applyClipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId,
+            const std::optional<ProjectClipFragment>& fragment) override;
+
         std::string lastWriteFailure() const override {
             return last_write_failure_;
         }

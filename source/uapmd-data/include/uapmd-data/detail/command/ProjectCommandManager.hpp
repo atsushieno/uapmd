@@ -178,6 +178,7 @@ namespace uapmd {
     class ScopedCommandStep {
         ProjectCommandManager* manager_;
         bool open_;
+        std::string error_;
 
     public:
         ScopedCommandStep(
@@ -185,8 +186,10 @@ namespace uapmd {
             std::string description,
             ProjectMutationOrigin origin = ProjectMutationOrigin::User,
             ProjectStepEventBatching batching = ProjectStepEventBatching::PerCommand)
-            : manager_(&manager)
-            , open_(manager.beginStep(std::move(description), origin, batching).succeeded()) {
+            : manager_(&manager) {
+            auto result = manager.beginStep(std::move(description), origin, batching);
+            open_ = result.succeeded();
+            error_ = std::move(result.error);
         }
 
         ~ScopedCommandStep() {
@@ -202,6 +205,12 @@ namespace uapmd {
         // already inside a larger action.
         bool opened() const {
             return open_;
+        }
+
+        // Why the step could not be opened, for callers that report a reason
+        // rather than just failing. Empty once opened() is true.
+        const std::string& error() const {
+            return error_;
         }
 
         void commit(ProjectCommandCompletion completion = {}) {

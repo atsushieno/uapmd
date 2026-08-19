@@ -168,15 +168,18 @@ namespace uapmd {
         auto separated = MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
         auto& musicalClip = separated.musicalClip;
         auto& track = *timeline_tracks_[static_cast<size_t>(trackIndex)];
+        // Only worth a step when this import records history and adds both a
+        // musical and a master-track clip; opening one for a project load
+        // would make the whole load look like a pending history scope.
         const bool recordsHistory = origin == ProjectMutationOrigin::User
             || origin == ProjectMutationOrigin::Remote;
-        const bool ownsCompound = recordsHistory
+        std::optional<ScopedCommandStep> step;
+        if (recordsHistory
             && separated.hasMasterTrackClip()
-            && !undo_engine_.state().compoundOpen;
-        if (ownsCompound) {
-            auto opened = undo_engine_.beginCompound("Import MIDI file", origin);
-            if (!opened.succeeded()) {
-                result.error = std::move(opened.error);
+            && !command_manager_.state().compoundOpen) {
+            step.emplace(command_manager_, "Import MIDI file", origin);
+            if (!step->opened()) {
+                result.error = step->error();
                 return result;
             }
         }
@@ -195,11 +198,8 @@ namespace uapmd {
             separated.hasMasterTrackClip());
 
         result = recordAddedClip(trackIndex, std::move(result), origin);
-        if (!result.success) {
-            if (ownsCompound)
-                undo_engine_.cancelCompound();
+        if (!result.success)
             return result;
-        }
 
         if (result.success && separated.hasMasterTrackClip()) {
             auto& masterClip = separated.masterTrackClip;
@@ -231,8 +231,6 @@ namespace uapmd {
             masterResult = recordAddedClip(
                 kMasterTrackIndex, std::move(masterResult), origin);
             if (!masterResult.success) {
-                if (ownsCompound)
-                    undo_engine_.cancelCompound();
                 result.success = false;
                 result.error = masterResult.error.empty()
                     ? "Could not add the imported master MIDI clip"
@@ -240,8 +238,8 @@ namespace uapmd {
                 return result;
             }
         }
-        if (ownsCompound)
-            undo_engine_.endCompound();
+        if (step)
+            step->commit();
         return result;
     }
 
@@ -356,10 +354,12 @@ namespace uapmd {
             fragments.push_back(std::move(*fragment));
         }
 
-        const bool ownsCompound = !undo_engine_.state().compoundOpen;
-        if (ownsCompound) {
-            auto opened = undo_engine_.beginCompound("Clear clips", origin);
-            if (!opened.succeeded())
+        // A caller clearing several tracks owns the step; this opens one only
+        // when it is the whole action.
+        std::optional<ScopedCommandStep> step;
+        if (!command_manager_.state().compoundOpen) {
+            step.emplace(command_manager_, "Clear clips", origin);
+            if (!step->opened())
                 return false;
         }
         // Removed one at a time rather than by clearing the clip manager,
@@ -367,15 +367,12 @@ namespace uapmd {
         // directly leaves observers holding clips that no longer exist.
         ProjectDocumentTransaction transaction(project_document_events_);
         for (auto& fragment : fragments) {
-            if (performCapturedClipRemoval(
+            if (!performCapturedClipRemoval(
                     targetTrack->referenceId(), std::move(fragment), origin))
-                continue;
-            if (ownsCompound)
-                undo_engine_.cancelCompound();
-            return false;
+                return false;
         }
-        if (ownsCompound)
-            undo_engine_.endCompound();
+        if (step)
+            step->commit();
         return true;
     }
 

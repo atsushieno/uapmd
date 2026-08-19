@@ -725,6 +725,41 @@ namespace uapmd {
         return result;
     }
 
+    std::optional<ProjectClipFragment> TimelineFacadeImpl::clipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId) {
+        auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+        if (!targetTrack)
+            return std::nullopt;
+        const auto clipId = clipIdForReferenceId(*targetTrack, clipReferenceId);
+        if (clipId < 0)
+            return std::nullopt;
+        return captureClipFragment(
+            trackIndexForPersistentId(trackReferenceId), clipId);
+    }
+
+    bool TimelineFacadeImpl::applyClipFragment(
+            std::string_view trackReferenceId,
+            std::string_view clipReferenceId,
+            const std::optional<ProjectClipFragment>& fragment) {
+        if (!fragment)
+            return removeClipByReferenceId(trackReferenceId, clipReferenceId);
+
+        auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+        if (!targetTrack)
+            return false;
+        if (clipIdForReferenceId(*targetTrack, clipReferenceId) < 0)
+            return restoreClipByReferenceId(trackReferenceId, *fragment).success;
+
+        // Replacing content removes the clip before restoring the new one, so
+        // it needs the current fragment to put back if the restore fails.
+        auto compensation = clipFragment(trackReferenceId, clipReferenceId);
+        return replaceClipByReferenceId(
+            trackReferenceId,
+            *fragment,
+            compensation ? &*compensation : nullptr);
+    }
+
     TimelineFacade::ClipAddResult TimelineFacadeImpl::recordAddedClip(
             int32_t trackIndex,
             ClipAddResult result,
@@ -754,30 +789,21 @@ namespace uapmd {
             return result;
         }
 
-        auto operation = std::make_shared<ClipAdditionUndoOperation>(
-            targetTrack->referenceId(),
-            std::move(*fragment),
-            [this](std::string_view persistentTrackId, std::string_view persistentClipId) {
-                return removeClipByReferenceId(persistentTrackId, persistentClipId);
-            },
-            [this](std::string_view persistentTrackId, const ProjectClipFragment& captured) {
-                return restoreClipByReferenceId(persistentTrackId, captured);
-            });
-        auto recorded = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.recordPerformed(
-            std::move(operation),
-            origin,
-            [recorded](ProjectUndoResult completed) {
-                *recorded = std::move(completed);
-            });
-        if (recorded->has_value() && recorded->value().succeeded())
+        // The clip is already there, so this records rather than executes:
+        // the forward command carries the captured clip and the revert its
+        // absence.
+        const ClipAddress address{
+            targetTrack->referenceId(), fragment->clip.referenceId};
+        auto recorded = recordClipPresence(
+            address, std::move(*fragment), std::nullopt, origin, {});
+        if (recorded.succeeded())
             return result;
 
         removeClipRaw(*targetTrack, result.clipId);
         result.success = false;
-        result.error = recorded->has_value() && !recorded->value().error.empty()
-            ? recorded->value().error
-            : "Could not record the added clip in undo history";
+        result.error = recorded.error.empty()
+            ? "Could not record the added clip in undo history"
+            : std::move(recorded.error);
         return result;
     }
 
@@ -794,25 +820,12 @@ namespace uapmd {
             replaceClipByReferenceId(targetTrack->referenceId(), before, nullptr);
             return false;
         }
-        auto operation = std::make_shared<ClipContentUndoOperation>(
-            std::move(description),
-            targetTrack->referenceId(),
-            before,
-            *after,
-            [this](std::string_view persistentTrackId,
-                   const ProjectClipFragment& desired,
-                   const ProjectClipFragment& compensation) {
-                return replaceClipByReferenceId(
-                    persistentTrackId, desired, &compensation);
-            });
-        auto recorded = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.recordPerformed(
-            std::move(operation),
-            origin,
-            [recorded](ProjectUndoResult result) {
-                *recorded = std::move(result);
-            });
-        if (recorded->has_value() && recorded->value().succeeded())
+        // Content is already replaced; both directions are whole fragments,
+        // and the caller's description names the edit that produced them.
+        const ClipAddress address{
+            targetTrack->referenceId(), before.clip.referenceId};
+        if (recordClipPresence(
+                address, *after, before, origin, std::move(description)).succeeded())
             return true;
         replaceClipByReferenceId(targetTrack->referenceId(), before, &*after);
         return false;
@@ -825,23 +838,19 @@ namespace uapmd {
                 if (origin != ProjectMutationOrigin::User && origin != ProjectMutationOrigin::Remote)
             return removeClipByReferenceId(trackReferenceId, fragment.clip.referenceId);
 
-        auto operation = std::make_shared<ClipRemovalUndoOperation>(
-            std::move(trackReferenceId),
-            std::move(fragment),
-            [this](std::string_view persistentTrackId, std::string_view persistentClipId) {
-                return removeClipByReferenceId(persistentTrackId, persistentClipId);
-            },
-            [this](std::string_view persistentTrackId, const ProjectClipFragment& captured) {
-                return restoreClipByReferenceId(persistentTrackId, captured);
-            });
-        auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.perform(
-            std::move(operation),
-            origin,
-            [result](ProjectUndoResult completed) {
-                *result = std::move(completed);
-            });
-        return result->has_value() && result->value().succeeded();
+        // The caller captured this fragment before opening its document
+        // transaction -- clearing a track captures every clip up front for
+        // exactly that reason -- so the removal is applied and then recorded
+        // from the fragment in hand. Letting the command read the clip back
+        // would capture inside that transaction, which is not allowed, and
+        // would record the absence as the thing to restore.
+        const ClipAddress address{trackReferenceId, fragment.clip.referenceId};
+        if (!removeClipByReferenceId(trackReferenceId, fragment.clip.referenceId))
+            return false;
+        if (recordClipPresence(address, std::nullopt, fragment, origin, {}).succeeded())
+            return true;
+        restoreClipByReferenceId(trackReferenceId, fragment);
+        return false;
     }
 
     bool TimelineFacadeImpl::removeClipByReferenceId(
