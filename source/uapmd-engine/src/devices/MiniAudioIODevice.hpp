@@ -40,6 +40,9 @@ namespace uapmd {
         uint32_t output_channels{0};
         uint32_t preferred_callback_frames_{0};
         MiniAudioIODeviceManager* manager_{nullptr};
+        // Whether `engine` (and the ma_device it borrows) is currently initialized.
+        // The device is only created by reconfigure(), so this is false until then.
+        bool engine_ready_{false};
 
     public:
         explicit MiniAudioIODevice(MiniAudioIODeviceManager* manager);
@@ -74,5 +77,8 @@ namespace uapmd {
 
     private:
         bool initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate);
+        // Uninitializes the engine *and* the ma_device we allocated for it. ma_engine_uninit()
+        // alone does not release the device, see the implementation for details.
+        void releaseEngine();
     };
 }

@@ -72,6 +72,15 @@ uapmd::MiniAudioIODeviceManager::~MiniAudioIODeviceManager() {
 void uapmd::MiniAudioIODeviceManager::initialize(uapmd::AudioIODeviceManager::Configuration &config) {
     remidy_logger = config.logger ? config.logger : Logger::global();
 
+    // ma_context_init() begins with MA_ZERO_OBJECT(pContext) and then re-resolves every
+    // CoreAudio/ALSA/WASAPI entry point. Re-running it while a device opened from this
+    // context is already streaming blanks the backend function pointer table underneath
+    // the audio thread, which dereferences it on every period (e.g. AudioUnitRender on
+    // macOS). initialize() is called both from RealtimeSequencer's constructor and from
+    // the app startup path, so it has to be idempotent.
+    if (initialized)
+        return;
+
     auto logCallback = ma_log_callback_init(on_ma_log, this);
     static auto allocCB = ma_allocation_callbacks_init_default();
     auto result = ma_log_init(nullptr, &ma_logger);
@@ -259,43 +268,64 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
     config.noAutoStart = true;
     config.notificationCallback = MiniAudioIODeviceManager::on_ma_device_notification;
 
-    if (!initializeDuplexDevice(nullptr, nullptr, 0)) {
-        throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");
-    }
+    // No device is opened here. MiniAudioIODeviceManager::onOpen() always calls reconfigure()
+    // right after constructing this object, and the device is unusable (onOpen() returns
+    // nullptr) if that fails, so opening a default device here would only ever create a
+    // device and tear it down again a moment later.
 }
 
 uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
     // Ensure the engine is fully stopped before uninitializing
     // This prevents race conditions where the audio callback might still be running
-    if (isPlaying()) {
+    if (isPlaying())
         stop();
+
+    // Wait for any pending audio callbacks to complete before releasing the engine,
+    // because the AudioProcessContext member the callback touches is destroyed
+    // immediately afterwards.
+    if (engine_ready_) {
+        ma_device* device = ma_engine_get_device(&engine);
+        if (device) {
+            ma_device_stop(device);
+            // Give the device time to fully stop and drain callbacks
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
     }
 
-    // Wait for any pending audio callbacks to complete
-    // The ma_engine_uninit will stop the underlying device, but we need to ensure
-    // callbacks are done before we destroy the AudioProcessContext member
-    ma_device* device = ma_engine_get_device(&engine);
-    if (device) {
-        ma_device_stop(device);
-        // Give the device time to fully stop and drain callbacks
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
+    releaseEngine();
+}
 
+void uapmd::MiniAudioIODevice::releaseEngine() {
+    if (!engine_ready_)
+        return;
+    engine_ready_ = false;
+
+    // ma_engine only takes ownership of the device it allocates itself; because we always
+    // hand it one through ma_engine_config::pDevice, ma_engine sets ownsDevice = MA_FALSE
+    // and ma_engine_uninit() merely calls ma_device_stop() on it. Uninitializing and
+    // freeing the device is therefore ours to do, otherwise every reconfigure() would leak
+    // a ma_device along with its still-initialized backend units (CoreAudio AUHAL etc.).
     ma_engine_uninit(&engine);
+
+    if (config.pDevice) {
+        ma_device_uninit(config.pDevice);
+        delete config.pDevice;
+        config.pDevice = nullptr;
+    }
+    // ma_engine_uninit() leaves pDevice pointing at the memory we just freed.
+    engine.pDevice = nullptr;
 }
 
 bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
     // Stop the engine if it's running
-    bool wasRunning = isPlaying();
-    if (wasRunning) {
+    if (isPlaying())
         stop();
-    }
 
     // Save callbacks before uninitializing
     auto savedCallbacks = callbacks;
 
-    // Uninitialize the current engine
-    ma_engine_uninit(&engine);
+    // Uninitialize the current engine and release the device it was using
+    releaseEngine();
 
     // Reinitialize the engine with the requested device configuration
     if (!initializeDuplexDevice(inputDeviceId, outputDeviceId, sampleRate)) {
@@ -368,10 +398,14 @@ bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputD
     if (device->playback.channels)
         dataOutPtrs.resize(device->playback.channels);
 
+    engine_ready_ = true;
+
     return true;
 }
 
 uapmd_status_t uapmd::MiniAudioIODevice::start() {
+    if (!engine_ready_)
+        return 1;
     ma_engine_start(&engine);
 
     // FIXME: maybe switch to remidy::StatusCode?
@@ -379,6 +413,8 @@ uapmd_status_t uapmd::MiniAudioIODevice::start() {
 }
 
 uapmd_status_t uapmd::MiniAudioIODevice::stop() {
+    if (!engine_ready_)
+        return 1;
     ma_engine_stop(&engine);
 
     // FIXME: maybe switch to remidy::StatusCode?
@@ -386,11 +422,11 @@ uapmd_status_t uapmd::MiniAudioIODevice::stop() {
 }
 
 bool uapmd::MiniAudioIODevice::isPlaying() {
-    return ma_device_get_state(ma_engine_get_device(&engine)) == ma_device_state_started;
+    return engine_ready_ && ma_device_get_state(ma_engine_get_device(&engine)) == ma_device_state_started;
 }
 
 double uapmd::MiniAudioIODevice::sampleRate() {
-    return engine.pDevice->sampleRate;
+    return engine_ready_ ? engine.pDevice->sampleRate : 0;
 }
 
 uint32_t uapmd::MiniAudioIODevice::inputChannels() {
@@ -403,6 +439,8 @@ uint32_t uapmd::MiniAudioIODevice::outputChannels() {
 
 std::vector<uint32_t> uapmd::MiniAudioIODevice::getNativeSampleRates() {
     std::vector<uint32_t> sampleRates;
+    if (!engine_ready_)
+        return sampleRates;
     auto device = ma_engine_get_device(&engine);
 
     if (!device) {

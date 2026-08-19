@@ -23,7 +23,6 @@ target_include_directories(uapmd-midi-service PRIVATE
         ../remidy/include
         ../uapmd-plugin-hosting/include
         include
-        ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}
         ${readerwriterqueue_SOURCE_DIR}

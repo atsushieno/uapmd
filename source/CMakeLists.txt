@@ -249,7 +249,7 @@ CPMAddPackage(
 
 CPMAddPackage(
         NAME           miniaudio
-        GIT_TAG        0.11.23
+        GIT_TAG        0.11.25
         GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
 )
