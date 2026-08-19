@@ -357,7 +357,7 @@ namespace uapmd {
             return;
         const bool recordsHistory = origin == ProjectMutationOrigin::User
             || origin == ProjectMutationOrigin::Remote;
-        const auto undoState = undo_engine_.state();
+        const auto undoState = command_manager_.state();
         if (recordsHistory && undoState.busy && !undoState.compoundOpen) {
             callback(-1, "An undo history operation is already pending");
             return;
@@ -392,7 +392,7 @@ namespace uapmd {
             callback(-1, "Invalid track index");
             return;
         }
-        const auto undoState = undo_engine_.state();
+        const auto undoState = command_manager_.state();
         if (undoState.busy && !undoState.compoundOpen) {
             engine_.removeTrack(trackIndex);
             callback(-1, "An undo history operation is already pending");
@@ -424,15 +424,19 @@ namespace uapmd {
                                 : std::move(error));
                         return;
                     }
-                    auto operation = makeTrackStructureOperation(
-                        TrackStructureUndoOperation::InitialDirection::Addition,
+                    // The track is already published; this records it, with
+                    // its absence as the way back.
+                    auto referenceId = fragment->referenceId;
+                    recordTrackPresence(
+                        referenceId,
                         trackIndex,
-                        std::move(*fragment));
-                    undo_engine_.recordPerformed(
-                        std::move(operation),
+                        std::move(*fragment),
+                        std::nullopt,
                         origin,
+                        "Add track",
                         [this, trackIndex, callback = std::move(callback)](
-                            ProjectUndoResult result) mutable {if (!result.succeeded()) {
+                            ProjectCommandResult result) mutable {
+                            if (!result.succeeded()) {
                                 engine_.removeTrack(trackIndex);
                                 callback(-1, std::move(result.error));
                                 return;
@@ -464,7 +468,7 @@ namespace uapmd {
                 callback(-1, "Failed to remove track");
             return;
         }
-        const auto undoState = undo_engine_.state();
+        const auto undoState = command_manager_.state();
         if (undoState.busy && !undoState.compoundOpen) {
             callback(-1, "An undo history operation is already pending");
             return;
@@ -500,15 +504,23 @@ namespace uapmd {
                         return;
                     }
 
-                    auto operation = makeTrackStructureOperation(
-                        TrackStructureUndoOperation::InitialDirection::Removal,
+                    // Capturing the track was asynchronous and is now done, so
+                    // the removal is applied here and recorded from the
+                    // fragment in hand rather than being re-derived.
+                    if (!removeTrackByReferenceId(expectedReferenceId)) {
+                        callback(-1, "Failed to remove track");
+                        return;
+                    }
+                    recordTrackPresence(
+                        expectedReferenceId,
                         trackIndex,
-                        std::move(*fragment));
-                    undo_engine_.perform(
-                        std::move(operation),
+                        std::nullopt,
+                        std::move(*fragment),
                         origin,
+                        "Delete track",
                         [trackIndex, callback = std::move(callback)](
-                            ProjectUndoResult result) mutable {if (!result.succeeded()) {
+                            ProjectCommandResult result) mutable {
+                            if (!result.succeeded()) {
                                 callback(-1, std::move(result.error));
                                 return;
                             }
@@ -516,42 +528,6 @@ namespace uapmd {
                         });
                 };
                 dispatchToModelThread(std::move(finish));
-            });
-    }
-
-    std::shared_ptr<ProjectUndoableOperation> TimelineFacadeImpl::makeTrackStructureOperation(
-            TrackStructureUndoOperation::InitialDirection initialDirection,
-            int32_t insertionIndex,
-            ProjectTrackFragment fragment) {
-                return std::make_shared<TrackStructureUndoOperation>(
-            initialDirection,
-            insertionIndex,
-            std::move(fragment),
-            [this](std::string_view trackReferenceId) {
-                const auto currentIndex = trackIndexForPersistentId(trackReferenceId);
-                return currentIndex >= 0 && engine_.removeTrack(currentIndex);
-            },
-            [this](const ProjectTrackFragment& captured,
-                   int32_t restoreIndex,
-                   ProjectUndoCompletion completion) {
-                ProjectTrackAttachOptions options;
-                options.idPolicy = ProjectObjectIdPolicy::Restore;
-                options.insertionIndex = restoreIndex;
-                attachTrackFragment(
-                    captured,
-                    options,
-                    [completion = std::move(completion)](
-                        int32_t attachedIndex,
-                        std::string error) mutable {
-                            if (!completion)
-                            return;
-                        if (attachedIndex >= 0 && error.empty()) {
-                            completion(ProjectUndoResult::success());
-                            return;
-                        }
-                        completion(ProjectUndoResult::failure(
-                            error.empty() ? "Could not restore the track" : std::move(error)));
-                    });
             });
     }
 

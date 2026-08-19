@@ -135,6 +135,31 @@ namespace uapmd::timeline_detail {
             std::string_view clipReferenceId,
             const std::optional<ProjectClipFragment>& fragment) = 0;
 
+        // Track presence. Restoring is asynchronous -- it reconstructs the
+        // plug-ins the fragment describes -- so it reports through a callback
+        // rather than a return value.
+        virtual bool removeTrackByReferenceId(std::string_view trackReferenceId) = 0;
+        virtual void restoreTrackFragment(
+            const ProjectTrackFragment& fragment,
+            int32_t insertionIndex,
+            std::function<void(bool restored, std::string error)> completion) = 0;
+
+        // Plug-in mutations, all asynchronous because they cross into the
+        // hosted plug-in: writing opaque state, loading a numbered preset, and
+        // creating or destroying the instance itself.
+        virtual void writePluginState(
+            const PluginAddress& address,
+            const std::vector<uint8_t>& state,
+            ProjectCommandCompletion completion) = 0;
+        virtual void writePluginPreset(
+            const PluginAddress& address,
+            int32_t presetIndex,
+            ProjectCommandCompletion completion) = 0;
+        virtual void writePluginPresence(
+            const PluginAddress& address,
+            const std::optional<PluginInstanceSnapshot>& snapshot,
+            ProjectCommandCompletion completion) = 0;
+
         // Why the most recent write() returned false, when it can fail for
         // more than one reason. Writes are serialized on the model thread, so
         // the value read straight after a failed write is that write's own.
@@ -940,6 +965,230 @@ namespace uapmd::timeline_detail {
                 std::move(*before),
                 event_buffer_size_in_bytes_));
             completion(ProjectCommandResult::success());
+        }
+    };
+
+    // Presence of one track, as an asynchronous command.
+    //
+    // Same idea as clip presence -- nothing means the track is not there, and
+    // undoing an addition is a removal -- but restoring a track rebuilds its
+    // plug-in graph, so this cannot be a PropertyCommand: those read and write
+    // inline.
+    //
+    // Unlike a property command this does not derive its own inverse. Deriving
+    // it would mean capturing the track, which is itself asynchronous and
+    // which the caller has already done before getting here; both directions
+    // are therefore supplied as a pair through
+    // ProjectCommandManager::recordExecuted(), and this command only ever
+    // applies its own value.
+    class TrackPresenceCommand final : public ProjectCommand {
+        PropertyCommandTarget& target_;
+        ProjectObjectId track_reference_id_;
+        int32_t insertion_index_;
+        std::optional<ProjectTrackFragment> fragment_;
+        std::string label_;
+
+    public:
+        TrackPresenceCommand(
+            PropertyCommandTarget& target,
+            ProjectObjectId trackReferenceId,
+            int32_t insertionIndex,
+            std::optional<ProjectTrackFragment> fragment,
+            std::string label)
+            : target_(target)
+            , track_reference_id_(std::move(trackReferenceId))
+            , insertion_index_(insertionIndex)
+            , fragment_(std::move(fragment))
+            , label_(std::move(label)) {
+        }
+
+        std::string_view commandId() const override {
+            return "track.setPresence";
+        }
+
+        std::string description() const override {
+            return label_;
+        }
+
+        size_t retainedSizeInBytes() const override {
+            return sizeof(*this)
+                + track_reference_id_.capacity()
+                + label_.capacity()
+                + (fragment_ ? retainedValueSize(*fragment_) : 0);
+        }
+
+        // Restoring constructs plug-ins and reads their state; a document
+        // transaction must not stay open across that.
+        bool batchesDocumentEvents() const override {
+            return false;
+        }
+
+        // The history engine marshals completions back to the model thread
+        // itself, so this reports from wherever the restore finished.
+        void execute(
+            ProjectCommandContext&,
+            ProjectCommandCompletion completion) override {
+            if (!fragment_) {
+                completion(
+                    target_.removeTrackByReferenceId(track_reference_id_)
+                        ? ProjectCommandResult::success()
+                        : ProjectCommandResult::failure(std::format(
+                            "Could not remove track {}.", track_reference_id_)));
+                return;
+            }
+            target_.restoreTrackFragment(
+                *fragment_,
+                insertion_index_,
+                [referenceId = track_reference_id_,
+                 completion = std::move(completion)](
+                    bool restored, std::string error) mutable {
+                    if (restored) {
+                        completion(ProjectCommandResult::success());
+                        return;
+                    }
+                    completion(ProjectCommandResult::failure(
+                        error.empty()
+                            ? std::format("Could not restore track {}.", referenceId)
+                            : std::move(error)));
+                });
+        }
+    };
+
+    // The plug-in commands below all reach a hosted plug-in and therefore
+    // finish asynchronously, and all of them are recorded as explicit pairs:
+    // capturing the state a command would need to derive its own inverse is
+    // itself an asynchronous request, which the caller has already made.
+    class PluginCommandBase : public ProjectCommand {
+    protected:
+        PropertyCommandTarget& target_;
+        PluginAddress address_;
+        std::string label_;
+
+        PluginCommandBase(
+            PropertyCommandTarget& target,
+            PluginAddress address,
+            std::string label)
+            : target_(target)
+            , address_(std::move(address))
+            , label_(std::move(label)) {
+        }
+
+    public:
+        std::string description() const override {
+            return label_;
+        }
+
+        // Plug-in work cannot run inside a document transaction: state
+        // requests and instantiation both cross into the plug-in, and an ARA
+        // document cannot be archived while an edit is open.
+        bool batchesDocumentEvents() const override {
+            return false;
+        }
+    };
+
+    // Writes one opaque state blob into the addressed plug-in.
+    class PluginStateCommand final : public PluginCommandBase {
+        std::vector<uint8_t> state_;
+
+    public:
+        PluginStateCommand(
+            PropertyCommandTarget& target,
+            PluginAddress address,
+            std::vector<uint8_t> state,
+            std::string label)
+            : PluginCommandBase(target, std::move(address), std::move(label))
+            , state_(std::move(state)) {
+        }
+
+        std::string_view commandId() const override {
+            return "plugin.setState";
+        }
+
+        size_t retainedSizeInBytes() const override {
+            return sizeof(*this)
+                + address_.trackReferenceId.capacity()
+                + address_.nodeId.capacity()
+                + label_.capacity()
+                + state_.capacity();
+        }
+
+        void execute(
+            ProjectCommandContext&,
+            ProjectCommandCompletion completion) override {
+            target_.writePluginState(address_, state_, std::move(completion));
+        }
+    };
+
+    // Loads a numbered preset.
+    //
+    // Its inverse is a PluginStateCommand holding the bytes the preset
+    // replaced, so the two directions of this history entry are different
+    // command types. That is what redoing a preset load should mean: load the
+    // preset again, rather than write back whatever bytes it happened to
+    // produce the first time.
+    class PluginPresetCommand final : public PluginCommandBase {
+        int32_t preset_index_;
+
+    public:
+        PluginPresetCommand(
+            PropertyCommandTarget& target,
+            PluginAddress address,
+            int32_t presetIndex,
+            std::string label)
+            : PluginCommandBase(target, std::move(address), std::move(label))
+            , preset_index_(presetIndex) {
+        }
+
+        std::string_view commandId() const override {
+            return "plugin.loadPreset";
+        }
+
+        size_t retainedSizeInBytes() const override {
+            return sizeof(*this)
+                + address_.trackReferenceId.capacity()
+                + address_.nodeId.capacity()
+                + label_.capacity();
+        }
+
+        void execute(
+            ProjectCommandContext&,
+            ProjectCommandCompletion completion) override {
+            target_.writePluginPreset(address_, preset_index_, std::move(completion));
+        }
+    };
+
+    // Presence of one plug-in instance: nothing means it is not in the graph,
+    // so undoing an insertion is a removal and undoing a removal recreates the
+    // plug-in from the snapshot under its original node identity.
+    class PluginPresenceCommand final : public PluginCommandBase {
+        std::optional<PluginInstanceSnapshot> snapshot_;
+
+    public:
+        PluginPresenceCommand(
+            PropertyCommandTarget& target,
+            PluginAddress address,
+            std::optional<PluginInstanceSnapshot> snapshot,
+            std::string label)
+            : PluginCommandBase(target, std::move(address), std::move(label))
+            , snapshot_(std::move(snapshot)) {
+        }
+
+        std::string_view commandId() const override {
+            return "plugin.setPresence";
+        }
+
+        size_t retainedSizeInBytes() const override {
+            return sizeof(*this)
+                + address_.trackReferenceId.capacity()
+                + address_.nodeId.capacity()
+                + label_.capacity()
+                + (snapshot_ ? retainedValueSize(*snapshot_) : 0);
+        }
+
+        void execute(
+            ProjectCommandContext&,
+            ProjectCommandCompletion completion) override {
+            target_.writePluginPresence(address_, snapshot_, std::move(completion));
         }
     };
 

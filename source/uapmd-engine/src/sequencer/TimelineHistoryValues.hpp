@@ -127,6 +127,31 @@ namespace uapmd::timeline_detail {
         return result;
     }
 
+    // Everything needed to put one plug-in back exactly as it was: which
+    // plug-in, how it was configured, its opaque state, and the graph edges
+    // that touched it.
+    struct PluginInstanceSnapshot {
+        std::string format;
+        std::string pluginId;
+        bool bypassed{false};
+        uint8_t group{0};
+        std::vector<uint8_t> state;
+        std::vector<uapmd_graph::AudioPluginGraphConnection> connections;
+    };
+
+    inline size_t retainedValueSize(const PluginInstanceSnapshot& snapshot) {
+        size_t result = sizeof(snapshot)
+            + snapshot.format.capacity()
+            + snapshot.pluginId.capacity()
+            + snapshot.state.capacity()
+            + snapshot.connections.capacity()
+                * sizeof(uapmd_graph::AudioPluginGraphConnection);
+        for (const auto& connection : snapshot.connections)
+            result += connection.source.node_id.capacity()
+                + connection.target.node_id.capacity();
+        return result;
+    }
+
     inline size_t retainedValueSize(const ProjectTrackFragment& fragment) {
         size_t result = sizeof(fragment)
             + fragment.referenceId.capacity()

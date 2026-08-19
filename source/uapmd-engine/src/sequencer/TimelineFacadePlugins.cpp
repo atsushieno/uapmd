@@ -296,43 +296,35 @@ namespace uapmd {
                                     "Could not remove the plug-in instance"));
                             return;
                         }
-                        undo_engine_.recordPerformed(
-                            std::make_shared<PluginInstanceUndoOperation>(
-                                isAddition,
-                                std::move(target.trackReferenceId),
-                                std::move(format),
-                                std::move(pluginId),
-                                std::move(target.nodeId),
-                                bypassed,
-                                group,
-                                std::move(state),
-                                std::move(connections),
-                                [this](
-                                    std::string_view trackReferenceId,
-                                    std::string_view format,
-                                    std::string_view pluginId,
-                                    std::string_view nodeId,
-                                    bool bypassed,
-                                    uint8_t group,
-                                    const std::vector<uint8_t>& state,
-                                    const std::vector<uapmd_graph::AudioPluginGraphConnection>& connections,
-                                    std::function<void(int32_t, std::string)> finished) {
-                                    restorePluginInstance(
-                                        trackReferenceId, format, pluginId,
-                                        nodeId, bypassed, group, state, connections,
-                                        std::move(finished));
-                                },
-                                [this](
-                                    std::string_view trackReferenceId,
-                                    std::string_view nodeId,
-                                    std::function<void(std::string)> finished) {
-                                    const auto currentInstanceId =
-                                        resolvePluginInstanceId(trackReferenceId, nodeId);
-                                    removePluginInstanceById(
-                                        currentInstanceId, std::move(finished));
-                                }),
-                            origin,
-                            std::move(completion));
+                        // The instance is already added, or already removed;
+                        // both directions are recorded as the pair that moves
+                        // between "this plug-in, configured like so" and "no
+                        // plug-in at this node".
+                        timeline_detail::PluginInstanceSnapshot snapshot{
+                            .format = std::move(format),
+                            .pluginId = std::move(pluginId),
+                            .bypassed = bypassed,
+                            .group = group,
+                            .state = std::move(state),
+                            .connections = std::move(connections)
+                        };
+                        const PluginAddress address{
+                            std::move(target.trackReferenceId), std::move(target.nodeId)};
+                        const std::string label =
+                            isAddition ? "Add plug-in" : "Remove plug-in";
+                        using Command = timeline_detail::PluginPresenceCommand;
+                        auto present = std::make_shared<Command>(
+                            *this, address, std::move(snapshot), label);
+                        auto absent = std::make_shared<Command>(
+                            *this, address, std::nullopt, label);
+                        if (isAddition)
+                            recordPluginChange(
+                                std::move(present), std::move(absent), origin,
+                                std::move(completion));
+                        else
+                            recordPluginChange(
+                                std::move(absent), std::move(present), origin,
+                                std::move(completion));
                     });
             });
     }
@@ -385,31 +377,75 @@ namespace uapmd {
                                 completion(ProjectUndoResult::failure(std::move(error)));
                             return;
                         }
-                        undo_engine_.perform(
-                            std::make_shared<PluginStateUndoOperation>(
-                                target.trackReferenceId,
-                                target.nodeId,
-                                std::move(before),
-                                std::move(*after),
-                                pluginStateApplier()),
-                            origin,
-                            std::move(completion));
+                        // The state it is about to replace is now in hand, so
+                        // the write is applied here and recorded as the pair
+                        // that moves between the two blobs.
+                        using Command = timeline_detail::PluginStateCommand;
+                        const PluginAddress address{
+                            target.trackReferenceId, target.nodeId};
+                        auto forward = std::make_shared<Command>(
+                            *this, address, *after, "Load plug-in state");
+                        auto revert = std::make_shared<Command>(
+                            *this, address, std::move(before), "Load plug-in state");
+                        writePluginState(
+                            address,
+                            *after,
+                            [this, origin, forward = std::move(forward),
+                             revert = std::move(revert),
+                             completion = std::move(completion)](
+                                ProjectCommandResult applied) mutable {
+                                if (!applied.succeeded()) {
+                                    if (completion)
+                                        completion(std::move(applied));
+                                    return;
+                                }
+                                recordPluginChange(
+                                    std::move(forward), std::move(revert), origin,
+                                    std::move(completion));
+                            });
                     });
             });
     }
 
-    PluginStateUndoOperation::Apply TimelineFacadeImpl::pluginStateApplier() {
-        return [this](
-                   std::string_view trackReferenceId,
-                   std::string_view nodeId,
-                   const std::vector<uint8_t>& value,
-                   ProjectUndoCompletion applied) {
-            applyPluginState(
-                std::string(trackReferenceId),
-                std::string(nodeId),
-                value,
-                std::move(applied));
-        };
+    void TimelineFacadeImpl::writePluginPresence(
+            const PluginAddress& address,
+            const std::optional<timeline_detail::PluginInstanceSnapshot>& snapshot,
+            ProjectCommandCompletion completion) {
+        if (!snapshot) {
+            const auto currentInstanceId =
+                resolvePluginInstanceId(address.trackReferenceId, address.nodeId);
+            removePluginInstanceById(
+                currentInstanceId,
+                [completion = std::move(completion)](std::string error) mutable {
+                    if (!completion)
+                        return;
+                    completion(
+                        error.empty()
+                            ? ProjectCommandResult::success()
+                            : ProjectCommandResult::failure(std::move(error)));
+                });
+            return;
+        }
+        restorePluginInstance(
+            address.trackReferenceId,
+            snapshot->format,
+            snapshot->pluginId,
+            address.nodeId,
+            snapshot->bypassed,
+            snapshot->group,
+            snapshot->state,
+            snapshot->connections,
+            [completion = std::move(completion)](
+                int32_t restoredInstanceId, std::string error) mutable {
+                if (!completion)
+                    return;
+                if (restoredInstanceId >= 0 && error.empty()) {
+                    completion(ProjectCommandResult::success());
+                    return;
+                }
+                completion(ProjectCommandResult::failure(
+                    error.empty() ? "Could not restore the plug-in" : std::move(error)));
+            });
     }
 
     void TimelineFacadeImpl::loadPluginPreset(
@@ -474,19 +510,17 @@ namespace uapmd {
                                 // The preset is already loaded; history
                                 // holds the state it replaced, and redo
                                 // reloads the same preset.
-                                undo_engine_.recordPerformed(
-                                    std::make_shared<PluginStateUndoOperation>(
-                                        target.trackReferenceId,
-                                        target.nodeId,
-                                        std::move(before),
-                                        std::vector<uint8_t>{},
-                                        pluginStateApplier(),
-                                        "Load plug-in preset",
-                                        [this, target, presetIndex](
-                                            ProjectUndoCompletion redone) {
-                                            applyPluginPreset(
-                                                target, presetIndex, std::move(redone));
-                                        }),
+                                // Redo reloads the same preset rather than
+                                // writing back the bytes it produced, so the
+                                // two directions are different command types.
+                                const PluginAddress address{
+                                    target.trackReferenceId, target.nodeId};
+                                recordPluginChange(
+                                    std::make_shared<timeline_detail::PluginPresetCommand>(
+                                        *this, address, presetIndex, "Load plug-in preset"),
+                                    std::make_shared<timeline_detail::PluginStateCommand>(
+                                        *this, address, std::move(before),
+                                        "Load plug-in preset"),
                                     origin,
                                     std::move(completion));
                             });

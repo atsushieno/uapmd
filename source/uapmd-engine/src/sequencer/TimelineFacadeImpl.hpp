@@ -28,7 +28,6 @@
 #include "TimelineProjectSerializer.hpp"
 #include "TimelineProperties.hpp"
 #include "ProjectCommandsImpl.hpp"
-#include "TimelineUndoOperations.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
@@ -206,10 +205,6 @@ namespace uapmd {
                 remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
         }
 
-        std::shared_ptr<ProjectUndoableOperation> makeTrackStructureOperation(
-            TrackStructureUndoOperation::InitialDirection initialDirection,
-            int32_t insertionIndex,
-            ProjectTrackFragment fragment);
 
 
         SequencerTrack* resolveSequencerTrackByReferenceId(
@@ -387,6 +382,82 @@ namespace uapmd {
             std::string_view trackReferenceId,
             std::string_view clipReferenceId,
             const std::optional<ProjectClipFragment>& fragment) override;
+
+        bool removeTrackByReferenceId(std::string_view trackReferenceId) override {
+            const auto currentIndex = trackIndexForPersistentId(trackReferenceId);
+            return currentIndex >= 0 && engine_.removeTrack(currentIndex);
+        }
+
+        void restoreTrackFragment(
+            const ProjectTrackFragment& fragment,
+            int32_t insertionIndex,
+            std::function<void(bool, std::string)> completion) override {
+            ProjectTrackAttachOptions options;
+            options.idPolicy = ProjectObjectIdPolicy::Restore;
+            options.insertionIndex = insertionIndex;
+            attachTrackFragment(
+                fragment,
+                options,
+                [completion = std::move(completion)](
+                    int32_t attachedIndex, std::string error) mutable {
+                    if (completion)
+                        completion(attachedIndex >= 0 && error.empty(), std::move(error));
+                });
+        }
+
+        // Records a track change that has already been applied, as a pair of
+        // commands: `after` is what the track is now and `before` what it was,
+        // either of them absent. Capturing a track is asynchronous, so the
+        // caller does it once and hands both directions over rather than
+        // letting a command re-derive its own inverse.
+        void recordTrackPresence(
+            const ProjectObjectId& trackReferenceId,
+            int32_t insertionIndex,
+            std::optional<ProjectTrackFragment> after,
+            std::optional<ProjectTrackFragment> before,
+            ProjectMutationOrigin origin,
+            std::string label,
+            ProjectCommandCompletion completion) {
+            using Command = timeline_detail::TrackPresenceCommand;
+            command_manager_.recordExecuted(
+                std::make_shared<Command>(
+                    *this, trackReferenceId, insertionIndex, std::move(after), label),
+                std::make_shared<Command>(
+                    *this, trackReferenceId, insertionIndex, std::move(before), std::move(label)),
+                origin,
+                std::move(completion));
+        }
+
+        void writePluginState(
+            const PluginAddress& address,
+            const std::vector<uint8_t>& state,
+            ProjectCommandCompletion completion) override {
+            applyPluginState(
+                address.trackReferenceId, address.nodeId, state, std::move(completion));
+        }
+
+        void writePluginPreset(
+            const PluginAddress& address,
+            int32_t presetIndex,
+            ProjectCommandCompletion completion) override {
+            applyPluginPreset(address, presetIndex, std::move(completion));
+        }
+
+        void writePluginPresence(
+            const PluginAddress& address,
+            const std::optional<timeline_detail::PluginInstanceSnapshot>& snapshot,
+            ProjectCommandCompletion completion) override;
+
+        // Records a plug-in change that has already been applied, as the pair
+        // of commands that move between the two states.
+        void recordPluginChange(
+            ProjectCommandPtr forward,
+            ProjectCommandPtr revert,
+            ProjectMutationOrigin origin,
+            ProjectCommandCompletion completion) {
+            command_manager_.recordExecuted(
+                std::move(forward), std::move(revert), origin, std::move(completion));
+        }
 
         std::string lastWriteFailure() const override {
             return last_write_failure_;
@@ -949,8 +1020,6 @@ namespace uapmd {
             std::vector<uint8_t> state,
             ProjectMutationOrigin origin,
             ProjectUndoCompletion completion) override;
-
-        PluginStateUndoOperation::Apply pluginStateApplier();
 
         void loadPluginPreset(
             int32_t instanceId,
