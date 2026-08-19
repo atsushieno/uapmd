@@ -1254,7 +1254,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 0.0f, 1.0f,
                 sliderPos <= 0.0f ? "Mute" : "",
                 ImGuiSliderFlags_NoInput);
-        auto& undo = sequencer.engine()->timeline().undoEngine();
+        auto& undo = sequencer.engine()->commands().history();
         if (ImGui::IsItemActivated())
             undo.beginGesture("Change track gain");
         if (gainChanged) {
@@ -1302,11 +1302,11 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     solo ? "Track soloed (click to clear)" : "Solo track")) {
                 const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
                 const bool enableSolo = !solo;
-                const bool ownsCompound = !additive && !undo.state().compoundOpen;
+                const bool ownsStep = !additive && !undo.state().compoundOpen;
                 bool compoundOpened = false;
                 bool documentTransactionOpened = false;
-                if (ownsCompound) {
-                    compoundOpened = undo.beginCompound(
+                if (ownsStep) {
+                    compoundOpened = undo.beginStep(
                         enableSolo ? "Solo track" : "Unsolo track").succeeded();
                     if (compoundOpened) {
                         sequencer.engine()->timeline().beginDocumentTransaction();
@@ -1330,9 +1330,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     succeeded = false;
                 if (compoundOpened) {
                     if (succeeded)
-                        undo.endCompound();
+                        undo.endStep();
                     else
-                        undo.cancelCompound();
+                        undo.cancelStep();
                 }
                 if (documentTransactionOpened)
                     sequencer.engine()->timeline().endDocumentTransaction();
@@ -2987,17 +2987,17 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
         std::vector<std::string> warnings;
         size_t nextStem{0};
         size_t importedCount{0};
-        bool ownsCompound{false};
+        bool ownsStep{false};
     };
     auto state = std::make_shared<ApplyState>();
     state->result = std::move(result);
     state->warnings = std::move(warnings);
 
     auto& appModel = uapmd_app::AppModel::instance();
-    auto& undo = appModel.sequencer().engine()->timeline().undoEngine();
-    state->ownsCompound = !undo.state().compoundOpen;
-    if (state->ownsCompound) {
-        auto opened = undo.beginCompound("Import audio stems");
+    auto& undo = appModel.sequencer().engine()->commands().history();
+    state->ownsStep = !undo.state().compoundOpen;
+    if (state->ownsStep) {
+        auto opened = undo.beginStep("Import audio stems");
         if (!opened.succeeded()) {
             platformError("Import Failed", opened.error);
             return;
@@ -3007,8 +3007,8 @@ void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult res
     auto applyNext = [this, state](auto&& self) -> void {
         auto& currentAppModel = uapmd_app::AppModel::instance();
         if (state->nextStem >= state->result.stems.size()) {
-            if (state->ownsCompound)
-                currentAppModel.sequencer().engine()->timeline().undoEngine().endCompound();
+            if (state->ownsStep)
+                currentAppModel.sequencer().engine()->commands().history().endStep();
             if (state->importedCount == 0) {
                 std::string message = "No stems were imported.";
                 if (!state->warnings.empty()) {

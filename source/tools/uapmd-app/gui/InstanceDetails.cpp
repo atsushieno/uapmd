@@ -134,13 +134,13 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         state.parameterList.setOnParameterGestureBegin([](uint32_t) {
             auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
             if (engine)
-                engine->timeline().undoEngine().beginGesture(
+                engine->commands().history().beginGesture(
                     "Change plug-in parameter");
         });
         state.parameterList.setOnParameterGestureEnd([](uint32_t) {
             auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
             if (engine)
-                engine->timeline().undoEngine().endGesture();
+                engine->commands().history().endGesture();
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {

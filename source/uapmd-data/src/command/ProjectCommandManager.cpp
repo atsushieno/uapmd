@@ -438,18 +438,39 @@ namespace uapmd {
         return history ? history->state() : ProjectUndoState{};
     }
 
+    bool ProjectCommandManager::markSaved() {
+        auto* history = impl_->history();
+        return history && history->markSaved();
+    }
+
+    bool ProjectCommandManager::markStateSaved(uint64_t stateId) {
+        auto* history = impl_->history();
+        return history && history->markStateSaved(stateId);
+    }
+
+    bool ProjectCommandManager::clear(bool markCurrentStateSaved) {
+        auto* history = impl_->history();
+        return history && history->clear(markCurrentStateSaved);
+    }
+
+    bool ProjectCommandManager::setMaximumHistorySizeInBytes(size_t value) {
+        auto* history = impl_->history();
+        return history && history->setMaximumHistorySizeInBytes(value);
+    }
+
     ProjectUndoEngine& ProjectCommandManager::history() {
         return *impl_->history();
     }
 
     ProjectUndoResult ProjectCommandManager::beginStep(
         std::string description,
-        ProjectMutationOrigin origin) {
+        ProjectMutationOrigin origin,
+        ProjectStepEventBatching batching) {
         auto* history = impl_->history();
         if (!history)
             return ProjectUndoResult::failure("The command manager has no history engine.");
         auto result = history->beginCompound(std::move(description), origin);
-        if (result.succeeded())
+        if (result.succeeded() && batching == ProjectStepEventBatching::WholeStep)
             impl_->beginStepTransaction();
         return result;
     }
@@ -480,12 +501,13 @@ namespace uapmd {
 
     ProjectUndoResult ProjectCommandManager::beginGesture(
         std::string description,
-        ProjectMutationOrigin origin) {
+        ProjectMutationOrigin origin,
+        ProjectStepEventBatching batching) {
         auto* history = impl_->history();
         if (!history)
             return ProjectUndoResult::failure("The command manager has no history engine.");
         auto result = history->beginGesture(std::move(description), origin);
-        if (result.succeeded())
+        if (result.succeeded() && batching == ProjectStepEventBatching::WholeStep)
             impl_->beginStepTransaction();
         return result;
     }

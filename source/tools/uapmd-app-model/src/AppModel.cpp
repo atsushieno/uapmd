@@ -909,7 +909,7 @@ void uapmd_app::AppModel::handlePluginStateChange(int32_t instanceId) {
 }
 
 uapmd::ProjectUndoState uapmd_app::AppModel::historyState() const {
-    auto state = sequencer_.engine()->timeline().undoEngine().state();
+    auto state = sequencer_.engine()->timeline().commands().history().state();
     // Plug-in creation/removal captures plug-in state asynchronously before its
     // history entry can be committed.  Expose that interval as a busy history
     // state so keyboard shortcuts and the command menu cannot race the capture.
@@ -966,7 +966,7 @@ void uapmd_app::AppModel::undo(HistoryMutationCallback callback) {
     }
     const auto previousPluginInstanceIds = currentPluginInstanceIds();
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
-    sequencer_.engine()->timeline().undoEngine().undo(
+    sequencer_.engine()->timeline().commands().history().undo(
         [this, previousPluginInstanceIds, resumeTransportAfterMutation,
          callback = std::move(callback)](uapmd::ProjectUndoResult result) mutable {
             resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
@@ -988,7 +988,7 @@ void uapmd_app::AppModel::redo(HistoryMutationCallback callback) {
     }
     const auto previousPluginInstanceIds = currentPluginInstanceIds();
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
-    sequencer_.engine()->timeline().undoEngine().redo(
+    sequencer_.engine()->timeline().commands().history().redo(
         [this, previousPluginInstanceIds, resumeTransportAfterMutation,
          callback = std::move(callback)](uapmd::ProjectUndoResult result) mutable {
             resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
@@ -2055,12 +2055,12 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     if (clipTempo <= 0.0)
         clipTempo = 120.0;
 
-    auto& undo = sequencer_.engine()->timeline().undoEngine();
-    const bool ownsCompound = separated.hasMusicalClip()
+    auto& undo = sequencer_.engine()->timeline().commands().history();
+    const bool ownsStep = separated.hasMusicalClip()
         && separated.hasMasterTrackClip()
         && !undo.state().compoundOpen;
-    if (ownsCompound) {
-        auto opened = undo.beginCompound("Import MIDI file");
+    if (ownsStep) {
+        auto opened = undo.beginStep("Import MIDI file");
         if (!opened.succeeded()) {
             result.error = std::move(opened.error);
             return result;
@@ -2084,8 +2084,8 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
         result.success = engineResult.success;
         result.error = engineResult.error;
         if (!result.success) {
-            if (ownsCompound)
-                undo.cancelCompound();
+            if (ownsStep)
+                undo.cancelStep();
             return result;
         }
         sequencer_.engine()->markTrackDirty(trackIndex);
@@ -2107,15 +2107,15 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
         if (!masterResult.success) {
             result.success = false;
             result.error = masterResult.error;
-            if (ownsCompound)
-                undo.cancelCompound();
+            if (ownsStep)
+                undo.cancelStep();
             return result;
         } else {
             sequencer_.engine()->markTrackDirty(kMasterTrackIndex);
         }
     }
-    if (ownsCompound)
-        undo.endCompound();
+    if (ownsStep)
+        undo.endStep();
     return result;
 }
 
@@ -2136,10 +2136,10 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     const int64_t emptyMidiDurationSamples = emptyMidiClip
         ? defaultEmptyMidiClipDurationSamples(sample_rate_, clipTempo, timeSignatureChanges)
         : 0;
-    auto& undo = sequencer_.engine()->timeline().undoEngine();
-    const bool ownsCompound = emptyMidiClip && !undo.state().compoundOpen;
-    if (ownsCompound) {
-        auto opened = undo.beginCompound("Add MIDI clip");
+    auto& undo = sequencer_.engine()->timeline().commands().history();
+    const bool ownsStep = emptyMidiClip && !undo.state().compoundOpen;
+    if (ownsStep) {
+        auto opened = undo.beginStep("Add MIDI clip");
         if (!opened.succeeded()) {
             result.error = std::move(opened.error);
             return result;
@@ -2158,8 +2158,8 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     result.success = engineResult.success;
     result.error = engineResult.error;
     if (!result.success) {
-        if (ownsCompound)
-            undo.cancelCompound();
+        if (ownsStep)
+            undo.cancelStep();
         return result;
     }
     if (emptyMidiClip
@@ -2168,12 +2168,12 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
             ProjectMutationOrigin::User)) {
         result.success = false;
         result.error = "Could not set the new MIDI clip duration";
-        if (ownsCompound)
-            undo.cancelCompound();
+        if (ownsStep)
+            undo.cancelStep();
         return result;
     }
-    if (ownsCompound)
-        undo.endCompound();
+    if (ownsStep)
+        undo.endStep();
     sequencer_.engine()->markTrackDirty(trackIndex);
 
     return result;
@@ -2692,7 +2692,7 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
         std::vector<std::string> regularClipReferenceIds;
         MidiTracksImportCallback callback;
         size_t nextTrack{0};
-        bool ownsCompound{false};
+        bool ownsStep{false};
         bool anchoredAnyMasterClip{false};
     };
 
@@ -2709,10 +2709,10 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
     }
     state->regularClipReferenceIds.resize(state->source.tracks.size());
 
-    auto& undo = sequencer_.engine()->timeline().undoEngine();
-    state->ownsCompound = !undo.state().compoundOpen;
-    if (state->ownsCompound) {
-        auto opened = undo.beginCompound("Import MIDI tracks");
+    auto& undo = sequencer_.engine()->timeline().commands().history();
+    state->ownsStep = !undo.state().compoundOpen;
+    if (state->ownsStep) {
+        auto opened = undo.beginStep("Import MIDI tracks");
         if (!opened.succeeded()) {
             state->result.error = std::move(opened.error);
             state->callback(std::move(state->result));
@@ -2761,8 +2761,8 @@ void uapmd_app::AppModel::importMidiTracksFromFile(
             || !state->source.masterTrackClips.empty();
         if (!state->result.success && state->result.error.empty())
             state->result.error = "No MIDI tracks were imported.";
-        if (state->ownsCompound)
-            sequencer_.engine()->timeline().undoEngine().endCompound();
+        if (state->ownsStep)
+            sequencer_.engine()->timeline().commands().history().endStep();
         state->callback(std::move(state->result));
     };
 
@@ -2978,7 +2978,7 @@ void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
         TrackClearCallback callback;
         std::unordered_set<int32_t> unaffectedPluginInstanceIds;
         int32_t nextTrackIndex{-1};
-        bool ownsCompound{false};
+        bool ownsStep{false};
     };
     auto state = std::make_shared<ClearState>();
     state->callback = std::move(callback);
@@ -2986,10 +2986,10 @@ void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
     state->nextTrackIndex =
         static_cast<int32_t>(sequencer_.engine()->tracks().size()) - 1;
 
-    auto& undo = sequencer_.engine()->timeline().undoEngine();
-    state->ownsCompound = !undo.state().compoundOpen;
-    if (state->ownsCompound) {
-        auto opened = undo.beginCompound("Clear tracks");
+    auto& undo = sequencer_.engine()->timeline().commands().history();
+    state->ownsStep = !undo.state().compoundOpen;
+    if (state->ownsStep) {
+        auto opened = undo.beginStep("Clear tracks");
         if (!opened.succeeded()) {
             state->callback(std::move(opened.error));
             return;
@@ -3006,8 +3006,8 @@ void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
                 TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
             state->callback({});
         };
-        if (state->ownsCompound) {
-            sequencer_.engine()->timeline().undoEngine().endCompound(
+        if (state->ownsStep) {
+            sequencer_.engine()->timeline().commands().history().endStep(
                 std::move(complete));
             return;
         }
@@ -3030,12 +3030,12 @@ void uapmd_app::AppModel::removeAllTracks(TrackClearCallback callback) {
                     const auto failure = error.empty()
                         ? std::string{"Failed to remove track"}
                         : std::move(error);
-                    if (state->ownsCompound) {
+                    if (state->ownsStep) {
                         // Cancelling restores every track already removed; the
                         // completion then republishes the restored app-model state.
                         auto& undo = AppModel::instance().sequencer().engine()
-                            ->timeline().undoEngine();
-                        undo.cancelCompound(
+                            ->timeline().commands().history();
+                        undo.cancelStep(
                             [this, state, failure](uapmd::ProjectUndoResult result) mutable {
                                 if (!result.succeeded()) {
                                     state->callback(std::format(
@@ -3084,7 +3084,7 @@ void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
     TimelineFacade::ProjectSaveOptions options;
     options.excludedTrackIndexes.assign(hidden_tracks_.begin(), hidden_tracks_.end());
     options.markHistorySaved = false;
-    const auto historyStateId = engine->timeline().undoEngine().state().currentStateId;
+    const auto historyStateId = engine->timeline().commands().history().state().currentStateId;
     engine->timeline().saveProject(
         stagePath,
         std::move(options),
@@ -3108,7 +3108,7 @@ void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
                                             [this, callback = std::move(callback), stage,
                                              historyStateId](DocumentIOResult ioResult) mutable {
                                                 if (ioResult.success) {
-                                                    sequencer_.engine()->timeline().undoEngine()
+                                                    sequencer_.engine()->timeline().commands().history()
                                                         .markStateSaved(historyStateId);
                                                     sequencer_.engine()->clearTrackDirtyState();
                                                 }
