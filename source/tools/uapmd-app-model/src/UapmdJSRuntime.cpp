@@ -1716,7 +1716,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         }
 
         if (hasMutation
-            && !engine->timeline().setLatencyCompensationSettings(settings)) {
+            && !engine->commands().setLatencyCompensationSettings(settings)) {
             result.setMember("success", false);
             result.setMember("error", "failed to update latency compensation settings");
             return result;

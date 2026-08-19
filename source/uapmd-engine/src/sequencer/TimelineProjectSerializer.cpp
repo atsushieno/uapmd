@@ -1190,7 +1190,7 @@ namespace uapmd::timeline_detail {
 
         if (trackIndex == -1)
             return false;
-        if (!facade_.replaceTrackGraphType(
+        if (!facade_.commands().replaceTrackGraphType(
                 trackIndex,
                 provider->id(),
                 eventBufferSizeInBytes,

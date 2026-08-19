@@ -133,10 +133,108 @@ namespace uapmd {
         return executePlugin<PluginGroupProperty>(instanceId, group, origin);
     }
 
+    bool ProjectCommandsImpl::addDeviceInputToTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin) {
+        return executeDeviceInput(
+            trackIndex, sourceNodeId, channelIndices, origin, "Add device input");
+    }
+
+    bool ProjectCommandsImpl::setDeviceInputChannels(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin) {
+        return executeDeviceInput(
+            trackIndex, sourceNodeId, channelIndices, origin, "Change device input routing");
+    }
+
+    bool ProjectCommandsImpl::removeDeviceInputFromTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        ProjectMutationOrigin origin) {
+        return executeDeviceInput(
+            trackIndex, sourceNodeId, std::nullopt, origin, "Remove device input");
+    }
+
+    bool ProjectCommandsImpl::connectTrackGraph(
+        int32_t trackIndex,
+        const uapmd_graph::AudioPluginGraphConnection& connection,
+        std::string& error,
+        ProjectMutationOrigin origin) {
+        auto trackReferenceId = target_.addresses().trackReferenceId(trackIndex);
+        if (!trackReferenceId) {
+            error = "Track not found";
+            return false;
+        }
+        auto result = executeReporting<timeline_detail::GraphConnectionPresentProperty>(
+            timeline_detail::GraphConnectionAddress{std::move(*trackReferenceId), connection},
+            true,
+            origin);
+        if (!result.succeeded())
+            error = result.error;
+        return result.succeeded();
+    }
+
+    bool ProjectCommandsImpl::disconnectTrackGraphConnection(
+        int32_t trackIndex,
+        int64_t connectionId,
+        std::string& error,
+        ProjectMutationOrigin origin) {
+        auto trackReferenceId = target_.addresses().trackReferenceId(trackIndex);
+        if (!trackReferenceId) {
+            error = "Track not found";
+            return false;
+        }
+        // The id is a runtime handle; history addresses the connection itself.
+        auto connection = target_.graphConnectionById(trackIndex, connectionId);
+        if (!connection) {
+            error = "Connection not found";
+            return false;
+        }
+        auto result = executeReporting<timeline_detail::GraphConnectionPresentProperty>(
+            timeline_detail::GraphConnectionAddress{
+                std::move(*trackReferenceId), std::move(*connection)},
+            false,
+            origin);
+        if (!result.succeeded())
+            error = result.error;
+        return result.succeeded();
+    }
+
+    bool ProjectCommandsImpl::replaceTrackGraphType(
+        int32_t trackIndex,
+        const std::string& graphTypeId,
+        size_t eventBufferSizeInBytes,
+        ProjectMutationOrigin origin) {
+        auto trackReferenceId = target_.addresses().trackReferenceId(trackIndex);
+        if (!trackReferenceId)
+            return false;
+        timeline_detail::TrackGraphSnapshot requested;
+        requested.graphType = graphTypeId;
+        return dispatch_
+            .executeSynchronously(
+                std::make_shared<timeline_detail::TrackGraphTypeCommand>(
+                    target_,
+                    std::move(*trackReferenceId),
+                    std::move(requested),
+                    eventBufferSizeInBytes),
+                origin)
+            .succeeded();
+    }
+
     bool ProjectCommandsImpl::setMasterTrackMarkers(
         std::vector<ClipMarker> markers, ProjectMutationOrigin origin) {
         return execute<MasterTrackMarkersProperty>(
             std::monostate{}, std::move(markers), origin);
+    }
+
+    bool ProjectCommandsImpl::setLatencyCompensationSettings(
+        const LatencyCompensationProjectSettings& settings, ProjectMutationOrigin origin) {
+        return execute<LatencyCompensationSettingsProperty>(
+            std::monostate{}, settings, origin);
     }
 
 } // namespace uapmd

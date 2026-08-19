@@ -54,6 +54,48 @@ namespace uapmd::timeline_detail {
             + value.nodeId.capacity();
     }
 
+    inline size_t retainedValueSize(const DeviceInputAddress& value) {
+        return sizeof(value) + value.trackReferenceId.capacity();
+    }
+
+    // Graph connections are compared by what they connect, never by id: the
+    // id is minted by the graph on connect, so a reconnected edge is a
+    // different id for the same document-level connection.
+    inline bool graphEndpointEquivalent(
+        const uapmd_graph::AudioPluginGraphEndpoint& lhs,
+        const uapmd_graph::AudioPluginGraphEndpoint& rhs) {
+        return lhs.type == rhs.type
+            && lhs.node_id == rhs.node_id
+            && lhs.bus_index == rhs.bus_index;
+    }
+
+    inline bool graphConnectionEquivalent(
+        const uapmd_graph::AudioPluginGraphConnection& lhs,
+        const uapmd_graph::AudioPluginGraphConnection& rhs) {
+        return lhs.bus_type == rhs.bus_type
+            && graphEndpointEquivalent(lhs.source, rhs.source)
+            && graphEndpointEquivalent(lhs.target, rhs.target);
+    }
+
+    // Which track a connection belongs to, plus the connection itself: the
+    // pair is the address, and whether it is present is the value.
+    struct GraphConnectionAddress {
+        ProjectObjectId trackReferenceId;
+        uapmd_graph::AudioPluginGraphConnection connection;
+
+        bool operator==(const GraphConnectionAddress& other) const {
+            return trackReferenceId == other.trackReferenceId
+                && graphConnectionEquivalent(connection, other.connection);
+        }
+    };
+
+    inline size_t retainedValueSize(const GraphConnectionAddress& value) {
+        return sizeof(value)
+            + value.trackReferenceId.capacity()
+            + value.connection.source.node_id.capacity()
+            + value.connection.target.node_id.capacity();
+    }
+
     template<typename Value>
     size_t retainedValueSize(const Value&) {
         return sizeof(Value);

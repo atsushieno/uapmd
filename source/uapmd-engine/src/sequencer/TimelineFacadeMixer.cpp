@@ -74,127 +74,10 @@ namespace uapmd {
         return true;
     }
 
-    bool TimelineFacadeImpl::replaceTrackGraphType(
-            int32_t trackIndex,
-            const std::string& graphTypeId,
-            size_t eventBufferSizeInBytes,
-            ProjectMutationOrigin origin) {
-                auto* provider = audio_graph_provider_registry_.get(graphTypeId);
-        if (!provider)
-            return false;
-
-        SequencerTrack* track = trackIndex == kMasterTrackIndex
-            ? engine_.masterTrack()
-            : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(engine_.tracks().size())
-                ? engine_.tracks()[static_cast<size_t>(trackIndex)]
-                : nullptr);
-        if (!track)
-            return false;
-
-        if (track->graph().providerId() == provider->id())
-            return true;
-        auto* timelineTrack = resolveTrack(trackIndex);
-        if (!timelineTrack)
-            return false;
-        auto before = captureTrackGraphSnapshot(trackIndex);
-        if (!before)
-            return false;
-        auto trackReferenceId = timelineTrack->referenceId();
-        TrackGraphSnapshot requested;
-        requested.graphType = graphTypeId;
-        if (!applyTrackGraphSnapshot(
-                trackReferenceId,
-                requested,
-                eventBufferSizeInBytes))
-            return false;
-        if (origin != ProjectMutationOrigin::User
-            && origin != ProjectMutationOrigin::Remote)
-            return true;
-
-        auto after = captureTrackGraphSnapshot(trackIndex);
-        if (!after) {
-            applyTrackGraphSnapshot(
-                trackReferenceId, *before, eventBufferSizeInBytes);
-            return false;
-        }
-        auto apply = [this, eventBufferSizeInBytes](
-                         std::string_view persistentTrackId,
-                         const TrackGraphSnapshot& desired,
-                         const TrackGraphSnapshot& compensation) {
-            if (applyTrackGraphSnapshot(
-                    persistentTrackId,
-                    desired,
-                    eventBufferSizeInBytes))
-                return true;
-            applyTrackGraphSnapshot(
-                persistentTrackId,
-                compensation,
-                eventBufferSizeInBytes);
-            return false;
-        };
-        auto operation = std::make_shared<TrackGraphUndoOperation>(
-            trackReferenceId,
-            *before,
-            *after,
-            std::move(apply));
-        auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.recordPerformed(
-            std::move(operation),
-            origin,
-            [result](ProjectUndoResult completed) {
-                *result = std::move(completed);
-            });
-        if (result->has_value() && result->value().succeeded())
-            return true;
-        applyTrackGraphSnapshot(
-            trackReferenceId, *before, eventBufferSizeInBytes);
-        return false;
-    }
-
-    bool TimelineFacadeImpl::setLatencyCompensationSettings(
-            const LatencyCompensationProjectSettings& settings,
-            ProjectMutationOrigin origin) {
-                auto* manager = engine_.latencyCompensationManager();
-        if (!manager)
-            return false;
-        auto before = manager->projectSettings();
-        if (latencyCompensationSettingsEqual(before, settings))
-            return true;
-
-        auto apply = [this](
-                         const LatencyCompensationProjectSettings& value,
-                         std::string& error) {
-            auto* currentManager = engine_.latencyCompensationManager();
-            if (!currentManager
-                || !currentManager->applyProjectSettings(value, error))
-                return false;
-            notifyTimelineChanged();
-            return true;
-        };
-        if (origin != ProjectMutationOrigin::User
-            && origin != ProjectMutationOrigin::Remote) {
-            std::string error;
-            return apply(settings, error);
-        }
-
-        auto operation = std::make_shared<LatencySettingsUndoOperation>(
-            std::move(before),
-            settings,
-            std::move(apply));
-        auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.perform(
-            std::move(operation),
-            origin,
-            [result](ProjectUndoResult completed) {
-                *result = std::move(completed);
-            });
-        return result->has_value() && result->value().succeeded();
-    }
-
     bool TimelineFacadeImpl::applyDeviceInputState(
             std::string_view trackReferenceId,
             int32_t sourceNodeId,
-            const DeviceInputUndoOperation::Channels& channels) {
+            const std::optional<std::vector<uint32_t>>& channels) {
                 auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
         if (!targetTrack)
             return false;
@@ -222,108 +105,17 @@ namespace uapmd {
         return true;
     }
 
-    bool TimelineFacadeImpl::performDeviceInputMutation(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            DeviceInputUndoOperation::Channels before,
-            DeviceInputUndoOperation::Channels after,
-            ProjectMutationOrigin origin,
-            std::string description) {
-                auto* targetTrack = resolveTrack(trackIndex);
+    std::optional<std::vector<uint32_t>> TimelineFacadeImpl::deviceInputChannels(
+        std::string_view trackReferenceId,
+        int32_t sourceNodeId) {
+        auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
         if (!targetTrack)
-            return false;
-        auto trackReferenceId = targetTrack->referenceId();
-        auto apply = [this](
-                         std::string_view persistentTrackId,
-                         int32_t persistentSourceNodeId,
-                         const DeviceInputUndoOperation::Channels& value) {
-            return applyDeviceInputState(
-                persistentTrackId,
-                persistentSourceNodeId,
-                value);
-        };
-        if (origin != ProjectMutationOrigin::User
-            && origin != ProjectMutationOrigin::Remote)
-            return apply(trackReferenceId, sourceNodeId, after);
-
-        auto operation = std::make_shared<DeviceInputUndoOperation>(
-            std::move(description),
-            std::move(trackReferenceId),
-            sourceNodeId,
-            std::move(before),
-            std::move(after),
-            std::move(apply));
-        auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.perform(
-            std::move(operation),
-            origin,
-            [result](ProjectUndoResult completed) {
-                *result = std::move(completed);
-            });
-        return result->has_value() && result->value().succeeded();
-    }
-
-    bool TimelineFacadeImpl::addDeviceInputToTrack(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            const std::vector<uint32_t>& channelIndices,
-            ProjectMutationOrigin origin) {
-                auto* targetTrack = resolveTrack(trackIndex);
-        if (!targetTrack || targetTrack->getSourceNode(sourceNodeId))
-            return false;
-        auto normalizedChannels = channelIndices;
-        if (normalizedChannels.empty())
-            normalizedChannels = {0, 1};
-        return performDeviceInputMutation(
-            trackIndex,
-            sourceNodeId,
-            std::nullopt,
-            std::move(normalizedChannels),
-            origin,
-            "Add device input");
-    }
-
-    bool TimelineFacadeImpl::setDeviceInputChannels(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            const std::vector<uint32_t>& channelIndices,
-            ProjectMutationOrigin origin) {
-                auto* targetTrack = resolveTrack(trackIndex);
-        auto source = targetTrack
-            ? targetTrack->getSourceNode(sourceNodeId)
-            : nullptr;
-        auto deviceInput =
-            std::dynamic_pointer_cast<DeviceInputSourceNode>(source);
+            return std::nullopt;
+        auto deviceInput = std::dynamic_pointer_cast<DeviceInputSourceNode>(
+            targetTrack->getSourceNode(sourceNodeId));
         if (!deviceInput)
-            return false;
-        return performDeviceInputMutation(
-            trackIndex,
-            sourceNodeId,
-            deviceInput->getInputChannels(),
-            channelIndices,
-            origin,
-            "Change device input routing");
-    }
-
-    bool TimelineFacadeImpl::removeDeviceInputFromTrack(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            ProjectMutationOrigin origin) {
-                auto* targetTrack = resolveTrack(trackIndex);
-        auto source = targetTrack
-            ? targetTrack->getSourceNode(sourceNodeId)
-            : nullptr;
-        auto deviceInput =
-            std::dynamic_pointer_cast<DeviceInputSourceNode>(source);
-        if (!deviceInput)
-            return false;
-        return performDeviceInputMutation(
-            trackIndex,
-            sourceNodeId,
-            deviceInput->getInputChannels(),
-            std::nullopt,
-            origin,
-            "Remove device input");
+            return std::nullopt;
+        return deviceInput->getInputChannels();
     }
 
     bool TimelineFacadeImpl::applyGraphConnectionState(
@@ -394,105 +186,44 @@ namespace uapmd {
         return true;
     }
 
-    bool TimelineFacadeImpl::performGraphConnectionMutation(
-            int32_t trackIndex,
-            uapmd_graph::AudioPluginGraphConnection connection,
-            bool present,
-            std::string& error,
-            ProjectMutationOrigin origin) {
-                auto* timelineTrack = resolveTrack(trackIndex);
-        if (!timelineTrack) {
-            error = "Track not found";
-            return false;
-        }
-        auto trackReferenceId = timelineTrack->referenceId();
-        auto apply = [this](
-                         std::string_view persistentTrackId,
-                         const uapmd_graph::AudioPluginGraphConnection& value,
-                         bool desiredPresence,
-                         std::string& applyError) {
-            return applyGraphConnectionState(
-                persistentTrackId,
-                value,
-                desiredPresence,
-                applyError);
-        };
-        if (origin != ProjectMutationOrigin::User
-            && origin != ProjectMutationOrigin::Remote)
-            return apply(trackReferenceId, connection, present, error);
-
-        auto operation = std::make_shared<GraphConnectionUndoOperation>(
-            present,
-            std::move(trackReferenceId),
-            std::move(connection),
-            std::move(apply));
-        auto result = std::make_shared<std::optional<ProjectUndoResult>>();
-        undo_engine_.perform(
-            std::move(operation),
-            origin,
-            [result](ProjectUndoResult completed) {
-                *result = std::move(completed);
-            });
-        if (!result->has_value()) {
-            error = "The undo engine did not complete the graph mutation inline";
-            return false;
-        }
-        if (!result->value().succeeded()) {
-            error = result->value().error;
-            return false;
-        }
-        return true;
-    }
-
-    bool TimelineFacadeImpl::connectTrackGraph(
-            int32_t trackIndex,
-            const uapmd_graph::AudioPluginGraphConnection& connection,
-            std::string& error,
-            ProjectMutationOrigin origin) {
-                return performGraphConnectionMutation(
-            trackIndex,
-            connection,
-            true,
-            error,
-            origin);
-    }
-
-    bool TimelineFacadeImpl::disconnectTrackGraphConnection(
-            int32_t trackIndex,
-            int64_t connectionId,
-            std::string& error,
-            ProjectMutationOrigin origin) {
-                auto* track = resolveSequencerTrack(trackIndex);
+    bool TimelineFacadeImpl::graphConnectionPresent(
+        std::string_view trackReferenceId,
+        const uapmd_graph::AudioPluginGraphConnection& connection) {
+        const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
+        auto* track = resolveSequencerTrack(trackIndex);
         auto* graph = track
             ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
             : nullptr;
-        if (!graph) {
-            error = "Track graph is not a full DAG graph";
+        if (!graph)
             return false;
-        }
         const auto connections = graph->connections();
-        auto connection = std::find_if(
+        return std::any_of(
+            connections.begin(),
+            connections.end(),
+            [&connection](const auto& candidate) {
+                return graphConnectionEquivalent(candidate, connection);
+            });
+    }
+
+    std::optional<uapmd_graph::AudioPluginGraphConnection>
+    TimelineFacadeImpl::graphConnectionById(int32_t trackIndex, int64_t connectionId) {
+        auto* track = resolveSequencerTrack(trackIndex);
+        auto* graph = track
+            ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+            : nullptr;
+        if (!graph)
+            return std::nullopt;
+        const auto connections = graph->connections();
+        auto found = std::find_if(
             connections.begin(),
             connections.end(),
             [connectionId](const auto& candidate) {
                 return candidate.id == connectionId;
             });
-        if (connection == connections.end()) {
-            error = "Connection not found";
-            return false;
-        }
-        return performGraphConnectionMutation(
-            trackIndex,
-            *connection,
-            false,
-            error,
-            origin);
+        if (found == connections.end())
+            return std::nullopt;
+        return *found;
     }
-
-
-
-
-
 
     bool TimelineFacadeImpl::setTrackFreezePolicy(int32_t index, bool enabled) {
         return engine_.frozenTrackManager().setFreezePolicyForTrack(

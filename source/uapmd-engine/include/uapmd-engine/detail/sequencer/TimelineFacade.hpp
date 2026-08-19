@@ -205,29 +205,6 @@ public:
     // Callers are responsible for validating marker identity and reference
     // cycles before submitting; this records the change and applies it.
 
-    // Applies the complete persisted latency/monitoring configuration as one
-    // history item. Callers that edit only one field should copy
-    // latencyCompensationManager()->projectSettings(), alter that field, and
-    // submit the resulting snapshot here.
-    virtual bool setLatencyCompensationSettings(
-        const LatencyCompensationProjectSettings& settings,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-
-    virtual bool addDeviceInputToTrack(
-        int32_t trackIndex,
-        int32_t sourceNodeId,
-        const std::vector<uint32_t>& channelIndices,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool setDeviceInputChannels(
-        int32_t trackIndex,
-        int32_t sourceNodeId,
-        const std::vector<uint32_t>& channelIndices,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool removeDeviceInputFromTrack(
-        int32_t trackIndex,
-        int32_t sourceNodeId,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-
     // Changes a parameter in a per-note controller context.  Per-note edits
     // use the same persistent plug-in identity and gesture history as global
     // parameter edits, so changing the selected key/channel/group does not
@@ -257,16 +234,6 @@ public:
         ProjectMutationOrigin origin,
         ProjectUndoCompletion completion) = 0;
     virtual bool hasPendingPluginMutations() const = 0;
-    virtual bool connectTrackGraph(
-        int32_t trackIndex,
-        const uapmd_graph::AudioPluginGraphConnection& connection,
-        std::string& error,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
-    virtual bool disconnectTrackGraphConnection(
-        int32_t trackIndex,
-        int64_t connectionId,
-        std::string& error,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     virtual bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
         std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) = 0;
@@ -319,11 +286,6 @@ public:
     virtual ProjectUndoEngine& undoEngine() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
     virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;
-    virtual bool replaceTrackGraphType(
-        int32_t trackIndex,
-        const std::string& graphTypeId,
-        size_t eventBufferSizeInBytes,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool materializeProjectGraph(
         UapmdProjectTrackData* projectTrack,
         SequencerTrack* sequencerTrack,

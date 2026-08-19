@@ -75,6 +75,59 @@ namespace uapmd::timeline_detail {
         // be what a clip is anchored to.
         virtual std::vector<ClipMarker> masterTrackMarkers() const = 0;
         virtual bool applyMasterTrackMarkers(std::vector<ClipMarker> markers) = 0;
+
+        // The complete persisted latency/monitoring configuration, applied as
+        // one value. Callers editing a single field read the current settings,
+        // change that field, and write the whole snapshot back.
+        virtual LatencyCompensationProjectSettings latencyCompensationSettings() const = 0;
+        virtual bool applyLatencyCompensationSettings(
+            const LatencyCompensationProjectSettings& settings) = 0;
+
+        // One device input read and written as a single optional value:
+        // nullopt means the input is not on the track, so adding, rerouting
+        // and removing one are all the same write. That is what lets undo of
+        // an add be a remove without a second operation shape.
+        virtual std::optional<std::vector<uint32_t>> deviceInputChannels(
+            std::string_view trackReferenceId,
+            int32_t sourceNodeId) = 0;
+        virtual bool applyDeviceInputChannels(
+            std::string_view trackReferenceId,
+            int32_t sourceNodeId,
+            const std::optional<std::vector<uint32_t>>& channels) = 0;
+
+        // Whether one graph connection is currently in a track's graph, and
+        // adding or removing it. As with a device input, presence is the
+        // value, so disconnecting is the undo of connecting.
+        virtual bool graphConnectionPresent(
+            std::string_view trackReferenceId,
+            const uapmd_graph::AudioPluginGraphConnection& connection) = 0;
+        virtual bool applyGraphConnectionPresence(
+            std::string_view trackReferenceId,
+            const uapmd_graph::AudioPluginGraphConnection& connection,
+            bool present) = 0;
+
+        // The connection carrying this graph-minted id, if the track still
+        // has it. The id is a runtime handle, so it is resolved to the
+        // connection itself before anything is recorded.
+        virtual std::optional<uapmd_graph::AudioPluginGraphConnection>
+        graphConnectionById(int32_t trackIndex, int64_t connectionId) = 0;
+
+        // Track graph replacement. The canonical provider id for a requested
+        // graph type, or nothing when no provider claims it.
+        virtual std::optional<std::string> resolveGraphProviderId(
+            const std::string& graphTypeId) = 0;
+        virtual std::optional<TrackGraphSnapshot> captureTrackGraph(
+            std::string_view trackReferenceId) = 0;
+        virtual bool applyTrackGraph(
+            std::string_view trackReferenceId,
+            const TrackGraphSnapshot& snapshot,
+            size_t eventBufferSizeInBytes) = 0;
+
+        // Why the most recent write() returned false, when it can fail for
+        // more than one reason. Writes are serialized on the model thread, so
+        // the value read straight after a failed write is that write's own.
+        // Empty unless the failing property reports detail.
+        virtual std::string lastWriteFailure() const = 0;
     };
 
     // One property edit, whatever the property is attached to.
@@ -93,15 +146,22 @@ namespace uapmd::timeline_detail {
         PropertyCommandTarget& target_;
         Address address_;
         Value value_;
+        // Set only where the value alone cannot say what the user did. Adding
+        // a device input and changing its routing write the same kind of
+        // value, and only the caller knows which one it asked for; leaving the
+        // history to guess would label both the same.
+        std::string label_{};
 
     public:
         PropertyCommand(
             PropertyCommandTarget& target,
             Address address,
-            Value value)
+            Value value,
+            std::string label = {})
             : target_(target)
             , address_(std::move(address))
-            , value_(std::move(value)) {
+            , value_(std::move(value))
+            , label_(std::move(label)) {
         }
 
         std::string_view commandId() const override {
@@ -109,13 +169,14 @@ namespace uapmd::timeline_detail {
         }
 
         std::string description() const override {
-            return Property::describe(value_);
+            return label_.empty() ? Property::describe(value_) : label_;
         }
 
         size_t retainedSizeInBytes() const override {
             return sizeof(*this)
                 + retainedValueSize(address_)
-                + retainedValueSize(value_);
+                + retainedValueSize(value_)
+                + label_.capacity();
         }
 
         bool mergeWith(const ProjectCommand& subsequent) override {
@@ -147,14 +208,16 @@ namespace uapmd::timeline_detail {
             }
 
             if (!Property::write(target_, *subject, value_)) {
-                completion(ProjectCommandResult::failure(std::format(
-                    "Could not apply '{}'.",
-                    Property::commandId)));
+                auto reason = Property::failureMessage(target_);
+                completion(ProjectCommandResult::failure(
+                    reason.empty()
+                        ? std::format("Could not apply '{}'.", Property::commandId)
+                        : std::move(reason)));
                 return;
             }
             Property::notify(target_, *subject);
             context.recordRevert(std::make_shared<PropertyCommand>(
-                target_, address_, std::move(before)));
+                target_, address_, std::move(before), label_));
             completion(ProjectCommandResult::success());
         }
     };
@@ -172,6 +235,14 @@ namespace uapmd::timeline_detail {
 
         static std::string describe(const Value&) {
             return std::string(Derived::label);
+        }
+
+        // Most properties can only fail one way, so the generic message says
+        // everything there is to say. A property whose write is rejected for
+        // several distinct reasons overrides this so the reason survives into
+        // the history result, where a failed undo reports it to the user.
+        static std::string failureMessage(PropertyCommandTarget&) {
+            return {};
         }
     };
 
@@ -760,6 +831,94 @@ namespace uapmd::timeline_detail {
         }
     };
 
+    // Replacing a track's graph type, as a command in its own right rather
+    // than a property.
+    //
+    // A property is an address and a value; this also needs the event buffer
+    // size to rebuild with, which is neither. Callers supply it from their own
+    // configuration -- the application model, the engine, the project loader --
+    // and although those agree today, nothing makes them agree, so the value
+    // the caller asked for travels with the command.
+    //
+    // Applying a snapshot replaces the graph wholesale rather than migrating
+    // the existing one, so the forward payload is just the requested type and
+    // the revert carries the complete previous graph, serialized bytes and all.
+    class TrackGraphTypeCommand final : public ProjectCommand {
+        PropertyCommandTarget& target_;
+        ProjectObjectId track_reference_id_;
+        TrackGraphSnapshot snapshot_;
+        size_t event_buffer_size_in_bytes_;
+
+    public:
+        TrackGraphTypeCommand(
+            PropertyCommandTarget& target,
+            ProjectObjectId trackReferenceId,
+            TrackGraphSnapshot snapshot,
+            size_t eventBufferSizeInBytes)
+            : target_(target)
+            , track_reference_id_(std::move(trackReferenceId))
+            , snapshot_(std::move(snapshot))
+            , event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
+        }
+
+        std::string_view commandId() const override {
+            return "track.replaceGraphType";
+        }
+
+        std::string description() const override {
+            return "Change track graph type";
+        }
+
+        size_t retainedSizeInBytes() const override {
+            return sizeof(*this)
+                + track_reference_id_.capacity()
+                + retainedValueSize(snapshot_);
+        }
+
+        void execute(
+            ProjectCommandContext& context,
+            ProjectCommandCompletion completion) override {
+            auto providerId = target_.resolveGraphProviderId(snapshot_.graphType);
+            if (!providerId) {
+                completion(ProjectCommandResult::failure(std::format(
+                    "No graph provider for '{}'.", snapshot_.graphType)));
+                return;
+            }
+
+            auto before = target_.captureTrackGraph(track_reference_id_);
+            if (!before) {
+                completion(ProjectCommandResult::failure(
+                    "Could not capture the current track graph."));
+                return;
+            }
+            // Already this type, with no graph content to restore: nothing to
+            // do, and no revert recorded, so no history entry appears.
+            if (before->graphType == *providerId && snapshot_.graphBytes.empty()) {
+                completion(ProjectCommandResult::success());
+                return;
+            }
+
+            if (!target_.applyTrackGraph(
+                    track_reference_id_, snapshot_, event_buffer_size_in_bytes_)) {
+                // The old graph is already gone by the time deserialization
+                // can fail, so put it back rather than leaving the track with
+                // whichever half-built graph the failure produced.
+                target_.applyTrackGraph(
+                    track_reference_id_, *before, event_buffer_size_in_bytes_);
+                completion(ProjectCommandResult::failure(
+                    "Could not replace the track graph."));
+                return;
+            }
+
+            context.recordRevert(std::make_shared<TrackGraphTypeCommand>(
+                target_,
+                track_reference_id_,
+                std::move(*before),
+                event_buffer_size_in_bytes_));
+            completion(ProjectCommandResult::success());
+        }
+    };
+
 } // namespace uapmd::timeline_detail
 
 namespace uapmd::timeline_detail {
@@ -801,6 +960,122 @@ namespace uapmd::timeline_detail {
             const ProjectSubject&,
             const Value& value) {
             return target.applyMasterTrackMarkers(value);
+        }
+    };
+
+    // A device input is addressed by (track, source node) and carries the
+    // channel list it routes, or nothing when it is absent.
+    struct DeviceInputSubject {
+        DeviceInputAddress address;
+    };
+
+    struct DeviceInputChannelsProperty
+        : PropertyDescriptor<
+              DeviceInputChannelsProperty,
+              std::optional<std::vector<uint32_t>>> {
+        using Address = DeviceInputAddress;
+        using Subject = DeviceInputSubject;
+
+        static constexpr std::string_view commandId{"track.setDeviceInputChannels"};
+        static constexpr std::string_view label{"Change device input routing"};
+
+        // The track need not currently hold this input -- writing a value is
+        // what creates it -- so the address always resolves and write()
+        // reports a track that has genuinely gone away.
+        static std::optional<DeviceInputSubject> resolve(
+            PropertyCommandTarget&,
+            const DeviceInputAddress& address) {
+            return DeviceInputSubject{address};
+        }
+
+        static Value read(PropertyCommandTarget& target, const DeviceInputSubject& subject) {
+            return target.deviceInputChannels(
+                subject.address.trackReferenceId, subject.address.sourceNodeId);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const DeviceInputSubject& subject,
+            const Value& value) {
+            return target.applyDeviceInputChannels(
+                subject.address.trackReferenceId, subject.address.sourceNodeId, value);
+        }
+
+        static void notify(PropertyCommandTarget&, const DeviceInputSubject&) {
+        }
+    };
+
+    struct GraphConnectionSubject {
+        GraphConnectionAddress address;
+    };
+
+    struct GraphConnectionPresentProperty
+        : PropertyDescriptor<GraphConnectionPresentProperty, bool> {
+        using Address = GraphConnectionAddress;
+        using Subject = GraphConnectionSubject;
+
+        static constexpr std::string_view commandId{"track.setGraphConnectionPresent"};
+        static constexpr std::string_view label{"Connect track graph"};
+
+        static std::string describe(bool value) {
+            return value ? "Connect track graph" : "Disconnect track graph";
+        }
+
+        static std::optional<GraphConnectionSubject> resolve(
+            PropertyCommandTarget&,
+            const GraphConnectionAddress& address) {
+            return GraphConnectionSubject{address};
+        }
+
+        static Value read(PropertyCommandTarget& target, const GraphConnectionSubject& subject) {
+            return target.graphConnectionPresent(
+                subject.address.trackReferenceId, subject.address.connection);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const GraphConnectionSubject& subject,
+            const Value& value) {
+            return target.applyGraphConnectionPresence(
+                subject.address.trackReferenceId, subject.address.connection, value);
+        }
+
+        // A rejected connection says why -- a cycle, a missing endpoint, a
+        // direction mismatch -- and that reason is what the user needs.
+        static std::string failureMessage(PropertyCommandTarget& target) {
+            return target.lastWriteFailure();
+        }
+
+        static void notify(PropertyCommandTarget&, const GraphConnectionSubject&) {
+        }
+    };
+
+    struct LatencyCompensationSettingsProperty
+        : ProjectPropertyDescriptor<
+              LatencyCompensationSettingsProperty,
+              LatencyCompensationProjectSettings> {
+        static constexpr std::string_view commandId{"project.setLatencyCompensationSettings"};
+        static constexpr std::string_view label{"Change latency compensation settings"};
+
+        static Value read(PropertyCommandTarget& target, const ProjectSubject&) {
+            return target.latencyCompensationSettings();
+        }
+
+        static bool equal(const Value& lhs, const Value& rhs) {
+            return latencyCompensationSettingsEqual(lhs, rhs);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const ProjectSubject&,
+            const Value& value) {
+            return target.applyLatencyCompensationSettings(value);
+        }
+
+        // Rejected settings name what was wrong with them -- an unsupported
+        // implementation id, or a malformed property map.
+        static std::string failureMessage(PropertyCommandTarget& target) {
+            return target.lastWriteFailure();
         }
     };
 

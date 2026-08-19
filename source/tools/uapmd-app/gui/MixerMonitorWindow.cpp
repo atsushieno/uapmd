@@ -103,13 +103,13 @@ void MixerMonitorWindow::render(float uiScale) {
         auto settings = latencyManager->projectSettings();
         settings.playback_compensation_mode =
             static_cast<uapmd::PlaybackCompensationMode>(playbackCompMode);
-        engine->timeline().setLatencyCompensationSettings(settings);
+        engine->commands().setLatencyCompensationSettings(settings);
     }
     if (ImGui::Combo("Input Monitoring", &inputMonitoringPolicy, inputMonitoringItems, IM_ARRAYSIZE(inputMonitoringItems))) {
         auto settings = latencyManager->projectSettings();
         settings.input_monitoring_policy =
             static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy);
-        engine->timeline().setLatencyCompensationSettings(settings);
+        engine->commands().setLatencyCompensationSettings(settings);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", inputMonitoringPolicyHint(static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy)));
@@ -171,7 +171,7 @@ void MixerMonitorWindow::render(float uiScale) {
                     std::erase(tracks, trackIndex);
                     if (recordArmed)
                         tracks.push_back(trackIndex);
-                    engine->timeline().setLatencyCompensationSettings(settings);
+                    engine->commands().setLatencyCompensationSettings(settings);
                 }
             } else {
                 ImGui::TextUnformatted("-");
@@ -187,7 +187,7 @@ void MixerMonitorWindow::render(float uiScale) {
                     std::erase(tracks, trackIndex);
                     if (monitorEnabled)
                         tracks.push_back(trackIndex);
-                    engine->timeline().setLatencyCompensationSettings(settings);
+                    engine->commands().setLatencyCompensationSettings(settings);
                 }
             } else {
                 ImGui::TextUnformatted("-");

@@ -5,7 +5,9 @@
 #include <vector>
 
 #include <remidy/remidy.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include <uapmd-data/uapmd-data.hpp>
+#include "LatencyCompensationTypes.hpp"
 
 namespace uapmd {
 
@@ -85,12 +87,61 @@ public:
     virtual bool setPluginGroup(int32_t instanceId, uint8_t group,
                                 ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
+    // Device inputs. Adding one, rerouting it and removing it all write the
+    // same per-input value, so undoing an add is a removal without needing a
+    // separate structural operation.
+    virtual bool addDeviceInputToTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setDeviceInputChannels(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        const std::vector<uint32_t>& channelIndices,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool removeDeviceInputFromTrack(
+        int32_t trackIndex,
+        int32_t sourceNodeId,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    // Track graph edges. Presence is the value here too, so undoing a
+    // connect is a disconnect. `error` reports why the graph rejected the
+    // change -- a cycle, a missing endpoint, a direction mismatch.
+    virtual bool connectTrackGraph(
+        int32_t trackIndex,
+        const uapmd_graph::AudioPluginGraphConnection& connection,
+        std::string& error,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool disconnectTrackGraphConnection(
+        int32_t trackIndex,
+        int64_t connectionId,
+        std::string& error,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    // Replaces a track's graph with a fresh one of the requested type. The
+    // event buffer size is the caller's, not the engine's: the project loader
+    // and the application model each supply their own.
+    virtual bool replaceTrackGraphType(
+        int32_t trackIndex,
+        const std::string& graphTypeId,
+        size_t eventBufferSizeInBytes,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
     // Project-wide properties.
     //
     // Callers are responsible for validating marker identity and reference
     // cycles before submitting.
     virtual bool setMasterTrackMarkers(
         std::vector<ClipMarker> markers,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
+    // The complete persisted latency/monitoring configuration, as one history
+    // step. Callers that edit a single field copy
+    // latencyCompensationManager()->projectSettings(), alter that field, and
+    // submit the resulting snapshot.
+    virtual bool setLatencyCompensationSettings(
+        const LatencyCompensationProjectSettings& settings,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
     // Groups several edits into one history step. Prefer the scoped forms in

@@ -83,6 +83,9 @@ namespace uapmd {
         int32_t next_source_node_id_{1};
         uint32_t next_timeline_track_reference_{1};
         std::function<void()> timeline_changed_callback_{};
+        // Detail for the most recent failed property write; see
+        // PropertyCommandTarget::lastWriteFailure().
+        std::string last_write_failure_{};
         bool suppress_timeline_notification_{false};
         bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
@@ -284,6 +287,78 @@ namespace uapmd {
             resolveAllClipAnchors();
             engine_.markTrackDirty(kMasterTrackIndex);
             return true;
+        }
+
+        LatencyCompensationProjectSettings latencyCompensationSettings() const override {
+            auto* manager = engine_.latencyCompensationManager();
+            return manager ? manager->projectSettings() : LatencyCompensationProjectSettings{};
+        }
+
+        bool applyLatencyCompensationSettings(
+            const LatencyCompensationProjectSettings& settings) override {
+            last_write_failure_.clear();
+            auto* manager = engine_.latencyCompensationManager();
+            if (!manager) {
+                last_write_failure_ = "There is no latency compensation manager.";
+                return false;
+            }
+            if (!manager->applyProjectSettings(settings, last_write_failure_))
+                return false;
+            notifyTimelineChanged();
+            return true;
+        }
+
+        std::optional<std::vector<uint32_t>> deviceInputChannels(
+            std::string_view trackReferenceId,
+            int32_t sourceNodeId) override;
+
+        bool applyDeviceInputChannels(
+            std::string_view trackReferenceId,
+            int32_t sourceNodeId,
+            const std::optional<std::vector<uint32_t>>& channels) override {
+            return applyDeviceInputState(trackReferenceId, sourceNodeId, channels);
+        }
+
+        std::optional<uapmd_graph::AudioPluginGraphConnection>
+        graphConnectionById(int32_t trackIndex, int64_t connectionId) override;
+
+        bool graphConnectionPresent(
+            std::string_view trackReferenceId,
+            const uapmd_graph::AudioPluginGraphConnection& connection) override;
+
+        bool applyGraphConnectionPresence(
+            std::string_view trackReferenceId,
+            const uapmd_graph::AudioPluginGraphConnection& connection,
+            bool present) override {
+            last_write_failure_.clear();
+            return applyGraphConnectionState(
+                trackReferenceId, connection, present, last_write_failure_);
+        }
+
+        std::optional<std::string> resolveGraphProviderId(
+            const std::string& graphTypeId) override {
+            auto* provider = audio_graph_provider_registry_.get(graphTypeId);
+            if (!provider)
+                return std::nullopt;
+            return provider->id();
+        }
+
+        std::optional<TrackGraphSnapshot> captureTrackGraph(
+            std::string_view trackReferenceId) override {
+            return captureTrackGraphSnapshot(
+                trackIndexForPersistentId(trackReferenceId));
+        }
+
+        bool applyTrackGraph(
+            std::string_view trackReferenceId,
+            const TrackGraphSnapshot& snapshot,
+            size_t eventBufferSizeInBytes) override {
+            return applyTrackGraphSnapshot(
+                trackReferenceId, snapshot, eventBufferSizeInBytes);
+        }
+
+        std::string lastWriteFailure() const override {
+            return last_write_failure_;
         }
 
 
@@ -571,11 +646,6 @@ namespace uapmd {
             const TrackGraphSnapshot& snapshot,
             size_t eventBufferSizeInBytes);
 
-        bool replaceTrackGraphType(
-            int32_t trackIndex,
-            const std::string& graphTypeId,
-            size_t eventBufferSizeInBytes,
-            ProjectMutationOrigin origin) override;
 
         bool materializeProjectGraph(
             UapmdProjectTrackData* projectTrack,
@@ -720,39 +790,11 @@ namespace uapmd {
 
 
 
-        bool setLatencyCompensationSettings(
-            const LatencyCompensationProjectSettings& settings,
-            ProjectMutationOrigin origin) override;
 
         bool applyDeviceInputState(
             std::string_view trackReferenceId,
             int32_t sourceNodeId,
-            const DeviceInputUndoOperation::Channels& channels);
-
-        bool performDeviceInputMutation(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            DeviceInputUndoOperation::Channels before,
-            DeviceInputUndoOperation::Channels after,
-            ProjectMutationOrigin origin,
-            std::string description);
-
-        bool addDeviceInputToTrack(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            const std::vector<uint32_t>& channelIndices,
-            ProjectMutationOrigin origin) override;
-
-        bool setDeviceInputChannels(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            const std::vector<uint32_t>& channelIndices,
-            ProjectMutationOrigin origin) override;
-
-        bool removeDeviceInputFromTrack(
-            int32_t trackIndex,
-            int32_t sourceNodeId,
-            ProjectMutationOrigin origin) override;
+            const std::optional<std::vector<uint32_t>>& channels);
 
         // A plug-in's document identity is its (track, node) address; the
         // runtime instance id is regenerated whenever it is restored.
@@ -900,17 +942,13 @@ namespace uapmd {
         static bool graphEndpointEquivalent(
             const uapmd_graph::AudioPluginGraphEndpoint& lhs,
             const uapmd_graph::AudioPluginGraphEndpoint& rhs) {
-            return lhs.type == rhs.type
-                && lhs.node_id == rhs.node_id
-                && lhs.bus_index == rhs.bus_index;
+            return timeline_detail::graphEndpointEquivalent(lhs, rhs);
         }
 
         static bool graphConnectionEquivalent(
             const uapmd_graph::AudioPluginGraphConnection& lhs,
             const uapmd_graph::AudioPluginGraphConnection& rhs) {
-            return lhs.bus_type == rhs.bus_type
-                && graphEndpointEquivalent(lhs.source, rhs.source)
-                && graphEndpointEquivalent(lhs.target, rhs.target);
+            return timeline_detail::graphConnectionEquivalent(lhs, rhs);
         }
 
         bool applyGraphConnectionState(
@@ -919,24 +957,7 @@ namespace uapmd {
             bool present,
             std::string& error);
 
-        bool performGraphConnectionMutation(
-            int32_t trackIndex,
-            uapmd_graph::AudioPluginGraphConnection connection,
-            bool present,
-            std::string& error,
-            ProjectMutationOrigin origin);
 
-        bool connectTrackGraph(
-            int32_t trackIndex,
-            const uapmd_graph::AudioPluginGraphConnection& connection,
-            std::string& error,
-            ProjectMutationOrigin origin) override;
-
-        bool disconnectTrackGraphConnection(
-            int32_t trackIndex,
-            int64_t connectionId,
-            std::string& error,
-            ProjectMutationOrigin origin) override;
 
         bool notifyClipChanged(int32_t trackIndex, int32_t clipId, std::string type = "clip-changed") override;
 

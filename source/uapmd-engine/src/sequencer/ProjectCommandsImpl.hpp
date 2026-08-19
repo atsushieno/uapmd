@@ -60,7 +60,23 @@ namespace uapmd {
             ProjectMutationOrigin) override;
         bool setPluginGroup(int32_t, uint8_t, ProjectMutationOrigin) override;
 
+        bool addDeviceInputToTrack(
+            int32_t, int32_t, const std::vector<uint32_t>&, ProjectMutationOrigin) override;
+        bool setDeviceInputChannels(
+            int32_t, int32_t, const std::vector<uint32_t>&, ProjectMutationOrigin) override;
+        bool removeDeviceInputFromTrack(int32_t, int32_t, ProjectMutationOrigin) override;
+
+        bool connectTrackGraph(
+            int32_t, const uapmd_graph::AudioPluginGraphConnection&,
+            std::string&, ProjectMutationOrigin) override;
+        bool disconnectTrackGraphConnection(
+            int32_t, int64_t, std::string&, ProjectMutationOrigin) override;
+        bool replaceTrackGraphType(
+            int32_t, const std::string&, size_t, ProjectMutationOrigin) override;
+
         bool setMasterTrackMarkers(std::vector<ClipMarker>, ProjectMutationOrigin) override;
+        bool setLatencyCompensationSettings(
+            const LatencyCompensationProjectSettings&, ProjectMutationOrigin) override;
 
     private:
         // Builds the command for one property and runs it through the
@@ -69,13 +85,44 @@ namespace uapmd {
         bool execute(
             typename Property::Address address,
             typename Property::Value value,
-            ProjectMutationOrigin origin) {
+            ProjectMutationOrigin origin,
+            std::string label = {}) {
             return dispatch_
                 .executeSynchronously(
                     std::make_shared<timeline_detail::PropertyCommand<Property>>(
-                        target_, std::move(address), std::move(value)),
+                        target_, std::move(address), std::move(value), std::move(label)),
                     origin)
                 .succeeded();
+        }
+
+        // Same as execute(), but hands back the reason a command failed for
+        // entry points that report one to their caller.
+        template<typename Property>
+        ProjectCommandResult executeReporting(
+            typename Property::Address address,
+            typename Property::Value value,
+            ProjectMutationOrigin origin) {
+            return dispatch_.executeSynchronously(
+                std::make_shared<timeline_detail::PropertyCommand<Property>>(
+                    target_, std::move(address), std::move(value)),
+                origin);
+        }
+
+        // Adding, rerouting and removing a device input are one write of the
+        // per-input value; only the label says which the user asked for.
+        bool executeDeviceInput(
+            int32_t trackIndex,
+            int32_t sourceNodeId,
+            std::optional<std::vector<uint32_t>> channels,
+            ProjectMutationOrigin origin,
+            std::string label) {
+            auto trackReferenceId = target_.addresses().trackReferenceId(trackIndex);
+            return trackReferenceId
+                && execute<timeline_detail::DeviceInputChannelsProperty>(
+                    DeviceInputAddress{std::move(*trackReferenceId), sourceNodeId},
+                    std::move(channels),
+                    origin,
+                    std::move(label));
         }
 
         // Each family differs only in how a runtime index becomes the stable

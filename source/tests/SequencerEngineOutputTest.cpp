@@ -770,7 +770,7 @@ TEST_F(SequencerEngineOutputTest, OfflineRenderIsIdenticalBeforeAndAfterTrackDAG
     auto simpleResult = render(simplePath);
     ASSERT_TRUE(simpleResult.success) << simpleResult.errorMessage;
 
-    ASSERT_TRUE(timeline.replaceTrackGraphType(
+    ASSERT_TRUE(timeline.commands().replaceTrackGraphType(
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         umpBufferSize));
@@ -838,10 +838,10 @@ TEST_F(SequencerEngineOutputTest, Project4First20SecondsRemainEquivalentAfterDAG
         for (int32_t trackIndex = 0;
              trackIndex < static_cast<int32_t>(engine.tracks().size());
              ++trackIndex) {
-            if (!timeline.replaceTrackGraphType(trackIndex, graphType, engine.umpBufferSizeInBytes()))
+            if (!timeline.commands().replaceTrackGraphType(trackIndex, graphType, engine.umpBufferSizeInBytes()))
                 return false;
         }
-        return timeline.replaceTrackGraphType(
+        return timeline.commands().replaceTrackGraphType(
             uapmd::kMasterTrackIndex, graphType, engine.umpBufferSizeInBytes());
     };
     ASSERT_TRUE(convertAllGraphs(*simpleEngine, ""));
@@ -1669,7 +1669,7 @@ TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
     const auto trackIndex = engine->addEmptyTrack();
     ASSERT_GE(trackIndex, 0);
     auto& timeline = engine->timeline();
-    ASSERT_TRUE(timeline.replaceTrackGraphType(
+    ASSERT_TRUE(timeline.commands().replaceTrackGraphType(
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         engine->umpBufferSizeInBytes()));
@@ -1684,7 +1684,7 @@ TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
     connection.source.type = uapmd_graph::AudioPluginGraphEndpointType::GraphInput;
     connection.target.type = uapmd_graph::AudioPluginGraphEndpointType::GraphOutput;
     std::string error;
-    ASSERT_TRUE(timeline.connectTrackGraph(trackIndex, connection, error)) << error;
+    ASSERT_TRUE(timeline.commands().connectTrackGraph(trackIndex, connection, error)) << error;
     ASSERT_EQ(graph->connections().size(), 1u);
 
     auto result = moveHistory(timeline, false);
@@ -1697,7 +1697,7 @@ TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
     ASSERT_EQ(graph->connections().size(), 1u);
     const auto connectionId = graph->connections().front().id;
 
-    ASSERT_TRUE(timeline.disconnectTrackGraphConnection(trackIndex, connectionId, error)) << error;
+    ASSERT_TRUE(timeline.commands().disconnectTrackGraphConnection(trackIndex, connectionId, error)) << error;
     EXPECT_TRUE(graph->connections().empty());
     result = moveHistory(timeline, false);
     ASSERT_TRUE(result.has_value());
@@ -1740,8 +1740,8 @@ TEST_F(SequencerEngineOutputTest, DeviceInputCreationChangeAndRemovalUndoAndRedo
     ASSERT_GE(trackIndex, 0);
     auto& timeline = engine->timeline();
     constexpr int32_t sourceNodeId = 7123;
-    ASSERT_TRUE(timeline.addDeviceInputToTrack(trackIndex, sourceNodeId, {0, 1}));
-    ASSERT_TRUE(timeline.setDeviceInputChannels(trackIndex, sourceNodeId, {2}));
+    ASSERT_TRUE(timeline.commands().addDeviceInputToTrack(trackIndex, sourceNodeId, {0, 1}));
+    ASSERT_TRUE(timeline.commands().setDeviceInputChannels(trackIndex, sourceNodeId, {2}));
     auto* track = timeline.tracks()[static_cast<size_t>(trackIndex)];
     auto input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
         track->getSourceNode(sourceNodeId));
@@ -1759,7 +1759,7 @@ TEST_F(SequencerEngineOutputTest, DeviceInputCreationChangeAndRemovalUndoAndRedo
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
 
-    ASSERT_TRUE(timeline.removeDeviceInputFromTrack(trackIndex, sourceNodeId));
+    ASSERT_TRUE(timeline.commands().removeDeviceInputFromTrack(trackIndex, sourceNodeId));
     EXPECT_EQ(track->getSourceNode(sourceNodeId), nullptr);
     result = moveHistory(timeline, false);
     ASSERT_TRUE(result.has_value());
@@ -2384,7 +2384,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     const auto trackIndex = engine->addEmptyTrack();
     ASSERT_GE(trackIndex, 0);
     auto& timeline = engine->timeline();
-    ASSERT_TRUE(timeline.replaceTrackGraphType(
+    ASSERT_TRUE(timeline.commands().replaceTrackGraphType(
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         engine->umpBufferSizeInBytes()));
@@ -2416,7 +2416,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     connection.target.instance_id = *originalInstanceId;
     connection.target.node_id = address->nodeId;
     std::string connectionError;
-    ASSERT_TRUE(timeline.connectTrackGraph(
+    ASSERT_TRUE(timeline.commands().connectTrackGraph(
         trackIndex, connection, connectionError)) << connectionError;
     ASSERT_EQ(graph->connections().size(), 1u);
 
@@ -2610,7 +2610,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     latencySettings.input_monitoring_policy = uapmd::InputMonitoringPolicy::OFF;
     latencySettings.record_armed_track_indexes = {firstTrack};
     latencySettings.monitored_track_indexes = {secondTrack};
-    ASSERT_TRUE(timeline.setLatencyCompensationSettings(latencySettings));
+    ASSERT_TRUE(timeline.commands().setLatencyCompensationSettings(latencySettings));
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
@@ -2628,17 +2628,17 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
 
     const auto clip = addFragmentTestClip(*engine, firstTrack, 48000);
     ASSERT_TRUE(clip.success) << clip.error;
-    EXPECT_FALSE(timeline.addDeviceInputToTrack(firstTrack, clip.sourceNodeId, {0, 1}));
+    EXPECT_FALSE(timeline.commands().addDeviceInputToTrack(firstTrack, clip.sourceNodeId, {0, 1}));
 
     constexpr int32_t sourceNodeId = 9001;
-    ASSERT_TRUE(timeline.addDeviceInputToTrack(firstTrack, sourceNodeId, {2, 3}));
+    ASSERT_TRUE(timeline.commands().addDeviceInputToTrack(firstTrack, sourceNodeId, {2, 3}));
     auto track = timeline.tracks()[static_cast<size_t>(firstTrack)];
     auto input = std::dynamic_pointer_cast<uapmd::DeviceInputSourceNode>(
         track->getSourceNode(sourceNodeId));
     ASSERT_NE(input, nullptr);
     EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2, 3}));
 
-    ASSERT_TRUE(timeline.setDeviceInputChannels(firstTrack, sourceNodeId, {4}));
+    ASSERT_TRUE(timeline.commands().setDeviceInputChannels(firstTrack, sourceNodeId, {4}));
     timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
@@ -3166,7 +3166,7 @@ TEST_F(SequencerEngineOutputTest, ClipMutationsRevokeTheTracksFrozenRender) {
 
     const auto generationBeforeGraphChange =
         frozen.invalidationGenerationForTrack(trackIndex);
-    ASSERT_TRUE(timeline.replaceTrackGraphType(
+    ASSERT_TRUE(timeline.commands().replaceTrackGraphType(
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         engine->umpBufferSizeInBytes()));

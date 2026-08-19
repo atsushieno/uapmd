@@ -477,7 +477,7 @@ bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     auto* provider = sequencer_.engine()->timeline().audioGraphProviderRegistry().get(*graph);
     if (!provider)
         return false;
-    const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
+    const bool changed = sequencer_.engine()->commands().replaceTrackGraphType(
         trackIndex,
         provider->id(),
         ump_buffer_size_in_bytes_);
@@ -487,7 +487,7 @@ bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
 }
 
 bool uapmd_app::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
-    const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
+    const bool changed = sequencer_.engine()->commands().replaceTrackGraphType(
         trackIndex, "", ump_buffer_size_in_bytes_);
     if (changed)
         sequencer_.engine()->markTrackDirty(trackIndex);
@@ -524,7 +524,7 @@ bool uapmd_app::AppModel::connectTrackGraph(
     int32_t trackIndex,
     const AudioPluginGraphConnection& connection,
     std::string& error) {
-    const bool changed = sequencer_.engine()->timeline().connectTrackGraph(
+    const bool changed = sequencer_.engine()->commands().connectTrackGraph(
         trackIndex,
         connection,
         error);
@@ -537,8 +537,8 @@ bool uapmd_app::AppModel::disconnectTrackGraphConnection(
     int32_t trackIndex,
     int64_t connectionId,
     std::string& error) {
-    const bool changed = sequencer_.engine()->timeline()
-        .disconnectTrackGraphConnection(trackIndex, connectionId, error);
+    const bool changed = sequencer_.engine()
+        ->commands().disconnectTrackGraphConnection(trackIndex, connectionId, error);
     if (changed)
         sequencer_.engine()->markTrackDirty(trackIndex);
     return changed;
@@ -2849,7 +2849,7 @@ int32_t uapmd_app::AppModel::addDeviceInputToTrack(
         ++sourceNodeId;
     }
     next_source_node_id_ = sourceNodeId + 1;
-    if (sequencer_.engine()->timeline().addDeviceInputToTrack(
+    if (sequencer_.engine()->commands().addDeviceInputToTrack(
             trackIndex,
             sourceNodeId,
             channelIndices)) {

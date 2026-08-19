@@ -1044,7 +1044,7 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
     }
 
     if (hasMutation
-        && !engine->timeline().setLatencyCompensationSettings(settings))
+        && !engine->commands().setLatencyCompensationSettings(settings))
         throw std::runtime_error("failed to update latency compensation settings");
     auto result = choc::value::createObject("");
     result.setMember("success", true);
