@@ -279,11 +279,9 @@ public:
     // Anything that records a change for later replay must address its target
     // through here rather than by index.
     virtual ProjectAddressBook& addresses() = 0;
-    // Mutations that are not yet commands still record into the same
-    // history, which undoEngine() exposes directly.
-    // The undoable edits this project supports.
+    // The undoable edits this project supports, and the history they record
+    // into. Everything that changes the document goes through here.
     virtual ProjectCommands& commands() = 0;
-    virtual ProjectUndoEngine& undoEngine() = 0;
     virtual AudioSourceRepository& audioSourceRepository() = 0;
     virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;
     virtual bool materializeProjectGraph(
@@ -384,7 +382,11 @@ public:
     virtual void onTrackRemoved(size_t trackIndex) = 0;
     virtual void onTrackGraphChanged(int32_t trackIndex) = 0;
 
-    static std::unique_ptr<TimelineFacade> create(SequencerEngine& engine);
+    // `historyFactory` chooses which history the project records into; an
+    // empty one means the default. See uapmd-data's ProjectHistory.
+    static std::unique_ptr<TimelineFacade> create(
+        SequencerEngine& engine,
+        ProjectHistoryFactory historyFactory = {});
 };
 
 // Scoped form of TimelineFacade::beginDocumentTransaction(). Declare one for

@@ -3,6 +3,7 @@
 #include "uapmd-graph/uapmd-graph.hpp"
 #include "detail/command/ProjectUndo.hpp"
 #include "detail/command/ProjectCommand.hpp"
+#include "detail/command/ProjectHistory.hpp"
 #include "detail/command/ProjectCommandManager.hpp"
 #include "detail/midi/MidiTimelineEvents.hpp"
 #include "detail/memory/RtSnapshotPublisher.hpp"

@@ -157,6 +157,7 @@ endif()
 target_sources(uapmd-data PRIVATE
         ${_UAPMD_AUDIO_FACTORY_SRC}
         src/command/ProjectCommandManager.cpp
+        src/command/ProjectHistory.cpp
         src/command/ProjectUndo.cpp
         src/project/AudioGraphProvider.cpp
         src/project/UapmdProjectFileReader.cpp

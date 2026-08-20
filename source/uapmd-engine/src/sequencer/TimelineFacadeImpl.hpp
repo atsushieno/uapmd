@@ -89,22 +89,18 @@ namespace uapmd {
         bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
         ProjectDocumentEventDispatcher project_document_events_{};
-        ProjectUndoEngine undo_engine_{{
-            .maximumHistorySizeInBytes = 64u * 1024u * 1024u,
-            .dispatchToModelThread = [](ProjectUndoTask task) {
-                if (!task)
-                    return;
-                if (remidy::EventLoop::runningOnMainThread())
-                    task();
-                else
-                    remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
-            }
-        }};
-        // References undo_engine_ rather than owning a history of its own:
-        // operations that have not become commands yet still record into the
-        // same history, and two histories would silently diverge.
+        // Which history the project records into. Held through the interface
+        // so that swapping the implementation is a change here and nowhere
+        // else; CommandInverseHistory is the default one.
+        // Which history the project records into. Supplied at construction so
+        // that choosing a different one is a decision the caller makes, not an
+        // edit to this file. An empty factory means the default.
+        //
+        // Declared after project_document_events_ because the environment it
+        // is built with refers to it.
+        std::unique_ptr<ProjectHistory> history_;
         ProjectCommandManager command_manager_{{
-            .history = &undo_engine_,
+            .history = history_.get(),
             .dispatchToModelThread = [](ProjectUndoTask task) {
                 dispatchToModelThread(std::move(task));
             },
@@ -115,6 +111,31 @@ namespace uapmd {
                 project_document_events_.endTransaction();
             }
         }};
+        std::unique_ptr<ProjectHistory> makeHistory(ProjectHistoryFactory factory) {
+            const ProjectHistoryEnvironment environment{
+                .dispatchToModelThread = [](ProjectUndoTask task) {
+                    if (!task)
+                        return;
+                    if (remidy::EventLoop::runningOnMainThread())
+                        task();
+                    else
+                        remidy::EventLoop::enqueueTaskOnMainThread(std::move(task));
+                },
+                .beginDocumentTransaction = [this] {
+                    project_document_events_.beginTransaction();
+                },
+                .endDocumentTransaction = [this] {
+                    project_document_events_.endTransaction();
+                }
+            };
+            if (!factory)
+                factory = defaultProjectHistoryFactory();
+            auto history = factory(environment);
+            // A factory that returns nothing would leave every mutation path
+            // without somewhere to record; fall back rather than crash later.
+            return history ? std::move(history) : defaultProjectHistoryFactory()(environment);
+        }
+
         timeline_detail::TimelineProjectSerializer serializer_{engine_, *this, *this};
         ProjectCommandsImpl commands_{engine_, *this, command_manager_};
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
@@ -485,11 +506,14 @@ namespace uapmd {
         }
 
     public:
-        explicit TimelineFacadeImpl(SequencerEngine& engine)
+        explicit TimelineFacadeImpl(
+            SequencerEngine& engine,
+            ProjectHistoryFactory historyFactory = {})
             : engine_(engine)
             , sampleRate_(0)
             , bufferSizeInFrames_(0)
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
+            , history_(makeHistory(std::move(historyFactory)))
         {
             engine_.addPluginInstanceLifecycleListener(*this);
             if (auto* pluginHost = engine_.pluginHost())
@@ -692,9 +716,6 @@ namespace uapmd {
             return project_document_events_;
         }
 
-        ProjectUndoEngine& undoEngine() override {
-            return undo_engine_;
-        }
 
         ProjectDocumentView& projectDocumentView() override {
             return *this;

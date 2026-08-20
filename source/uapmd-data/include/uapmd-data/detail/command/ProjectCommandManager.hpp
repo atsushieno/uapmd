@@ -7,6 +7,7 @@
 #include <string>
 
 #include "ProjectCommand.hpp"
+#include "ProjectHistory.hpp"
 #include "ProjectUndo.hpp"
 
 namespace uapmd {
@@ -56,10 +57,9 @@ namespace uapmd {
     public:
         struct Configuration {
             // The history this manager records into. Required, and referenced
-            // rather than owned: during migration the same history is still
-            // driven directly by operations that have not become commands yet,
-            // and two histories would silently diverge.
-            ProjectUndoEngine* history{};
+            // rather than owned: the owner decides which implementation the
+            // project uses and how long it lives.
+            ProjectHistory* history{};
 
             // Marshals work onto the model thread. Leave empty in single
             // threaded tests, where tasks run inline.
@@ -133,11 +133,6 @@ namespace uapmd {
         // open.
         bool clear(bool markCurrentStateSaved = true);
         bool setMaximumHistorySizeInBytes(size_t value);
-
-        // The history engine remains directly reachable while operations that
-        // are not yet commands still record into it. New code should not need
-        // it.
-        ProjectUndoEngine& history();
 
         // One named history step spanning several commands. Prefer the scoped
         // forms below.

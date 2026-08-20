@@ -1,5 +1,7 @@
 #include "uapmd-data/uapmd-data.hpp"
 
+#include "CommandExecution.hpp"
+
 #include <optional>
 #include <thread>
 #include <utility>
@@ -14,210 +16,7 @@ namespace uapmd {
             return origin == ProjectMutationOrigin::User
                 || origin == ProjectMutationOrigin::Remote;
         }
-
-        // Opens a document transaction for as long as it lives. Transactions
-        // nest, so a command inside a step simply adds a level.
-        class ScopedTransaction {
-            std::function<void()> end_;
-
-        public:
-            ScopedTransaction(
-                const std::function<void()>& begin,
-                std::function<void()> end)
-                : end_(begin && end ? std::move(end) : std::function<void()>{}) {
-                if (end_)
-                    begin();
-            }
-
-            ~ScopedTransaction() {
-                if (end_)
-                    end_();
-            }
-
-            ScopedTransaction(const ScopedTransaction&) = delete;
-            ScopedTransaction& operator=(const ScopedTransaction&) = delete;
-        };
-
-        class CommandExecutionContext final : public ProjectCommandContext {
-            ProjectMutationOrigin origin_;
-            bool replaying_;
-            ProjectModelThreadDispatcher dispatch_;
-            ProjectCommandPtr revert_{};
-
-        public:
-            CommandExecutionContext(
-                ProjectMutationOrigin origin,
-                bool replaying,
-                ProjectModelThreadDispatcher dispatch)
-                : origin_(origin)
-                , replaying_(replaying)
-                , dispatch_(std::move(dispatch)) {
-            }
-
-            ProjectMutationOrigin origin() const override {
-                return origin_;
-            }
-
-            bool replaying() const override {
-                return replaying_;
-            }
-
-            void recordRevert(ProjectCommandPtr revert) override {
-                revert_ = std::move(revert);
-            }
-
-            void dispatchToModelThread(ProjectUndoTask task) override {
-                if (dispatch_)
-                    dispatch_(std::move(task));
-                else if (task)
-                    task();
-            }
-
-            ProjectCommandPtr takeRevert() {
-                return std::move(revert_);
-            }
-        };
-
-        // Adapts a pair of mutually reversing commands to the history engine.
-        //
-        // Each run refreshes the command for the opposite direction from
-        // whatever the executed command registered. Undo therefore needs no
-        // special case: it runs the reverting command, which registers the
-        // original as its own revert, which redo then runs.
-        class CommandOperation final
-            : public ProjectUndoableOperation
-            , public std::enable_shared_from_this<CommandOperation> {
-
-            ProjectCommandPtr forward_;
-            ProjectCommandPtr backward_{};
-            ProjectModelThreadDispatcher dispatch_;
-            std::function<void()> begin_transaction_;
-            std::function<void()> end_transaction_;
-
-        public:
-            CommandOperation(
-                ProjectCommandPtr command,
-                ProjectModelThreadDispatcher dispatch,
-                std::function<void()> beginTransaction,
-                std::function<void()> endTransaction)
-                : forward_(std::move(command))
-                , dispatch_(std::move(dispatch))
-                , begin_transaction_(std::move(beginTransaction))
-                , end_transaction_(std::move(endTransaction)) {
-            }
-
-            // For a change that has already been applied: the revert is
-            // supplied rather than captured by running the forward command.
-            CommandOperation(
-                ProjectCommandPtr command,
-                ProjectCommandPtr revert,
-                ProjectModelThreadDispatcher dispatch,
-                std::function<void()> beginTransaction,
-                std::function<void()> endTransaction)
-                : forward_(std::move(command))
-                , backward_(std::move(revert))
-                , dispatch_(std::move(dispatch))
-                , begin_transaction_(std::move(beginTransaction))
-                , end_transaction_(std::move(endTransaction)) {
-            }
-
-            std::string description() const override {
-                return forward_ ? forward_->description() : std::string{};
-            }
-
-            size_t historySizeInBytes() const override {
-                size_t result = sizeof(*this);
-                if (forward_)
-                    result += forward_->retainedSizeInBytes();
-                if (backward_)
-                    result += backward_->retainedSizeInBytes();
-                return result;
-            }
-
-            // A command that registered no revert changed nothing, so the
-            // history engine drops the entry. This is what replaces the
-            // "if (before == after) return true;" early-out that every
-            // mutation entry point would otherwise have to write for itself.
-            bool hasEffect() const override {
-                return backward_ != nullptr;
-            }
-
-            bool mergeWith(const ProjectUndoableOperation& subsequent) override {
-                const auto* next = dynamic_cast<const CommandOperation*>(&subsequent);
-                if (!next || !next->forward_ || !forward_)
-                    return false;
-                if (next->forward_->commandId() != forward_->commandId())
-                    return false;
-                // Adopt the later payload while keeping the earliest revert,
-                // so the coalesced step still restores the value the gesture
-                // started from.
-                return forward_->mergeWith(*next->forward_);
-            }
-
-            void perform(
-                const ProjectUndoExecutionContext& context,
-                ProjectUndoCompletion completion) override {
-                run(forward_, backward_, context, std::move(completion));
-            }
-
-            void undo(
-                const ProjectUndoExecutionContext& context,
-                ProjectUndoCompletion completion) override {
-                run(backward_, forward_, context, std::move(completion));
-            }
-
-            void redo(
-                const ProjectUndoExecutionContext& context,
-                ProjectUndoCompletion completion) override {
-                run(forward_, backward_, context, std::move(completion));
-            }
-
-        private:
-            void run(
-                const ProjectCommandPtr& command,
-                ProjectCommandPtr& opposite,
-                const ProjectUndoExecutionContext& engineContext,
-                ProjectUndoCompletion completion) {
-                if (!command) {
-                    if (completion)
-                        completion(ProjectUndoResult::failure(
-                            "The command for this history step is missing."));
-                    return;
-                }
-
-                // The context outlives this call: an asynchronous command
-                // records its revert from a callback.
-                auto context = std::make_shared<CommandExecutionContext>(
-                    engineContext.origin,
-                    !engineContext.recordHistory,
-                    dispatch_);
-                auto transaction = command->batchesDocumentEvents()
-                    ? std::make_shared<ScopedTransaction>(
-                        begin_transaction_, end_transaction_)
-                    : nullptr;
-                auto self = shared_from_this();
-                auto* target = &opposite;
-                command->execute(
-                    *context,
-                    // The transaction is moved in, not copied: a synchronous
-                    // command completes while run() is still on the stack, so
-                    // a second owner here would hold the transaction open
-                    // across whatever the completion goes on to do -- the next
-                    // child of a compound step, for one, which would then run
-                    // inside a transaction it never opened.
-                    [self, context, transaction = std::move(transaction), target,
-                     completion = std::move(completion)](
-                        ProjectCommandResult result) mutable {
-                        if (result.succeeded())
-                            if (auto revert = context->takeRevert())
-                                *target = std::move(revert);
-                        transaction.reset();
-                        if (completion)
-                            completion(std::move(result));
-                    });
-            }
-        };
-    }
+    } // namespace
 
     class ProjectCommandManager::Impl {
     public:
@@ -251,14 +50,8 @@ namespace uapmd {
                 return;
             }
 
-            history_->perform(
-                std::make_shared<CommandOperation>(
-                    std::move(command),
-                    dispatch_,
-                    begin_transaction_,
-                    end_transaction_),
-                origin,
-                std::move(completion));
+            history_->executeCommand(
+                std::move(command), origin, std::move(completion));
         }
 
         void recordExecuted(
@@ -281,15 +74,8 @@ namespace uapmd {
                 complete(std::move(completion), ProjectCommandResult::success());
                 return;
             }
-            history_->recordPerformed(
-                std::make_shared<CommandOperation>(
-                    std::move(command),
-                    std::move(revert),
-                    dispatch_,
-                    begin_transaction_,
-                    end_transaction_),
-                origin,
-                std::move(completion));
+            history_->recordCommand(
+                std::move(command), std::move(revert), origin, std::move(completion));
         }
 
         ProjectCommandResult executeSynchronously(
@@ -334,7 +120,7 @@ namespace uapmd {
             history_->redo(std::move(completion));
         }
 
-        ProjectUndoEngine* history() const {
+        ProjectHistory* history() const {
             return history_;
         }
 
@@ -357,18 +143,19 @@ namespace uapmd {
             ProjectCommandPtr command,
             ProjectMutationOrigin origin,
             ProjectCommandCompletion completion) {
-            auto context = std::make_shared<CommandExecutionContext>(
+            auto context = std::make_shared<command_detail::CommandExecutionContext>(
                 origin,
                 origin == ProjectMutationOrigin::UndoRedo,
                 dispatch_);
             auto transaction = command->batchesDocumentEvents()
-                ? std::make_shared<ScopedTransaction>(begin_transaction_, end_transaction_)
+                ? std::make_shared<command_detail::ScopedTransaction>(begin_transaction_, end_transaction_)
                 : nullptr;
             // The command is kept alive by the completion it was handed.
             auto held = command;
             held->execute(
                 *context,
-                [context, transaction, held, completion = std::move(completion)](
+                [context, transaction = std::move(transaction), held,
+                 completion = std::move(completion)](
                     ProjectCommandResult result) mutable {
                     transaction.reset();
                     if (completion)
@@ -383,7 +170,7 @@ namespace uapmd {
                 completion(std::move(result));
         }
 
-        ProjectUndoEngine* history_{};
+        ProjectHistory* history_{};
         ProjectModelThreadDispatcher dispatch_{};
         std::function<void()> begin_transaction_{};
         std::function<void()> end_transaction_{};
@@ -464,10 +251,6 @@ namespace uapmd {
         return history && history->setMaximumHistorySizeInBytes(value);
     }
 
-    ProjectUndoEngine& ProjectCommandManager::history() {
-        return *impl_->history();
-    }
-
     ProjectUndoResult ProjectCommandManager::beginStep(
         std::string description,
         ProjectMutationOrigin origin,
@@ -475,7 +258,7 @@ namespace uapmd {
         auto* history = impl_->history();
         if (!history)
             return ProjectUndoResult::failure("The command manager has no history engine.");
-        auto result = history->beginCompound(std::move(description), origin);
+        auto result = history->beginStep(std::move(description), origin);
         if (result.succeeded() && batching == ProjectStepEventBatching::WholeStep)
             impl_->beginStepTransaction();
         return result;
@@ -490,7 +273,7 @@ namespace uapmd {
             return;
         }
         impl_->endStepTransaction();
-        history->endCompound(std::move(completion));
+        history->endStep(std::move(completion));
     }
 
     void ProjectCommandManager::cancelStep(ProjectCommandCompletion completion) {
@@ -502,7 +285,7 @@ namespace uapmd {
             return;
         }
         impl_->endStepTransaction();
-        history->cancelCompound(std::move(completion));
+        history->cancelStep(std::move(completion));
     }
 
     ProjectUndoResult ProjectCommandManager::beginGesture(

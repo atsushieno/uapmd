@@ -1117,9 +1117,9 @@ namespace {
             result = std::move(completed);
         };
         if (redo)
-            timeline.undoEngine().redo(std::move(completion));
+            timeline.commands().history().redo(std::move(completion));
         else
-            timeline.undoEngine().undo(std::move(completion));
+            timeline.commands().history().undo(std::move(completion));
         return result;
     }
 
@@ -1467,7 +1467,7 @@ TEST_F(SequencerEngineOutputTest, MidiClipContentUndoRestoresClipIdentityAndEven
         replacementEvents);
 
     std::optional<uapmd::ProjectUndoResult> undoResult;
-    timeline.undoEngine().undo([&undoResult](uapmd::ProjectUndoResult result) {
+    timeline.commands().history().undo([&undoResult](uapmd::ProjectUndoResult result) {
         undoResult = std::move(result);
     });
     ASSERT_TRUE(undoResult.has_value());
@@ -1484,7 +1484,7 @@ TEST_F(SequencerEngineOutputTest, MidiClipContentUndoRestoresClipIdentityAndEven
     EXPECT_EQ(restoredMidi->eventTimestampsTicks(), kFragmentTicks);
 
     std::optional<uapmd::ProjectUndoResult> redoResult;
-    timeline.undoEngine().redo([&redoResult](uapmd::ProjectUndoResult result) {
+    timeline.commands().history().redo([&redoResult](uapmd::ProjectUndoResult result) {
         redoResult = std::move(result);
     });
     ASSERT_TRUE(redoResult.has_value());
@@ -1810,19 +1810,19 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     auto moveAndDrain = [&](bool redo) {
         std::optional<uapmd::ProjectUndoResult> result;
         if (redo)
-            timeline.undoEngine().redo([&result](auto completed) { result = std::move(completed); });
+            timeline.commands().history().redo([&result](auto completed) { result = std::move(completed); });
         else
-            timeline.undoEngine().undo([&result](auto completed) { result = std::move(completed); });
+            timeline.commands().history().undo([&result](auto completed) { result = std::move(completed); });
         drain();
         return result;
     };
 
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
     plugin->externallySetParameter(2, 0.2);
     plugin->externallySetParameter(2, 0.8);
     drain();
     EXPECT_DOUBLE_EQ(plugin->getParameterValue(2), 0.8);
-    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
+    EXPECT_FALSE(timeline.commands().history().state().canUndo);
 
     ASSERT_TRUE(timeline.commands().setPluginBypassed(*instanceId, true));
     EXPECT_TRUE(plugin->bypassed());
@@ -1899,7 +1899,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
 
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
     plugin->notifyParameterAfterStateCompletion(true);
     plugin->emitParameterDuringStateLoad(false);
     stateResult.reset();
@@ -1919,8 +1919,8 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(stateResult.has_value());
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{1, 2, 3}));
-    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
-    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+    EXPECT_FALSE(timeline.commands().history().state().canUndo);
+    EXPECT_TRUE(timeline.commands().history().state().canRedo);
     stateResult = moveAndDrain(true);
     ASSERT_TRUE(stateResult.has_value());
     ASSERT_TRUE(stateResult->succeeded()) << stateResult->error;
@@ -1932,10 +1932,10 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     EXPECT_EQ(plugin->saveStateSync(), (std::vector<uint8_t>{9, 8, 7}));
     // A state-dirty notification has no user-action provenance. It refreshes
     // the snapshot but must not overwrite the existing preset history.
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in preset");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Load plug-in preset");
 
     pluginHostObserver->configureStateCompletionParameterNotification(true, 0.9);
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
     std::optional<uapmd::ProjectUndoResult> lifecycleResult;
     timeline.recordPluginInstanceAddition(
         *instanceId,
@@ -1957,7 +1957,7 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
 
     const auto restoredInstanceId =
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front();
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
     lifecycleResult.reset();
     timeline.removePluginInstance(
         restoredInstanceId,
@@ -1973,8 +1973,8 @@ TEST_F(SequencerEngineOutputTest, PluginPropertiesStateAndLifecycleUndoAndRedo) 
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
     EXPECT_EQ(engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(), 1u);
-    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
-    EXPECT_EQ(timeline.undoEngine().state().redoDescription, "Remove plug-in");
+    EXPECT_TRUE(timeline.commands().history().state().canRedo);
+    EXPECT_EQ(timeline.commands().history().state().redoDescription, "Remove plug-in");
     lifecycleResult = moveAndDrain(true);
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
@@ -2022,7 +2022,7 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
         0.9,
         7,
         true);
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
 
     auto drain = [] {
         for (int i = 0; i < 100; ++i) {
@@ -2041,21 +2041,21 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
 
-    const auto afterRemoval = timeline.undoEngine().state();
+    const auto afterRemoval = timeline.commands().history().state();
     ASSERT_TRUE(afterRemoval.canUndo);
     EXPECT_FALSE(afterRemoval.canRedo);
     EXPECT_EQ(afterRemoval.undoDescription, "Remove plug-in");
     const auto removalHistorySize = afterRemoval.historySizeInBytes;
 
     lifecycleResult.reset();
-    timeline.undoEngine().undo([&lifecycleResult](uapmd::ProjectUndoResult result) {
+    timeline.commands().history().undo([&lifecycleResult](uapmd::ProjectUndoResult result) {
         lifecycleResult = std::move(result);
     });
     drain();
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
 
-    const auto afterUndo = timeline.undoEngine().state();
+    const auto afterUndo = timeline.commands().history().state();
     EXPECT_FALSE(afterUndo.canUndo);
     EXPECT_TRUE(afterUndo.canRedo);
     EXPECT_TRUE(afterUndo.undoDescription.empty());
@@ -2066,13 +2066,13 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalUndoPreservesOnlyRemovalHistoryEn
         1u);
 
     lifecycleResult.reset();
-    timeline.undoEngine().redo([&lifecycleResult](uapmd::ProjectUndoResult result) {
+    timeline.commands().history().redo([&lifecycleResult](uapmd::ProjectUndoResult result) {
         lifecycleResult = std::move(result);
     });
     drain();
     ASSERT_TRUE(lifecycleResult.has_value());
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
-    const auto afterRedo = timeline.undoEngine().state();
+    const auto afterRedo = timeline.commands().history().state();
     ASSERT_TRUE(afterRedo.canUndo);
     EXPECT_FALSE(afterRedo.canRedo);
     EXPECT_EQ(afterRedo.undoDescription, "Remove plug-in");
@@ -2149,13 +2149,13 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     ASSERT_TRUE(
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
 
-    const auto commandHistory = timeline.undoEngine().state();
+    const auto commandHistory = timeline.commands().history().state();
     EXPECT_TRUE(commandHistory.canUndo);
     EXPECT_FALSE(commandHistory.canRedo);
     EXPECT_EQ(commandHistory.undoDescription, "Remove plug-in");
 
     lifecycleResult.reset();
-    timeline.undoEngine().undo(
+    timeline.commands().history().undo(
         [&lifecycleResult](uapmd::ProjectUndoResult result) {
             lifecycleResult = std::move(result);
         });
@@ -2169,14 +2169,14 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front(),
         *instanceId);
 
-    const auto afterUndoRemoval = timeline.undoEngine().state();
+    const auto afterUndoRemoval = timeline.commands().history().state();
     EXPECT_TRUE(afterUndoRemoval.canUndo);
     EXPECT_TRUE(afterUndoRemoval.canRedo);
     EXPECT_EQ(afterUndoRemoval.undoDescription, "Add plug-in");
     EXPECT_EQ(afterUndoRemoval.redoDescription, "Remove plug-in");
 
     lifecycleResult.reset();
-    timeline.undoEngine().undo(
+    timeline.commands().history().undo(
         [&lifecycleResult](uapmd::ProjectUndoResult result) {
             lifecycleResult = std::move(result);
         });
@@ -2186,13 +2186,13 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     EXPECT_TRUE(
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
 
-    const auto afterUndoAddition = timeline.undoEngine().state();
+    const auto afterUndoAddition = timeline.commands().history().state();
     EXPECT_FALSE(afterUndoAddition.canUndo);
     EXPECT_TRUE(afterUndoAddition.canRedo);
     EXPECT_EQ(afterUndoAddition.redoDescription, "Add plug-in");
 
     lifecycleResult.reset();
-    timeline.undoEngine().redo(
+    timeline.commands().history().redo(
         [&lifecycleResult](uapmd::ProjectUndoResult result) {
             lifecycleResult = std::move(result);
         });
@@ -2202,14 +2202,14 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     ASSERT_EQ(
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().size(),
         1u);
-    const auto afterRedoAddition = timeline.undoEngine().state();
+    const auto afterRedoAddition = timeline.commands().history().state();
     EXPECT_TRUE(afterRedoAddition.canUndo);
     EXPECT_TRUE(afterRedoAddition.canRedo);
     EXPECT_EQ(afterRedoAddition.undoDescription, "Add plug-in");
     EXPECT_EQ(afterRedoAddition.redoDescription, "Remove plug-in");
 
     lifecycleResult.reset();
-    timeline.undoEngine().redo(
+    timeline.commands().history().redo(
         [&lifecycleResult](uapmd::ProjectUndoResult result) {
             lifecycleResult = std::move(result);
         });
@@ -2218,7 +2218,7 @@ TEST_F(SequencerEngineOutputTest, DexedVst3AddDeleteUndoRemovalThenUndoAddition)
     ASSERT_TRUE(lifecycleResult->succeeded()) << lifecycleResult->error;
     EXPECT_TRUE(
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().empty());
-    const auto afterRedoRemoval = timeline.undoEngine().state();
+    const auto afterRedoRemoval = timeline.commands().history().state();
     EXPECT_TRUE(afterRedoRemoval.canUndo);
     EXPECT_FALSE(afterRedoRemoval.canRedo);
     EXPECT_EQ(afterRedoRemoval.undoDescription, "Remove plug-in");
@@ -2262,7 +2262,7 @@ TEST_F(SequencerEngineOutputTest, PluginUndoableActionsResolveRestoredInstanceBy
     };
     auto undoAndDrain = [&] {
         std::optional<uapmd::ProjectUndoResult> result;
-        timeline.undoEngine().undo(
+        timeline.commands().history().undo(
             [&result](uapmd::ProjectUndoResult completed) {
                 result = std::move(completed);
             });
@@ -2330,20 +2330,20 @@ TEST_F(SequencerEngineOutputTest, PluginUndoableActionsResolveRestoredInstanceBy
         engine->getPluginInstance(restoredInstanceId));
     ASSERT_NE(restored, nullptr);
     EXPECT_TRUE(restored->bypassed());
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in preset");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Load plug-in preset");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_EQ(restored->saveStateSync(), (std::vector<uint8_t>{2}));
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Load plug-in state");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Load plug-in state");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_EQ(restored->saveStateSync(), (std::vector<uint8_t>{1}));
     EXPECT_EQ(
-        timeline.undoEngine().state().undoDescription,
+        timeline.commands().history().state().undoDescription,
         "Change plug-in UMP group");
 
     result = undoAndDrain();
@@ -2351,26 +2351,26 @@ TEST_F(SequencerEngineOutputTest, PluginUndoableActionsResolveRestoredInstanceBy
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_EQ(engine->getInstanceGroup(restoredInstanceId), 0u);
     EXPECT_EQ(
-        timeline.undoEngine().state().undoDescription,
+        timeline.commands().history().state().undoDescription,
         "Change per-note plug-in parameter");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Change plug-in parameter");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Change plug-in parameter");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Bypass plug-in");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Bypass plug-in");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_FALSE(restored->bypassed());
-    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
-    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
-    EXPECT_EQ(timeline.undoEngine().state().redoDescription, "Bypass plug-in");
+    EXPECT_FALSE(timeline.commands().history().state().canUndo);
+    EXPECT_TRUE(timeline.commands().history().state().canRedo);
+    EXPECT_EQ(timeline.commands().history().state().redoDescription, "Bypass plug-in");
 }
 
 TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInstance) {
@@ -2388,7 +2388,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         engine->umpBufferSizeInBytes()));
-    ASSERT_TRUE(timeline.undoEngine().clear());
+    ASSERT_TRUE(timeline.commands().history().clear());
 
     std::optional<int32_t> originalInstanceId;
     std::string addError;
@@ -2428,7 +2428,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     };
     auto undoAndDrain = [&] {
         std::optional<uapmd::ProjectUndoResult> result;
-        timeline.undoEngine().undo(
+        timeline.commands().history().undo(
             [&result](uapmd::ProjectUndoResult completed) {
                 result = std::move(completed);
             });
@@ -2456,7 +2456,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     EXPECT_NE(
         engine->tracks()[static_cast<size_t>(trackIndex)]->orderedInstanceIds().front(),
         *originalInstanceId);
-    EXPECT_EQ(timeline.undoEngine().state().undoDescription, "Connect track graph");
+    EXPECT_EQ(timeline.commands().history().state().undoDescription, "Connect track graph");
 
     result = undoAndDrain();
     ASSERT_TRUE(result.has_value());
@@ -2538,8 +2538,8 @@ TEST_F(SequencerEngineOutputTest, AudioClipContentUndoRestoresSourceAndMetadata)
     EXPECT_FALSE(result->error.empty());
     // The earlier clip-creation step is still undoable; the failed redo must
     // leave the replacement entry itself on the redo side.
-    EXPECT_TRUE(timeline.undoEngine().state().canUndo);
-    EXPECT_TRUE(timeline.undoEngine().state().canRedo);
+    EXPECT_TRUE(timeline.commands().history().state().canUndo);
+    EXPECT_TRUE(timeline.commands().history().state().canRedo);
 
     ASSERT_TRUE(fs::copy_file(
         audioPath,
@@ -2564,29 +2564,29 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
 
     auto& timeline = engine->timeline();
     ASSERT_TRUE(timeline.commands().setTrackGain(firstTrack, 0.5));
-    ASSERT_TRUE(timeline.undoEngine().state().canUndo);
+    ASSERT_TRUE(timeline.commands().history().state().canUndo);
     std::optional<uapmd::ProjectUndoResult> result;
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_DOUBLE_EQ(engine->tracks()[static_cast<size_t>(firstTrack)]->trackGain(), 1.0);
-    timeline.undoEngine().redo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().redo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_DOUBLE_EQ(engine->tracks()[static_cast<size_t>(firstTrack)]->trackGain(), 0.5);
 
     ASSERT_TRUE(timeline.commands().setTrackMuted(firstTrack, true));
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_FALSE(engine->tracks()[static_cast<size_t>(firstTrack)]->muted());
 
     ASSERT_TRUE(timeline.commands().setTrackBypassed(firstTrack, true));
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2596,7 +2596,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     EXPECT_EQ(
         engine->frozenTrackManager().freezePolicyForTrack(firstTrack),
         uapmd::FrozenTrackManager::FreezePolicy::On);
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2611,7 +2611,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     latencySettings.record_armed_track_indexes = {firstTrack};
     latencySettings.monitored_track_indexes = {secondTrack};
     ASSERT_TRUE(timeline.commands().setLatencyCompensationSettings(latencySettings));
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2639,7 +2639,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2, 3}));
 
     ASSERT_TRUE(timeline.commands().setDeviceInputChannels(firstTrack, sourceNodeId, {4}));
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2648,12 +2648,12 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
     ASSERT_NE(input, nullptr);
     EXPECT_EQ(input->getInputChannels(), (std::vector<uint32_t>{2, 3}));
 
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_EQ(track->getSourceNode(sourceNodeId), nullptr);
-    timeline.undoEngine().redo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().redo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -2661,7 +2661,7 @@ TEST_F(SequencerEngineOutputTest, TrackPropertiesAndDeviceRoutingUndoAndRedo) {
 
     ASSERT_TRUE(timeline.commands().setTrackSolo(firstTrack, true));
     ASSERT_TRUE(timeline.commands().setTrackSolo(secondTrack, true));
-    timeline.undoEngine().undo([&result](uapmd::ProjectUndoResult completed) {
+    timeline.commands().history().undo([&result](uapmd::ProjectUndoResult completed) {
         result = std::move(completed);
     });
     ASSERT_TRUE(result->succeeded()) << result->error;
@@ -3099,7 +3099,7 @@ TEST_F(SequencerEngineOutputTest, PreparedPluginTrackAdditionIsOneUndoStep) {
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_TRUE(engine->tracks().empty());
-    EXPECT_FALSE(timeline.undoEngine().state().canUndo);
+    EXPECT_FALSE(timeline.commands().history().state().canUndo);
 
     result = moveHistory(timeline, true);
     ASSERT_TRUE(result.has_value());

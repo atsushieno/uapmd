@@ -320,7 +320,8 @@ namespace uapmd {
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
             size_t umpBufferSizeInInts,
-            std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost = {});
+            std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost = {},
+            ProjectHistoryFactory historyFactory = {});
         ~SequencerEngineImpl() override;
 
         AudioPluginHostingAPI* pluginHost() override;
@@ -572,7 +573,7 @@ namespace uapmd {
 
         bool isProjectDirty() const override {
             return timeline_->hasPendingPluginMutations()
-                || timeline_->undoEngine().state().dirty;
+                || timeline_->commands().history().state().dirty;
         }
 
         bool isTrackDirty(int32_t trackIndex) const override;
@@ -631,24 +632,29 @@ namespace uapmd {
     std::unique_ptr<SequencerEngine> SequencerEngine::create(
         int32_t sampleRate,
         size_t audioBufferSizeInFrames,
-        size_t umpBufferSizeInInts
+        size_t umpBufferSizeInInts,
+        ProjectHistoryFactory historyFactory
     ) {
         return std::make_unique<SequencerEngineImpl>(
             sampleRate,
             audioBufferSizeInFrames,
-            umpBufferSizeInInts);
+            umpBufferSizeInInts,
+            nullptr,
+            std::move(historyFactory));
     }
 
     std::unique_ptr<SequencerEngine> SequencerEngine::createWithPluginHost(
         int32_t sampleRate,
         size_t audioBufferSizeInFrames,
         size_t umpBufferSizeInInts,
-        std::unique_ptr<AudioPluginHostingAPI> pluginHost) {
+        std::unique_ptr<AudioPluginHostingAPI> pluginHost,
+        ProjectHistoryFactory historyFactory) {
         return std::make_unique<SequencerEngineImpl>(
             sampleRate,
             audioBufferSizeInFrames,
             umpBufferSizeInInts,
-            std::move(pluginHost));
+            std::move(pluginHost),
+            std::move(historyFactory));
     }
 
     // SequencerEngineImpl
@@ -656,7 +662,8 @@ namespace uapmd {
         int32_t sampleRate,
         size_t audioBufferSizeInFrames,
         size_t umpBufferSizeInInts,
-        std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost) :
+        std::unique_ptr<AudioPluginHostingAPI> suppliedPluginHost,
+        ProjectHistoryFactory historyFactory) :
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
@@ -665,7 +672,7 @@ namespace uapmd {
             : AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         input_analyser_ = webaudio_compat::createAnalyserNode({.node_id = "engine-input-analyser"});
-        timeline_ = TimelineFacade::create(*this);
+        timeline_ = TimelineFacade::create(*this, std::move(historyFactory));
         midi_recorder_ = std::make_unique<MidiRecorder>(*this);
         addPlaybackEngineExtension(*midi_recorder_);
         tail_process_manager_ = std::make_unique<TailProcessManagerImpl>(

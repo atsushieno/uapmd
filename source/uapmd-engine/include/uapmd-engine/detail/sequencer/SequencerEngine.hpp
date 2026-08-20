@@ -255,10 +255,14 @@ namespace uapmd {
         virtual void markTrackDirty(int32_t trackIndex, bool dirty = true) = 0;
         virtual void clearTrackDirtyState() = 0;
 
+        // `historyFactory` chooses which history the project records its
+        // changes into; an empty one means the default command-and-inverse
+        // history. See uapmd-data's ProjectHistory.
         static std::unique_ptr<SequencerEngine> create(
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
-            size_t umpBufferSizeInInts);
+            size_t umpBufferSizeInInts,
+            ProjectHistoryFactory historyFactory = {});
 
         // Test/support factory for supplying a deterministic plug-in host.
         // The normal application path should use create(), which constructs
@@ -267,7 +271,8 @@ namespace uapmd {
             int32_t sampleRate,
             size_t audioBufferSizeInFrames,
             size_t umpBufferSizeInInts,
-            std::unique_ptr<uapmd_plugin_hosting::AudioPluginHostingAPI> pluginHost);
+            std::unique_ptr<uapmd_plugin_hosting::AudioPluginHostingAPI> pluginHost,
+            ProjectHistoryFactory historyFactory = {});
     };
 
 }

@@ -94,7 +94,7 @@ namespace uapmd::timeline_detail {
         operation->project_file = projectFile;
         operation->emit_document_event = options.emitDocumentEvent;
         operation->mark_history_saved = options.markHistorySaved;
-        operation->history_state_id = facade_.undoEngine().state().currentStateId;
+        operation->history_state_id = facade_.commands().history().state().currentStateId;
         operation->callback = std::move(callback);
 
         // Reports exactly once, from whichever asynchronous branch finishes
@@ -128,7 +128,7 @@ namespace uapmd::timeline_detail {
             error = "Unfreeze the busy track before saving the project";
             return false;
         }
-        if (facade_.undoEngine().state().busy) {
+        if (facade_.commands().history().state().busy) {
             error = "Wait for the pending undo operation before saving the project";
             return false;
         }
@@ -429,7 +429,7 @@ namespace uapmd::timeline_detail {
         PendingProjectSaveContext& operation,
         const ProjectSaveCompletion& complete) {
         if (operation.mark_history_saved)
-            facade_.undoEngine().markStateSaved(operation.history_state_id);
+            facade_.commands().history().markStateSaved(operation.history_state_id);
         if (operation.emit_document_event) {
             ProjectDocumentEvent savedEvent(
                 ProjectDocumentEventKind::ProjectSaved, "project-saved");
@@ -510,7 +510,7 @@ namespace uapmd::timeline_detail {
             run.callback({false, "Unfreeze the busy track before loading a project"});
             return false;
         }
-        if (facade_.undoEngine().state().busy) {
+        if (facade_.commands().history().state().busy) {
             run.callback({false, "Wait for the pending undo operation before loading a project"});
             return false;
         }
@@ -538,7 +538,7 @@ namespace uapmd::timeline_detail {
     // set. A failed load leaves the partial replacement dirty; a successful
     // one establishes a clean history root at the end.
     void TimelineProjectSerializer::resetDocumentForLoad(ProjectLoadRun& run) {
-        facade_.undoEngine().clear(false);
+        facade_.commands().history().clear(false);
 
         ProjectDocumentEvent closingEvent(
             ProjectDocumentEventKind::ProjectClosing, "project-closing");
@@ -1093,7 +1093,7 @@ namespace uapmd::timeline_detail {
             callback({false, std::move(extensionError)});
             return;
         }
-        facade_.undoEngine().clear(true);
+        facade_.commands().history().clear(true);
         host_.notifyTimelineChanged();
         engine_.setMasterTrackMarkers(std::move(masterTrackMarkers));
         callback({true, {}});
