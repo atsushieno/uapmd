@@ -37,6 +37,46 @@ WebAssembly uses built-in addins only. The manager has no separate code loading 
 
 ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
 
+## Extension points
+
+`/uapmd/engine/v1` exposes the `uapmd::SequencerEngine` an addin runs against.
+
+`/uapmd/audio-graph/provider/v1` exposes the `uapmd::AudioGraphProviderRegistry`.
+Providers are *contributed*, not replaced: an addin adds its own audio graph
+implementation alongside the built-in simple linear and full DAG providers, and
+must `remove()` whatever it added during `cleanup()`.
+
+A provider writes a graph type id into project data, but that id does not decide
+who loads the graph back. **Loadability is decided by asking providers to load
+it.** A graph written by one provider is often loadable by another -- a linear
+chain is a degenerate DAG -- and the provider that wrote it may not exist in the
+build that opens it. The recorded type is tried first; if it is absent or its
+loader fails, the remaining providers are tried in turn, and the one that
+succeeds is recorded as the graph's type from then on.
+
+This puts one requirement on providers:
+
+- **A loader must fail when it cannot represent its input.** Accepting a graph
+  and quietly dropping what it cannot express would make it the answer to every
+  query and destroy the data on the next save. The built-in simple linear
+  provider refuses a graph carrying explicit connections for exactly this
+  reason.
+
+When no provider can load a graph, the track runs a substitute graph and the
+original graph file is carried through the next save byte for byte, under its
+original graph type -- so a build that does have the provider still opens the
+project intact. Replacing the track's graph type discards it, since that is the
+user choosing a different graph.
+
+The graph type id remains an exact identity elsewhere: creating a graph of a
+requested type, undo snapshots, and recording what a saved graph is. Only
+loading is decided by result.
+
+Graphs offer capabilities through `uapmd_graph::AudioGraphExtension`, retrieved
+with `AudioGraph::getExtension<T>()`. Edge editing lives behind
+`GraphConnectionExtension`; nothing outside a provider names a concrete graph
+class.
+
 ## Roadmap
 
 ### v1: source-integrated addins

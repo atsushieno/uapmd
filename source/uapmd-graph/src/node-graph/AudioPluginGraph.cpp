@@ -339,8 +339,8 @@ namespace uapmd_graph {
         return true;
     }
 
-    std::unique_ptr<AudioPluginGraph> AudioPluginGraph::create(size_t eventBufferSizeInBytes) {
-        return std::make_unique<AudioPluginGraphImpl>(eventBufferSizeInBytes);
+    std::unique_ptr<AudioPluginGraph> AudioPluginGraph::create(size_t eventBufferSizeInBytes, std::string providerId) {
+        return std::make_unique<AudioPluginGraphImpl>(eventBufferSizeInBytes, std::move(providerId));
     }
 
     bool AudioPluginGraph::migrate(AudioPluginGraph& to, AudioPluginGraph& from) {

@@ -774,8 +774,8 @@ TEST_F(SequencerEngineOutputTest, OfflineRenderIsIdenticalBeforeAndAfterTrackDAG
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         umpBufferSize));
-    ASSERT_NE(dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-                  &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+    ASSERT_NE(engine->tracks()[static_cast<size_t>(trackIndex)]
+                  ->graph().getExtension<uapmd_graph::GraphConnectionExtension>(),
               nullptr);
 
     auto dagResult = render(dagPath);
@@ -1673,8 +1673,8 @@ TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
         trackIndex,
         "urn:uapmd-graph:common/graph/dag/v1",
         engine->umpBufferSizeInBytes()));
-    auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-        &engine->tracks()[static_cast<size_t>(trackIndex)]->graph());
+    auto* graph = engine->tracks()[static_cast<size_t>(trackIndex)]
+        ->graph().getExtension<uapmd_graph::GraphConnectionExtension>();
     ASSERT_NE(graph, nullptr);
     // The graph-type migration establishes the default simple topology. Clear
     // that setup topology so this test isolates the authored connection step.
@@ -1721,15 +1721,15 @@ TEST_F(SequencerEngineOutputTest, GraphTypeAndConnectionUndoAndRedo) {
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_EQ(
-        dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-            &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+        engine->tracks()[static_cast<size_t>(trackIndex)]
+            ->graph().getExtension<uapmd_graph::GraphConnectionExtension>(),
         nullptr);
     result = moveHistory(timeline, true);
     ASSERT_TRUE(result.has_value());
     ASSERT_TRUE(result->succeeded()) << result->error;
     EXPECT_NE(
-        dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-            &engine->tracks()[static_cast<size_t>(trackIndex)]->graph()),
+        engine->tracks()[static_cast<size_t>(trackIndex)]
+            ->graph().getExtension<uapmd_graph::GraphConnectionExtension>(),
         nullptr);
 }
 
@@ -2406,8 +2406,8 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     const auto address = timeline.addresses().pluginAddress(*originalInstanceId);
     ASSERT_TRUE(address.has_value());
 
-    auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-        &engine->tracks()[static_cast<size_t>(trackIndex)]->graph());
+    auto* graph = engine->tracks()[static_cast<size_t>(trackIndex)]
+        ->graph().getExtension<uapmd_graph::GraphConnectionExtension>();
     ASSERT_NE(graph, nullptr);
     graph->clearConnections();
     uapmd_graph::AudioPluginGraphConnection connection;

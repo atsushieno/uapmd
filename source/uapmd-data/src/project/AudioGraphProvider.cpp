@@ -271,6 +271,14 @@ bool loadPluginListGraphJsonFile(UapmdProjectPluginListGraphData* graph, const s
     auto root = parseGraphJsonObject(bytes);
     if (!root)
         return false;
+    // A plugin list is a chain and has nowhere to put explicit edges. Loading
+    // this anyway would report success and drop them, so refuse instead: it is
+    // the loader's failure that tells the caller to try a provider that can
+    // represent this graph.
+    if (root->hasObjectMember("connections")
+        && (*root)["connections"].isArray()
+        && (*root)["connections"].size() > 0)
+        return false;
     if (root->hasObjectMember("properties") && (*root)["properties"].isObject()) {
         std::map<std::string, std::string> properties;
         auto propertiesObj = (*root)["properties"];
@@ -411,9 +419,10 @@ class SimpleLinearAudioGraphProvider final : public AudioGraphProvider {
 public:
     const std::string& id() const override { return id_; }
     const std::string& label() const override { return label_; }
+    bool supportsConnectionEditing() const override { return false; }
 
     std::unique_ptr<AudioPluginGraph> createGraph(size_t eventBufferSizeInBytes) const override {
-        return AudioPluginGraph::create(eventBufferSizeInBytes);
+        return AudioPluginGraph::create(eventBufferSizeInBytes, id_);
     }
 
     bool deserializeRuntimeGraph(
@@ -467,9 +476,11 @@ class FullDAGAudioGraphProvider final : public AudioGraphProvider {
 public:
     const std::string& id() const override { return id_; }
     const std::string& label() const override { return label_; }
+    bool supportsConnectionEditing() const override { return true; }
 
     std::unique_ptr<AudioPluginGraph> createGraph(size_t eventBufferSizeInBytes) const override {
-        return std::unique_ptr<AudioPluginGraph>(AudioPluginFullDAGraph::create(eventBufferSizeInBytes).release());
+        return std::unique_ptr<AudioPluginGraph>(
+            AudioPluginFullDAGraph::create(eventBufferSizeInBytes, id_).release());
     }
 
     bool deserializeRuntimeGraph(
@@ -502,8 +513,8 @@ public:
         if (!dagData)
             return;
 
-        auto* fullGraph = dynamic_cast<AudioPluginFullDAGraph*>(&runtimeGraph);
-        if (!fullGraph)
+        auto* edges = runtimeGraph.getExtension<GraphConnectionExtension>();
+        if (!edges)
             return;
 
         dagData->clearConnections();
@@ -512,7 +523,7 @@ public:
         runtimeGraph.saveTo(properties);
         dagData->properties(std::move(properties));
 
-        for (const auto& connection : fullGraph->connections()) {
+        for (const auto& connection : edges->connections()) {
             auto toProjectEndpoint = [&](const AudioPluginGraphEndpoint& endpoint)
                 -> std::optional<UapmdProjectPluginGraphEndpointData> {
                 UapmdProjectPluginGraphEndpointData result;
@@ -733,31 +744,61 @@ void AudioGraphProviderRegistry::clear() {
 }
 
 const AudioGraphProvider* AudioGraphProviderRegistry::get(const std::string& graphTypeId) const {
+    // Exact match only. An unrecognised graph type must not quietly resolve to
+    // the simple linear provider: that would load a richer graph as a lesser
+    // one and drop what it could not represent on the next save. The empty id
+    // is the simple linear provider's own id, so `get("")` still matches here.
     auto it = std::ranges::find_if(providers_, [&](const auto& provider) {
         return provider && provider->id() == graphTypeId;
     });
-    if (it != providers_.end())
-        return it->get();
-
-    auto fallback = std::ranges::find_if(providers_, [&](const auto& provider) {
-        return provider && provider->id().empty();
-    });
-    return fallback != providers_.end() ? fallback->get() : nullptr;
+    return it != providers_.end() ? it->get() : nullptr;
 }
 
 const AudioGraphProvider* AudioGraphProviderRegistry::get(const AudioPluginGraph& graph) const {
     if (!graph.providerId().empty())
         return get(graph.providerId());
 
-    if (dynamic_cast<const AudioPluginFullDAGraph*>(&graph) != nullptr) {
-        auto it = std::ranges::find_if(providers_, [](const auto& provider) {
-            return provider && !provider->id().empty();
-        });
-        if (it != providers_.end())
-            return it->get();
-    }
+    // A graph with no stamped provider id was built directly rather than
+    // through a provider. Infer from its capabilities so that such a graph is
+    // not saved as something less than it is.
+    if (graph.getExtension<GraphConnectionExtension>() != nullptr)
+        return findConnectionEditingProvider();
 
     return get(graph.providerId());
+}
+
+const AudioGraphProvider* AudioGraphProviderRegistry::findConnectionEditingProvider() const {
+    auto it = std::ranges::find_if(providers_, [](const auto& provider) {
+        return provider && provider->supportsConnectionEditing();
+    });
+    return it != providers_.end() ? it->get() : nullptr;
+}
+
+LoadedProjectGraph AudioGraphProviderRegistry::loadWithAnyProvider(
+    UapmdProjectPluginGraphData& metadata,
+    const std::vector<uint8_t>& bytes) const {
+    auto attempt = [&](const AudioGraphProvider* provider) -> LoadedProjectGraph {
+        if (!provider)
+            return {};
+        auto data = loadSerializedProjectGraph(*provider, metadata, bytes);
+        if (!data)
+            return {};
+        return {provider, std::move(data)};
+    };
+
+    // The recorded graph type is the first thing to try, so that a graph
+    // reopened by the provider that wrote it takes the same path it always has.
+    const auto* preferred = get(metadata.graphType());
+    if (auto loaded = attempt(preferred); loaded.provider)
+        return loaded;
+
+    for (const auto& provider : providers_) {
+        if (provider.get() == preferred)
+            continue;
+        if (auto loaded = attempt(provider.get()); loaded.provider)
+            return loaded;
+    }
+    return {};
 }
 
 std::unique_ptr<AudioPluginGraph> AudioGraphProviderRegistry::createGraph(

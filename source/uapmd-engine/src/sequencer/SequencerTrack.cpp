@@ -93,10 +93,17 @@ namespace uapmd {
         size_t eventBufferSizeInBytes,
         const std::string& graphProviderId) {
         auto graph = registry.createGraph(graphProviderId, eventBufferSizeInBytes);
-        if (!graph)
+        if (!graph) {
+            // Only the default graph type may fall back. A caller that asked
+            // for a named provider gets nothing rather than a lesser graph
+            // silently standing in for the one it requested.
+            if (!graphProviderId.empty())
+                return nullptr;
             graph = AudioPluginGraph::create(eventBufferSizeInBytes);
-        if (graph)
-            graph->appendBuiltInNodeSimple(createTrackGainNodeDescriptor());
+            if (!graph)
+                return nullptr;
+        }
+        graph->appendBuiltInNodeSimple(createTrackGainNodeDescriptor());
         return std::make_unique<SequencerTrackImpl>(std::move(graph));
     }
 
@@ -107,6 +114,9 @@ namespace uapmd {
             return false;
         graph_ = std::move(graph);
         ensureTrackGainNode();
+        // Choosing a graph replaces whatever unloadable one this track was
+        // standing in for, so there is nothing left to preserve.
+        clearUnresolvedGraph();
         return true;
     }
 

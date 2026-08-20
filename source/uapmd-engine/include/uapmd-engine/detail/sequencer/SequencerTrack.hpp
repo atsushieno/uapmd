@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -10,11 +11,34 @@
 namespace uapmd {
 
     class SequencerTrack {
+        std::string unresolved_graph_type_{};
+        std::vector<uint8_t> unresolved_graph_payload_{};
+
     protected:
         SequencerTrack() = default;
 
     public:
         virtual ~SequencerTrack() = default;
+
+        // A graph this build could not construct, because no provider claimed
+        // its type when the project loaded -- typically an addin that is
+        // absent or disabled. The track runs a substitute graph; these carry
+        // the original definition verbatim so that saving writes it back
+        // rather than replacing it with the substitute. Both are empty for
+        // every track whose graph did load.
+        //
+        // Concrete state rather than virtuals: the meaning is the same for
+        // every track implementation, as with `AudioGraph::providerId()`.
+        const std::string& unresolvedGraphType() const { return unresolved_graph_type_; }
+        const std::vector<uint8_t>& unresolvedGraphPayload() const { return unresolved_graph_payload_; }
+        void unresolvedGraph(std::string graphType, std::vector<uint8_t> payload) {
+            unresolved_graph_type_ = std::move(graphType);
+            unresolved_graph_payload_ = std::move(payload);
+        }
+        void clearUnresolvedGraph() {
+            unresolved_graph_type_.clear();
+            unresolved_graph_payload_.clear();
+        }
         static std::unique_ptr<SequencerTrack> create(
             const AudioGraphProviderRegistry& registry,
             size_t eventBufferSizeInBytes,

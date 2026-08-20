@@ -229,8 +229,8 @@ namespace uapmd {
         }
         std::vector<uapmd_graph::AudioPluginGraphConnection> connections;
         if (auto* track = resolveSequencerTrack(trackIndex))
-            if (auto* graph = dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(
-                    &track->graph()))
+            if (auto* graph = track->graph()
+                    .getExtension<uapmd_graph::GraphConnectionExtension>())
                 for (auto connection : graph->connections()) {
                     auto normalizeEndpoint = [track](auto& endpoint) {
                         if (endpoint.type

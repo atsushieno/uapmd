@@ -432,6 +432,8 @@ namespace uapmd_graph {
             return static_cast<AudioBusesLayoutExtension*>(this);
         if (type == typeid(OutputRoutingExtension))
             return static_cast<OutputRoutingExtension*>(this);
+        if (type == typeid(GraphConnectionExtension))
+            return static_cast<GraphConnectionExtension*>(this);
         return nullptr;
     }
 
@@ -440,6 +442,8 @@ namespace uapmd_graph {
             return static_cast<const AudioBusesLayoutExtension*>(this);
         if (type == typeid(OutputRoutingExtension))
             return static_cast<const OutputRoutingExtension*>(this);
+        if (type == typeid(GraphConnectionExtension))
+            return static_cast<const GraphConnectionExtension*>(this);
         return nullptr;
     }
 
@@ -1275,8 +1279,8 @@ namespace uapmd_graph {
         return outputTailLengthInSeconds(0);
     }
 
-    std::unique_ptr<AudioPluginFullDAGraph> AudioPluginFullDAGraph::create(size_t eventBufferSizeInBytes) {
-        return std::make_unique<AudioPluginFullDAGraphImpl>(eventBufferSizeInBytes, std::string{});
+    std::unique_ptr<AudioPluginFullDAGraph> AudioPluginFullDAGraph::create(size_t eventBufferSizeInBytes, std::string providerId) {
+        return std::make_unique<AudioPluginFullDAGraphImpl>(eventBufferSizeInBytes, std::move(providerId));
     }
 
 }

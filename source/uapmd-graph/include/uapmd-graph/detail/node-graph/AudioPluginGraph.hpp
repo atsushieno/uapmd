@@ -51,7 +51,9 @@ namespace uapmd_graph {
         virtual void saveTo(std::map<std::string, std::string>& entries) = 0;
         virtual void loadFrom(const std::map<std::string, std::string>& entries) = 0;
 
-        static std::unique_ptr<AudioPluginGraph> create(size_t eventBufferSizeInBytes);
+        // `providerId` is stamped onto the graph so that whoever created it can
+        // be identified again later without guessing from the graph's shape.
+        static std::unique_ptr<AudioPluginGraph> create(size_t eventBufferSizeInBytes, std::string providerId = {});
         static bool migrate(AudioPluginGraph& to, AudioPluginGraph& from);
 
     private:

@@ -126,10 +126,10 @@ namespace uapmd {
                 const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
         auto* track = resolveSequencerTrack(trackIndex);
         auto* graph = track
-            ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+            ? track->graph().getExtension<uapmd_graph::GraphConnectionExtension>()
             : nullptr;
         if (!graph) {
-            error = "Track graph is not a full DAG graph";
+            error = "Track graph does not support connection editing";
             return false;
         }
 
@@ -192,7 +192,7 @@ namespace uapmd {
         const auto trackIndex = trackIndexForPersistentId(trackReferenceId);
         auto* track = resolveSequencerTrack(trackIndex);
         auto* graph = track
-            ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+            ? track->graph().getExtension<uapmd_graph::GraphConnectionExtension>()
             : nullptr;
         if (!graph)
             return false;
@@ -209,7 +209,7 @@ namespace uapmd {
     TimelineFacadeImpl::graphConnectionById(int32_t trackIndex, int64_t connectionId) {
         auto* track = resolveSequencerTrack(trackIndex);
         auto* graph = track
-            ? dynamic_cast<uapmd_graph::AudioPluginFullDAGraph*>(&track->graph())
+            ? track->graph().getExtension<uapmd_graph::GraphConnectionExtension>()
             : nullptr;
         if (!graph)
             return std::nullopt;

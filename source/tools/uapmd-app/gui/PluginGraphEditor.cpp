@@ -253,13 +253,13 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     ImGui::Separator();
 
     auto& graph = access.track->graph();
-    auto* fullGraph = dynamic_cast<AudioPluginFullDAGraph*>(&graph);
-    if (!fullGraph) {
+    auto* edges = graph.getExtension<GraphConnectionExtension>();
+    if (!edges) {
         ImGui::TextDisabled("Advanced DAG editor is unavailable for this graph type.");
         return;
     }
     auto nodes = graph.nodes();
-    auto connections = fullGraph->connections();
+    auto connections = edges->connections();
     auto* layoutExtension = graph.getExtension<AudioBusesLayoutExtension>();
     auto layout = layoutExtension ? layoutExtension->busesLayout() : AudioGraphBusesLayout{};
 

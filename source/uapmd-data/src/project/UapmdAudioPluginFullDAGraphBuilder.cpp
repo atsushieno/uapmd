@@ -59,8 +59,8 @@ bool UapmdAudioPluginFullDAGraphBuilder::build(
     if (!dagData)
         return false;
 
-    auto* fullGraph = dynamic_cast<AudioPluginFullDAGraph*>(&graph);
-    if (!fullGraph)
+    auto* edges = graph.getExtension<GraphConnectionExtension>();
+    if (!edges)
         return false;
 
     for (const auto& node : dagData->genericNodes()) {
@@ -68,16 +68,16 @@ bool UapmdAudioPluginFullDAGraphBuilder::build(
             continue;
         if (node.node_id == kImplicitTrackGainNodeId)
             continue;
-        fullGraph->appendBuiltInNodeSimple(node);
+        graph.appendBuiltInNodeSimple(node);
     }
 
-    fullGraph->clearConnections();
+    edges->clearConnections();
     for (const auto& serialized : dagData->connections()) {
         auto source = toRuntimeEndpoint(serialized.source, graph, orderedInstanceIds);
         auto target = toRuntimeEndpoint(serialized.target, graph, orderedInstanceIds);
         if (!source || !target)
             continue;
-        fullGraph->connect(AudioPluginGraphConnection{
+        edges->connect(AudioPluginGraphConnection{
             .id = serialized.id,
             .bus_type = serialized.bus_type,
             .source = *source,

@@ -314,6 +314,13 @@ namespace uapmd {
     public:
         void registerAddinExtensionPoints(uapmd_addin::AddinManager& manager) override {
             manager.registerExtensionPoint("/uapmd/engine/v1", this);
+            // Audio graph providers are contributed, not replaced: an addin
+            // adds its own graph implementation alongside the built-in ones.
+            // The registry stays owned by the timeline facade; an addin must
+            // remove whatever it added during cleanup().
+            manager.registerExtensionPoint(
+                "/uapmd/audio-graph/provider/v1",
+                &timeline_->audioGraphProviderRegistry());
         }
 
         explicit SequencerEngineImpl(

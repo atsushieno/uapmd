@@ -229,7 +229,12 @@ namespace uapmd::timeline_detail {
                 && (sequencerTrack->trackGain() != 1.0
                     || sequencerTrack->muted()
                     || sequencerTrack->solo());
-            if (!hasClips && !hasPlugins && !hasMixerState)
+            // A track holding a graph this build could not construct looks
+            // empty -- its plug-ins were never instantiated -- but dropping it
+            // would discard the very graph we are preserving.
+            const bool hasUnresolvedGraph = sequencerTrack
+                && !sequencerTrack->unresolvedGraphPayload().empty();
+            if (!hasClips && !hasPlugins && !hasMixerState && !hasUnresolvedGraph)
                 continue;
 
             queueProjectGraphSerialization(
@@ -579,6 +584,15 @@ namespace uapmd::timeline_detail {
     //  Currently, `UapmdPluginGraphBuilder::build()` is practically no-op, but the project loads.
     //  It is because it is already added in a linear manner.
     //  But that may not be the right thing depending on the graphs (such as, full DAG).
+    SequencerTrack* TimelineProjectSerializer::resolveLoadedSequencerTrack(int32_t trackIndex) {
+        if (trackIndex == kMasterTrackIndex)
+            return engine_.masterTrack();
+        auto& tracks = engine_.tracks();
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
+            return nullptr;
+        return tracks[static_cast<size_t>(trackIndex)];
+    }
+
     void TimelineProjectSerializer::queuePluginLoadsForTrack(
         ProjectLoadRun& run,
         UapmdProjectTrackData* projectTrack,
@@ -588,25 +602,58 @@ namespace uapmd::timeline_detail {
         auto* graphData = projectTrack->graph();
         if (!graphData)
             return;
-        auto* provider = facade_.audioGraphProviderRegistry().get(graphData->graphType());
         auto externalGraphFile = graphData->externalFile();
-        if (!externalGraphFile.empty() && provider) {
+        const AudioGraphProvider* provider = nullptr;
+
+        if (externalGraphFile.empty())
+            // Nothing to try-load: the graph came inline with the project file
+            // and the reader already parsed it. The recorded type is all we
+            // have to go on.
+            provider = facade_.audioGraphProviderRegistry().get(graphData->graphType());
+        else {
             auto resolvedGraphFile = makeAbsolutePath(run.dir, externalGraphFile);
             std::vector<uint8_t> graphBytes;
             std::ifstream graphInput(resolvedGraphFile, std::ios::binary);
             if (graphInput)
                 graphBytes.assign(std::istreambuf_iterator<char>(graphInput), {});
-            auto loadedGraphData = graphBytes.empty()
-                ? std::unique_ptr<UapmdProjectPluginGraphData>{}
-                : loadSerializedProjectGraph(*provider, *graphData, graphBytes);
-            if (!loadedGraphData) {
-                std::cerr << "Warning: Failed to load external graph file "
-                          << resolvedGraphFile << ". Falling back to embedded graph data." << std::endl;
-            } else {
-                projectTrack->graph(std::move(loadedGraphData));
+
+            // Which provider can load this is decided by asking them, not by
+            // matching the recorded graph type: a graph written by one provider
+            // is often loadable by another, and the one that wrote it may not
+            // exist in this build.
+            auto loaded = graphBytes.empty()
+                ? LoadedProjectGraph{}
+                : facade_.audioGraphProviderRegistry().loadWithAnyProvider(*graphData, graphBytes);
+
+            if (loaded.provider) {
+                provider = loaded.provider;
+                // Record who actually loaded it, so that materializing the
+                // runtime graph and saving it again both use the same provider
+                // rather than re-deriving from a type nothing here can serve.
+                loaded.data->graphType(provider->id());
+                projectTrack->graph(std::move(loaded.data));
                 graphData = projectTrack->graph();
+            } else if (!graphBytes.empty()) {
+                // No provider could load it -- typically an addin that supplied
+                // this graph type is absent or disabled. Keep the bytes on the
+                // runtime track so that saving writes them back untouched
+                // instead of replacing the graph with the substitute the track
+                // ends up running. The project data here is rebuilt from
+                // scratch on save, so it cannot be the one that carries them.
+                if (auto* sequencerTrack = resolveLoadedSequencerTrack(trackIndex))
+                    sequencerTrack->unresolvedGraph(graphData->graphType(), std::move(graphBytes));
+                std::cerr << "Warning: No audio graph provider could load graph type \""
+                          << graphData->graphType()
+                          << "\". The track runs with the default graph; its saved "
+                             "graph is preserved unchanged." << std::endl;
+                return;
+            } else {
+                std::cerr << "Warning: Failed to read external graph file "
+                          << resolvedGraphFile << ". Falling back to embedded graph data." << std::endl;
+                provider = facade_.audioGraphProviderRegistry().get(graphData->graphType());
             }
         }
+
         if (!provider)
             return;
 
@@ -1128,10 +1175,27 @@ namespace uapmd::timeline_detail {
             SequencerTrack* sequencerTrack,
             UapmdProjectTrackData& projectTrack,
             const std::string& scopeLabel) {
-                const auto* graphProvider = sequencerTrack
-            ? facade_.audioGraphProviderRegistry().get(sequencerTrack->graph())
-            : facade_.audioGraphProviderRegistry().get("");
-        if (!sequencerTrack || !graphProvider)
+                if (!sequencerTrack)
+            return;
+
+        // A graph whose provider was unavailable at load time is carried
+        // through as-is. Re-serializing it from the substitute runtime graph
+        // would write it back as something less than it is.
+        if (!sequencerTrack->unresolvedGraphPayload().empty()) {
+            auto graphData = UapmdProjectPluginGraphData::create();
+            graphData->graphType(sequencerTrack->unresolvedGraphType());
+            projectTrack.graph(std::move(graphData));
+            operation.pending_graphs.push_back(PendingProjectGraphSave{
+                .track = &projectTrack,
+                .sequencer_track = sequencerTrack,
+                .scope_label = scopeLabel
+            });
+            return;
+        }
+
+        const auto* graphProvider =
+            facade_.audioGraphProviderRegistry().get(sequencerTrack->graph());
+        if (!graphProvider)
             return;
 
         auto graphData = createSerializedProjectGraph(
@@ -1210,10 +1274,6 @@ namespace uapmd::timeline_detail {
                 if (!projectTrack || !sequencerTrack)
             return true;
 
-        auto* provider = facade_.audioGraphProviderRegistry().get(sequencerTrack->graph());
-        if (!provider)
-            return false;
-
         auto graphFilename = std::format(
             "{}.graph.json",
             urlEscapeFilenameComponent(scopeLabel));
@@ -1221,6 +1281,23 @@ namespace uapmd::timeline_detail {
         auto recordedPath = graphPath;
         if (!projectDir.empty())
             recordedPath = makeRelativePath(projectDir, graphPath);
+
+        // Unresolved graph: write the bytes we loaded straight back out, under
+        // the graph type they came with, so that a build which does have the
+        // provider still opens this project intact.
+        if (!sequencerTrack->unresolvedGraphPayload().empty()) {
+            if (!writeBinaryFile(graphPath, sequencerTrack->unresolvedGraphPayload(), error))
+                return false;
+            auto graph = UapmdProjectPluginGraphData::create();
+            graph->graphType(sequencerTrack->unresolvedGraphType());
+            graph->externalFile(recordedPath);
+            projectTrack->graph(std::move(graph));
+            return true;
+        }
+
+        auto* provider = facade_.audioGraphProviderRegistry().get(sequencerTrack->graph());
+        if (!provider)
+            return false;
 
         std::vector<uint8_t> graphBytes;
         if (!provider->saveProjectGraph(projectTrack->graph(), graphBytes)) {

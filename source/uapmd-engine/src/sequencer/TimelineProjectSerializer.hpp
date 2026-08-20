@@ -159,6 +159,7 @@ namespace uapmd::timeline_detail {
         // is how a failure part-way through stops the rest without unwinding.
         bool beginProjectLoad(ProjectLoadRun& run);
         void resetDocumentForLoad(ProjectLoadRun& run);
+        SequencerTrack* resolveLoadedSequencerTrack(int32_t trackIndex);
         void queuePluginLoadsForTrack(
             ProjectLoadRun& run,
             UapmdProjectTrackData* projectTrack,

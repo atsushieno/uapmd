@@ -469,12 +469,10 @@ bool uapmd_app::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
             : nullptr);
     if (!track)
         return false;
-    if (dynamic_cast<AudioPluginFullDAGraph*>(&track->graph()))
+    if (track->graph().getExtension<GraphConnectionExtension>())
         return true;
-    auto graph = AudioPluginFullDAGraph::create(ump_buffer_size_in_bytes_);
-    if (!graph)
-        return false;
-    auto* provider = sequencer_.engine()->timeline().audioGraphProviderRegistry().get(*graph);
+    auto* provider = sequencer_.engine()
+        ->timeline().audioGraphProviderRegistry().findConnectionEditingProvider();
     if (!provider)
         return false;
     const bool changed = sequencer_.engine()->commands().replaceTrackGraphType(
@@ -510,13 +508,13 @@ bool uapmd_app::AppModel::getTrackGraphConnections(
         return false;
     }
 
-    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
-    if (!dag) {
-        error = "Track graph is not a full DAG graph";
+    auto* edges = track->graph().getExtension<GraphConnectionExtension>();
+    if (!edges) {
+        error = "Track graph does not support connection editing";
         return false;
     }
 
-    connections = dag->connections();
+    connections = edges->connections();
     return true;
 }
 
