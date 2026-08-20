@@ -182,7 +182,9 @@ It likely works with MIDI 1.0 inputs (translated, depending on the platform) to 
 
 We have two distinct component sets for different licenses.
 
-- `uapmd-ara` is released under the Apache V2 license: [LICENSE.APACHE-2.0.txt](LICENSE.APACHE-2.0.txt)
+- The following modules are released under the Apache V2 license: [LICENSE.APACHE-2.0.txt](LICENSE.APACHE-2.0.txt) 
+  - `uapmd-ara`
+  - `uapmd-mir`
 - Anything else in this repository are released under the MIT license. [LICENSE](LICENSE)
 
 There are third-party (and first-party) dependency libraries (git submodules, CMake FetchContent, or directly included):
@@ -237,5 +239,6 @@ Fonts used:
 Apache V2 or compatible:
 
 - [Celemony/ARA_SDK](https://github.com/Celemony/ARA_SDK) - Apache V2
+- [libraz/libsonare](https://github.com/libraz/libsonare) - Apache V2
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.

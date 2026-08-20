@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 get_filename_component(_UAPMD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
 get_filename_component(UAPMD_REPO_ROOT "${_UAPMD_SOURCE_DIR}" DIRECTORY)
 set(UAPMD_FLATPAK_DIR "${UAPMD_REPO_ROOT}/flatpak")
@@ -15,6 +16,7 @@ option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integr
 option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
 option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM" OFF)
+option(UAPMD_ENABLE_LIBSONARE "Build MIR commands that depend on libsonare" ON)
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
 # to opt back into full Debug codegen when they need to inspect those features specifically.
 option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
@@ -196,6 +198,34 @@ CPMAddPackage(midicci
         OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
         EXCLUDE_FROM_ALL
 )
+
+if(UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
+    CPMAddPackage(
+            NAME           libsonare
+            GIT_TAG        v1.7.2
+            GIT_REPOSITORY https://github.com/libraz/libsonare
+            EXCLUDE_FROM_ALL
+            OPTIONS
+                "BUILD_TESTING OFF"
+                "BUILD_CLI OFF"
+                "BUILD_BENCH OFF"
+                "BUILD_MASTERING OFF"
+                "BUILD_MIXING OFF"
+                "BUILD_GRAPH OFF"
+                "BUILD_FX OFF"
+                "BUILD_ACOUSTIC_SIM OFF"
+                "BUILD_ARRANGEMENT OFF"
+                "BUILD_ASSIST OFF"
+                  "SONARE_WITH_FFMPEG OFF"
+      )
+    # libsonare v1.7.2 uses the runtime biquad design implementation from its
+    # analysis filters, but omits it from SONARE_SOURCES in its CMake target.
+    if(TARGET sonare_core_objects)
+        target_sources(sonare_core_objects PRIVATE
+                "${libsonare_SOURCE_DIR}/src/rt/biquad_design.cpp"
+        )
+    endif()
+endif()
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
@@ -262,9 +292,14 @@ install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 #add_link_options(-fPIC)
 
 # ARA_API currently rejects wasm32: it has no ABI packing/alignment definition
-# for this architecture. Keep this disabled by default but overrideable for SDK experiments.
-option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" OFF)
-if(UAPMD_ENABLE_ARA)
+# for this architecture. Enable ARA by default on supported platforms.
+if(UAPMD_TARGET_WASM OR EMSCRIPTEN)
+    set(_UAPMD_ENABLE_ARA_DEFAULT OFF)
+else()
+    set(_UAPMD_ENABLE_ARA_DEFAULT ON)
+endif()
+option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" ${_UAPMD_ENABLE_ARA_DEFAULT})
+if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     CPMAddPackage(
             NAME           ARA_SDK
             GIT_REPOSITORY https://github.com/Celemony/ARA_SDK.git
@@ -291,7 +326,8 @@ add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
-if(UAPMD_ENABLE_ARA)
+add_subdirectory(uapmd-mir)
+if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     add_subdirectory(uapmd-ara)
 endif()
 if(EMSCRIPTEN AND TARGET liblocate)
