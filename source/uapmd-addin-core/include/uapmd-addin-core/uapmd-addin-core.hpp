@@ -51,6 +51,31 @@ public:
     virtual void* extensionPoint(std::string_view path) noexcept = 0;
 };
 
+// Application commands contributed by addins.  The host owns the registry and
+// decides where and how these commands are presented.  Addins only contribute
+// an action descriptor and must unregister it during cleanup().
+class Command {
+public:
+    virtual ~Command() = default;
+
+    virtual std::string_view id() const noexcept = 0;
+    virtual std::string_view title() const noexcept = 0;
+    virtual int order() const noexcept { return 0; }
+    virtual bool enabled() const noexcept { return true; }
+    virtual void invoke() noexcept = 0;
+};
+
+class CommandRegistry {
+public:
+    void registerCommand(Command& command);
+    void unregisterCommand(Command& command) noexcept;
+
+    std::vector<Command*> commands() const;
+
+private:
+    std::vector<Command*> commands_;
+};
+
 using AddinEntryFunction = AddinEntry* (*)() noexcept;
 
 enum class AddinState {

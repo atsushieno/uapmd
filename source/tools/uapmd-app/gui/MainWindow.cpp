@@ -47,6 +47,7 @@ MainWindow::MainWindow(GuiDefaults defaults)
     : addinManagerWindow_(addinRuntime_) {
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
+    addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
     addinRuntime_.initialize();
     remidy_imgui::SetupImGuiStyle();
     // Font is already loaded in main_common.cpp before renderer initialization
@@ -469,6 +470,23 @@ void MainWindow::render(void* window) {
                 if (contextActionMenuItem(showMcpSettings_ ? "Hide MCP Settings" : "Show MCP Settings"))
                     showMcpSettings_ = !showMcpSettings_;
 #endif
+
+                const auto commands = commandRegistry_.commands();
+                if (!commands.empty()) {
+                    ImGui::Separator();
+                    for (auto* command : commands) {
+                        if (!command)
+                            continue;
+                        const bool enabled = command->enabled();
+                        if (!enabled)
+                            ImGui::BeginDisabled();
+                        const auto label = std::string(command->title()) + "##" + std::string(command->id());
+                        if (contextActionMenuItem(label.c_str()))
+                            command->invoke();
+                        if (!enabled)
+                            ImGui::EndDisabled();
+                    }
+                }
                 ImGui::EndPopup();
             }
             ImGui::SameLine();

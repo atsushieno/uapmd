@@ -127,6 +127,27 @@ void registerBuiltinAddin(AddinEntry& entry) {
         entries.push_back(&entry);
 }
 
+void CommandRegistry::registerCommand(Command& command) {
+    if (std::ranges::find(commands_, &command) == commands_.end())
+        commands_.push_back(&command);
+}
+
+void CommandRegistry::unregisterCommand(Command& command) noexcept {
+    std::erase(commands_, &command);
+}
+
+std::vector<Command*> CommandRegistry::commands() const {
+    auto result = commands_;
+    std::ranges::stable_sort(result, [](const auto* left, const auto* right) {
+        if (!left || !right)
+            return left != nullptr;
+        if (left->order() != right->order())
+            return left->order() < right->order();
+        return left->id() < right->id();
+    });
+    return result;
+}
+
 class AddinManager::Impl {
 public:
     struct LoadedAddin {

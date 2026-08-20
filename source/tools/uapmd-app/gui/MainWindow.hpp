@@ -84,6 +84,7 @@ class MainWindow {
         ExporterWindow exporterWindow_;
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
+        uapmd_addin::CommandRegistry commandRegistry_;
         uapmd_addin::AddinManager addinRuntime_;
         AddinManagerWindow addinManagerWindow_{addinRuntime_};
 
