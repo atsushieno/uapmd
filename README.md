@@ -229,6 +229,7 @@ MIT/ISC/whatever compatible with them:
 - [Signalsmith-Audio/signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) - MIT
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
+- [olilarkin/librosa.cpp](https://github.com/olilarkin/librosa.cpp) - ISC
 
 Fonts used:
 

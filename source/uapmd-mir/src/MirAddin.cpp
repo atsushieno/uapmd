@@ -27,6 +27,8 @@
 
 using namespace uapmd_addin;
 
+extern uapmd_addin::Addin* uapmd_mir_librosa_addin() noexcept;
+
 namespace {
 
 #if UAPMD_ENABLE_LIBSONARE
@@ -282,7 +284,7 @@ public:
 
     std::string_view title() const noexcept override {
         if (!running_.load(std::memory_order_acquire))
-            return "Analyze Project with MIR";
+            return "Populate master track (libsonare)";
 
         static thread_local std::string label;
         try {
@@ -296,12 +298,12 @@ public:
                 : stage == MirStage::Writing ? "writing results"
                 : "starting";
             if (total > 0)
-                label = std::format("Analyze Project with MIR ({} {}/{}; {}s)",
+                label = std::format("Populate master track (libsonare) ({} {}/{}; {}s)",
                                     stageName, processed, total, elapsed);
             else
-                label = std::format("Analyze Project with MIR ({}; {}s)", stageName, elapsed);
+                label = std::format("Populate master track (libsonare) ({}; {}s)", stageName, elapsed);
         } catch (...) {
-            return "Analyze Project with MIR (running...)";
+            return "Populate master track (libsonare) (running...)";
         }
         return label;
     }
@@ -550,7 +552,7 @@ public:
     }
 
     std::string_view name() const noexcept override {
-        return "Music information retrieval";
+        return "libsonare music information retrieval";
     }
 
     std::string_view path() const noexcept override {
@@ -602,6 +604,7 @@ class MirEntry final : public AddinEntry {
 public:
     MirEntry() {
         addins_[0] = &addin_;
+        addins_[1] = uapmd_mir_librosa_addin();
     }
 
     std::string_view packageId() const noexcept override {
@@ -614,7 +617,7 @@ public:
 
 private:
     MirAddin addin_;
-    std::array<Addin*, 1> addins_{};
+    std::array<Addin*, 2> addins_{};
 };
 
 MirEntry mirEntry;
