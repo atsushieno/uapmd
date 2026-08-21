@@ -510,11 +510,26 @@ void MainWindow::render(void* window) {
 
             // Transport controls
             auto& transport = appModel.transport();
+            // Read the transport once for the whole toolbar. isPlaying() is a
+            // live query into the engine, and the buttons below change what it
+            // answers -- so re-reading it around a BeginDisabled()/EndDisabled()
+            // pair can open the scope and then fail to close it, or close one
+            // that was never opened, which aborts in ImGui.
+            const bool transportPlaying = transport.isPlaying();
+            const bool transportPaused = transport.isPaused();
+            // Pausing clears isPlaybackActive(), so "playing" alone would call a
+            // paused transport idle -- which would offer Play instead of Stop
+            // and disable the button that resumes it.
+            const bool transportEngaged = transportPlaying || transportPaused;
             if (!audioEngineEnabled)
                 ImGui::BeginDisabled();
-            const char* playStopLabel = transport.isPlaying() ? icons::Stop : icons::Play;
-            if (ImGui::Button(playStopLabel)) {
-                if (transport.isPlaying())
+            // The trailing ##id keeps these two buttons distinct even when they
+            // show the same glyph: an icon label alone is the whole ImGui ID.
+            const auto playStopLabel =
+                std::string(transportEngaged ? icons::Stop : icons::Play)
+                    + "##TransportPlayStop";
+            if (ImGui::Button(playStopLabel.c_str())) {
+                if (transportEngaged)
                     transport.stop();
                 else
                     transport.play();
@@ -546,16 +561,20 @@ void MainWindow::render(void* window) {
                 ImGui::SetTooltip(recording ? "Stop recording" : "Record into the selected MIDI clip");
             ImGui::SameLine();
 
-            if (!transport.isPlaying())
+            if (!transportEngaged)
                 ImGui::BeginDisabled();
-            const char* pauseResumeLabel = transport.isPaused() ? icons::Play : icons::Pause;
-            if (ImGui::Button(pauseResumeLabel)) {
-                if (transport.isPaused())
+            const auto pauseResumeLabel =
+                std::string(transportPaused ? icons::Play : icons::Pause)
+                    + "##TransportPauseResume";
+            if (ImGui::Button(pauseResumeLabel.c_str())) {
+                if (transportPaused)
                     transport.resume();
                 else
                     transport.pause();
             }
-            if (!transport.isPlaying())
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(transportPaused ? "Resume playback" : "Pause playback");
+            if (!transportEngaged)
                 ImGui::EndDisabled();
             if (!audioEngineEnabled)
                 ImGui::EndDisabled();
