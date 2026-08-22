@@ -26,6 +26,9 @@ namespace {
 constexpr float kProgressAfterLoad = 0.05f;
 constexpr float kProgressAfterSeparation = 0.90f;
 
+// The name given to the complement derived for a single-stem model.
+constexpr std::string_view kResidualStemName{"instrumental"};
+
 // The GGUF format carries a stem *count* and no stem names, so these have to
 // be inferred. Published BS-Roformer and Mel-Band-Roformer models are vocal
 // separators whose first stem is the vocal -- BSRoformer.cpp's own CLI writes
@@ -64,6 +67,13 @@ int expectedChunkCount(size_t frameCount, int chunkSize, int overlap) {
     const auto paddedFrames = padded ? frames + 2 * border : frames;
     return static_cast<int>((paddedFrames + step - 1) / step);
 }
+
+// One stem ready to be written: planar stereo, named.
+struct PreparedStem {
+    std::string name;
+    std::vector<float> left;
+    std::vector<float> right;
+};
 
 std::vector<float> interleaveStereo(const uapmd_stems::StereoAudio& audio) {
     const size_t frameCount = audio.frameCount();
@@ -199,36 +209,68 @@ StemSeparationResult BSRoformerStemSeparator::separate(const StemSeparationReque
         const auto labels = stemNames(stems.size());
         const auto baseName = std::filesystem::path(request.audioFile).stem().string();
 
+        // Process() hands back interleaved stereo; the writer wants planar.
+        std::vector<PreparedStem> prepared;
+        prepared.reserve(stems.size() + 1);
         for (size_t index = 0; index < stems.size(); ++index) {
+            const auto& stem = stems[index];
+            const size_t frameCount = stem.size() / 2;
+            PreparedStem entry;
+            entry.name = labels[index];
+            entry.left.resize(frameCount);
+            entry.right.resize(frameCount);
+            for (size_t frame = 0; frame < frameCount; ++frame) {
+                entry.left[frame] = stem[frame * 2];
+                entry.right[frame] = stem[frame * 2 + 1];
+            }
+            prepared.push_back(std::move(entry));
+        }
+
+        // Most published models are target extractors reporting num_stems=1:
+        // they emit the vocal only, which would import as a single track where
+        // Demucs gives four. The complement is what the rest of the mix is, so
+        // derive it by subtracting the estimate from the input the model saw.
+        // Process() crops its output back to the input length, so the two are
+        // already sample-aligned.
+        if (prepared.size() == 1) {
+            const auto& target = prepared.front();
+            const size_t frameCount = std::min(target.left.size(), input.frameCount());
+            PreparedStem residual;
+            residual.name = std::string(kResidualStemName);
+            residual.left.resize(frameCount);
+            residual.right.resize(frameCount);
+            for (size_t frame = 0; frame < frameCount; ++frame) {
+                residual.left[frame] = input.left[frame] - target.left[frame];
+                residual.right[frame] = input.right[frame] - target.right[frame];
+            }
+            remidy::Logger::global()->logInfo(
+                "BS-Roformer: model emits 1 stem (%s); derived '%s' as the residual",
+                target.name.c_str(), residual.name.c_str());
+            prepared.push_back(std::move(residual));
+        }
+
+        for (size_t index = 0; index < prepared.size(); ++index) {
             if (shouldCancel()) {
                 result.canceled = true;
                 result.stems.clear();
                 return result;
             }
 
-            // Process() hands back interleaved stereo; the writer wants planar.
-            const auto& stem = stems[index];
-            const size_t frameCount = stem.size() / 2;
-            std::vector<float> left(frameCount);
-            std::vector<float> right(frameCount);
-            for (size_t frame = 0; frame < frameCount; ++frame) {
-                left[frame] = stem[frame * 2];
-                right[frame] = stem[frame * 2 + 1];
-            }
-
+            const auto& entry = prepared[index];
             auto outPath = request.outputDirectory
-                / std::format("{}_{}.wav", baseName, labels[index]);
-            if (!uapmd_stems::writeStereoWav(outPath, left.data(), right.data(), frameCount, sampleRate)) {
-                result.error = std::format("Failed to write stem {}", labels[index]);
+                / std::format("{}_{}.wav", baseName, entry.name);
+            if (!uapmd_stems::writeStereoWav(outPath, entry.left.data(), entry.right.data(),
+                                             entry.left.size(), sampleRate)) {
+                result.error = std::format("Failed to write stem {}", entry.name);
                 result.stems.clear();
                 return result;
             }
 
-            result.stems.push_back(StemFile{labels[index], outPath});
+            result.stems.push_back(StemFile{entry.name, outPath});
             emitProgress(kProgressAfterSeparation
                              + (1.0f - kProgressAfterSeparation)
-                                   * static_cast<float>(index + 1) / static_cast<float>(stems.size()),
-                         std::format("Writing stem {}...", labels[index]));
+                                   * static_cast<float>(index + 1) / static_cast<float>(prepared.size()),
+                         std::format("Writing stem {}...", entry.name));
         }
 
         result.success = !result.stems.empty();

@@ -68,7 +68,10 @@ Either way you have to provide a model file by yourself:
 
 - Demucs takes a ggml model (`*.bin`). Check [demucs.cpp project README](https://github.com/sevagh/demucs.cpp) and find links to their HuggingFace repo.
 - BS-Roformer takes a GGUF model (`*.gguf`), and covers Mel-Band-Roformer models too. Check [BSRoformer.cpp project README](https://github.com/chenmozhijin/BSRoformer.cpp) for their HuggingFace repo of pre-converted models.
-  Note that these models are usually vocal separators producing two stems, so you get fewer tracks than Demucs gives you.
+  Most of these models are vocal extractors that emit the vocal alone. UAPMD derives the accompanying `instrumental`
+  track by subtracting that vocal from the input, so you get two tracks -- fewer than the four Demucs gives you.
+  Separation speed varies a lot between these models: they carry their own chunk size and overlap, and a model using
+  an overlap of 4 processes every sample four times. The log reports the number of inference passes when a run starts.
 
 ![UAPMD track list after importing an SMF](../images/uapmd-v0.5-imported-smf.png)
 
