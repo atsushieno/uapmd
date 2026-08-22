@@ -133,6 +133,40 @@ if(UAPMD_ENABLE_MIR)
 endif()
 
 # ---------------------------------------------------------------------------
+# Shared stem separation support
+#
+# Reading, downmixing, resampling and writing stems is identical for every
+# separation backend. It lives in its own target rather than in one of the
+# addins because both addin libraries are linked into the same executable,
+# and compiling it into each of them would collide at link time.
+# ---------------------------------------------------------------------------
+
+add_library(uapmd-stem-support STATIC
+        src/StemSeparationSupport.cpp
+)
+
+target_compile_features(uapmd-stem-support PRIVATE cxx_std_23)
+
+target_include_directories(uapmd-stem-support
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+        ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+)
+
+target_link_libraries(uapmd-stem-support PRIVATE uapmd-data)
+
+uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-stem-support
+        src/StemSeparationSupport.cpp
+)
+
+# ---------------------------------------------------------------------------
 # Demucs stem separation
 #
 # Built unconditionally, and as a *built-in* addin: uapmd-demucs is a static
@@ -258,10 +292,102 @@ target_include_directories(uapmd-demucs PRIVATE
 
 target_link_libraries(uapmd-demucs PRIVATE
         uapmd::uapmd-addin-core
+        uapmd-stem-support
         uapmd-data
         demucs-cpp
 )
 
 uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-demucs
         src/DemucsStemSeparator.cpp
+)
+
+# ---------------------------------------------------------------------------
+# BS-Roformer stem separation
+#
+# Built unconditionally and as a built-in addin, exactly like Demucs above.
+# BSRoformer.cpp runs on GGML, which it resolves from a parent-provided `ggml`
+# target when one exists -- so ggml is added first, CPU-only: no GPU backend
+# needs its shader library or toolkit found at runtime, and every platform
+# gets the same configuration.
+# ---------------------------------------------------------------------------
+
+set(_UAPMD_BSR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS OFF)
+
+CPMAddPackage(
+        NAME           ggml
+        GIT_TAG        v0.9.11
+        GIT_REPOSITORY https://github.com/ggml-org/ggml
+        EXCLUDE_FROM_ALL
+        OPTIONS
+            "BUILD_SHARED_LIBS OFF"
+            "GGML_BUILD_TESTS OFF"
+            "GGML_BUILD_EXAMPLES OFF"
+            "GGML_CUDA OFF"
+            "GGML_METAL OFF"
+            "GGML_VULKAN OFF"
+            "GGML_OPENCL OFF"
+            "GGML_HIP OFF"
+            "GGML_SYCL OFF"
+)
+
+CPMAddPackage(
+        NAME           bsroformer
+        GIT_TAG        a7b9625f0f4146cacf3c46080d1139833cd4d4c2
+        GIT_REPOSITORY https://github.com/chenmozhijin/BSRoformer.cpp
+        EXCLUDE_FROM_ALL
+        OPTIONS
+            "GGML_CUDA OFF"
+            "BSR_BUILD_CLI OFF"
+            "BSR_BUILD_TESTS OFF"
+)
+
+if(DEFINED _UAPMD_BSR_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_BSR_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
+    set(BUILD_SHARED_LIBS "${_UAPMD_BSR_OLD_BUILD_SHARED_LIBS}")
+else()
+    unset(BUILD_SHARED_LIBS)
+endif()
+
+# ggml's kernels *are* the compute path for BS-Roformer -- bs_roformer itself
+# only builds the graph -- so leaving ggml at the Debug default of -O0 makes a
+# separation run take orders of magnitude longer than the model needs. Give
+# every ggml target the same Debug treatment demucs-cpp gets.
+foreach(_uapmd_bsr_target bs_roformer ggml ggml-base ggml-cpu ggml-blas)
+    if(NOT TARGET ${_uapmd_bsr_target})
+        continue()
+    endif()
+    get_target_property(_uapmd_bsr_target_type ${_uapmd_bsr_target} TYPE)
+    if(_uapmd_bsr_target_type STREQUAL "INTERFACE_LIBRARY")
+        continue()
+    endif()
+    uapmd_optimize_heavy_audio_feature_target_in_debug(${_uapmd_bsr_target})
+endforeach()
+
+add_library(uapmd-bsroformer STATIC
+        src/BSRoformerAddin.cpp
+        src/BSRoformerStemSeparator.cpp
+)
+add_library(uapmd::bsroformer ALIAS uapmd-bsroformer)
+
+target_compile_features(uapmd-bsroformer PRIVATE cxx_std_23)
+
+target_include_directories(uapmd-bsroformer PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+        ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+)
+
+target_link_libraries(uapmd-bsroformer PRIVATE
+        uapmd::uapmd-addin-core
+        uapmd-stem-support
+        uapmd-data
+        bs_roformer
+)
+
+uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-bsroformer
+        src/BSRoformerStemSeparator.cpp
 )

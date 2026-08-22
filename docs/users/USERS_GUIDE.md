@@ -61,10 +61,14 @@ On playback, those audio and MIDI 2.0 "inputs" are both processed as input to th
 UAPMD initially launches with a few empty tracks.
 You can either import MIDI 2.0 Clip Files (`*.midi2`), MIDI 1.0 SMF files (`.mid`) or audio files (`.wav`, `.ogg`, `.flac`).
 
-Audio files can be imported as multiple, source-separated tracks. Source separation is provided by an addin;
-the Demucs addin ships with UAPMD, and "Import Split Audio Tracks" only appears while at least one separation
-addin is enabled in the Addin Manager.
-To use Demucs, however, you have to provide a model file by yourself. Check [demucs.cpp project README](https://github.com/sevagh/demucs.cpp) and find links to their HuggingFace repo.
+Audio files can be imported as multiple, source-separated tracks. Source separation is provided by addins;
+UAPMD ships two of them, Demucs and BS-Roformer, and "Import Split Audio Tracks" only appears while at least one
+separation addin is enabled in the Addin Manager. When both are enabled the import window lets you pick which one to use.
+Either way you have to provide a model file by yourself:
+
+- Demucs takes a ggml model (`*.bin`). Check [demucs.cpp project README](https://github.com/sevagh/demucs.cpp) and find links to their HuggingFace repo.
+- BS-Roformer takes a GGUF model (`*.gguf`), and covers Mel-Band-Roformer models too. Check [BSRoformer.cpp project README](https://github.com/chenmozhijin/BSRoformer.cpp) for their HuggingFace repo of pre-converted models.
+  Note that these models are usually vocal separators producing two stems, so you get fewer tracks than Demucs gives you.
 
 ![UAPMD track list after importing an SMF](../images/uapmd-v0.5-imported-smf.png)
 

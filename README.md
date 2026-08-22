@@ -10,7 +10,7 @@ UAPMD (Ubiquitous Audio Plugin MIDI Device) is a music sequencer engine with the
 - builds upon its own audio plugin hosting foundation.
 - builds upon its own MIDI 2.0 UMP and MIDI-CI processing library from scratch, including Flex Data, Mixed Data Set, as well as Process Inquiry. No other MIDI 2.0 library provides such complete feature sets.
 - audio processing is done with UMP, which can bring in timestamps ("sample accurate") and parameter controllers in 32-bit resolution.
-- import SMF (either as a clip or split into tracks), MIDI 2.0 clips, audio recording (either as a clip or split into tracks using demucs.cpp).
+- import SMF (either as a clip or split into tracks), MIDI 2.0 clips, audio recording (either as a clip or split into tracks using demucs.cpp or BSRoformer.cpp).
 - save and load user projects, based on audio and MIDI2 clips (to fully control audio plugins), organized into multiple tracks.
 - audio warps i.e. time-stretched audio clips.
 - provides full access to the sequencer engine using JavaScript and MCP server.
@@ -230,6 +230,8 @@ MIT/ISC/whatever compatible with them:
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
 - [olilarkin/librosa.cpp](https://github.com/olilarkin/librosa.cpp) - ISC
+- [chenmozhijin/BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp) - MIT
+  - [ggml-org/ggml](https://github.com/ggml-org/ggml) (CPU backend only) - MIT
 
 Fonts used:
 
