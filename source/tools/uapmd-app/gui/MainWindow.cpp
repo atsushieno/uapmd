@@ -48,6 +48,12 @@ MainWindow::MainWindow(GuiDefaults defaults)
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
+    // Stem separation backends are contributed, not replaced: the Split Audio
+    // Import window offers whatever addins registered here, and hides itself
+    // when nothing did.
+    addinRuntime_.registerExtensionPoint(
+        "/uapmd/audio-import/stem-separator/v1", &stemSeparatorRegistry_);
+    audioImportWindow_.setStemSeparatorRegistry(&stemSeparatorRegistry_);
     addinRuntime_.initialize();
     remidy_imgui::SetupImGuiStyle();
     // Font is already loaded in main_common.cpp before renderer initialization
@@ -711,9 +717,11 @@ void MainWindow::render(void* window) {
                     timelineEditor_.importMidiTracksWithPicker();
                     ImGui::CloseCurrentPopup();
                 }
-                if (contextActionMenuItem("Import Split Audio Tracks (Demucs)")) {
-                    audioImportWindow_.open();
-                    ImGui::CloseCurrentPopup();
+                if (!stemSeparatorRegistry_.empty()) {
+                    if (contextActionMenuItem("Import Split Audio Tracks")) {
+                        audioImportWindow_.open();
+                        ImGui::CloseCurrentPopup();
+                    }
                 }
                 ImGui::EndPopup();
             }

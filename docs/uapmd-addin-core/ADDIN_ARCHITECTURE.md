@@ -35,7 +35,7 @@ Enablement is persisted by package ID and addin ID. Project data owned by an add
 
 WebAssembly uses built-in addins only. The manager has no separate code loading or unloading there. Its current enable/disable controls invoke the built-in lifecycle immediately; a restart-only policy is not yet implemented.
 
-ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
+Stem separation for audio import is a built-in addin, always present. ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
 
 ## Extension points
 
@@ -76,6 +76,32 @@ Graphs offer capabilities through `uapmd_graph::AudioGraphExtension`, retrieved
 with `AudioGraph::getExtension<T>()`. Edge editing lives behind
 `GraphConnectionExtension`; nothing outside a provider names a concrete graph
 class.
+
+`/uapmd/audio-import/stem-separator/v1` exposes the
+`uapmd::import::StemSeparatorRegistry`. Like graph providers, stem separation
+backends are *contributed*: an addin adds a `uapmd::import::StemSeparator`
+alongside whatever else is registered, and must `remove()` it during
+`cleanup()`. Nothing in `uapmd-data` separates stems on its own, so audio
+import is unavailable -- and the application hides it -- when no addin
+contributed a separator. The Demucs backend lives in `uapmd-mir`, alongside
+the analysis addins but built separately from them; it is a built-in addin, so
+it is always present and can only be turned off at runtime.
+
+A separation run takes minutes and happens on a worker thread, while the addin
+that owns the separator can be disabled at any moment from the Addin Manager.
+The registry therefore hands out `StemSeparatorRegistry::Lease` rather than a
+bare pointer:
+
+- a run holds a lease for its whole duration, and `remove()` blocks until every
+  lease is released, so the code behind the separator is never unloaded while
+  it is executing;
+- `Lease::withdrawn()` turns true the moment `remove()` starts, and a run is
+  required to poll it through its cancellation callback -- otherwise the wait
+  in `remove()` would last as long as the whole separation.
+
+Everything else about a separator (its name, its model file spec, the list of
+registered separators) is read on the thread that also drives addin
+enablement, and needs no lease.
 
 ## Roadmap
 

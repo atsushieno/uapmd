@@ -21,8 +21,10 @@ option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via
 option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
 
 # The MIR analysis results are not trustworthy yet (see docs/uapmd-mir/MIR_FEATURES.md),
-# so the module and its dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
-# libsonare backend within it and has no effect on its own.
+# so those addins and their dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
+# libsonare backend within them and has no effect on its own. The Demucs stem separation
+# addin lives in the same directory but is always built, so uapmd-mir is added
+# unconditionally and gates the analysis half internally.
 option(UAPMD_ENABLE_MIR "Build the uapmd-mir music information retrieval addin" OFF)
 option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
@@ -70,6 +72,7 @@ endif()
 
 include(FetchContent)
 include(cmake/CPM.cmake)
+include(cmake/UapmdHeavyAudioFeature.cmake)
 
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
@@ -308,9 +311,7 @@ add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
-if(UAPMD_ENABLE_MIR)
-    add_subdirectory(uapmd-mir)
-endif()
+add_subdirectory(uapmd-mir)
 if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     add_subdirectory(uapmd-ara)
 endif()

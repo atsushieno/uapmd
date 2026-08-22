@@ -61,8 +61,10 @@ On playback, those audio and MIDI 2.0 "inputs" are both processed as input to th
 UAPMD initially launches with a few empty tracks.
 You can either import MIDI 2.0 Clip Files (`*.midi2`), MIDI 1.0 SMF files (`.mid`) or audio files (`.wav`, `.ogg`, `.flac`).
 
-Audio files can be imported as multiple, source-separated tracks (we have built-in Demucs support).
-To use it, however, you have to provide a model file by yourself. Check [demucs.cpp project README](https://github.com/sevagh/demucs.cpp) and find links to their HuggingFace repo.
+Audio files can be imported as multiple, source-separated tracks. Source separation is provided by an addin;
+the Demucs addin ships with UAPMD, and "Import Split Audio Tracks" only appears while at least one separation
+addin is enabled in the Addin Manager.
+To use Demucs, however, you have to provide a model file by yourself. Check [demucs.cpp project README](https://github.com/sevagh/demucs.cpp) and find links to their HuggingFace repo.
 
 ![UAPMD track list after importing an SMF](../images/uapmd-v0.5-imported-smf.png)
 

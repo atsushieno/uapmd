@@ -24,6 +24,8 @@ public:
     explicit AudioImportWindow(Callbacks callbacks);
 
     void setCallbacks(Callbacks callbacks);
+    // Borrowed; the registry outlives this window (MainWindow owns both).
+    void setStemSeparatorRegistry(uapmd::import::StemSeparatorRegistry* registry);
 
     void open();
     void hide();
@@ -55,6 +57,10 @@ private:
     };
 
     Callbacks callbacks_{};
+    uapmd::import::StemSeparatorRegistry* separatorRegistry_{};
+    // Which contributed separator the user picked, kept by id rather than by
+    // pointer: the addin behind it may come and go while this window is open.
+    std::string selectedSeparatorId_;
     bool visible_{false};
     ImportDialogState state_{};
 
@@ -67,12 +73,13 @@ private:
     std::shared_ptr<ImportJobState> activeJob_;
     mutable std::mutex jobMutex_;
 
-    bool hasPathsReady() const;
+    bool hasPathsReady(const uapmd::import::StemSeparatorModelFileSpec& modelSpec) const;
     void browseForAudioFile();
-    void browseForModelFile();
-    void startImportJob();
+    void browseForModelFile(const uapmd::import::StemSeparatorModelFileSpec& modelSpec);
+    void startImportJob(const uapmd::import::StemSeparator& separator);
     void requestCancelActiveJob();
     void runImportJob(std::shared_ptr<ImportJobState> job,
+                      std::string separatorId,
                       std::string audioPath,
                       std::string modelPath);
     void updateStatus(const std::function<void(ImportJobStatus&)>& updater);

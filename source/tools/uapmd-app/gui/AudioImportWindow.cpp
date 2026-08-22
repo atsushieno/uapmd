@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <utility>
 #include <thread>
 #include <vector>
@@ -29,6 +30,10 @@ AudioImportWindow::AudioImportWindow(Callbacks callbacks)
 
 void AudioImportWindow::setCallbacks(Callbacks callbacks) {
     callbacks_ = std::move(callbacks);
+}
+
+void AudioImportWindow::setStemSeparatorRegistry(uapmd::import::StemSeparatorRegistry* registry) {
+    separatorRegistry_ = registry;
 }
 
 void AudioImportWindow::open() {
@@ -70,8 +75,56 @@ void AudioImportWindow::render(float /*uiScale*/) {
 
     auto statusSnapshot = snapshotStatus();
 
-    ImGui::TextWrapped("Separate a single audio file into stems using the selected Demucs model.");
+    // Stem separation is contributed by addins; without one there is nothing
+    // this window can do, so say so rather than offering a dead Start button.
+    const auto separators = separatorRegistry_
+        ? separatorRegistry_->separators()
+        : std::vector<uapmd::import::StemSeparator*>{};
+    if (separators.empty()) {
+        ImGui::TextWrapped(
+            "No stem separation addin is enabled. Enable one (such as Demucs) in the Addin Manager.");
+        if (ImGui::Button("Close"))
+            hide();
+        ImGui::End();
+        // A run that finished just before its addin was disabled still has a
+        // result to hand over.
+        processCompletedResult(statusSnapshot);
+        return;
+    }
+
+    auto* separator = separators.front();
+    for (auto* candidate : separators) {
+        if (candidate && candidate->id() == selectedSeparatorId_) {
+            separator = candidate;
+            break;
+        }
+    }
+    selectedSeparatorId_ = std::string(separator->id());
+    const auto modelSpec = separator->modelFileSpec();
+
+    ImGui::TextWrapped("Separate a single audio file into stems using %s.",
+                       std::string(separator->name()).c_str());
     ImGui::Separator();
+
+    if (separators.size() > 1) {
+        if (statusSnapshot.running)
+            ImGui::BeginDisabled();
+        ImGui::TextUnformatted("Separator");
+        if (ImGui::BeginCombo("##SplitSeparator", std::string(separator->name()).c_str())) {
+            for (auto* candidate : separators) {
+                if (!candidate)
+                    continue;
+                const bool selected = candidate == separator;
+                if (ImGui::Selectable(std::string(candidate->name()).c_str(), selected))
+                    selectedSeparatorId_ = std::string(candidate->id());
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        if (statusSnapshot.running)
+            ImGui::EndDisabled();
+    }
 
     ImGui::TextUnformatted("Audio File");
     ImGui::InputText("##SplitAudioPath", state_.audioPath.data(), state_.audioPath.size());
@@ -80,11 +133,13 @@ void AudioImportWindow::render(float /*uiScale*/) {
         browseForAudioFile();
     }
 
-    ImGui::TextUnformatted("Demucs Model");
-    ImGui::InputText("##SplitModelPath", state_.modelPath.data(), state_.modelPath.size());
-    ImGui::SameLine();
-    if (ImGui::Button("Browse Model...")) {
-        browseForModelFile();
+    if (modelSpec.required()) {
+        ImGui::TextUnformatted(modelSpec.label.c_str());
+        ImGui::InputText("##SplitModelPath", state_.modelPath.data(), state_.modelPath.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Browse Model...")) {
+            browseForModelFile(modelSpec);
+        }
     }
 
     ImGui::Separator();
@@ -92,11 +147,11 @@ void AudioImportWindow::render(float /*uiScale*/) {
         ImGui::TextWrapped("%s", statusSnapshot.message.c_str());
     ImGui::ProgressBar(statusSnapshot.progress, ImVec2(-FLT_MIN, 0.0f));
 
-    bool canStart = !statusSnapshot.running && hasPathsReady();
+    bool canStart = !statusSnapshot.running && hasPathsReady(modelSpec);
     if (!canStart)
         ImGui::BeginDisabled();
     if (ImGui::Button("Start Import")) {
-        startImportJob();
+        startImportJob(*separator);
     }
     if (!canStart)
         ImGui::EndDisabled();
@@ -120,8 +175,10 @@ void AudioImportWindow::render(float /*uiScale*/) {
     processCompletedResult(statusSnapshot);
 }
 
-bool AudioImportWindow::hasPathsReady() const {
-    return state_.audioPath[0] != '\0' && state_.modelPath[0] != '\0';
+bool AudioImportWindow::hasPathsReady(const uapmd::import::StemSeparatorModelFileSpec& modelSpec) const {
+    if (state_.audioPath[0] == '\0')
+        return false;
+    return !modelSpec.required() || state_.modelPath[0] != '\0';
 }
 
 void AudioImportWindow::browseForAudioFile() {
@@ -152,9 +209,9 @@ void AudioImportWindow::browseForAudioFile() {
     }
 }
 
-void AudioImportWindow::browseForModelFile() {
+void AudioImportWindow::browseForModelFile(const uapmd::import::StemSeparatorModelFileSpec& modelSpec) {
     std::vector<uapmd::DocumentFilter> filters{
-        {"Demucs ggml Model", {}, {"*.bin"}},
+        {modelSpec.label, {}, modelSpec.extensions},
         {"All Files", {}, {"*"}}
     };
 
@@ -180,11 +237,15 @@ void AudioImportWindow::browseForModelFile() {
     }
 }
 
-void AudioImportWindow::startImportJob() {
+void AudioImportWindow::startImportJob(const uapmd::import::StemSeparator& separator) {
+    const auto modelSpec = separator.modelFileSpec();
+    std::string separatorId{separator.id()};
     std::string audioPath = state_.audioPath.data();
-    std::string modelPath = state_.modelPath.data();
+    std::string modelPath = modelSpec.required() ? std::string(state_.modelPath.data()) : std::string{};
 
-    if (audioPath.empty() || modelPath.empty())
+    if (audioPath.empty())
+        return;
+    if (modelSpec.required() && modelPath.empty())
         return;
 
     if (!std::filesystem::exists(audioPath)) {
@@ -192,8 +253,9 @@ void AudioImportWindow::startImportJob() {
         return;
     }
 
-    if (!std::filesystem::exists(modelPath)) {
-        platformError("Split Audio Import", "The selected Demucs model does not exist.");
+    if (modelSpec.required() && !std::filesystem::exists(modelPath)) {
+        platformError("Split Audio Import",
+                      std::format("The selected {} does not exist.", modelSpec.label));
         return;
     }
 
@@ -216,12 +278,12 @@ void AudioImportWindow::startImportJob() {
         status.success = false;
         status.canceled = false;
         status.progress = 0.0f;
-        status.message = "Starting Demucs separation...";
+        status.message = "Starting separation...";
         status.error.clear();
     });
 
-    std::thread([this, job, audioPath, modelPath]() {
-        runImportJob(job, audioPath, modelPath);
+    std::thread([this, job, separatorId, audioPath, modelPath]() {
+        runImportJob(job, separatorId, audioPath, modelPath);
     }).detach();
 }
 
@@ -236,6 +298,7 @@ void AudioImportWindow::requestCancelActiveJob() {
 }
 
 void AudioImportWindow::runImportJob(std::shared_ptr<ImportJobState> job,
+                                     std::string separatorId,
                                      std::string audioPath,
                                      std::string modelPath) {
     auto releaseJob = [this, &job]() {
@@ -251,14 +314,28 @@ void AudioImportWindow::runImportJob(std::shared_ptr<ImportJobState> job,
         });
     };
 
-    uapmd::import::TrackImporter::AudioImportOptions options;
-    options.modelPath = std::move(modelPath);
-    options.progressCallback = progressUpdater;
-    options.shouldCancel = [job]() {
-        return job->cancel.load(std::memory_order_acquire);
-    };
+    uapmd::import::AudioImportResult result;
 
-    auto result = uapmd::import::TrackImporter::importAudioFile(audioPath, options);
+    // The lease keeps the contributing addin's separator alive for the whole
+    // run; withdrawing it (by disabling the addin) cancels the run instead of
+    // unloading the code underneath it.
+    auto lease = separatorRegistry_
+        ? separatorRegistry_->acquire(separatorId)
+        : uapmd::import::StemSeparatorRegistry::Lease{};
+    if (!lease) {
+        result.error = "The selected stem separator is no longer available.";
+    } else {
+        uapmd::import::TrackImporter::AudioImportOptions options;
+        options.separator = lease.get();
+        options.modelPath = std::move(modelPath);
+        options.progressCallback = progressUpdater;
+        options.shouldCancel = [job, &lease]() {
+            return job->cancel.load(std::memory_order_acquire) || lease.withdrawn();
+        };
+
+        result = uapmd::import::TrackImporter::importAudioFile(audioPath, options);
+    }
+    lease.release();
 
     releaseJob();
 

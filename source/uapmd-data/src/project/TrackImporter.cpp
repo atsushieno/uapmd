@@ -101,15 +101,21 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
         result.error = "Audio file path is empty.";
         return result;
     }
-    if (options.modelPath.empty()) {
-        result.error = "Demucs model path is not specified.";
+    if (!options.separator) {
+        result.error = "No stem separator is available. Enable a stem separation addin.";
         return result;
     }
 
-    std::filesystem::path modelPath(options.modelPath);
-    if (!std::filesystem::exists(modelPath)) {
-        result.error = "Demucs model path does not exist.";
-        return result;
+    const auto modelSpec = options.separator->modelFileSpec();
+    if (modelSpec.required()) {
+        if (options.modelPath.empty()) {
+            result.error = std::format("{} is not specified.", modelSpec.label);
+            return result;
+        }
+        if (!std::filesystem::exists(std::filesystem::path(options.modelPath))) {
+            result.error = std::format("{} does not exist.", modelSpec.label);
+            return result;
+        }
     }
 
     auto reportProgress = [&](float value, const std::string& message) {
@@ -132,22 +138,26 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
         if (baseName.empty()) {
             baseName = "track";
         }
-        outputDir = std::filesystem::temp_directory_path() / "uapmd-demucs" / std::format("{}-{}", baseName, folderTag);
+        outputDir = std::filesystem::temp_directory_path() / "uapmd-stems"
+            / std::format("{}-{}-{}", options.separator->id(), baseName, folderTag);
     }
 
     if (checkCanceled())
         return result;
 
-    DemucsStemSeparator separator(options.modelPath);
-    reportProgress(0.0f, "Preparing Demucs input...");
-    auto separation = separator.separate(
-        filepath,
-        outputDir,
-        [reportProgress](float value, const std::string& message) {
-            reportProgress(value, message);
-            return true;
-        },
-        options.shouldCancel);
+    reportProgress(0.0f, std::format("Preparing {} input...", options.separator->name()));
+
+    StemSeparationRequest request;
+    request.audioFile = filepath;
+    request.outputDirectory = outputDir;
+    request.modelPath = options.modelPath;
+    request.progressCallback = [reportProgress](float value, const std::string& message) {
+        reportProgress(value, message);
+        return true;
+    };
+    request.shouldCancel = options.shouldCancel;
+
+    const auto separation = options.separator->separate(request);
 
     if (separation.canceled) {
         result.canceled = true;
@@ -155,7 +165,9 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
     }
 
     if (!separation.success) {
-        result.error = separation.error.empty() ? "Demucs failed to separate stems." : separation.error;
+        result.error = separation.error.empty()
+            ? std::format("{} failed to separate stems.", options.separator->name())
+            : separation.error;
         return result;
     }
 

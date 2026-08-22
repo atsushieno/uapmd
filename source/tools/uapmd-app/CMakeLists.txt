@@ -600,6 +600,10 @@ set(_uapmd_app_link_libraries
 if(TARGET uapmd::ara)
     list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-ara>")
 endif()
+if(TARGET uapmd::demucs)
+    # WHOLE_ARCHIVE so the built-in addin's static registration object is kept.
+    list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-demucs>")
+endif()
 
 # Link the compile target (OBJECT library on desktop, direct executable on
 # Android/WASM) against all app libraries.  PUBLIC scope causes both
