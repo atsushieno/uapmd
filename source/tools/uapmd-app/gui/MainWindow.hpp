@@ -85,6 +85,7 @@ class MainWindow {
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
         uapmd_addin::CommandRegistry commandRegistry_;
+        uapmd::import::StemSeparatorRegistry stemSeparatorRegistry_;
         uapmd_addin::AddinManager addinRuntime_;
         AddinManagerWindow addinManagerWindow_{addinRuntime_};
 

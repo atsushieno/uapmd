@@ -15,7 +15,7 @@
 #include "detail/project/MidiClipReader.hpp"
 #include "detail/project/Smf2ClipReaderWriter.hpp"
 #include "detail/project/TrackImporter.hpp"
-#include "detail/project/DemucsStemSeparator.hpp"
+#include "detail/project/StemSeparator.hpp"
 #include "detail/project/ProjectDocumentEvents.hpp"
 #include "detail/project/ProjectDocumentView.hpp"
 #include "detail/project/ProjectFragment.hpp"

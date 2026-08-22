@@ -1,4 +1,4 @@
-#include "uapmd-data/uapmd-data.hpp"
+#include "DemucsStemSeparator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,13 +13,17 @@
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 
-#include "uapmd-data/detail/audio/AudioFileFactory.hpp"
-
 #include <dsp.hpp>
 #include <model.hpp>
 #include <tensor.hpp>
 
-namespace uapmd::import {
+namespace uapmd_demucs {
+
+using uapmd::import::StemFile;
+using uapmd::import::StemSeparationCancelCallback;
+using uapmd::import::StemSeparationRequest;
+using uapmd::import::StemSeparationResult;
+using uapmd::import::StemSeparatorModelFileSpec;
 
 namespace {
 
@@ -32,7 +36,7 @@ struct SeparationCanceled : std::exception {
     }
 };
 
-void checkShouldCancel(const uapmd::import::DemucsStemSeparator::ShouldCancelCallback& shouldCancel) {
+void checkShouldCancel(const StemSeparationCancelCallback& shouldCancel) {
     if (shouldCancel && shouldCancel()) {
         throw SeparationCanceled{};
     }
@@ -187,19 +191,27 @@ std::vector<std::string> stemNames(bool isFourSource)
 
 } // namespace
 
-DemucsStemSeparator::DemucsStemSeparator(std::string modelPath)
-    : modelPath_(std::move(modelPath))
-{
+std::string_view DemucsStemSeparator::id() const noexcept {
+    return "demucs";
 }
 
-DemucsStemSeparator::Result DemucsStemSeparator::separate(
-    const std::string& audioFile,
-    const std::filesystem::path& outputDir,
-    ProgressCallback progressCallback,
-    ShouldCancelCallback shouldCancel) const
+std::string_view DemucsStemSeparator::name() const noexcept {
+    return "Demucs";
+}
+
+StemSeparatorModelFileSpec DemucsStemSeparator::modelFileSpec() const {
+    return {"Demucs ggml Model", {"*.bin"}};
+}
+
+StemSeparationResult DemucsStemSeparator::separate(const StemSeparationRequest& request) const
 {
-    Result result;
-    if (modelPath_.empty()) {
+    const auto& audioFile = request.audioFile;
+    const auto& outputDir = request.outputDirectory;
+    const auto& progressCallback = request.progressCallback;
+    const auto& shouldCancel = request.shouldCancel;
+
+    StemSeparationResult result;
+    if (request.modelPath.empty()) {
         result.error = "Demucs model path is empty";
         return result;
     }
@@ -249,7 +261,7 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
         }
 
         demucscpp::demucs_model model{};
-        if (!demucscpp::load_demucs_model(modelPath_, &model)) {
+        if (!demucscpp::load_demucs_model(request.modelPath, &model)) {
             result.error = "Unable to load Demucs model";
             return result;
         }
@@ -316,4 +328,4 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
     }
 }
 
-} // namespace uapmd::import
+} // namespace uapmd_demucs

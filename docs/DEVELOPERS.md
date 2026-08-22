@@ -13,6 +13,8 @@ In the latest source tree, the following description applies to the `source` dir
 - `uapmd-data/`: sequencer data structures.
 - `uapmd-file/`: platform abstraction API for file dialog and file system.
 - `uapmd-engine/`: sequencer engine.
+- `uapmd-mir/`: two independent addins -- the opt-in music-analysis commands (`UAPMD_ENABLE_MIR`, off by default,
+  backed by librosa.cpp and libsonare), and the demucs.cpp stem separation backing audio import, which is always built.
 - `tools/`: tools
   - `uapmd-app`: an example DAW-like sequencer that also serves virtual UMP devices, for dogfooding
   - `uapmd-app-model`: model API for uapmd-app, to be shared with C API and bindings

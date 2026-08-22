@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../midi/MidiTimelineEvents.hpp"
+#include "StemSeparator.hpp"
 
 namespace uapmd::import {
 
@@ -52,6 +53,11 @@ public:
     static MidiImportResult importMidiFile(const std::string& filepath);
 
     struct AudioImportOptions {
+        // The backend that performs the separation, obtained from the
+        // `/uapmd/audio-import/stem-separator/v1` registry. Importing audio
+        // fails when it is absent: nothing in uapmd-data separates stems.
+        StemSeparator* separator{};
+        // Model file for `separator`, as described by its modelFileSpec().
         std::string modelPath;
         std::filesystem::path outputDirectory;
         std::function<void(float /*progress*/, const std::string& /*message*/)> progressCallback;

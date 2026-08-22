@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 get_filename_component(_UAPMD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
 get_filename_component(UAPMD_REPO_ROOT "${_UAPMD_SOURCE_DIR}" DIRECTORY)
 set(UAPMD_FLATPAK_DIR "${UAPMD_REPO_ROOT}/flatpak")
@@ -15,6 +16,17 @@ option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integr
 option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
 option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM" OFF)
+# Declared here rather than next to add_subdirectory(tests): uapmd-mir reads it and
+# is added well before that point.
+option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
+
+# The MIR analysis results are not trustworthy yet (see docs/uapmd-mir/MIR_FEATURES.md),
+# so those addins and their dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
+# libsonare backend within them and has no effect on its own. The Demucs stem separation
+# addin lives in the same directory but is always built, so uapmd-mir is added
+# unconditionally and gates the analysis half internally.
+option(UAPMD_ENABLE_MIR "Build the uapmd-mir music information retrieval addin" OFF)
+option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
 # to opt back into full Debug codegen when they need to inspect those features specifically.
 option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
@@ -60,6 +72,8 @@ endif()
 
 include(FetchContent)
 include(cmake/CPM.cmake)
+include(cmake/UapmdHeavyAudioFeature.cmake)
+
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
@@ -196,6 +210,7 @@ CPMAddPackage(midicci
         OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
         EXCLUDE_FROM_ALL
 )
+
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
@@ -262,9 +277,14 @@ install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 #add_link_options(-fPIC)
 
 # ARA_API currently rejects wasm32: it has no ABI packing/alignment definition
-# for this architecture. Keep this disabled by default but overrideable for SDK experiments.
-option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" OFF)
-if(UAPMD_ENABLE_ARA)
+# for this architecture. Enable ARA by default on supported platforms.
+if(UAPMD_TARGET_WASM OR EMSCRIPTEN)
+    set(_UAPMD_ENABLE_ARA_DEFAULT OFF)
+else()
+    set(_UAPMD_ENABLE_ARA_DEFAULT ON)
+endif()
+option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" ${_UAPMD_ENABLE_ARA_DEFAULT})
+if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     CPMAddPackage(
             NAME           ARA_SDK
             GIT_REPOSITORY https://github.com/Celemony/ARA_SDK.git
@@ -291,7 +311,8 @@ add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
-if(UAPMD_ENABLE_ARA)
+add_subdirectory(uapmd-mir)
+if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     add_subdirectory(uapmd-ara)
 endif()
 if(EMSCRIPTEN AND TARGET liblocate)
@@ -302,7 +323,6 @@ add_subdirectory(tools)
 
 # Tests
 if (NOT ANDROID)
-option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
 if(UAPMD_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
