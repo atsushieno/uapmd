@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="uapmd-addin-architecture-ai-slop">UAPMD addin architecture (AI
+slop)</h1>
+<p>An <em>addin</em> is a user-selectable UAPMD extension. The term
+distinguishes this architecture from hosted audio plugins.</p>
+<h2 id="design">Design</h2>
+<p><code>uapmd-addin-core</code> provides the generic addin runtime:
+entry discovery, extension-point registration, lifecycle, enablement
+configuration, and native library loading. It does not depend on the
+engine or an application.</p>
+<p>An addin contributes to one versioned <strong>addin path</strong>,
+such as <code>/uapmd/audio-graph/node-class/v1</code>. The path
+identifies an extension-point contract; it is not a library name or
+package identifier. Any subsystem may register an extension point with
+the addin manager. Subsystems retain ownership of their point
+implementations; they are not generically removed by the manager.</p>
+<p>An addin package contains one or more addins. Package IDs are
+absolute, slash-delimited paths: they start with <code>/</code>, contain
+no empty segments, and do not end with <code>/</code>. UAPMD-owned
+packages begin with <code>/uapmd</code>, for example
+<code>/uapmd/ara</code>. Each addin has an ID unique within its
+package.</p>
+<p>The C++ v1/v2 API is source-compatible only. <code>Addin</code>,
+<code>AddinEntry</code>, and <code>AddinHost</code> are defined in
+<code>uapmd-addin-core/uapmd-addin-core.hpp</code>.
+<code>AddinHost::extensionPoint()</code> returns the interface
+registered for a path, or <code>nullptr</code>. Extension-point APIs
+define their own type, ownership, threading, and realtime contracts.</p>
+<p>External addin libraries export one <code>uapmd_addin_entry</code>
+symbol returning an <code>AddinEntry</code>. Built-in addins register an
+equivalent entry with the manager. The manager initializes only after
+the host has registered its extension points; it queries built-in
+entries first, then external libraries.</p>
+<h2 id="lifecycle-and-trust-model">Lifecycle and trust model</h2>
+<p>An enabled addin receives <code>initialize(AddinHost&amp;)</code>;
+disabling it or shutting down calls
+<code>cleanup(AddinHost&amp;)</code>. Addins must remove every callback,
+task, UI object, and host registration they created during cleanup. The
+manager does not provide a generic integrity check. A faulty addin may
+crash UAPMD during cleanup or external-library unload; this is accepted
+in the current trusted native-code model.</p>
+<p>Addins must not throw from lifecycle callbacks. No addin callback is
+audio-thread safe unless its specific extension-point API explicitly
+provides a non-blocking realtime contract.</p>
+<p>Sandboxing is not part of the current architecture. A future
+non-audio-process sandbox remains possible.</p>
+<h2 id="current-behavior-and-limitations">Current behavior and
+limitations</h2>
+<p>On native dynamic-loading targets, the manager scans these
+directories at initialization:</p>
+<ul>
+<li>the local application-data <code>uapmd/addins</code> directory;</li>
+<li><code>addins</code> under the application's installation
+prefix.</li>
+</ul>
+<p>The Addin Manager displays the resolved locations. It has no
+arbitrary-path loader, library-name requirement, rescan action, or
+reload action. Missing native dependencies are handled by the platform
+loader before UAPMD can query the entry. No sidecar manifest or
+package-level dependency metadata is required.</p>
+<p>Enablement is persisted by package ID and addin ID. Project data
+owned by an addin should preserve opaque data when its required addin is
+unavailable or disabled, and restore it when the addin becomes available
+again.</p>
+<p>WebAssembly uses built-in addins only. The manager has no separate
+code loading or unloading there. Its current enable/disable controls
+invoke the built-in lifecycle immediately; a restart-only policy is not
+yet implemented.</p>
+<p>ARA support is a built-in addin when <code>UAPMD_ENABLE_ARA</code> is
+enabled. It uses the engine's plugin-instance lifecycle extension point.
+<code>UAPMD_HAS_ARA</code> remains the build-time availability and
+license-compliance gate. ARA is disabled by default for WebAssembly
+because the current ARA SDK rejects <code>wasm32</code>: it has no
+packing/alignment definition for that architecture.</p>
+<h2 id="roadmap">Roadmap</h2>
+<h3 id="v1-source-integrated-addins">v1: source-integrated addins</h3>
+<p>Addins may live in other repositories but are incorporated into the
+UAPMD build, for example through CPM.cmake. There is no ABI promise. The
+goal is to dogfood registration, initialization, cleanup, enablement,
+and unloading.</p>
+<h3 id="v2-closely-coordinated-external-addins">v2: closely coordinated
+external addins</h3>
+<p>Authors may build and distribute native addins themselves, using
+compatible compiler toolchains and build environments. ABI compatibility
+is still not guaranteed. Native dependencies remain the package author's
+and platform loader's responsibility.</p>
+<h3 id="v3-abi-compatible-addins">v3: ABI-compatible addins</h3>
+<p>UAPMD will define a constrained, versioned ABI suitable for
+independently distributed binary addins. The existing C++ interfaces may
+continue evolving separately.</p>
+<p>Future work also includes dependency metadata and diagnostics,
+project-data contracts for specific extension points, optional
+sandboxing, and carefully specified realtime extension points.</p>
+    </main>
+</div>
+</body>
+</html>
