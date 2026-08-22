@@ -200,54 +200,6 @@ CPMAddPackage(midicci
         EXCLUDE_FROM_ALL
 )
 
-if(UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
-    CPMAddPackage(
-            NAME           libsonare
-            GIT_TAG        v1.7.2
-            GIT_REPOSITORY https://github.com/libraz/libsonare
-            EXCLUDE_FROM_ALL
-            OPTIONS
-                "BUILD_TESTING OFF"
-                "BUILD_CLI OFF"
-                "BUILD_BENCH OFF"
-                "BUILD_MASTERING OFF"
-                "BUILD_MIXING OFF"
-                "BUILD_GRAPH OFF"
-                "BUILD_FX OFF"
-                "BUILD_ACOUSTIC_SIM OFF"
-                "BUILD_ARRANGEMENT OFF"
-                "BUILD_ASSIST OFF"
-                  "SONARE_WITH_FFMPEG OFF"
-      )
-    # libsonare v1.7.2 uses the runtime biquad design implementation from its
-    # analysis filters, but omits it from SONARE_SOURCES in its CMake target.
-    if(TARGET sonare_core_objects)
-        target_sources(sonare_core_objects PRIVATE
-                "${libsonare_SOURCE_DIR}/src/rt/biquad_design.cpp"
-        )
-    endif()
-endif()
-
-# librosa.cpp is the baseline MIR implementation and is intentionally not optional.
-# It is added after libsonare so both libraries can reuse libsonare's Eigen target
-# when the optional libsonare dependency is enabled.
-CPMAddPackage(
-        NAME           librosa_cpp
-        GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
-        GIT_REPOSITORY https://github.com/olilarkin/librosa.cpp
-        GIT_SUBMODULES "modules/eigen;modules/pocketfft"
-        EXCLUDE_FROM_ALL
-        OPTIONS
-            "LIBROSA_BUILD_TESTS OFF"
-            "LIBROSA_BUILD_EXAMPLES OFF"
-            "LIBROSA_BUILD_BENCHMARKS OFF"
-            "LIBROSA_BUILD_CROSSVAL_TESTS OFF"
-            "LIBROSA_BUILD_CLI OFF"
-            "LIBROSA_BUILD_WASM OFF"
-            "LIBROSA_BUILD_SWIFT_C_WRAPPER OFF"
-            "LIBROSA_FFT_BACKEND pocketfft"
-)
-
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")

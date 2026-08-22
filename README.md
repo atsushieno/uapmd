@@ -237,7 +237,7 @@ Fonts used:
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
 
-Apache V2 or compatible:
+Apache V2 or compatible (opt-in features that have to be enabled using CMake options for each):
 
 - [Celemony/ARA_SDK](https://github.com/Celemony/ARA_SDK) - Apache V2
 - [libraz/libsonare](https://github.com/libraz/libsonare) - Apache V2

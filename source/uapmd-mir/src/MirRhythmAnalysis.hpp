@@ -1,20 +1,20 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <span>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-namespace uapmd_mir {
+#include "MirTempoMap.hpp"
 
-using RhythmAnalysisLogger = std::function<void(std::string_view)>;
+namespace uapmd_mir::sonare {
 
+// libsonare-backed meter map. Beats are tracked per tempo-map segment; the
+// segmentation itself lives in MirMeterMap.
 std::vector<std::tuple<double, uint8_t, uint8_t>> detectRhythmMap(
     std::span<const float> samples, int sampleRate,
     const std::vector<std::pair<double, double>>& tempoPoints, double fallbackBpm,
-    const RhythmAnalysisLogger& logger = {});
+    const AnalysisLogger& logger = {});
 
-} // namespace uapmd_mir
+} // namespace uapmd_mir::sonare

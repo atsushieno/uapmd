@@ -21,6 +21,7 @@
 #include <uapmd-addin-core/uapmd-addin-core.hpp>
 #if UAPMD_ENABLE_LIBSONARE
 #include <uapmd-engine/uapmd-engine.hpp>
+#include "MirDiagnostics.hpp"
 #include "MirTempoAnalysis.hpp"
 #include "MirRhythmAnalysis.hpp"
 #endif
@@ -37,75 +38,6 @@ constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/command/v1"};
 constexpr uint32_t kDefaultTickResolution = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
-
-enum class MirDiagnosticKind {
-    Calls,
-    Tempo,
-    Beats,
-    Onsets,
-    Meter,
-    Chords,
-    Other,
-    Count,
-};
-
-class MirDiagnosticLog {
-public:
-    MirDiagnosticLog() {
-        bytes_.reserve(1024 * 1024);
-        records_.reserve(16384);
-    }
-
-    void append(std::string_view message) {
-        const auto required = bytes_.size() + message.size() + 1;
-        if (required > bytes_.capacity())
-            bytes_.reserve(std::max(required, bytes_.capacity() * 2));
-        const auto offset = bytes_.size();
-        bytes_.insert(bytes_.end(), message.begin(), message.end());
-        bytes_.push_back('\0');
-        records_.push_back({kindOf(message), offset});
-    }
-
-    void flush() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-        size_t emitted = 0;
-        for (int kind = 0; kind < static_cast<int>(MirDiagnosticKind::Count); ++kind)
-            for (const auto& record : records_) {
-                if (static_cast<int>(record.kind) != kind)
-                    continue;
-                remidy::Logger::global()->logInfo("%s", bytes_.data() + record.offset);
-                if (++emitted % 32 == 0)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(25));
-            }
-        records_.clear();
-        bytes_.clear();
-    }
-
-private:
-    struct Record {
-        MirDiagnosticKind kind;
-        size_t offset;
-    };
-
-    static MirDiagnosticKind kindOf(std::string_view message) {
-        if (message.starts_with("uapmd calling"))
-            return MirDiagnosticKind::Calls;
-        if (message.contains("BPM") || message.starts_with("uapmd tempo-map"))
-            return MirDiagnosticKind::Tempo;
-        if (message.contains("beat"))
-            return MirDiagnosticKind::Beats;
-        if (message.contains("onset"))
-            return MirDiagnosticKind::Onsets;
-        if (message.starts_with("uapmd meter-map"))
-            return MirDiagnosticKind::Meter;
-        if (message.contains("chord"))
-            return MirDiagnosticKind::Chords;
-        return MirDiagnosticKind::Other;
-    }
-
-    std::vector<char> bytes_;
-    std::vector<Record> records_;
-};
 
 enum class MirStage {
     Idle,
@@ -348,11 +280,8 @@ public:
 private:
     void analyzeProject() noexcept {
         try {
-            MirDiagnosticLog diagnostics;
-            struct DiagnosticLogGuard {
-                MirDiagnosticLog& diagnostics;
-                ~DiagnosticLogGuard() { diagnostics.flush(); }
-            } diagnosticLogGuard{diagnostics};
+            uapmd_mir::MirDiagnosticLog diagnostics;
+            uapmd_mir::MirDiagnosticLogGuard diagnosticLogGuard{diagnostics};
             auto& timeline = engine_.timeline();
             const auto& view = engine_.timeline().projectDocumentView();
             uint32_t projectTickResolution = timeline.state().projectTickResolution;
@@ -440,12 +369,12 @@ private:
                 result.duration_samples = sourceClip->durationSamples;
                 result.sample_rate = source->sampleRate;
                 result.bpm = 120.0;
-                result.tempo_points = uapmd_mir::detectTempoMap(
+                result.tempo_points = uapmd_mir::sonare::detectTempoMap(
                     mono, static_cast<int>(source->sampleRate), result.bpm, rawLog);
                 if (!result.tempo_points.empty())
                     result.bpm = result.tempo_points.front().second;
 
-                result.time_signatures = uapmd_mir::detectRhythmMap(
+                result.time_signatures = uapmd_mir::sonare::detectRhythmMap(
                     mono, static_cast<int>(source->sampleRate),
                     result.tempo_points, result.bpm, rawLog);
                 if (!result.time_signatures.empty()) {

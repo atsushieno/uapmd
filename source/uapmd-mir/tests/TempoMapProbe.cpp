@@ -1,5 +1,6 @@
 #include "MirTempoAnalysis.hpp"
 #include "MirRhythmAnalysis.hpp"
+#include "MirLibrosaAnalysis.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -69,8 +70,13 @@ bool readFloatWave(const std::string& path, std::vector<float>& mono, int& sampl
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "usage: uapmd-mir-tempo-probe FILE.wav\n";
+    if (argc < 2 || argc > 3) {
+        std::cerr << "usage: uapmd-mir-tempo-probe FILE.wav [libsonare|librosa]\n";
+        return 2;
+    }
+    const std::string backend = argc == 3 ? argv[2] : "libsonare";
+    if (backend != "libsonare" && backend != "librosa") {
+        std::cerr << "backend must be 'libsonare' or 'librosa'\n";
         return 2;
     }
     std::vector<float> mono;
@@ -79,7 +85,12 @@ int main(int argc, char** argv) {
         std::cerr << "only little-endian 32-bit float WAV input is supported\n";
         return 2;
     }
-    const auto map = uapmd_mir::detectTempoMap(mono, sampleRate, 120.0);
+
+    const auto useLibrosa = backend == "librosa";
+    const auto map = useLibrosa
+        ? uapmd_mir::librosa_cpp::detectTempoMap(mono, sampleRate, 120.0)
+        : uapmd_mir::sonare::detectTempoMap(mono, sampleRate, 120.0);
+    std::cout << "backend\t" << backend << '\n';
     std::cout << "tempo\n";
     for (const auto& [time, bpm] : map)
         std::cout << time << '\t' << bpm << '\t'
@@ -90,8 +101,10 @@ int main(int argc, char** argv) {
               << uapmd_mir::tempoMapTimeToTicks(map, duration, 480, map.front().second)
               << '\n';
     std::cout << "meter\n";
-    for (const auto& [time, numerator, denominator] :
-         uapmd_mir::detectRhythmMap(mono, sampleRate, map, map.front().second))
+    const auto meter = useLibrosa
+        ? uapmd_mir::librosa_cpp::detectRhythmMap(mono, sampleRate, map, map.front().second)
+        : uapmd_mir::sonare::detectRhythmMap(mono, sampleRate, map, map.front().second);
+    for (const auto& [time, numerator, denominator] : meter)
         std::cout << time << '\t' << static_cast<int>(numerator) << '/'
                   << static_cast<int>(denominator) << '\t'
                   << uapmd_mir::tempoMapTimeToTicks(map, time, 480, map.front().second)
