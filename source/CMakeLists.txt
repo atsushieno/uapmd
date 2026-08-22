@@ -16,7 +16,15 @@ option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integr
 option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
 option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM" OFF)
-option(UAPMD_ENABLE_LIBSONARE "Build MIR commands that depend on libsonare" ON)
+# Declared here rather than next to add_subdirectory(tests): uapmd-mir reads it and
+# is added well before that point.
+option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
+
+# The MIR analysis results are not trustworthy yet (see docs/uapmd-mir/MIR_FEATURES.md),
+# so the module and its dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
+# libsonare backend within it and has no effect on its own.
+option(UAPMD_ENABLE_MIR "Build the uapmd-mir music information retrieval addin" OFF)
+option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
 # to opt back into full Debug codegen when they need to inspect those features specifically.
 option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
@@ -300,7 +308,9 @@ add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
-add_subdirectory(uapmd-mir)
+if(UAPMD_ENABLE_MIR)
+    add_subdirectory(uapmd-mir)
+endif()
 if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     add_subdirectory(uapmd-ara)
 endif()
@@ -312,7 +322,6 @@ add_subdirectory(tools)
 
 # Tests
 if (NOT ANDROID)
-option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
 if(UAPMD_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

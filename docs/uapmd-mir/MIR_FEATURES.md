@@ -13,7 +13,7 @@ that produce the same kind of output through the same writer:
 | command id | `uapmd-mir.analyze-project` | `uapmd-mir.populate-master-librosa` |
 | command title | "Populate master track (libsonare)" | "Populate master track (librosa.cpp)" |
 | command order | 1000 | 1001 |
-| optional | yes (`UAPMD_ENABLE_LIBSONARE`) | no, always built |
+| built when | `UAPMD_ENABLE_MIR` **and** `UAPMD_ENABLE_LIBSONARE` | `UAPMD_ENABLE_MIR` |
 
 Both addins are exposed by the single `uapmd_addin_entry` in `MirAddin.cpp`, which
 returns a two-element `AddinEntry` (`MirAddin` plus the one from
@@ -42,17 +42,34 @@ reason is spread across three layers.
 
 ## Build configuration
 
-`source/CMakeLists.txt` declares `option(UAPMD_ENABLE_LIBSONARE ... ON)` and pulls
-libsonare `v1.7.2` via CPM on every platform except Windows, iOS and Emscripten.
-librosa.cpp is pinned by commit and is *intentionally not optional*: it is the
-baseline implementation, so the module always builds with
-`UAPMD_ENABLE_LIBROSA=1`. When libsonare is unavailable, `MirAddin.cpp` compiles
-down to an addin whose `initialize()` succeeds and registers nothing, and
-`MirTempoAnalysis.cpp` / `MirRhythmAnalysis.cpp` are not compiled at all.
+**The whole module is off by default.** The analysis results are not trustworthy
+yet — see [Where the timing goes wrong](#where-the-timing-goes-wrong) — so
+`source/CMakeLists.txt` declares `option(UAPMD_ENABLE_MIR ... OFF)` and only calls
+`add_subdirectory(uapmd-mir)` when it is set:
+
+```bash
+cmake -B cmake-build-debug -G Ninja -DCPM_SOURCE_CACHE=~/.cache/CPM/uapmd -DUAPMD_ENABLE_MIR=ON
+```
+
+Both CPM declarations live inside `source/uapmd-mir/CMakeLists.txt`, so a build
+without `UAPMD_ENABLE_MIR` neither fetches nor compiles librosa.cpp or libsonare.
+The module's own CMakeLists starts with a `FATAL_ERROR` guard so it cannot be
+pulled in by accident.
+
+Within an MIR-enabled build:
+
+- **librosa.cpp** (pinned by commit) is mandatory — it is the baseline backend, so
+  the module always compiles with `UAPMD_ENABLE_LIBROSA=1`.
+- **libsonare** `v1.7.2` is selected by `option(UAPMD_ENABLE_LIBSONARE ... ON)`,
+  and is skipped on Windows, iOS and Emscripten regardless. When it is
+  unavailable, `MirAddin.cpp` compiles down to an addin whose `initialize()`
+  succeeds and registers nothing, and `MirTempoAnalysis.cpp` /
+  `MirRhythmAnalysis.cpp` are not compiled at all. `UAPMD_ENABLE_LIBSONARE` has no
+  effect on its own.
 
 `uapmd-mir` is a `SHARED` library deployed through `add_uapmd_addin_library()` /
 `deploy_uapmd_addin_library()`, i.e. it is loaded as an external addin, not linked
-into the app.
+into the app. A build with the module disabled simply has no such addin to load.
 
 ## Shared pipeline
 
@@ -65,7 +82,7 @@ audio source (whole file)
   -> mono downmix
   -> backend analysis            (tempo map / beat grid / meter map / chords)
   -> AnalysisResult              (times in SECONDS, relative to the audio source)
-  -> seconds -> ticks conversion (backend-specific; see below)
+  -> seconds -> ticks conversion (shared tempo-map integration)
   -> makeMasterClip()            (UMP stream + absolute tick timestamps)
   -> TimelineFacade::addMasterMidiClip()
   -> MidiClipSourceNode          (ticks -> samples, using the same tempo map)
@@ -530,8 +547,8 @@ Two items no longer apply and are recorded here only so the history is legible:
 
 ## Diagnostics and the probe tool
 
-When `UAPMD_ENABLE_LIBSONARE` and `UAPMD_BUILD_TESTS` are on (and not
-Android/iOS/Emscripten), CMake builds `uapmd-mir-tempo-probe` from
+When `UAPMD_ENABLE_MIR`, `UAPMD_ENABLE_LIBSONARE` and `UAPMD_BUILD_TESTS` are on
+(and not Android/iOS/Emscripten), CMake builds `uapmd-mir-tempo-probe` from
 `tests/TempoMapProbe.cpp`. It links the analysis translation units plus
 `sonare_core` and `librosa::librosa` — no engine, no app — and runs the tempo and
 meter estimators of **either backend** against a WAV file:

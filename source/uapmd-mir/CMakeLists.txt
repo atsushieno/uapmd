@@ -1,3 +1,10 @@
+# Only reached when UAPMD_ENABLE_MIR is on: source/CMakeLists.txt gates the
+# add_subdirectory() so librosa.cpp and libsonare are not fetched or built for
+# builds that do not want the analysis commands.
+if(NOT UAPMD_ENABLE_MIR)
+    message(FATAL_ERROR "uapmd-mir requires UAPMD_ENABLE_MIR")
+endif()
+
 set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
 
@@ -28,8 +35,10 @@ if(UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
     endif()
 endif()
 
-# librosa.cpp is mandatory for this module. Add it after libsonare so both
-# libraries reuse the same Eigen target when libsonare is enabled.
+# librosa.cpp backs the always-available backend of this module, so it is
+# mandatory here -- but the module itself is opt-in, so nothing is fetched
+# unless UAPMD_ENABLE_MIR is set. Added after libsonare so both libraries
+# reuse the same Eigen target when libsonare is enabled.
 CPMAddPackage(
         NAME           librosa_cpp
         GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
