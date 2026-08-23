@@ -176,27 +176,51 @@ public:
     }
 
     std::string_view title() const noexcept override {
+        static constexpr std::string_view base{"Populate master track (librosa.cpp)"};
         if (!running_.load(std::memory_order_acquire))
-            return "Populate master track (librosa.cpp)";
+            return base;
+        // While a run is in flight the command cancels it, so the label says
+        // so -- still carrying the elapsed time.
         static thread_local std::string label;
         try {
-            label = std::format("Populate master track (librosa.cpp) (analyzing {}/{}; {}s)",
-                                processedSources_.load(std::memory_order_acquire),
-                                totalSources_.load(std::memory_order_acquire),
-                                std::chrono::duration_cast<std::chrono::seconds>(
-                                    std::chrono::steady_clock::now() - startedAt_).count());
+            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - startedAt_).count();
+            if (cancelling())
+                label = std::format("Cancelling {} ({}s)", base, elapsed);
+            else
+                label = std::format("Cancel {} (analyzing {}/{}; {}s)", base,
+                                    processedSources_.load(std::memory_order_acquire),
+                                    totalSources_.load(std::memory_order_acquire), elapsed);
         } catch (...) {
-            return "Populate master track (librosa.cpp) (running...)";
+            return "Cancel Populate master track (librosa.cpp)";
         }
         return label;
     }
 
     int order() const noexcept override { return 1001; }
+    // True once cancellation was asked for but the worker has not wound down.
+    bool cancelling() const noexcept {
+        return running_.load(std::memory_order_acquire)
+            && stopRequested_.load(std::memory_order_acquire);
+    }
+
+    // Asks the worker to stop without waiting for it. Cancelling runs on the UI
+    // thread and the worker only notices between audio sources, so joining here
+    // would freeze the interface for as long as one source takes to analyze.
+    void requestStop() noexcept {
+        stopRequested_.store(true, std::memory_order_release);
+    }
+
     bool enabled() const noexcept override {
-        return !running_.load(std::memory_order_acquire);
+        // Never greyed out: while running, activating it cancels.
+        return true;
     }
 
     void invoke() noexcept override {
+        if (running_.load(std::memory_order_acquire)) {
+            requestStop();
+            return;
+        }
         bool expected = false;
         if (!running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
             return;

@@ -150,7 +150,21 @@ public:
         stop();
     }
 
-    bool running() const noexcept { return running_.load(std::memory_order_acquire); }
+    bool running() const noexcept {
+        return running_.load(std::memory_order_acquire);
+    }
+
+    // True once cancellation was asked for but the worker has not wound down.
+    bool cancelling() const noexcept {
+        return running() && stop_requested_.load(std::memory_order_acquire);
+    }
+
+    // Asks the worker to stop without waiting for it. Cancelling runs on the UI
+    // thread, and the worker only notices between units of work -- a whole
+    // analysis window for Basic Pitch -- so joining here would visibly stall.
+    void requestStop() noexcept {
+        stop_requested_.store(true, std::memory_order_release);
+    }
     int processed() const noexcept { return processed_.load(std::memory_order_acquire); }
     int total() const noexcept { return total_.load(std::memory_order_acquire); }
     std::chrono::steady_clock::time_point startedAt() const noexcept { return started_at_; }
@@ -205,6 +219,24 @@ std::string progressSuffix(const TranscriptionJob& job) {
     }
 }
 
+// While a run is in flight the command cancels it, so the label says so --
+// still carrying the elapsed time, which is the part that tells the user
+// anything is happening at all.
+std::string commandLabel(std::string_view base, const TranscriptionJob& job) {
+    if (!job.running())
+        return std::string(base);
+    if (job.cancelling()) {
+        try {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - job.startedAt()).count();
+            return std::format("Cancelling {} ({}s)", base, elapsed);
+        } catch (...) {
+            return std::format("Cancelling {}", base);
+        }
+    }
+    return std::format("Cancel {}{}", base, progressSuffix(job));
+}
+
 class TranscribeAllCommand final : public Command {
 public:
     explicit TranscribeAllCommand(TranscriptionJob& job) : job_(job) {}
@@ -216,16 +248,24 @@ public:
     std::string_view title() const noexcept override {
         static constexpr std::string_view base{
             "Transcribe all audio clips to poly MIDI2 clip (basic-pitch)"};
-        if (!job_.running())
-            return base;
         static thread_local std::string label;
-        label = std::string(base) + progressSuffix(job_);
+        label = commandLabel(base, job_);
         return label;
     }
 
     int order() const noexcept override { return 1200; }
-    bool enabled() const noexcept override { return !job_.running(); }
-    void invoke() noexcept override { job_.start(std::nullopt, std::nullopt); }
+    bool enabled() const noexcept override {
+        // Never greyed out: while running, activating it cancels.
+        return true;
+    }
+
+    void invoke() noexcept override {
+        if (job_.running()) {
+            job_.requestStop();
+            return;
+        }
+        job_.start(std::nullopt, std::nullopt);
+    }
 
 private:
     TranscriptionJob& job_;
@@ -241,10 +281,8 @@ public:
 
     std::string_view title() const noexcept override {
         static constexpr std::string_view base{"Transcribe to poly MIDI2 clip (basic-pitch)"};
-        if (!job_.running())
-            return base;
         static thread_local std::string label;
-        label = std::string(base) + progressSuffix(job_);
+        label = commandLabel(base, job_);
         return label;
     }
 
@@ -255,10 +293,15 @@ public:
     }
 
     bool enabled(const ClipCommandTarget&) const noexcept override {
-        return !job_.running();
+        // Never greyed out: while running, activating it cancels.
+        return true;
     }
 
     void invoke(const ClipCommandTarget& target) noexcept override {
+        if (job_.running()) {
+            job_.requestStop();
+            return;
+        }
         job_.start(target.track_index, target.clip_id);
     }
 
