@@ -32,7 +32,7 @@ cannot be built in this project; together they are what lets `mpm.cpp` and
 
 | file | what it replaces |
 |---|---|
-| `pitch_detection.h` | Upstream's public header. Same classes and signatures, but the mlpack HMM becomes an opaque placeholder and the FFTS plan handles are gone. Our include directory precedes upstream's `include/`, so this is the header their sources see. |
+| `pitch_detection.h` | Upstream's public header. Same classes and signatures, but the mlpack HMM becomes an opaque placeholder and the FFTS plan handles are gone. Our include directory precedes upstream's `include/`, so this is the header their sources see. It also supplies `ssize_t` on MSVC, which upstream uses for loop bounds and Windows does not define -- since the sources are compiled unmodified, this header is the only place such a fix can go. |
 | `autocorrelation.cpp` | Upstream's, which calls FFTS directly. Rewritten against pocketfft, which takes arbitrary transform lengths, so upstream's power-of-two versus complex-to-complex split disappears. |
 | `parabolic_interpolation.cpp` | Upstream's, which reads one element past the end of the array when interpolating around its last index — reachable from YIN's `absolute_threshold()`. |
 | `HmmStub.cpp` | `util::pitch_from_hmm()`, which upstream implements with mlpack. Returns -1. |

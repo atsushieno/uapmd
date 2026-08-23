@@ -21,8 +21,20 @@
 
 #include <algorithm>
 #include <complex>
+#include <cstddef>
 #include <utility>
 #include <vector>
+
+// MSVC has no POSIX <sys/types.h>, so `ssize_t` does not exist there. Upstream's
+// mpm.cpp and yin.cpp declare their loop bounds with it, and they are compiled
+// unmodified, so the type has to arrive from here -- this header is the only
+// thing they include before using it, and the only lever we have on sources we
+// deliberately do not patch. `_SSIZE_T_DEFINED` is the guard the Windows
+// toolchains use, so setting it keeps a later definition from colliding.
+#if defined(_MSC_VER) && !defined(_SSIZE_T_DEFINED)
+#define _SSIZE_T_DEFINED
+using ssize_t = std::ptrdiff_t;
+#endif
 
 namespace detail {
 // Stands in for mlpack::hmm::HMM<mlpack::distribution::DiscreteDistribution>.
