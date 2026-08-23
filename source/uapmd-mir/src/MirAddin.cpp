@@ -428,17 +428,17 @@ private:
             if (!master)
                 return;
             stage_.store(MirStage::Writing, std::memory_order_release);
-            const auto existingMasterClips = master->clipManager().getAllClips();
-            for (const auto& clip : existingMasterClips) {
-                if (clip.name.starts_with("MIR: "))
-                    timeline.removeClipFromTrack(uapmd::kMasterTrackIndex, clip.clipId,
-                                                 uapmd::ProjectMutationOrigin::User);
-            }
-
-            // Both removal and insertion with User origin capture clip
-            // fragments for undo history. Those captures must happen outside
-            // a document transaction, so let each facade mutation manage its
-            // own command step.
+            // Populating the master track is purely additive. Whatever the
+            // track already holds stays untouched, including the clips of an
+            // earlier run of this or the other MIR backend, so that the
+            // results of both backends can be compared side by side. The
+            // guard below only keeps one run's own results from overlapping
+            // each other.
+            //
+            // Insertion with User origin captures clip fragments for undo
+            // history. Those captures must happen outside a document
+            // transaction, so let each facade mutation manage its own
+            // command step.
             int64_t lastEnd = std::numeric_limits<int64_t>::min();
             for (const auto& result : results) {
                 if (result.position.samples < lastEnd)
@@ -449,7 +449,7 @@ private:
                     result.bpm,
                     makeTempoChanges(result),
                     makeTimeSignatureChanges(result),
-                    "MIR: " + std::to_string(result.position.samples), false, "",
+                    "MIR: libsonare " + std::to_string(result.position.samples), false, "",
                     uapmd::ProjectMutationOrigin::User);
                 if (added.success)
                     lastEnd = result.position.samples + result.duration_samples;

@@ -314,10 +314,8 @@ private:
             auto* master = timeline.masterTimelineTrack();
             if (!master)
                 return;
-            for (const auto& clip : master->clipManager().getAllClips())
-                if (clip.name.starts_with("MIR: "))
-                    timeline.removeClipFromTrack(uapmd::kMasterTrackIndex, clip.clipId,
-                                                 uapmd::ProjectMutationOrigin::User);
+            // Populating the master track is purely additive; see the comment
+            // in MirAddin.cpp for why nothing existing is removed here.
             int64_t lastEnd = std::numeric_limits<int64_t>::min();
             for (const auto& result : results) {
                 if (result.position.samples < lastEnd)
@@ -326,7 +324,7 @@ private:
                 const auto added = timeline.addMasterMidiClip(
                     result.position, std::move(events), std::move(ticks), result.tick_resolution,
                     result.bpm, makeTempoChanges(result), makeTimeSignatureChanges(result),
-                    "MIR: " + std::to_string(result.position.samples), false, "",
+                    "MIR: librosa.cpp " + std::to_string(result.position.samples), false, "",
                     uapmd::ProjectMutationOrigin::User);
                 if (added.success)
                     lastEnd = result.position.samples + result.duration_samples;

@@ -184,9 +184,10 @@ disk. It is dead weight, not a live bug.
 
 ### 7. Writing to the master track
 
-Existing master clips whose name starts with `"MIR: "` are removed, then results
-are inserted in `position.samples` order, skipping any result that starts before
-the previous one ended. Each insertion is a separate
+Results are inserted in `position.samples` order, skipping any result that
+starts before the previous one ended. Existing master clips are left in place,
+and clips are named `"MIR: libsonare <position>"` / `"MIR: librosa <position>"`
+after the backend that produced them. Each insertion is a separate
 `ProjectMutationOrigin::User` mutation so undo history captures clip fragments
 outside a document transaction — `MirAddin.cpp` has a comment explaining this;
 `MirLibrosaAddin.cpp` does the same without the comment.
