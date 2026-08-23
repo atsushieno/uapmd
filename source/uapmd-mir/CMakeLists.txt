@@ -10,7 +10,7 @@ if(UAPMD_ENABLE_MIR)
     if(UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
         CPMAddPackage(
                 NAME           libsonare
-                GIT_TAG        v1.7.2
+                GIT_TAG        develop
                 GIT_REPOSITORY https://github.com/libraz/libsonare
                 EXCLUDE_FROM_ALL
                 OPTIONS
