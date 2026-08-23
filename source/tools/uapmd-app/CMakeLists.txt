@@ -607,6 +607,9 @@ endif()
 if(TARGET uapmd::bsroformer)
     list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-bsroformer>")
 endif()
+if(TARGET uapmd::basic-pitch)
+    list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-basic-pitch>")
+endif()
 
 # Link the compile target (OBJECT library on desktop, direct executable on
 # Android/WASM) against all app libraries.  PUBLIC scope causes both

@@ -22,11 +22,20 @@ option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
 
 # The MIR analysis results are not trustworthy yet (see docs/uapmd-mir/MIR_FEATURES.md),
 # so those addins and their dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
-# libsonare backend within them and has no effect on its own. The Demucs stem separation
-# addin lives in the same directory but is always built, so uapmd-mir is added
-# unconditionally and gates the analysis half internally.
-option(UAPMD_ENABLE_MIR "Build the uapmd-mir music information retrieval addin" OFF)
+# libsonare backend within them and has no effect on its own. The uapmd-mir addin library
+# is always built regardless: it also carries the pitch transcription addin, which needs
+# neither librosa.cpp nor libsonare. The stem separation addins in the same directory are
+# always built too, so uapmd-mir is added unconditionally and gates the analysis half
+# internally.
+option(UAPMD_ENABLE_MIR "Build the music-analysis addins in uapmd-mir (tempo, meter, chords)" OFF)
 option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
+# Basic Pitch is Apache-2.0, including its model weights, so it follows the same opt-out
+# shape as libsonare and ARA rather than being unconditional -- except that it defaults OFF,
+# because a build that enables it downloads the model at configure time and embeds it in the
+# binary, which is a redistribution decision rather than just a build one. Nothing
+# Apache-licensed is committed to this repository.
+option(UAPMD_ENABLE_BASIC_PITCH "Build the Basic Pitch polyphonic transcription addin (Apache-2.0, downloads model weights)" OFF)
+
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
 # to opt back into full Debug codegen when they need to inspect those features specifically.
 option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG

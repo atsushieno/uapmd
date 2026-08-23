@@ -35,11 +35,31 @@ Enablement is persisted by package ID and addin ID. Project data owned by an add
 
 WebAssembly uses built-in addins only. The manager has no separate code loading or unloading there. Its current enable/disable controls invoke the built-in lifecycle immediately; a restart-only policy is not yet implemented.
 
-The stem separation backends for audio import are built-in addins, always present. ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
+The stem separation backends for audio import are built-in addins, always present, as is the Basic Pitch polyphonic transcription addin (`/uapmd/basic-pitch`) when `UAPMD_ENABLE_BASIC_PITCH` is set. ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
 
 ## Extension points
 
 `/uapmd/engine/v1` exposes the `uapmd::SequencerEngine` an addin runs against.
+
+`/uapmd/app/command/v1` exposes the `uapmd_addin::CommandRegistry`, for actions
+that apply to the application as a whole. An addin registers a
+`uapmd_addin::Command` and must unregister it during `cleanup()`. The host
+decides where commands appear; the application lists them at the foot of its
+Command menu. `title()` is read every frame, so a command that starts a
+long-running job reports its progress by returning a different title while it
+runs, and refuses re-entry through `enabled()`.
+
+`/uapmd/app/clip-command/v1` exposes the `uapmd_addin::ClipCommandRegistry`, for
+actions that apply to a single clip. It follows the same contribute-and-remove
+rule, with `uapmd_addin::ClipCommand` adding a `uapmd_addin::ClipCommandTarget`
+argument naming the clip. The host asks `appliesTo()` before drawing anything,
+so a command that only makes sense for one kind of clip is invisible on the
+others rather than greyed out; `enabled()` then greys out a command that applies
+but cannot run right now. The target carries only the identifiers the host's own
+clip APIs take, plus enough to answer `appliesTo()` -- an addin resolves the
+clip itself through `/uapmd/engine/v1`. A host with nowhere to present per-clip
+actions leaves this point unregistered, which addins must tolerate. The
+application offers these in the clip context menu of both timeline views.
 
 `/uapmd/audio-graph/provider/v1` exposes the `uapmd::AudioGraphProviderRegistry`.
 Providers are *contributed*, not replaced: an addin adds its own audio graph

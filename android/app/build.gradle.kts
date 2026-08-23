@@ -29,6 +29,11 @@ android {
                 arguments.addAll(listOf(
                     "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                     "-DUAPMD_ENABLE_ARA=1",
+                    // Polyphonic transcription is a built-in addin, so unlike
+                    // the dynamically loaded uapmd-mir library it is reachable
+                    // here. Enabling it downloads the Apache-2.0 model at
+                    // configure time and embeds it in the .so.
+                    "-DUAPMD_ENABLE_BASIC_PITCH=ON",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",

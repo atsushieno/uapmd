@@ -1,7 +1,46 @@
-# This directory holds two independent features: the opt-in music-analysis
-# addins (UAPMD_ENABLE_MIR), and the Demucs stem separation addin, which is
-# always built. Only the analysis half is gated, so librosa.cpp and libsonare
-# are not fetched for builds that do not want the analysis commands.
+# This directory holds several independent features.
+#
+# The uapmd-mir addin library itself is always built, because it always carries
+# the pitch transcription addin. UAPMD_ENABLE_MIR gates only the music-analysis
+# addins inside it -- their results are not yet trustworthy -- so librosa.cpp
+# and libsonare are not fetched at all for builds that do not want the analysis
+# commands. Pitch transcription needs neither of them. The stem separation
+# addins below are always built too, as separate static built-in libraries.
+#
+# The library is a dynamically loaded addin, so it is built only where the addin
+# manager can load one; WebAssembly, Android and iOS use built-in addins only.
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+
+# Header-only, and pinned to the same commit librosa.cpp vendors, so an
+# MIR-enabled build compiles one identical copy of pocketfft either way. Fetched
+# outside the analysis gate because the pitch estimators always need it.
+CPMAddPackage(
+        NAME           pocketfft
+        GIT_REPOSITORY https://github.com/mreineck/pocketfft
+        GIT_TAG        32424d2067c2e8043dc646a4e49754b2b40cc549
+        DOWNLOAD_ONLY  YES
+)
+
+# MPM and YIN, taken as source rather than as a CMake dependency. DOWNLOAD_ONLY
+# because upstream's own CMakeLists cannot be used: its public header pulls in
+# mlpack 3 (which the plain estimators do not need but every estimator inherits)
+# and FFTS, and it sets -march=native -fext-numeric-literals -ansi globally,
+# which neither configures under AppleClang nor survives a cross-compile.
+#
+# Only src/mpm.cpp and src/yin.cpp are compiled, and they are compiled
+# unmodified: src/pitch-detection/pitch_detection.h replaces upstream's public
+# header, so the mlpack and FFTS members disappear, and the FFT, the bounds fix
+# in parabolic interpolation and the HMM stub live beside it. Our include
+# directory must precede upstream's for that substitution to take effect --
+# which is why ${pitch_detection_SOURCE_DIR}/include is deliberately absent
+# below. See src/pitch-detection/HACKING.md.
+CPMAddPackage(
+        NAME           pitch_detection
+        GIT_REPOSITORY https://github.com/sevagh/pitch-detection
+        GIT_TAG        8055f50bd94ffcc9fec4b63ca9a6a087eec9d892
+        DOWNLOAD_ONLY  YES
+)
+
 if(UAPMD_ENABLE_MIR)
 
     set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
@@ -61,7 +100,55 @@ if(UAPMD_ENABLE_MIR)
         unset(BUILD_SHARED_LIBS)
     endif()
 
-    add_library(uapmd-mir SHARED
+endif()
+
+# The library, and the pitch transcription addin in it, exist regardless of
+# UAPMD_ENABLE_MIR. AddinEntry.cpp assembles whichever addins were compiled in.
+add_library(uapmd-mir SHARED
+        src/AddinEntry.cpp
+        src/PitchTranscriptionAddin.cpp
+        src/PitchTranscription.cpp
+        src/NoteClipWriter.cpp
+        src/ClipTranscription.cpp
+        src/pitch-detection/autocorrelation.cpp
+        src/pitch-detection/parabolic_interpolation.cpp
+        src/pitch-detection/HmmStub.cpp
+        "${pitch_detection_SOURCE_DIR}/src/mpm.cpp"
+        "${pitch_detection_SOURCE_DIR}/src/yin.cpp"
+)
+
+add_uapmd_addin_library(uapmd-mir)
+
+target_compile_features(uapmd-mir PRIVATE cxx_std_23)
+
+target_include_directories(uapmd-mir PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pitch-detection
+        ${pocketfft_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-engine/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+        ${midicci_SOURCE_DIR}/include
+)
+target_link_libraries(uapmd-mir PRIVATE
+        uapmd-engine
+        uapmd-data
+)
+
+# Transcription runs an FFT per analysis frame over a whole clip, which at the
+# Debug default of -O0 takes far longer than the algorithms need.
+uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-mir
+        src/PitchTranscription.cpp
+        src/pitch-detection/autocorrelation.cpp
+        "${pitch_detection_SOURCE_DIR}/src/mpm.cpp"
+        "${pitch_detection_SOURCE_DIR}/src/yin.cpp"
+)
+
+if(UAPMD_ENABLE_MIR)
+
+    target_sources(uapmd-mir PRIVATE
             src/MirAddin.cpp
             src/MirLibrosaAddin.cpp
             src/MirLibrosaAnalysis.cpp
@@ -69,25 +156,12 @@ if(UAPMD_ENABLE_MIR)
             src/MirMeterMap.cpp
     )
 
-    add_uapmd_addin_library(uapmd-mir)
-
-    target_compile_features(uapmd-mir PRIVATE cxx_std_23)
-
-    target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_LIBROSA=1)
-
-    target_include_directories(uapmd-mir PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-engine/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
-            ${midicci_SOURCE_DIR}/include
+    target_compile_definitions(uapmd-mir PRIVATE
+            UAPMD_ENABLE_MIR_ANALYSIS=1
+            UAPMD_ENABLE_LIBROSA=1
     )
-    target_link_libraries(uapmd-mir PRIVATE
-            uapmd-engine
-            uapmd-data
-            librosa::librosa
-    )
+
+    target_link_libraries(uapmd-mir PRIVATE librosa::librosa)
 
     if(UAPMD_ENABLE_LIBSONARE AND TARGET sonare_core)
         target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_LIBSONARE=1)
@@ -126,11 +200,22 @@ if(UAPMD_ENABLE_MIR)
         endif()
     endif()
 
-    if(APPLE)
-        deploy_uapmd_addin_library(uapmd-mir
-                "$<TARGET_BUNDLE_DIR:uapmd-app-bundle>/../addins")
-    endif()
+else()
+
+    target_compile_definitions(uapmd-mir PRIVATE
+            UAPMD_ENABLE_MIR_ANALYSIS=0
+            UAPMD_ENABLE_LIBROSA=0
+            UAPMD_ENABLE_LIBSONARE=0
+    )
+
 endif()
+
+if(APPLE)
+    deploy_uapmd_addin_library(uapmd-mir
+            "$<TARGET_BUNDLE_DIR:uapmd-app-bundle>/../addins")
+endif()
+
+endif() # NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS
 
 # ---------------------------------------------------------------------------
 # Shared stem separation support
@@ -391,3 +476,146 @@ target_link_libraries(uapmd-bsroformer PRIVATE
 uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-bsroformer
         src/BSRoformerStemSeparator.cpp
 )
+
+# ---------------------------------------------------------------------------
+# Basic Pitch polyphonic transcription
+#
+# Opt-in, and unlike everything else here the option guards a *download*: the
+# model is Apache-2.0 and is not committed to this repository, so an enabled
+# build fetches nmp.onnx at configure time and embeds it into the binary.
+# Embedding rather than shipping a data file is what lets this work on
+# WebAssembly and Android, where there is no sensible place to read one from.
+#
+# Built as a static built-in addin like the stem separators, and with no
+# platform guard, because reaching those two targets is the whole reason this
+# backend exists.
+# ---------------------------------------------------------------------------
+
+if(UAPMD_ENABLE_BASIC_PITCH)
+
+    set(_UAPMD_BP_MODEL_URL
+            "https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx")
+    set(_UAPMD_BP_MODEL_SHA256
+            "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec")
+    set(_UAPMD_BP_MODEL "${CMAKE_CURRENT_BINARY_DIR}/nmp.onnx")
+
+    # The hash is what pins the model: `main` is a moving branch, so a silent
+    # upstream retrain has to fail the build rather than change what ships.
+    if(NOT EXISTS "${_UAPMD_BP_MODEL}")
+        message(STATUS "Downloading the Basic Pitch model (Apache-2.0) from ${_UAPMD_BP_MODEL_URL}")
+        file(DOWNLOAD "${_UAPMD_BP_MODEL_URL}" "${_UAPMD_BP_MODEL}"
+                EXPECTED_HASH SHA256=${_UAPMD_BP_MODEL_SHA256}
+                TLS_VERIFY ON
+                STATUS _uapmd_bp_status)
+        list(GET _uapmd_bp_status 0 _uapmd_bp_code)
+        if(NOT _uapmd_bp_code EQUAL 0)
+            list(GET _uapmd_bp_status 1 _uapmd_bp_message)
+            file(REMOVE "${_UAPMD_BP_MODEL}")
+            message(FATAL_ERROR
+                    "Failed to download the Basic Pitch model: ${_uapmd_bp_message}. "
+                    "Set UAPMD_ENABLE_BASIC_PITCH=OFF to build without it.")
+        endif()
+    endif()
+
+    # Embedded as hex text in bounded chunks rather than as one byte array:
+    # MSVC caps a string literal at 65535 bytes, and generating chunks with
+    # string(SUBSTRING) is far quicker at configure time than a regex over
+    # half a megabyte of hex.
+    file(READ "${_UAPMD_BP_MODEL}" _uapmd_bp_hex HEX)
+    string(LENGTH "${_uapmd_bp_hex}" _uapmd_bp_hex_length)
+    math(EXPR _uapmd_bp_byte_count "${_uapmd_bp_hex_length} / 2")
+
+    # Built with string(APPEND) on quoted arguments throughout. An unquoted
+    # ${} expansion here would re-split the text on its semicolons and silently
+    # strip every statement terminator from the generated C++.
+    set(_uapmd_bp_generated "// GENERATED FILE -- do not edit, do not commit.\n")
+    string(APPEND _uapmd_bp_generated "//\n")
+    string(APPEND _uapmd_bp_generated "// Produced at configure time from nmp.onnx, downloaded from\n")
+    string(APPEND _uapmd_bp_generated "//     ${_UAPMD_BP_MODEL_URL}\n")
+    string(APPEND _uapmd_bp_generated "// pinned to SHA-256 ${_UAPMD_BP_MODEL_SHA256}.\n")
+    string(APPEND _uapmd_bp_generated "//\n")
+    string(APPEND _uapmd_bp_generated "// The bytes below are that file verbatim, hex encoded. They are the Basic\n")
+    string(APPEND _uapmd_bp_generated "// Pitch model weights:\n")
+    string(APPEND _uapmd_bp_generated "//\n")
+    string(APPEND _uapmd_bp_generated "//     Basic Pitch, Copyright 2022 Spotify AB\n")
+    string(APPEND _uapmd_bp_generated "//     Licensed under the Apache License, Version 2.0\n")
+    string(APPEND _uapmd_bp_generated "//     http://www.apache.org/licenses/LICENSE-2.0\n")
+    string(APPEND _uapmd_bp_generated "//\n")
+    string(APPEND _uapmd_bp_generated "// Any binary built from this file redistributes those weights, so the\n")
+    string(APPEND _uapmd_bp_generated "// LICENSE and NOTICE in src/basic-pitch/ must accompany it.\n")
+    string(APPEND _uapmd_bp_generated "#include <cstddef>\n\n")
+    string(APPEND _uapmd_bp_generated "extern const char* const kBasicPitchModelHexChunks[];\n")
+    string(APPEND _uapmd_bp_generated "extern const size_t kBasicPitchModelHexChunkCount;\n")
+    string(APPEND _uapmd_bp_generated "extern const size_t kBasicPitchModelByteCount;\n\n")
+    string(APPEND _uapmd_bp_generated "extern const char* const kBasicPitchModelHexChunks[] = {\n")
+
+    set(_uapmd_bp_chunk_length 60000)
+    set(_uapmd_bp_offset 0)
+    set(_uapmd_bp_chunk_count 0)
+    while(_uapmd_bp_offset LESS _uapmd_bp_hex_length)
+        math(EXPR _uapmd_bp_remaining "${_uapmd_bp_hex_length} - ${_uapmd_bp_offset}")
+        set(_uapmd_bp_take ${_uapmd_bp_chunk_length})
+        if(_uapmd_bp_remaining LESS _uapmd_bp_chunk_length)
+            set(_uapmd_bp_take ${_uapmd_bp_remaining})
+        endif()
+        string(SUBSTRING "${_uapmd_bp_hex}" ${_uapmd_bp_offset} ${_uapmd_bp_take} _uapmd_bp_piece)
+        string(APPEND _uapmd_bp_generated "    \"${_uapmd_bp_piece}\",\n")
+        math(EXPR _uapmd_bp_offset "${_uapmd_bp_offset} + ${_uapmd_bp_take}")
+        math(EXPR _uapmd_bp_chunk_count "${_uapmd_bp_chunk_count} + 1")
+    endwhile()
+
+    string(APPEND _uapmd_bp_generated
+            "};\n\n"
+            "extern const size_t kBasicPitchModelHexChunkCount = ${_uapmd_bp_chunk_count};\n"
+            "extern const size_t kBasicPitchModelByteCount = ${_uapmd_bp_byte_count};\n")
+
+    # Written via a staging file so that reconfiguring does not touch the real
+    # one, and so does not force a rebuild, unless the model actually changed.
+    set(_uapmd_bp_source "${CMAKE_CURRENT_BINARY_DIR}/basic_pitch_model_data.cpp")
+    file(WRITE "${_uapmd_bp_source}.staging" "${_uapmd_bp_generated}")
+    configure_file("${_uapmd_bp_source}.staging" "${_uapmd_bp_source}" COPYONLY)
+
+    add_library(uapmd-basic-pitch STATIC
+            src/basic-pitch/OnnxWeights.cpp
+            src/basic-pitch/EmbeddedModel.cpp
+            src/basic-pitch/BasicPitchModel.cpp
+            src/basic-pitch/BasicPitchTranscriber.cpp
+            src/basic-pitch/BasicPitchAddin.cpp
+            src/ClipTranscription.cpp
+            src/NoteClipWriter.cpp
+            "${_uapmd_bp_source}"
+    )
+    add_library(uapmd::basic-pitch ALIAS uapmd-basic-pitch)
+
+    target_compile_features(uapmd-basic-pitch PRIVATE cxx_std_23)
+
+    target_include_directories(uapmd-basic-pitch PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/basic-pitch
+    )
+
+    target_include_directories(uapmd-basic-pitch PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-engine/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+            ${midicci_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(uapmd-basic-pitch PRIVATE
+            uapmd::uapmd-addin-core
+            uapmd-data
+    )
+
+    # The convolutions are plain loops, checked against reference activations
+    # rather than tuned; at the Debug default of -O0 a two-second window takes
+    # long enough to look broken.
+    uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-basic-pitch
+            src/basic-pitch/BasicPitchModel.cpp
+            src/basic-pitch/BasicPitchTranscriber.cpp
+            src/ClipTranscription.cpp
+    )
+
+endif()

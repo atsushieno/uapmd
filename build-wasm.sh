@@ -88,6 +88,7 @@ configure_and_build() {
         -DBUILD_SHARED_LIBS=OFF \
         -DUAPMD_TARGET_WASM=ON \
         -DUAPMD_BUILD_TESTS=OFF \
+        -DUAPMD_ENABLE_BASIC_PITCH=ON \
         ${CPM_CACHE_ARG}
 
     echo "Building..."

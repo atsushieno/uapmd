@@ -48,6 +48,10 @@ MainWindow::MainWindow(GuiDefaults defaults)
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
+    // Clip-scoped commands are offered from the clip context menu, which the
+    // timeline editor owns.
+    addinRuntime_.registerExtensionPoint("/uapmd/app/clip-command/v1", &clipCommandRegistry_);
+    timelineEditor_.setClipCommandRegistry(&clipCommandRegistry_);
     // Stem separation backends are contributed, not replaced: the Split Audio
     // Import window offers whatever addins registered here, and hides itself
     // when nothing did.

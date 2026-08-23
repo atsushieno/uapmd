@@ -522,6 +522,10 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                         ImGui::CloseCurrentPopup();
                     }
 
+                    if (context.renderClipCommands)
+                        context.renderClipCommands(trackIndex, contextClip->clipId,
+                                                   contextClip->isMidiClip, contextClip->isMasterTrack);
+
                     if (!contextClip->isMasterTrack) {
                         ImGui::Separator();
                         if (contextActionMenuItem("Add an Empty MIDI2 Clip Here")) {

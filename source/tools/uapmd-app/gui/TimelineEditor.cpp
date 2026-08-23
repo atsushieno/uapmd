@@ -702,6 +702,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
             showPianoRoll(trackIndex, clipId);
         },
+        .renderClipCommands = [this](int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
+            renderClipCommands(trackIndex, clipId, isMidiClip, isMasterTrack);
+        },
         .showMasterTrackDump = [this]() {
             showMasterMetaDump();
         },
@@ -720,6 +723,33 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .uiScale = uiScale,
         .legendWidth = legendWidth,
     };
+}
+
+void TimelineEditor::renderClipCommands(int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
+    if (!clipCommandRegistry_)
+        return;
+    const uapmd_addin::ClipCommandTarget target{trackIndex, clipId, isMidiClip, isMasterTrack};
+    bool separated = false;
+    for (auto* command : clipCommandRegistry_->commands()) {
+        if (!command || !command->appliesTo(target))
+            continue;
+        // The separator is deferred until something is actually going to be
+        // drawn, so a clip no addin claims looks untouched.
+        if (!separated) {
+            ImGui::Separator();
+            separated = true;
+        }
+        const bool enabled = command->enabled(target);
+        if (!enabled)
+            ImGui::BeginDisabled();
+        const auto label = std::string(command->title()) + "##" + std::string(command->id());
+        if (contextActionMenuItem(label.c_str())) {
+            command->invoke(target);
+            ImGui::CloseCurrentPopup();
+        }
+        if (!enabled)
+            ImGui::EndDisabled();
+    }
 }
 
 BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float uiScale, float legendWidth) {
@@ -771,6 +801,9 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
         },
         .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
             showPianoRoll(trackIndex, clipId);
+        },
+        .renderClipCommands = [this](int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
+            renderClipCommands(trackIndex, clipId, isMidiClip, isMasterTrack);
         },
         .showMasterTrackDump = [this]() {
             showMasterMetaDump();

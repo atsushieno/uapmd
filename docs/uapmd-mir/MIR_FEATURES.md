@@ -5,6 +5,10 @@ and writes the result back as **master-track MIDI clips** carrying tempo,
 time-signature and chord meta events. It ships two independent analysis backends
 that produce the same kind of output through the same writer:
 
+Other features are built from `source/uapmd-mir/` without being part of this
+package or its build gate: [pitch transcription](PITCH_TRANSCRIPTION.md) and the
+stem separation addins.
+
 | | libsonare backend | librosa.cpp backend |
 |---|---|---|
 | command | `src/MirAddin.cpp` | `src/MirLibrosaAddin.cpp` |
@@ -15,10 +19,11 @@ that produce the same kind of output through the same writer:
 | command order | 1000 | 1001 |
 | built when | `UAPMD_ENABLE_MIR` **and** `UAPMD_ENABLE_LIBSONARE` | `UAPMD_ENABLE_MIR` |
 
-Both addins are exposed by the single `uapmd_addin_entry` in `MirAddin.cpp`, which
-returns a two-element `AddinEntry` (`MirAddin` plus the one from
-`uapmd_mir_librosa_addin()`). Both register on the `/uapmd/app/command/v1`
-extension point and obtain the engine from `/uapmd/engine/v1`.
+Both addins register on the `/uapmd/app/command/v1` extension point and obtain
+the engine from `/uapmd/engine/v1`. They are added to the library's exported
+`AddinEntry` by `src/AddinEntry.cpp`, which owns `uapmd_addin_entry` and
+includes them only under `UAPMD_ENABLE_MIR_ANALYSIS`; the library exists, and
+carries [pitch transcription](PITCH_TRANSCRIPTION.md), either way.
 
 The two backends are deliberately structured the same way. Everything that is not
 a call into libsonare or librosa lives in shared code that both use:
@@ -73,8 +78,8 @@ into the app. A build with the module disabled simply has no such addin to load.
 
 ## Shared pipeline
 
-Both commands run the same eight steps on a detached `std::thread` owned by the
-`Command` object. The command's `title()` doubles as a progress readout while
+Both commands run the same eight steps on a detached `std::thread`
+owned by the `Command` object. The command's `title()` doubles as a progress readout while
 `running_` is set, and `enabled()` returns false during a run.
 
 ```

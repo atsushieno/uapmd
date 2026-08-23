@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <string_view>
 #include <filesystem>
@@ -74,6 +75,45 @@ public:
 
 private:
     std::vector<Command*> commands_;
+};
+
+// A clip the host is offering as the subject of a ClipCommand. The identifiers
+// are the ones the host's own clip APIs take, so an addin resolves the clip
+// through the engine rather than through anything carried here; the two flags
+// are only enough for a command to say up front which clips it applies to.
+struct ClipCommandTarget {
+    int32_t track_index{-1};
+    int32_t clip_id{-1};
+    bool midi_clip{false};
+    bool master_track{false};
+};
+
+// Commands scoped to one clip rather than to the application. The host offers
+// these wherever it presents a clip, asking each command whether it applies to
+// that particular clip first. Addins must unregister during cleanup().
+class ClipCommand {
+public:
+    virtual ~ClipCommand() = default;
+
+    virtual std::string_view id() const noexcept = 0;
+    virtual std::string_view title() const noexcept = 0;
+    virtual int order() const noexcept { return 0; }
+    // False hides the command for this clip entirely; true but !enabled()
+    // shows it greyed out.
+    virtual bool appliesTo(const ClipCommandTarget& target) const noexcept = 0;
+    virtual bool enabled(const ClipCommandTarget& target) const noexcept { (void) target; return true; }
+    virtual void invoke(const ClipCommandTarget& target) noexcept = 0;
+};
+
+class ClipCommandRegistry {
+public:
+    void registerCommand(ClipCommand& command);
+    void unregisterCommand(ClipCommand& command) noexcept;
+
+    std::vector<ClipCommand*> commands() const;
+
+private:
+    std::vector<ClipCommand*> commands_;
 };
 
 using AddinEntryFunction = AddinEntry* (*)() noexcept;

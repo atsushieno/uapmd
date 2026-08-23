@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include "SequenceEditor.hpp"
 #include "BeatsSequenceEditor.hpp"
@@ -38,6 +39,10 @@ public:
 
     // Setup callbacks to parent window
     void setCallbacks(TimelineEditorCallbacks callbacks);
+
+    // Addin-contributed per-clip commands, offered in the clip context menu.
+    // Null until the owner registers the extension point.
+    void setClipCommandRegistry(uapmd_addin::ClipCommandRegistry* registry) { clipCommandRegistry_ = registry; }
 
     // Main rendering
     void render(float uiScale);
@@ -107,6 +112,7 @@ public:
 private:
     SequenceEditor sequenceEditor_;
     BeatsSequenceEditor beatsSequenceEditor_;
+    uapmd_addin::ClipCommandRegistry* clipCommandRegistry_{};
     TimelineViewMode timelineViewMode_ = TimelineViewMode::AbsoluteTime;
     AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;
@@ -143,6 +149,7 @@ private:
 
     // Internal rendering
     void renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext);
+    void renderClipCommands(int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
     void renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea);

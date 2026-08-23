@@ -63,6 +63,10 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
         std::function<void(int32_t trackIndex, int32_t clipId)> showAudioClipEvents;
         std::function<void(int32_t trackIndex, int32_t clipId)> showPianoRoll;
+        // Renders whatever addin-contributed commands apply to this clip, as
+        // menu items, directly into the open context menu. Unset when nothing
+        // can contribute.
+        std::function<void(int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack)> renderClipCommands;
         std::function<void()> showMasterTrackDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;

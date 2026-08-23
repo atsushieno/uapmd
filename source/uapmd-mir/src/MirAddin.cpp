@@ -28,8 +28,6 @@
 
 using namespace uapmd_addin;
 
-extern uapmd_addin::Addin* uapmd_mir_librosa_addin() noexcept;
-
 namespace {
 
 #if UAPMD_ENABLE_LIBSONARE
@@ -529,30 +527,11 @@ private:
 #endif
 };
 
-class MirEntry final : public AddinEntry {
-public:
-    MirEntry() {
-        addins_[0] = &addin_;
-        addins_[1] = uapmd_mir_librosa_addin();
-    }
-
-    std::string_view packageId() const noexcept override {
-        return "/uapmd/mir";
-    }
-
-    std::span<Addin* const> addins() noexcept override {
-        return addins_;
-    }
-
-private:
-    MirAddin addin_;
-    std::array<Addin*, 2> addins_{};
-};
-
-MirEntry mirEntry;
+MirAddin mirAddin;
 
 } // namespace
 
-extern "C" UAPMD_ADDIN_EXPORT AddinEntry* uapmd_addin_entry() noexcept {
-    return &mirEntry;
+// Assembled into the library's AddinEntry by AddinEntry.cpp.
+uapmd_addin::Addin* uapmd_mir_analysis_addin() noexcept {
+    return &mirAddin;
 }

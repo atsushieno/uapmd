@@ -13,9 +13,15 @@ In the latest source tree, the following description applies to the `source` dir
 - `uapmd-data/`: sequencer data structures.
 - `uapmd-file/`: platform abstraction API for file dialog and file system.
 - `uapmd-engine/`: sequencer engine.
-- `uapmd-mir/`: the opt-in music-analysis addins (`UAPMD_ENABLE_MIR`, off by default, backed by librosa.cpp and
-  libsonare), plus the stem separation addins backing audio import -- demucs.cpp and BSRoformer.cpp -- which are
-  always built. The separation backends share `src/StemSeparationSupport.*` for audio loading, resampling and stem writing.
+- `uapmd-mir/`: the `uapmd-mir` addin library, which always carries the monophonic pitch transcription addin
+  (audio clip to MIDI 2.0 note clip; MPM/YIN are CPM-fetched, with the substitutions that make them
+  buildable here under `src/pitch-detection/`) and, under
+  `UAPMD_ENABLE_MIR` (off by default), the music-analysis addins backed by librosa.cpp and libsonare. The same
+  directory also builds three always-built static built-in addins: the stem separation backends for audio
+  import -- demucs.cpp and BSRoformer.cpp, sharing `src/StemSeparationSupport.*` -- and, under
+  `UAPMD_ENABLE_BASIC_PITCH` (off by default, because it downloads Apache-2.0 model weights), the Basic Pitch
+  polyphonic transcription addin under `src/basic-pitch/`. `src/NoteClipWriter.*` and `src/ClipTranscription.*`
+  are shared by both transcription backends.
 - `tools/`: tools
   - `uapmd-app`: an example DAW-like sequencer that also serves virtual UMP devices, for dogfooding
   - `uapmd-app-model`: model API for uapmd-app, to be shared with C API and bindings
