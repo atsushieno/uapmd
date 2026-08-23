@@ -62,7 +62,7 @@ the ones where dynamic addin loading is unavailable.
 |---|---|---|
 | extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/command/v1` |
 | id | `uapmd-basic-pitch.transcribe-audio-clip` | `uapmd-basic-pitch.transcribe-all-audio-clips` |
-| title | "Transcribe to poly MIDI2 clip (basic-pitch)" | "Transcribe all audio clips to polyphonic MIDI2 clip for each" |
+| title | "Transcribe to poly MIDI2 clip (basic-pitch)" | "Transcribe all audio clips to poly MIDI2 clip (basic-pitch)" |
 | order | 101 | 1200 |
 
 Both drive one worker thread, so neither can start while the other runs, and

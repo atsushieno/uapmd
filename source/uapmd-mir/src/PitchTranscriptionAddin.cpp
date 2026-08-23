@@ -152,7 +152,7 @@ public:
 
     std::string_view title() const noexcept override {
         static constexpr std::string_view base{
-            "Transcribe all audio clips to MIDI2 clip for each"};
+            "Transcribe all audio clips to mono MIDI2 clip (pitch-detection)"};
         if (!job_.running())
             return base;
         static thread_local std::string label;

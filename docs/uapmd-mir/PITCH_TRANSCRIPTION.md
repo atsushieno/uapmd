@@ -39,7 +39,7 @@ only, so transcription is currently desktop-only there.
 |---|---|---|
 | extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/command/v1` |
 | id | `uapmd-pitch.transcribe-audio-clip` | `uapmd-pitch.transcribe-all-audio-clips` |
-| title | "Transcribe to mono MIDI2 clip (pitch-detection)" | "Transcribe all audio clips to MIDI2 clip for each" |
+| title | "Transcribe to mono MIDI2 clip (pitch-detection)" | "Transcribe all audio clips to mono MIDI2 clip (pitch-detection)" |
 | order | 100 | 1100 |
 | offered in | the clip context menu, on audio clips only | the Command menu |
 
