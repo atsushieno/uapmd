@@ -494,7 +494,7 @@ namespace uapmd::timeline_detail {
 
         if (!beginProjectLoad(run))
             return;
-        resetDocumentForLoad(run);
+        resetDocument(run.file);
         restoreProjectTracks(run);
         restoreMasterTrackClips(run);
         applyLoadedClipAnchors(run);
@@ -507,16 +507,41 @@ namespace uapmd::timeline_detail {
             (*run.finish)();
     }
 
+    // A new project is a load with nothing to read: the same document reset,
+    // followed by the completion an empty project would reach anyway. Nothing
+    // has to be instantiated, so it finishes synchronously, but it reports
+    // through the load callback so that callers can treat the two alike.
+    void TimelineProjectSerializer::newProject(TimelineFacade::ProjectLoadCallback callback) {
+        std::string replaceError;
+        if (!canReplaceDocument("starting a new project", replaceError)) {
+            callback({false, std::move(replaceError)});
+            return;
+        }
+
+        resetDocument({});
+        host_.setLoadInProgress(false);
+
+        ProjectDocumentEvent loadedEvent(
+            ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
+        loadedEvent.setFullResyncRecommended(true);
+        host_.emitProjectDocumentEvent(std::move(loadedEvent));
+        host_.emitMasterTrackChanged("master-track-content-changed");
+
+        // The empty document is the history root, and it is not dirty: there
+        // is nothing in it left to save.
+        facade_.commands().history().clear(true);
+        host_.notifyTimelineChanged();
+        engine_.setMasterTrackMarkers({});
+        callback({true, {}});
+    }
+
     // Rejects a load that cannot start and parses the project file. Returns
     // false after invoking the callback, in which case the document has not
     // been touched.
     bool TimelineProjectSerializer::beginProjectLoad(ProjectLoadRun& run) {
-        if (engine_.frozenTrackManager().hasBusyTrack()) {
-            run.callback({false, "Unfreeze the busy track before loading a project"});
-            return false;
-        }
-        if (facade_.commands().history().state().busy) {
-            run.callback({false, "Wait for the pending undo operation before loading a project"});
+        std::string replaceError;
+        if (!canReplaceDocument("loading a project", replaceError)) {
+            run.callback({false, std::move(replaceError)});
             return false;
         }
         if (run.file.empty()) {
@@ -538,18 +563,33 @@ namespace uapmd::timeline_detail {
         return true;
     }
 
+    // A replacement discards work that a busy renderer or a command still in
+    // flight is holding on to, so neither may be running.
+    bool TimelineProjectSerializer::canReplaceDocument(
+        std::string_view action, std::string& error) const {
+        if (engine_.frozenTrackManager().hasBusyTrack()) {
+            error = "Unfreeze the busy track before " + std::string(action);
+            return false;
+        }
+        if (facade_.commands().history().state().busy) {
+            error = "Wait for the pending undo operation before " + std::string(action);
+            return false;
+        }
+        return true;
+    }
+
     // Everything from here on replaces the current project, so history is
     // dropped first: old operations must never replay against the new object
     // set. A failed load leaves the partial replacement dirty; a successful
     // one establishes a clean history root at the end.
-    void TimelineProjectSerializer::resetDocumentForLoad(ProjectLoadRun& run) {
+    void TimelineProjectSerializer::resetDocument(const std::filesystem::path& projectFile) {
         facade_.commands().history().clear(false);
 
         ProjectDocumentEvent closingEvent(
             ProjectDocumentEventKind::ProjectClosing, "project-closing");
-        closingEvent.setProjectId(run.file.string())
+        closingEvent.setProjectId(projectFile.string())
             .setFullResyncRecommended(true)
-            .setDetail("source.file", run.file.string());
+            .setDetail("source.file", projectFile.string());
         host_.emitProjectDocumentEvent(std::move(closingEvent));
 
         host_.setLoadInProgress(true);

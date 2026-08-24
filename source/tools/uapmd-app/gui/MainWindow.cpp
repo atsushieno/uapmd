@@ -734,6 +734,9 @@ void MainWindow::render(void* window) {
                 ImGui::OpenPopup("ProjectActions");
             }
             if (ImGui::BeginPopup("ProjectActions")) {
+                if (contextActionMenuItem("New Project")) {
+                    handleNewProject();
+                }
                 if (contextActionMenuItem("Load Project")) {
                     handleLoadProject();
                 }
@@ -782,6 +785,7 @@ void MainWindow::render(void* window) {
     exporterWindow_.render(uiScale_);
     audioImportWindow_.render(uiScale_);
     renderUnsavedProjectDialog();
+    renderNewProjectDialog();
 
     scriptEditor_.render();
 
@@ -816,7 +820,7 @@ void MainWindow::renderUnsavedProjectDialog() {
         ImGui::Spacing();
 
         if (ImGui::Button("Save Project", ImVec2(120.0f * uiScale_, 0.0f))) {
-            closeAfterProjectSave_ = true;
+            postSaveAction_ = PostSaveAction::Close;
             handleSaveProject();
             ImGui::CloseCurrentPopup();
         }
@@ -830,8 +834,38 @@ void MainWindow::renderUnsavedProjectDialog() {
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(100.0f * uiScale_, 0.0f))) {
             closeRequested_ = false;
-            closeAfterProjectSave_ = false;
+            postSaveAction_ = PostSaveAction::None;
             closeRequestHandled_ = true;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+void MainWindow::renderNewProjectDialog() {
+    if (showNewProjectDialog_) {
+        ImGui::OpenPopup("New Project");
+        showNewProjectDialog_ = false;
+    }
+
+    if (ImGui::BeginPopupModal("New Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("The project has unsaved changes. Starting a new project discards them.");
+        ImGui::Spacing();
+
+        if (ImGui::Button("Save Project", ImVec2(120.0f * uiScale_, 0.0f))) {
+            postSaveAction_ = PostSaveAction::NewProject;
+            handleSaveProject();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Discard", ImVec2(100.0f * uiScale_, 0.0f))) {
+            startNewProject();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(100.0f * uiScale_, 0.0f))) {
+            postSaveAction_ = PostSaveAction::None;
             ImGui::CloseCurrentPopup();
         }
 
@@ -1705,7 +1739,7 @@ void MainWindow::handleSaveProject() {
         filters,
         [this](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty()) {
-                closeAfterProjectSave_ = false;
+                postSaveAction_ = PostSaveAction::None;
                 return;
             }
 
@@ -1715,18 +1749,53 @@ void MainWindow::handleSaveProject() {
                 std::move(handle),
                 [this](uapmd::DocumentIOResult ioResult) {
                     if (!ioResult.success) {
-                        closeAfterProjectSave_ = false;
+                        postSaveAction_ = PostSaveAction::None;
                         platformError("Save Failed", ioResult.error);
                         return;
                     }
-                    if (closeAfterProjectSave_) {
-                        closeAfterProjectSave_ = false;
-                        closeRequested_ = false;
-                        isOpen_ = false;
+                    const auto pending = postSaveAction_;
+                    postSaveAction_ = PostSaveAction::None;
+                    switch (pending) {
+                        case PostSaveAction::Close:
+                            closeRequested_ = false;
+                            isOpen_ = false;
+                            break;
+                        case PostSaveAction::NewProject:
+                            startNewProject();
+                            break;
+                        case PostSaveAction::None:
+                            break;
                     }
                 });
         }
     );
+}
+
+void MainWindow::handleNewProject() {
+    if (uapmd_app::AppModel::instance().sequencer().engine()->isProjectDirty()) {
+        showNewProjectDialog_ = true;
+        return;
+    }
+    startNewProject();
+}
+
+void MainWindow::startNewProject() {
+    auto& appModel = uapmd_app::AppModel::instance();
+    // Replacing the project tears down every plugin instance, so the audio
+    // engine stops for it exactly as it does for a load.
+    const bool wasEnabled = appModel.isAudioEngineEnabled();
+    if (wasEnabled)
+        appModel.setAudioEngineEnabled(false);
+    appModel.newProject([wasEnabled](uapmd_app::AppModel::ProjectResult result) {
+        if (wasEnabled)
+            uapmd_app::AppModel::instance().setAudioEngineEnabled(true);
+        if (!result.success) {
+            platformError("New Project Failed", result.error);
+            return;
+        }
+        // GUI refresh happens generically via AppModel::projectLoaded,
+        // registered in the constructor.
+    });
 }
 
 void MainWindow::handleLoadProject() {

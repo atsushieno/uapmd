@@ -504,6 +504,10 @@ namespace uapmd_app {
         // OBSOLETE: use `saveProject()` with callback instead.
         ProjectResult saveProjectSync(const std::filesystem::path& file);
         void loadProject(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
+        // Discards the current project and starts an empty one. Whether
+        // unsaved changes may be discarded is the caller's decision: this
+        // asks nothing and always replaces.
+        void newProject(std::function<void(ProjectResult)> callback);
         void saveProjectToDocument(uapmd::DocumentHandle handle, uapmd::IDocumentProvider::WriteCallback callback);
         void loadProjectFromResolvedPath(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
         ProjectResult loadProjectFromHandleToken(const std::string& token);
@@ -576,6 +580,12 @@ namespace uapmd_app {
         };
 
         void runRenderToFile(RenderToFileSettings settings, std::shared_ptr<RenderJobState> job);
+
+        // The two halves every project replacement shares: destroying what the
+        // outgoing project instantiated, and rebuilding this model's view of
+        // whatever the timeline holds afterwards.
+        void tearDownProjectInstances();
+        void resyncAfterProjectReplacement();
 
         mutable std::mutex renderStatusMutex_;
         RenderToFileStatus renderStatus_;

@@ -3251,18 +3251,11 @@ void uapmd_app::AppModel::saveProject(const std::filesystem::path& projectFile, 
         });
 }
 
-void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
-    // Validate before replacing the current project: removePluginInstance() is
-    // destructive, while TimelineFacade::loadProject() otherwise performs this
-    // validation internally before touching the existing timeline.
-    if (!UapmdProjectDataReader::read(projectFile)) {
-        callback({false, "Failed to parse project file"});
-        return;
-    }
-
-    // Explicitly tear down every existing instance before replacing the timeline.
-    // This destroys each plugin UI while its ContainerWindow is still alive, then
-    // emits instanceRemoved so UI subscribers may safely release that container.
+// Every plugin instance of the outgoing project is destroyed here rather than
+// with the timeline, so that each plugin UI goes away while its ContainerWindow
+// is still alive; instanceRemoved then lets UI subscribers release that
+// container safely.
+void uapmd_app::AppModel::tearDownProjectInstances() {
     project_load_in_progress_ = true;
     std::unordered_set<int32_t> removedInstanceIds;
     if (auto* mt = sequencer_.engine()->masterTrack()) {
@@ -3283,6 +3276,48 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
         }
     }
     project_load_in_progress_ = false;
+}
+
+// Brings everything this model tracks per project back in line with whatever
+// the timeline now holds. A new project simply has nothing to enumerate.
+void uapmd_app::AppModel::resyncAfterProjectReplacement() {
+    sequencer_.engine()->clearTrackDirtyState();
+
+    // Notify UI about all tracks that were created
+    hidden_tracks_.clear();
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+    auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+    for (int32_t i = 0; i < numTracks; ++i)
+        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
+
+    // Rebuild device entries and notify listeners for each plugin instance
+    clearDeviceEntries();
+    if (auto* fbm = sequencer().engine()->functionBlockManager())
+        fbm->deleteEmptyDevices();
+
+    if (auto* host = sequencer_.engine()->pluginHost()) {
+        for (int32_t instanceId : host->instanceIds()) {
+            auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
+            if (!result.error.empty()) {
+                std::cerr << "Failed to register plugin instance " << instanceId
+                          << ": " << result.error << std::endl;
+            }
+            for (auto& cb : instanceCreated)
+                cb(result);
+        }
+    }
+}
+
+void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
+    // Validate before replacing the current project: tearDownProjectInstances()
+    // is destructive, while TimelineFacade::loadProject() otherwise performs
+    // this validation internally before touching the existing timeline.
+    if (!UapmdProjectDataReader::read(projectFile)) {
+        callback({false, "Failed to parse project file"});
+        return;
+    }
+
+    tearDownProjectInstances();
 
     // Delegate project loading to SequencerEngine asynchronously.
     sequencer_.engine()->timeline().loadProject(projectFile,
@@ -3292,32 +3327,30 @@ void uapmd_app::AppModel::loadProject(const std::filesystem::path& projectFile, 
                 return;
             }
 
-            sequencer_.engine()->clearTrackDirtyState();
+            resyncAfterProjectReplacement();
+            callback({true, {}});
+        });
+}
 
-            // Notify UI about all tracks that were created
-            hidden_tracks_.clear();
-            notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
-            auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
-            for (int32_t i = 0; i < numTracks; ++i)
-                notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
+void uapmd_app::AppModel::newProject(std::function<void(ProjectResult)> callback) {
+    tearDownProjectInstances();
 
-            // Rebuild device entries and notify listeners for each plugin instance
-            clearDeviceEntries();
-            if (auto* fbm = sequencer().engine()->functionBlockManager())
-                fbm->deleteEmptyDevices();
-
-            if (auto* host = sequencer_.engine()->pluginHost()) {
-                for (int32_t instanceId : host->instanceIds()) {
-                    auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
-                    if (!result.error.empty()) {
-                        std::cerr << "Failed to register plugin instance " << instanceId
-                                  << ": " << result.error << std::endl;
-                    }
-                    for (auto& cb : instanceCreated)
-                        cb(result);
-                }
+    sequencer_.engine()->timeline().newProject(
+        [this, callback = std::move(callback)](TimelineFacade::ProjectResult engineResult) mutable {
+            if (!engineResult.success) {
+                callback({false, std::move(engineResult.error)});
+                return;
             }
 
+            resyncAfterProjectReplacement();
+            // The files the previous project was loaded from are no longer
+            // referenced by anything, but retiring rather than deleting keeps
+            // this consistent with a load: an in-flight reader of the outgoing
+            // project still finds its files where it left them.
+            if (activeProjectTempDir_)
+                retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
+            for (auto& cb : projectLoaded)
+                cb();
             callback({true, {}});
         });
 }

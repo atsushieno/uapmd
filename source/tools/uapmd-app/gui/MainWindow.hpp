@@ -54,8 +54,15 @@ class MainWindow {
         bool isOpen_ = true;
         bool closeRequested_ = false;
         bool closeRequestHandled_ = false;
-        bool closeAfterProjectSave_ = false;
+        // What a save started from a confirmation dialog is meant to unblock.
+        enum class PostSaveAction {
+            None,
+            Close,
+            NewProject
+        };
+        PostSaveAction postSaveAction_ = PostSaveAction::None;
         bool showUnsavedProjectDialog_ = false;
+        bool showNewProjectDialog_ = false;
         bool noConfirmOnQuit_ = false;
 
         // Device settings
@@ -183,6 +190,10 @@ class MainWindow {
         // Sequence Editor helpers
         void handleSaveProject();
         void handleLoadProject();
+        // Confirms first when there is anything to lose; startNewProject()
+        // is the answer to that confirmation and replaces unconditionally.
+        void handleNewProject();
+        void startNewProject();
         void handleUndo();
         void handleRedo();
 
@@ -196,5 +207,6 @@ class MainWindow {
         void toggleTheme();
         void applyTheme(remidy_imgui::ThemeMode mode);
         void renderUnsavedProjectDialog();
+        void renderNewProjectDialog();
     };
 }

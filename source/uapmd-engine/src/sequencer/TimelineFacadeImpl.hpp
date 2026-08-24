@@ -1145,6 +1145,10 @@ namespace uapmd {
             serializer_.loadProject(projectFile, std::move(callback));
         }
 
+        void newProject(ProjectLoadCallback callback) override {
+            serializer_.newProject(std::move(callback));
+        }
+
         MasterTrackSnapshot buildMasterTrackSnapshot() override;
 
         ContentBounds calculateTrackContentBounds(int32_t trackIndex) const override;

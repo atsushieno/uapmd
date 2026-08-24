@@ -261,6 +261,12 @@ public:
         ProjectSaveOptions options,
         ProjectSaveCallback callback) = 0;
     virtual void loadProject(const std::filesystem::path& file, ProjectLoadCallback callback) = 0;
+    // Discards the current document and starts an empty one: no tracks, a
+    // fresh master track, no undo history, and nothing dirty. Observers see
+    // the same ProjectClosing/ProjectLoaded pair a load emits, so state owned
+    // outside the timeline is dropped the same way. Whether unsaved changes
+    // may be discarded is the caller's decision, not this one.
+    virtual void newProject(ProjectLoadCallback callback) = 0;
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
     // Groups the document events produced by everything between the two calls

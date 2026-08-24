@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <uapmd-data/uapmd-data.hpp>
@@ -102,6 +103,7 @@ namespace uapmd::timeline_detail {
         void loadProject(
             const std::filesystem::path& projectFile,
             TimelineFacade::ProjectLoadCallback callback);
+        void newProject(TimelineFacade::ProjectLoadCallback callback);
 
         bool materializeProjectGraph(
             UapmdProjectTrackData* projectTrack,
@@ -158,7 +160,14 @@ namespace uapmd::timeline_detail {
         // state; a phase that finds run.error already set does nothing, which
         // is how a failure part-way through stops the rest without unwinding.
         bool beginProjectLoad(ProjectLoadRun& run);
-        void resetDocumentForLoad(ProjectLoadRun& run);
+        // Rejects a document replacement that must not start now, reporting
+        // the reason through `error`. `action` names what the caller is doing,
+        // for the message. Shared by a load and a new project.
+        bool canReplaceDocument(std::string_view action, std::string& error) const;
+        // Discards the current document, leaving an empty one. `projectFile`
+        // is what identifies the incoming project to observers, and is empty
+        // when the replacement is a new project rather than a load.
+        void resetDocument(const std::filesystem::path& projectFile);
         SequencerTrack* resolveLoadedSequencerTrack(int32_t trackIndex);
         void queuePluginLoadsForTrack(
             ProjectLoadRun& run,
