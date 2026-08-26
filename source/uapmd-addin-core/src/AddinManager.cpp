@@ -157,6 +157,60 @@ void ClipCommandRegistry::unregisterCommand(ClipCommand& command) noexcept {
     std::erase(commands_, &command);
 }
 
+void ClipEditorRegistry::registerEditor(ClipEditorAddin& addin) {
+    if (std::ranges::find(editors_, &addin) == editors_.end())
+        editors_.push_back(&addin);
+}
+
+void ClipEditorRegistry::unregisterEditor(ClipEditorAddin& addin) noexcept {
+    std::erase(editors_, &addin);
+}
+
+std::vector<ClipEditorAddin*> ClipEditorRegistry::editors() const {
+    return editors_;
+}
+
+ClipEditorHost::ClipEditorHost(ClipEditorRegistry* registry) noexcept
+    : registry_(registry) {}
+
+void ClipEditorHost::setRegistry(ClipEditorRegistry* registry) noexcept {
+    registry_ = registry;
+    rebuild();
+}
+
+void ClipEditorHost::setContext(ClipEditorContext context) {
+    context_ = std::move(context);
+    rebuild();
+}
+
+void ClipEditorHost::setActiveClip(std::optional<ClipEditorClip> clip) {
+    context_.active_clip = std::move(clip);
+    rebuild();
+}
+
+void ClipEditorHost::rebuild() {
+    editors_.clear();
+    if (!registry_)
+        return;
+    for (auto* addin : registry_->editors()) {
+        if (addin && addin->supports(context_))
+            if (auto editor = addin->createEditor(context_))
+                editors_.push_back(std::move(editor));
+    }
+}
+
+void ClipEditorHost::update() noexcept {
+    for (auto& editor : editors_)
+        if (editor)
+            editor->update();
+}
+
+void ClipEditorHost::render() noexcept {
+    for (auto& editor : editors_)
+        if (editor)
+            editor->render();
+}
+
 std::vector<ClipCommand*> ClipCommandRegistry::commands() const {
     auto result = commands_;
     std::ranges::stable_sort(result, [](const auto* left, const auto* right) {

@@ -44,6 +44,9 @@ public:
     // Null until the owner registers the extension point.
     void setClipCommandRegistry(uapmd_addin::ClipCommandRegistry* registry) { clipCommandRegistry_ = registry; }
 
+    void setClipEditorRegistry(uapmd_addin::ClipEditorRegistry* registry) { clipEditorHost_.setRegistry(registry); }
+    void setClipEditorContext(uapmd_addin::ClipEditorContext context) { clipEditorHost_.setContext(std::move(context)); }
+
     // Main rendering
     void render(float uiScale);
     void update();
@@ -97,6 +100,7 @@ public:
 
     // Piano roll
     void showPianoRoll(int32_t trackIndex, int32_t clipId);
+    void renderPianoRollFromClipEditor();
 
     // Track import
     void importMidiTracksWithPicker();
@@ -113,6 +117,7 @@ private:
     SequenceEditor sequenceEditor_;
     BeatsSequenceEditor beatsSequenceEditor_;
     uapmd_addin::ClipCommandRegistry* clipCommandRegistry_{};
+    uapmd_addin::ClipEditorHost clipEditorHost_;
     TimelineViewMode timelineViewMode_ = TimelineViewMode::AbsoluteTime;
     AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;

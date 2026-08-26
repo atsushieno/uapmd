@@ -1,4 +1,5 @@
 #include <cctype>
+#include <array>
 #include <cstring>
 #include <bit>
 #include <algorithm>
@@ -42,6 +43,85 @@ constexpr float kSliderUnityPos = 0.7f;
 // Exponent for the sub-unity power curve: > 1 compresses the far-left extreme
 // and expands the region near 0 dB so the practical mixing range feels wider.
 constexpr float kSliderCurve = 2.0f;
+
+class PianoRollClipEditor final : public uapmd_addin::ClipEditor {
+public:
+    explicit PianoRollClipEditor(TimelineEditor* timelineEditor)
+        : timeline_editor_(timelineEditor) {}
+
+    void update() noexcept override {}
+
+    void render() noexcept override {
+        if (timeline_editor_)
+            timeline_editor_->renderPianoRollFromClipEditor();
+    }
+
+private:
+    TimelineEditor* timeline_editor_{};
+};
+
+class PianoRollClipEditorAddin final
+    : public uapmd_addin::Addin
+    , public uapmd_addin::ClipEditorAddin {
+public:
+    uapmd_addin::AddinIdentity identity() const noexcept override {
+        return {"/uapmd/piano-roll", "editor"};
+    }
+
+    std::string_view name() const noexcept override { return "Piano Roll"; }
+    std::string_view id() const noexcept override { return "piano-roll"; }
+    std::string_view path() const noexcept override { return "/uapmd/app/timeline/clip-editor/v1"; }
+
+    bool initialize(uapmd_addin::AddinHost& host) noexcept override {
+        registry_ = static_cast<uapmd_addin::ClipEditorRegistry*>(host.extensionPoint(path()));
+        if (!registry_)
+            return false;
+        registry_->registerEditor(*this);
+        return true;
+    }
+
+    void cleanup(uapmd_addin::AddinHost&) noexcept override {
+        if (registry_)
+            registry_->unregisterEditor(*this);
+        registry_ = nullptr;
+    }
+
+    bool supports(const uapmd_addin::ClipEditorContext& context) const noexcept override {
+        return context.active_clip && context.active_clip->midi_clip && context.selection_service;
+    }
+
+    std::unique_ptr<uapmd_addin::ClipEditor> createEditor(
+        const uapmd_addin::ClipEditorContext& context) override {
+        return std::make_unique<PianoRollClipEditor>(
+            static_cast<TimelineEditor*>(context.selection_service));
+    }
+
+private:
+    uapmd_addin::ClipEditorRegistry* registry_{};
+};
+
+PianoRollClipEditorAddin pianoRollClipEditorAddin;
+
+class PianoRollClipEditorRegistration final {
+public:
+    PianoRollClipEditorRegistration() {
+        uapmd_addin::registerBuiltinAddin(entry_);
+    }
+
+private:
+    class Entry final : public uapmd_addin::AddinEntry {
+    public:
+        std::string_view packageId() const noexcept override { return "/uapmd/piano-roll"; }
+
+        std::span<uapmd_addin::Addin* const> addins() noexcept override {
+            return addins_;
+        }
+
+        std::array<uapmd_addin::Addin*, 1> addins_{&pianoRollClipEditorAddin};
+    } entry_;
+};
+
+PianoRollClipEditorRegistration pianoRollClipEditorRegistration;
 
 struct ClipKey {
     std::string referenceId;
@@ -589,14 +669,18 @@ void TimelineEditor::selectMidiClip(int32_t trackIndex, int32_t clipId) {
     auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
         selected_midi_clip_.reset();
+        clipEditorHost_.setActiveClip(std::nullopt);
         return;
     }
     const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
     if (!clip || clip->clipType != uapmd::ClipType::Midi) {
         selected_midi_clip_.reset();
+        clipEditorHost_.setActiveClip(std::nullopt);
         return;
     }
     selected_midi_clip_ = std::pair{trackIndex, clipId};
+    clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{
+        trackIndex, clipId, true, false});
 }
 
 void TimelineEditor::setCallbacks(TimelineEditorCallbacks callbacks) {
@@ -612,7 +696,7 @@ void TimelineEditor::setChildWindowSizeHelper(
 }
 
 void TimelineEditor::update() {
-    // Currently empty - reserved for future frame updates
+    clipEditorHost_.update();
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
@@ -833,6 +917,7 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
 
 void TimelineEditor::render(float uiScale) {
     currentUiScale_ = uiScale;
+    clipEditorHost_.render();
     if (pendingFullReset_) {
         pendingFullReset_ = false;
         sequenceEditor_.reset();
@@ -948,8 +1033,11 @@ void TimelineEditor::render(float uiScale) {
     };
     audioEventListEditor_.render(audioEventContext);
 
+}
+
+void TimelineEditor::renderPianoRollFromClipEditor() {
     PianoRollEditor::RenderContext pianoCtx;
-    pianoCtx.uiScale = uiScale;
+    pianoCtx.uiScale = currentUiScale_;
     pianoCtx.applyEdits = [this](int32_t trackIndex, int32_t clipId,
                                   std::vector<uapmd_ump_t> newEvents,
                                   std::vector<uint64_t>    newTicks,
@@ -2339,6 +2427,7 @@ void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
     std::string clipName = clipData->name.empty()
         ? std::format("Clip {}", clipId) : clipData->name;
     selected_midi_clip_ = std::pair{trackIndex, clipId};
+    clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{trackIndex, clipId, true, false});
     pianoRollEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
 }
 

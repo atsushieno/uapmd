@@ -93,6 +93,7 @@ class MainWindow {
         MixerMonitorWindow mixerMonitorWindow_;
         uapmd_addin::CommandRegistry commandRegistry_;
         uapmd_addin::ClipCommandRegistry clipCommandRegistry_;
+        uapmd_addin::ClipEditorRegistry clipEditorRegistry_;
         uapmd::import::StemSeparatorRegistry stemSeparatorRegistry_;
         uapmd_addin::AddinManager addinRuntime_;
         AddinManagerWindow addinManagerWindow_{addinRuntime_};

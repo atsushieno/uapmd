@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #if defined(UAPMD_BUILDING_ADDIN) && defined(_WIN32)
@@ -114,6 +116,80 @@ public:
 
 private:
     std::vector<ClipCommand*> commands_;
+};
+
+// Timeline clip editors are contributed globally by addins, but instances are
+// created and owned by the project/timeline host.  The service handles are
+// intentionally opaque here: the application owns their concrete APIs and an
+// addin must only use them according to the host contract for its build.
+struct ClipEditorClip {
+    int32_t track_index{-1};
+    int32_t clip_id{-1};
+    bool midi_clip{false};
+    bool master_track{false};
+};
+
+struct ClipEditorContext {
+    void* project{};
+    void* timeline{};
+    std::optional<ClipEditorClip> active_clip;
+    void* selection_service{};
+    void* undo{};
+    void* transport{};
+    void* clipboard{};
+    void* command_router{};
+};
+
+class ClipEditor {
+public:
+    virtual ~ClipEditor() = default;
+
+    virtual void update() noexcept = 0;
+    virtual void render() noexcept = 0;
+};
+
+class ClipEditorAddin {
+public:
+    virtual ~ClipEditorAddin() = default;
+
+    virtual std::string_view id() const noexcept = 0;
+    virtual std::string_view name() const noexcept = 0;
+    virtual bool supports(const ClipEditorContext& context) const noexcept = 0;
+    virtual std::unique_ptr<ClipEditor> createEditor(const ClipEditorContext& context) = 0;
+};
+
+class ClipEditorRegistry {
+public:
+    void registerEditor(ClipEditorAddin& addin);
+    void unregisterEditor(ClipEditorAddin& addin) noexcept;
+
+    std::vector<ClipEditorAddin*> editors() const;
+
+private:
+    std::vector<ClipEditorAddin*> editors_;
+};
+
+// Owned by a project/timeline editor.  Rebuilding is explicit because changing
+// project or active-clip context invalidates every editor instance.
+class ClipEditorHost {
+public:
+    explicit ClipEditorHost(ClipEditorRegistry* registry = nullptr) noexcept;
+
+    void setRegistry(ClipEditorRegistry* registry) noexcept;
+    void setContext(ClipEditorContext context);
+    void setActiveClip(std::optional<ClipEditorClip> clip);
+    void rebuild();
+
+    const ClipEditorContext& context() const noexcept { return context_; }
+    const std::vector<std::unique_ptr<ClipEditor>>& editors() const noexcept { return editors_; }
+
+    void update() noexcept;
+    void render() noexcept;
+
+private:
+    ClipEditorRegistry* registry_{};
+    ClipEditorContext context_{};
+    std::vector<std::unique_ptr<ClipEditor>> editors_;
 };
 
 using AddinEntryFunction = AddinEntry* (*)() noexcept;

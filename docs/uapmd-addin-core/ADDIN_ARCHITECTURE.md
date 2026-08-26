@@ -61,6 +61,15 @@ clip itself through `/uapmd/engine/v1`. A host with nowhere to present per-clip
 actions leaves this point unregistered, which addins must tolerate. The
 application offers these in the clip context menu of both timeline views.
 
+`/uapmd/app/timeline/clip-editor/v1` exposes the
+`uapmd_addin::ClipEditorRegistry`. Clip editor addins are registered
+application-wide, but `ClipEditorHost` instances belong to a project/timeline
+editor. The host creates editors from the active `ClipEditorContext`, which
+carries the project, timeline, active clip, selection, undo, transport,
+clipboard, and command-routing handles. Those handles are opaque at
+addin-core level so applications can supply their own service types. Hosts
+must destroy these instances before unloading an addin.
+
 `/uapmd/audio-graph/provider/v1` exposes the `uapmd::AudioGraphProviderRegistry`.
 Providers are *contributed*, not replaced: an addin adds its own audio graph
 implementation alongside the built-in simple linear and full DAG providers, and

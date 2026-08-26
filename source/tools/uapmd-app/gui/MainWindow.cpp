@@ -52,6 +52,17 @@ MainWindow::MainWindow(GuiDefaults defaults)
     // timeline editor owns.
     addinRuntime_.registerExtensionPoint("/uapmd/app/clip-command/v1", &clipCommandRegistry_);
     timelineEditor_.setClipCommandRegistry(&clipCommandRegistry_);
+    addinRuntime_.registerExtensionPoint("/uapmd/app/timeline/clip-editor/v1", &clipEditorRegistry_);
+    timelineEditor_.setClipEditorRegistry(&clipEditorRegistry_);
+    auto& appModel = uapmd_app::AppModel::instance();
+    timelineEditor_.setClipEditorContext({
+        .project = &appModel,
+        .timeline = &appModel.timeline(),
+        .selection_service = &timelineEditor_,
+        .undo = &appModel,
+        .transport = &appModel.transport(),
+        .command_router = &commandRegistry_,
+    });
     // Stem separation backends are contributed, not replaced: the Split Audio
     // Import window offers whatever addins registered here, and hides itself
     // when nothing did.
@@ -59,6 +70,8 @@ MainWindow::MainWindow(GuiDefaults defaults)
         "/uapmd/audio-import/stem-separator/v1", &stemSeparatorRegistry_);
     audioImportWindow_.setStemSeparatorRegistry(&stemSeparatorRegistry_);
     addinRuntime_.initialize();
+    // Built-in and installed addins register their editors during initialize().
+    timelineEditor_.setClipEditorRegistry(&clipEditorRegistry_);
     remidy_imgui::SetupImGuiStyle();
     // Font is already loaded in main_common.cpp before renderer initialization
     baseStyle_ = ImGui::GetStyle();
@@ -806,6 +819,8 @@ bool MainWindow::requestClose() {
 
 void MainWindow::shutdown() {
     timelineEditor_.pluginGraphEditor().hide();
+    // Editor instances may contain code from dynamically loaded addins.
+    timelineEditor_.setClipEditorRegistry(nullptr);
     addinRuntime_.shutdown();
 }
 
