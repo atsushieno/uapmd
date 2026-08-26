@@ -17,6 +17,7 @@
 #include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 
+#include "MainThreadTimelineEdit.hpp"
 #include "MirDiagnostics.hpp"
 #include "MirLibrosaAnalysis.hpp"
 
@@ -231,8 +232,10 @@ public:
                 worker_.join();
             stopRequested_.store(false, std::memory_order_release);
             worker_ = std::thread([this] {
-                analyzeProject();
-                running_.store(false, std::memory_order_release);
+                // A run that got as far as queueing its results stays
+                // "running" until the main thread has applied them.
+                if (!analyzeProject())
+                    running_.store(false, std::memory_order_release);
             });
         } catch (...) {
             running_.store(false, std::memory_order_release);
@@ -244,11 +247,17 @@ public:
             stopRequested_.store(true, std::memory_order_release);
         if (worker_.joinable())
             worker_.join();
+        // Only once the worker is gone, so nothing is queuing edits any more.
+        // This is the teardown path, so an edit still waiting for the event
+        // loop is dropped rather than run against an engine on its way out.
+        edit_lifetime_.reset();
         running_.store(false, std::memory_order_release);
     }
 
 private:
-    void analyzeProject() noexcept {
+    // Returns true when the results were handed to the main thread, which is
+    // then what finishes the run.
+    bool analyzeProject() noexcept {
         try {
             uapmd_mir::MirDiagnosticLog diagnostics;
             uapmd_mir::MirDiagnosticLogGuard diagnosticLogGuard{diagnostics};
@@ -274,7 +283,7 @@ private:
             std::vector<AnalysisResult> results;
             for (const auto sourceId : sourceIds) {
                 if (stopRequested_.load(std::memory_order_acquire))
-                    return;
+                    return false;
                 processedSources_.fetch_add(1, std::memory_order_acq_rel);
                 const auto source = view.getAudioSource(sourceId);
                 if (!source || source->frameCount <= 0 || source->channelCount == 0
@@ -335,8 +344,33 @@ private:
             std::ranges::sort(results, [](const auto& left, const auto& right) {
                 return left.position.samples < right.position.samples;
             });
-            auto* master = timeline.masterTimelineTrack();
-            if (!master)
+            // The analysis is over; all that is left mutates the timeline,
+            // which is main-thread work -- see MainThreadTimelineEdit.hpp.
+            uapmd_mir::runTimelineEditOnMainThread(
+                edit_lifetime_,
+                [this, results = std::move(results)] {
+                    // Cancelling stays meaningful right up to the moment the
+                    // edit lands: a run that was cancelled leaves the project
+                    // alone, the same as one cancelled mid-analysis.
+                    if (!stopRequested_.load(std::memory_order_acquire))
+                        writeResults(results);
+                    running_.store(false, std::memory_order_release);
+                });
+            return true;
+        } catch (const std::exception& error) {
+            remidy::Logger::global()->logError(std::format(
+                "librosa.cpp MIR project analysis failed: {}", error.what()).c_str());
+        } catch (...) {
+            remidy::Logger::global()->logError("librosa.cpp MIR project analysis failed");
+        }
+        return false;
+    }
+
+    // Runs on the main thread.
+    void writeResults(const std::vector<AnalysisResult>& results) noexcept {
+        try {
+            auto& timeline = engine_.timeline();
+            if (!timeline.masterTimelineTrack())
                 return;
             // Populating the master track is purely additive; see the comment
             // in MirAddin.cpp for why nothing existing is removed here.
@@ -355,9 +389,9 @@ private:
             }
         } catch (const std::exception& error) {
             remidy::Logger::global()->logError(std::format(
-                "librosa.cpp MIR project analysis failed: {}", error.what()).c_str());
+                "librosa.cpp MIR result write failed: {}", error.what()).c_str());
         } catch (...) {
-            remidy::Logger::global()->logError("librosa.cpp MIR project analysis failed");
+            remidy::Logger::global()->logError("librosa.cpp MIR result write failed");
         }
     }
 
@@ -367,6 +401,8 @@ private:
     std::atomic<int> totalSources_{0};
     std::atomic<bool> stopRequested_{false};
     std::chrono::steady_clock::time_point startedAt_{};
+    // Ties the queued result write to this command's own lifetime.
+    uapmd_mir::AsyncEditLifetimeRef edit_lifetime_{uapmd_mir::makeAsyncEditLifetime()};
     std::thread worker_;
 };
 

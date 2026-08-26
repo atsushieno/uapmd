@@ -14,6 +14,7 @@
 #include <uapmd-engine/uapmd-engine.hpp>
 
 #include "ClipTranscription.hpp"
+#include "MainThreadTimelineEdit.hpp"
 #include "NoteClipWriter.hpp"
 #include "PitchTranscription.hpp"
 
@@ -30,13 +31,15 @@ class Transcriber {
 public:
     explicit Transcriber(uapmd::SequencerEngine& engine) : engine_(engine) {}
 
-    // Returns how many MIDI clips were added.
-    int run(std::optional<int32_t> trackIndex,
-            std::optional<int32_t> clipId,
-            const std::atomic<bool>& stopRequested,
-            std::atomic<int>& processed,
-            std::atomic<int>& total) noexcept {
-        int added = 0;
+    // Drops whatever clip insertions are still queued for the main thread.
+    // Called once the worker is joined, so nothing lands after teardown.
+    void revokeQueuedEdits() noexcept { edit_lifetime_.reset(); }
+
+    void run(std::optional<int32_t> trackIndex,
+             std::optional<int32_t> clipId,
+             const std::atomic<bool>& stopRequested,
+             std::atomic<int>& processed,
+             std::atomic<int>& total) noexcept {
         try {
             const auto& view = engine_.timeline().projectDocumentView();
             const auto sources = uapmd_pitch::collectAudioClipSources(view, trackIndex, clipId);
@@ -62,8 +65,8 @@ public:
                 // audio, which is worse than leaving none.
                 if (stopRequested.load(std::memory_order_acquire))
                     break;
-                if (uapmd_pitch::writeNoteClip(engine_, {clip, source}, notes, "Transcribed"))
-                    ++added;
+                uapmd_pitch::writeNoteClip(
+                    engine_, edit_lifetime_, {clip, source}, notes, "Transcribed");
             }
         } catch (const std::exception& error) {
             remidy::Logger::global()->logError(std::format(
@@ -71,11 +74,12 @@ public:
         } catch (...) {
             remidy::Logger::global()->logError("MIDI transcription failed");
         }
-        return added;
     }
 
 private:
     uapmd::SequencerEngine& engine_;
+    // Ties every queued clip insertion to this transcriber's own lifetime.
+    uapmd_mir::AsyncEditLifetimeRef edit_lifetime_{uapmd_mir::makeAsyncEditLifetime()};
 };
 
 // One worker thread shared by both commands, so that the per-clip and
@@ -133,6 +137,8 @@ public:
         stop_requested_.store(true, std::memory_order_release);
         if (worker_.joinable())
             worker_.join();
+        // Only once the worker is gone, so nothing is queuing edits any more.
+        transcriber_.revokeQueuedEdits();
         running_.store(false, std::memory_order_release);
     }
 

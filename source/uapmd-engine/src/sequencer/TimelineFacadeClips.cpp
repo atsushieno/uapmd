@@ -154,7 +154,8 @@ namespace uapmd {
             bool nrpnToParameterMapping,
             ProjectMutationOrigin origin) {
                 ClipAddResult result;
-        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
+        auto* targetTrack = resolveTrack(trackIndex);
+        if (!targetTrack) {
             result.error = "Invalid track index";
             return result;
         }
@@ -165,9 +166,31 @@ namespace uapmd {
             return result;
         }
 
+        // Importing onto the master track itself: the file's meta events are
+        // already destined for where they would be split off to, so the clip
+        // goes there whole rather than being separated into two.
+        if (trackIndex == kMasterTrackIndex) {
+            return recordAddedClip(
+                kMasterTrackIndex,
+                addMidiClipToTimelineTrack(
+                    *targetTrack,
+                    position,
+                    filepath,
+                    std::move(clipInfo.ump_data),
+                    std::move(clipInfo.ump_tick_timestamps),
+                    clipInfo.tick_resolution,
+                    clipInfo.tempo,
+                    std::move(clipInfo.tempo_changes),
+                    std::move(clipInfo.time_signature_changes),
+                    std::filesystem::path(filepath).stem().string(),
+                    false,
+                    false),
+                origin);
+        }
+
         auto separated = MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
         auto& musicalClip = separated.musicalClip;
-        auto& track = *timeline_tracks_[static_cast<size_t>(trackIndex)];
+        auto& track = *targetTrack;
         // Only worth a step when this import records history and adds both a
         // musical and a master-track clip; opening one for a project load
         // would make the whole load look like a pending history scope.
@@ -255,7 +278,12 @@ namespace uapmd {
             const std::string& clipName,
             bool nrpnToParameterMapping,
             bool needsFileSave,
-            ProjectMutationOrigin origin) {    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
+            ProjectMutationOrigin origin) {
+    // resolveTrack, rather than a bounds check on timeline_tracks_, so that
+    // kMasterTrackIndex reaches the master track here the same way it does in
+    // removeClipFromTrack and the clip property commands.
+    auto* targetTrack = resolveTrack(trackIndex);
+    if (!targetTrack) {
         ClipAddResult result;
         result.error = "Invalid track index";
         return result;
@@ -263,7 +291,7 @@ namespace uapmd {
     return recordAddedClip(
         trackIndex,
         addMidiClipToTimelineTrack(
-            *timeline_tracks_[static_cast<size_t>(trackIndex)],
+            *targetTrack,
             position,
             "",
             std::move(umpEvents),

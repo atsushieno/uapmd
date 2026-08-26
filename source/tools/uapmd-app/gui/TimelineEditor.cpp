@@ -885,7 +885,9 @@ void TimelineEditor::render(float uiScale) {
     // Render MidiDumpWindow with context
     MidiDumpWindow::RenderContext midiDumpContext{
         .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
-            return buildMidiClipDumpData(trackIndex, clipId);
+            return trackIndex == uapmd::kMasterTrackIndex
+                ? buildMasterMetaDumpData()
+                : buildMidiClipDumpData(trackIndex, clipId);
         },
         .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
             if (setNextChildWindowSize_)
@@ -1093,8 +1095,12 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         return a.position.samples < b.position.samples;
     });
 
-    // Signature covers each clip's id, position, duration, and name.
-    std::string signature;
+    // Signature covers each clip's id, position, duration, and name. The clip
+    // count leads it so that an empty master track still produces a non-empty
+    // signature -- invalidateMasterTrackSnapshot() clears the cached signature
+    // to "", and a bare "" would compare equal to it, leaving the rows of the
+    // clips that were just deleted on screen.
+    std::string signature = std::format("{}|", clips.size());
     for (const auto& clip : clips)
         signature += std::format("{}:{}:{}:{};",
             clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
@@ -2410,21 +2416,27 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMidiClipDumpData(int32_t track
 
 MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
     MidiDumpWindow::ClipDumpData dump;
-    dump.trackIndex = -1;
+    dump.trackIndex = uapmd::kMasterTrackIndex;
     dump.clipId = -1;
     dump.isMasterTrack = true;
     dump.clipName = "Master Track Meta Events";
     dump.fileLabel = "Aggregated SMF meta events";
 
-    std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot> snapshot = masterTrackSnapshot_;
-    if (!snapshot) {
-        snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
-            uapmd_app::AppModel::instance().buildMasterTrackSnapshot());
-    }
+    // Built from the engine every time rather than from the cached member: the
+    // cache is a render-loop convenience, and a dump opened from a stale one
+    // would disagree with the master row the user just clicked.
+    auto& appModel = uapmd_app::AppModel::instance();
+    auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
+        appModel.buildMasterTrackSnapshot());
+    masterTrackSnapshot_ = snapshot;
 
-    if (!snapshot || snapshot->empty()) {
+    if (snapshot->empty()) {
+        auto* masterTrack = appModel.getMasterTimelineTrack();
+        const bool hasClips = masterTrack && masterTrack->clipManager().clipCount() > 0;
         dump.success = false;
-        dump.error = "No tempo or time signature events are available.";
+        dump.error = hasClips
+            ? "The master track clips carry no tempo or time signature events."
+            : "The master track has no clips.";
         return dump;
     }
 

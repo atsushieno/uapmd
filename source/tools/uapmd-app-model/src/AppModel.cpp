@@ -2041,6 +2041,21 @@ uapmd_app::AppModel::ClipAddResult uapmd_app::AppModel::addMidiClipToTrack(
     const std::string& filepath
 ) {
     ClipAddResult result;
+    // Importing onto the master track needs no musical/meta separation -- the
+    // engine puts the file there whole. Splitting here would add the musical
+    // half to the master track as well.
+    if (trackIndex == kMasterTrackIndex) {
+        auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
+            trackIndex, position, filepath);
+        result.clipId = engineResult.clipId;
+        result.sourceNodeId = engineResult.sourceNodeId;
+        result.success = engineResult.success;
+        result.error = engineResult.error;
+        if (result.success)
+            sequencer_.engine()->markTrackDirty(kMasterTrackIndex);
+        return result;
+    }
+
     auto clipInfo = uapmd::MidiClipReader::readAnyFormat(filepath);
     if (!clipInfo.success) {
         result.error = clipInfo.error;

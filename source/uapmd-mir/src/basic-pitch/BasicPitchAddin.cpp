@@ -15,6 +15,7 @@
 
 #include "BasicPitchTranscriber.hpp"
 #include "ClipTranscription.hpp"
+#include "MainThreadTimelineEdit.hpp"
 #include "NoteClipWriter.hpp"
 
 using namespace uapmd_addin;
@@ -72,13 +73,15 @@ class Transcriber {
 public:
     explicit Transcriber(uapmd::SequencerEngine& engine) : engine_(engine) {}
 
-    // Returns how many MIDI clips were added.
-    int run(std::optional<int32_t> trackIndex,
-            std::optional<int32_t> clipId,
-            const std::atomic<bool>& stopRequested,
-            std::atomic<int>& processed,
-            std::atomic<int>& total) noexcept {
-        int added = 0;
+    // Drops whatever clip insertions are still queued for the main thread.
+    // Called once the worker is joined, so nothing lands after teardown.
+    void revokeQueuedEdits() noexcept { edit_lifetime_.reset(); }
+
+    void run(std::optional<int32_t> trackIndex,
+             std::optional<int32_t> clipId,
+             const std::atomic<bool>& stopRequested,
+             std::atomic<int>& processed,
+             std::atomic<int>& total) noexcept {
         try {
             // Reading the weights is deferred to the first run rather than done
             // at initialize(): parsing 230 KB is cheap, but a project that never
@@ -89,7 +92,7 @@ public:
                         uapmd_basic_pitch::embeddedModel(), weights_, error)) {
                     remidy::Logger::global()->logError(std::format(
                         "Basic Pitch model could not be read: {}", error).c_str());
-                    return 0;
+                    return;
                 }
                 weights_loaded_ = true;
             }
@@ -121,9 +124,9 @@ public:
 
                 const auto events = uapmd_basic_pitch::decodeNotes(
                     posteriorgrams, uapmd_basic_pitch::BasicPitchOptions{});
-                if (uapmd_pitch::writeNoteClip(
-                        engine_, audio, toTranscribedNotes(events), "Basic Pitch"))
-                    ++added;
+                uapmd_pitch::writeNoteClip(
+                    engine_, edit_lifetime_, audio, toTranscribedNotes(events),
+                    "Basic Pitch");
             }
         } catch (const std::exception& error) {
             remidy::Logger::global()->logError(std::format(
@@ -131,13 +134,14 @@ public:
         } catch (...) {
             remidy::Logger::global()->logError("Basic Pitch transcription failed");
         }
-        return added;
     }
 
 private:
     uapmd::SequencerEngine& engine_;
     uapmd_basic_pitch::ModelWeights weights_;
     bool weights_loaded_{false};
+    // Ties every queued clip insertion to this transcriber's own lifetime.
+    uapmd_mir::AsyncEditLifetimeRef edit_lifetime_{uapmd_mir::makeAsyncEditLifetime()};
 };
 
 // One worker thread shared by both commands, so the per-clip and whole-project
@@ -193,6 +197,8 @@ public:
         stop_requested_.store(true, std::memory_order_release);
         if (worker_.joinable())
             worker_.join();
+        // Only once the worker is gone, so nothing is queuing edits any more.
+        transcriber_.revokeQueuedEdits();
         running_.store(false, std::memory_order_release);
     }
 

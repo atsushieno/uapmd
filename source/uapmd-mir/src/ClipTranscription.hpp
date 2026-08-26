@@ -7,6 +7,7 @@
 
 #include <uapmd-engine/uapmd-engine.hpp>
 
+#include "MainThreadTimelineEdit.hpp"
 #include "NoteClipWriter.hpp"
 
 // The parts of "transcribe an audio clip" that have nothing to do with which
@@ -47,8 +48,13 @@ std::vector<float> resample(const std::vector<float>& input,
 
 // Adds `notes` as a MIDI 2.0 clip at the audio clip's position on its track,
 // resized to the audio clip's length so there is room to draw automation over
-// the whole of it. Returns false when the clip could not be added.
-bool writeNoteClip(uapmd::SequencerEngine& engine,
+// the whole of it.
+//
+// Callable from a worker thread: the insertion itself is handed to the main
+// thread against `lifetime`, so it does not report back whether the clip
+// landed. See MainThreadTimelineEdit.hpp for why.
+void writeNoteClip(uapmd::SequencerEngine& engine,
+                   const uapmd_mir::AsyncEditLifetimeRef& lifetime,
                    const AudioClipSource& audio,
                    const std::vector<TranscribedNote>& notes,
                    std::string_view name_prefix);

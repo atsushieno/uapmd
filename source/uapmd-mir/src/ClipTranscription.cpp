@@ -121,39 +121,48 @@ std::vector<float> resample(const std::vector<float>& input,
     return output;
 }
 
-bool writeNoteClip(uapmd::SequencerEngine& engine,
+void writeNoteClip(uapmd::SequencerEngine& engine,
+                   const uapmd_mir::AsyncEditLifetimeRef& lifetime,
                    const AudioClipSource& audio,
                    const std::vector<TranscribedNote>& notes,
                    std::string_view name_prefix) {
     if (notes.empty())
-        return false;
+        return;
 
-    auto& timeline = engine.timeline();
-    const auto& state = timeline.state();
-    const auto bpm = state.tempo > 0.0 ? state.tempo : 120.0;
-    const auto tickResolution = state.projectTickResolution > 0
-        ? state.projectTickResolution : kDefaultTickResolution;
+    // The project tempo is read here too, not just the insertion: it is the
+    // state the insertion has to agree with, and spelling the notes as UMP is
+    // a sort over the notes, which is nothing next to the analysis that
+    // produced them.
+    uapmd_mir::runTimelineEditOnMainThread(
+        lifetime,
+        [engine = &engine, audio, notes, prefix = std::string{name_prefix}] {
+            auto& timeline = engine->timeline();
+            const auto& state = timeline.state();
+            const auto bpm = state.tempo > 0.0 ? state.tempo : 120.0;
+            const auto tickResolution = state.projectTickResolution > 0
+                ? state.projectTickResolution : kDefaultTickResolution;
 
-    auto [events, ticks] = makeNoteClip(notes, tickResolution, bpm);
-    const auto result = timeline.addMidiClipToTrack(
-        audio.clip.trackIndex, audio.clip.position,
-        std::move(events), std::move(ticks),
-        tickResolution, bpm, {}, {},
-        audio.clip.name.empty()
-            ? std::string{name_prefix}
-            : std::format("{}: {}", name_prefix, audio.clip.name),
-        false, false,
-        uapmd::ProjectMutationOrigin::User);
-    if (!result.success)
-        return false;
+            auto [events, ticks] = makeNoteClip(notes, tickResolution, bpm);
+            const auto result = timeline.addMidiClipToTrack(
+                audio.clip.trackIndex, audio.clip.position,
+                std::move(events), std::move(ticks),
+                tickResolution, bpm, {}, {},
+                audio.clip.name.empty()
+                    ? prefix
+                    : std::format("{}: {}", prefix, audio.clip.name),
+                false, false,
+                uapmd::ProjectMutationOrigin::User);
+            if (!result.success)
+                return;
 
-    // A MIDI clip is otherwise only as long as its last note, which leaves
-    // nowhere to draw automation over the tail of the audio it came from.
-    if (audio.clip.durationSamples > 0)
-        engine.commands().resizeClip(
-            audio.clip.trackIndex, result.clipId, audio.clip.durationSamples,
-            uapmd::ProjectMutationOrigin::Internal);
-    return true;
+            // A MIDI clip is otherwise only as long as its last note, which
+            // leaves nowhere to draw automation over the tail of the audio it
+            // came from.
+            if (audio.clip.durationSamples > 0)
+                engine->commands().resizeClip(
+                    audio.clip.trackIndex, result.clipId, audio.clip.durationSamples,
+                    uapmd::ProjectMutationOrigin::Internal);
+        });
 }
 
 } // namespace uapmd_pitch
