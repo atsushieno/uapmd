@@ -87,7 +87,8 @@ public:
     }
 
     bool supports(const uapmd_addin::ClipEditorContext& context) const noexcept override {
-        return context.active_clip && context.active_clip->midi_clip && context.selection_service;
+        return context.active_clip && context.active_clip->midi_clip &&
+               !context.active_clip->master_track && context.selection_service;
     }
 
     std::unique_ptr<uapmd_addin::ClipEditor> createEditor(
@@ -122,6 +123,85 @@ private:
 };
 
 PianoRollClipEditorRegistration pianoRollClipEditorRegistration;
+
+class MidiEventListClipEditor final : public uapmd_addin::ClipEditor {
+public:
+    explicit MidiEventListClipEditor(TimelineEditor* timelineEditor)
+        : timeline_editor_(timelineEditor) {}
+
+    void update() noexcept override {}
+
+    void render() noexcept override {
+        if (timeline_editor_)
+            timeline_editor_->renderMidiDumpFromClipEditor();
+    }
+
+private:
+    TimelineEditor* timeline_editor_{};
+};
+
+class MidiEventListClipEditorAddin final
+    : public uapmd_addin::Addin
+    , public uapmd_addin::ClipEditorAddin {
+public:
+    uapmd_addin::AddinIdentity identity() const noexcept override {
+        return {"/uapmd/midi-event-list", "editor"};
+    }
+
+    std::string_view name() const noexcept override { return "MIDI Event List"; }
+    std::string_view id() const noexcept override { return "midi-event-list"; }
+    std::string_view path() const noexcept override { return "/uapmd/app/timeline/clip-editor/v1"; }
+
+    bool initialize(uapmd_addin::AddinHost& host) noexcept override {
+        registry_ = static_cast<uapmd_addin::ClipEditorRegistry*>(host.extensionPoint(path()));
+        if (!registry_)
+            return false;
+        registry_->registerEditor(*this);
+        return true;
+    }
+
+    void cleanup(uapmd_addin::AddinHost&) noexcept override {
+        if (registry_)
+            registry_->unregisterEditor(*this);
+        registry_ = nullptr;
+    }
+
+    bool supports(const uapmd_addin::ClipEditorContext& context) const noexcept override {
+        return context.active_clip && context.active_clip->midi_clip && context.selection_service;
+    }
+
+    std::unique_ptr<uapmd_addin::ClipEditor> createEditor(
+        const uapmd_addin::ClipEditorContext& context) override {
+        return std::make_unique<MidiEventListClipEditor>(
+            static_cast<TimelineEditor*>(context.selection_service));
+    }
+
+private:
+    uapmd_addin::ClipEditorRegistry* registry_{};
+};
+
+MidiEventListClipEditorAddin midiEventListClipEditorAddin;
+
+class MidiEventListClipEditorRegistration final {
+public:
+    MidiEventListClipEditorRegistration() {
+        uapmd_addin::registerBuiltinAddin(entry_);
+    }
+
+private:
+    class Entry final : public uapmd_addin::AddinEntry {
+    public:
+        std::string_view packageId() const noexcept override { return "/uapmd/midi-event-list"; }
+
+        std::span<uapmd_addin::Addin* const> addins() noexcept override {
+            return addins_;
+        }
+
+        std::array<uapmd_addin::Addin*, 1> addins_{&midiEventListClipEditorAddin};
+    } entry_;
+};
+
+MidiEventListClipEditorRegistration midiEventListClipEditorRegistration;
 
 struct ClipKey {
     std::string referenceId;
@@ -967,28 +1047,6 @@ void TimelineEditor::render(float uiScale) {
     };
     instanceDetails_.render(detailsContext);
 
-    // Render MidiDumpWindow with context
-    MidiDumpWindow::RenderContext midiDumpContext{
-        .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
-            return trackIndex == uapmd::kMasterTrackIndex
-                ? buildMasterMetaDumpData()
-                : buildMidiClipDumpData(trackIndex, clipId);
-        },
-        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
-            if (setNextChildWindowSize_)
-                setNextChildWindowSize_(id, defaultSize);
-        },
-        .updateChildWindowSizeState = [this](const std::string& id) {
-            if (updateChildWindowSizeState_)
-                updateChildWindowSizeState_(id);
-        },
-        .applyEdits = [this](const MidiDumpWindow::EditPayload& payload, std::string& error) {
-            return applyMidiClipEdits(payload, error);
-        },
-        .uiScale = uiScale,
-    };
-    midiDumpWindow_.render(midiDumpContext);
-
     AudioEventListEditor::RenderContext audioEventContext{
         .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
             return buildAudioEventListData(trackIndex, clipId);
@@ -1033,6 +1091,29 @@ void TimelineEditor::render(float uiScale) {
     };
     audioEventListEditor_.render(audioEventContext);
 
+}
+
+void TimelineEditor::renderMidiDumpFromClipEditor() {
+    MidiDumpWindow::RenderContext midiDumpContext{
+        .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
+            return trackIndex == uapmd::kMasterTrackIndex
+                ? buildMasterMetaDumpData()
+                : buildMidiClipDumpData(trackIndex, clipId);
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            if (setNextChildWindowSize_)
+                setNextChildWindowSize_(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            if (updateChildWindowSizeState_)
+                updateChildWindowSizeState_(id);
+        },
+        .applyEdits = [this](const MidiDumpWindow::EditPayload& payload, std::string& error) {
+            return applyMidiClipEdits(payload, error);
+        },
+        .uiScale = currentUiScale_,
+    };
+    midiDumpWindow_.render(midiDumpContext);
 }
 
 void TimelineEditor::renderPianoRollFromClipEditor() {
@@ -2395,6 +2476,7 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
 }
 
 void TimelineEditor::showMidiClipDump(int32_t trackIndex, int32_t clipId) {
+    clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{trackIndex, clipId, true, false});
     midiDumpWindow_.showClipDump(buildMidiClipDumpData(trackIndex, clipId));
 }
 
@@ -2432,6 +2514,8 @@ void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
 }
 
 void TimelineEditor::showMasterMetaDump() {
+    clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{
+        uapmd::kMasterTrackIndex, kMasterTrackClipId, true, true});
     midiDumpWindow_.showClipDump(buildMasterMetaDumpData());
 }
 

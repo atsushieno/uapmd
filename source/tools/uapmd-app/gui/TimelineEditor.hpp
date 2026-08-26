@@ -94,6 +94,7 @@ public:
 
     // MIDI dump
     void showMidiClipDump(int32_t trackIndex, int32_t clipId);
+    void renderMidiDumpFromClipEditor();
     void showAudioClipEvents(int32_t trackIndex, int32_t clipId);
     void showMasterMarkerEditor();
     void showMasterMetaDump();
