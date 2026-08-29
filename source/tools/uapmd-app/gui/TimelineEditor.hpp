@@ -15,6 +15,7 @@
 #include "AudioEventListEditor.hpp"
 #include "MidiDumpWindow.hpp"
 #include "PianoRollEditor.hpp"
+#include "StepSequencerEditor.hpp"
 #include "PluginSelector.hpp"
 #include "PluginGraphEditor.hpp"
 #include "InstanceDetails.hpp"
@@ -102,6 +103,8 @@ public:
     // Piano roll
     void showPianoRoll(int32_t trackIndex, int32_t clipId);
     void renderPianoRollFromClipEditor();
+    void showStepSequencer(int32_t trackIndex, int32_t clipId);
+    void renderStepSequencerFromClipEditor();
 
     // Track import
     void importMidiTracksWithPicker();
@@ -123,6 +126,7 @@ private:
     AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;
     PianoRollEditor pianoRollEditor_;
+    StepSequencerEditor stepSequencerEditor_;
     PluginSelector pluginSelector_;
     PluginGraphEditor pluginGraphEditor_;
     InstanceDetails instanceDetails_;
@@ -181,6 +185,10 @@ private:
                               std::vector<uapmd_ump_t> newUmpEvents,
                               std::vector<uint64_t>    newTickTimestamps,
                               std::string&             error);
+    bool applyStepSequencerEdits(int32_t trackIndex, int32_t clipId,
+                                 std::vector<uapmd_ump_t> newUmpEvents,
+                                 std::vector<uint64_t> newTickTimestamps,
+                                 std::string& error);
 
     // Per-type clip import helpers (called from Clips... popup)
     void addBlankMidi2ClipToTrack(int32_t trackIndex);

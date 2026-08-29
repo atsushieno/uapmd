@@ -56,6 +56,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/AudioEventListEditor.cpp
         gui/MidiDumpWindow.cpp
         gui/PianoRollEditor.cpp
+        gui/StepSequencerEditor.cpp
         gui/FontLoader.cpp
         gui/AddinManagerWindow.cpp
 )
