@@ -77,6 +77,23 @@ std::string noteLabel(uint8_t note, bool includeDrumName) {
     return label;
 }
 
+ImVec4 noteColor(uint8_t note) {
+    static constexpr ImVec4 colors[] = {
+        {0.30f, 0.66f, 0.87f, 1.0f}, {0.37f, 0.75f, 0.62f, 1.0f},
+        {0.76f, 0.63f, 0.31f, 1.0f}, {0.78f, 0.45f, 0.53f, 1.0f},
+        {0.58f, 0.52f, 0.84f, 1.0f}, {0.36f, 0.70f, 0.72f, 1.0f},
+        {0.72f, 0.58f, 0.70f, 1.0f}, {0.63f, 0.70f, 0.38f, 1.0f},
+    };
+    return colors[note % IM_ARRAYSIZE(colors)];
+}
+
+ImVec4 dimmed(ImVec4 color, float factor) {
+    color.x *= factor;
+    color.y *= factor;
+    color.z *= factor;
+    return color;
+}
+
 } // namespace
 
 void StepSequencerEditor::showClip(int32_t trackIndex, int32_t clipId,
@@ -217,7 +234,9 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         ImGui::Text("Pattern length: %llu ticks | Expanded length: %llu ticks",
                     static_cast<unsigned long long>(patternTicks()),
                     static_cast<unsigned long long>(patternTicks() * state_.repetitions));
-        ImGui::BeginChild("##StepSequencerLanes", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() * 2.0f),
+        const float velocityPanelHeight = 140.0f * context.uiScale;
+        ImGui::BeginChild("##StepSequencerLanes",
+                          ImVec2(0.0f, -velocityPanelHeight - ImGui::GetFrameHeightWithSpacing() * 2.0f),
                           true, ImGuiWindowFlags_HorizontalScrollbar);
         const float labelWidth = 190.0f * context.uiScale;
         const float buttonSize = 26.0f * context.uiScale;
@@ -240,20 +259,15 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
             ImGui::PushID(lane.note);
             const auto label = noteLabel(lane.note, state_.noteSet == NoteSet::GmDrums);
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(label.c_str());
+            ImGui::TextColored(noteColor(lane.note), "%s", label.c_str());
             ImGui::SameLine(labelWidth);
             for (int i = 0; i < state_.patternSteps; ++i) {
                 auto& step = lane.steps[static_cast<size_t>(i)];
                 ImGui::PushID(i);
-                const auto baseColor = step.active
-                    ? ImVec4(0.18f, 0.64f, 0.42f, 1.0f)
-                    : ImVec4(0.20f, 0.22f, 0.25f, 1.0f);
-                const auto hoverColor = step.active
-                    ? ImVec4(0.25f, 0.76f, 0.51f, 1.0f)
-                    : ImVec4(0.29f, 0.32f, 0.36f, 1.0f);
-                const auto heldColor = step.active
-                    ? ImVec4(0.13f, 0.50f, 0.32f, 1.0f)
-                    : ImVec4(0.14f, 0.16f, 0.18f, 1.0f);
+                const auto laneColor = noteColor(lane.note);
+                const auto baseColor = step.active ? dimmed(laneColor, 0.88f) : dimmed(laneColor, 0.24f);
+                const auto hoverColor = step.active ? laneColor : dimmed(laneColor, 0.38f);
+                const auto heldColor = step.active ? dimmed(laneColor, 0.68f) : dimmed(laneColor, 0.18f);
                 ImGui::PushStyleColor(ImGuiCol_Button, baseColor);
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoverColor);
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, heldColor);
@@ -277,6 +291,44 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
             ImGui::PopID();
         }
         ImGui::PopStyleVar();
+        ImGui::EndChild();
+        ImGui::BeginChild("##StepSequencerVelocity", ImVec2(0.0f, velocityPanelHeight), true,
+                          ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::TextDisabled("Velocity / automation");
+        ImGui::SameLine();
+        ImGui::TextDisabled("Each active note is shown separately; editing will be added in-place later.");
+        const ImVec2 meterOrigin = ImGui::GetCursorScreenPos();
+        const ImVec2 meterAvailable = ImGui::GetContentRegionAvail();
+        const float stepWidth = buttonSize + 2.0f * context.uiScale;
+        const float meterWidth = std::max(meterAvailable.x, labelWidth + state_.patternSteps * stepWidth);
+        const float meterHeight = std::max(20.0f * context.uiScale, meterAvailable.y - 2.0f * context.uiScale);
+        auto* drawList = ImGui::GetWindowDrawList();
+        const float meterLeft = meterOrigin.x + labelWidth;
+        const float meterBottom = meterOrigin.y + meterHeight;
+        drawList->AddLine(ImVec2(meterLeft, meterBottom), ImVec2(meterOrigin.x + meterWidth, meterBottom),
+                          ImGui::GetColorU32(ImGuiCol_Border));
+        for (int stepIndex = 0; stepIndex < state_.patternSteps; ++stepIndex) {
+            const float x = meterLeft + stepIndex * stepWidth;
+            drawList->AddLine(ImVec2(x, meterOrigin.y), ImVec2(x, meterBottom),
+                              ImGui::GetColorU32(ImGuiCol_Separator));
+            std::vector<const NoteLane*> activeLanes;
+            for (const auto& lane : state_.lanes)
+                if (lane.steps[static_cast<size_t>(stepIndex)].active)
+                    activeLanes.push_back(&lane);
+            for (size_t laneIndex = 0; laneIndex < activeLanes.size(); ++laneIndex) {
+                const auto& lane = *activeLanes[laneIndex];
+                const float barWidth = (stepWidth - 2.0f) / static_cast<float>(activeLanes.size());
+                const float barHeight = lane.steps[static_cast<size_t>(stepIndex)].velocity * meterHeight;
+                const float barLeft = x + 1.0f + laneIndex * barWidth;
+                drawList->AddRectFilled(ImVec2(barLeft, meterBottom - barHeight),
+                                        ImVec2(barLeft + std::max(1.0f, barWidth - 1.0f), meterBottom),
+                                        ImGui::ColorConvertFloat4ToU32(noteColor(lane.note)));
+            }
+        }
+        drawList->AddLine(ImVec2(meterLeft + state_.patternSteps * stepWidth, meterOrigin.y),
+                          ImVec2(meterLeft + state_.patternSteps * stepWidth, meterBottom),
+                          ImGui::GetColorU32(ImGuiCol_Separator));
+        ImGui::Dummy(ImVec2(meterWidth, meterHeight));
         ImGui::EndChild();
         if (editedThisFrame && state_.dirty)
             apply(context);
