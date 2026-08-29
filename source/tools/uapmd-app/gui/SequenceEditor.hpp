@@ -63,6 +63,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
         std::function<void(int32_t trackIndex, int32_t clipId)> showAudioClipEvents;
         std::function<void(int32_t trackIndex, int32_t clipId)> showPianoRoll;
+        std::function<void(int32_t trackIndex, int32_t clipId)> showStepSequencer;
         // Renders whatever addin-contributed commands apply to this clip, as
         // menu items, directly into the open context menu. Unset when nothing
         // can contribute.

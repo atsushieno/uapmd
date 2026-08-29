@@ -866,6 +866,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
             showPianoRoll(trackIndex, clipId);
         },
+        .showStepSequencer = [this](int32_t trackIndex, int32_t clipId) {
+            showStepSequencer(trackIndex, clipId);
+        },
         .renderClipCommands = [this](int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
             renderClipCommands(trackIndex, clipId, isMidiClip, isMasterTrack);
         },
@@ -966,6 +969,9 @@ BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float
         .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
             showPianoRoll(trackIndex, clipId);
         },
+        .showStepSequencer = [this](int32_t trackIndex, int32_t clipId) {
+            showStepSequencer(trackIndex, clipId);
+        },
         .renderClipCommands = [this](int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
             renderClipCommands(trackIndex, clipId, isMidiClip, isMasterTrack);
         },
@@ -1011,6 +1017,7 @@ void TimelineEditor::render(float uiScale) {
     auto beatsContext = buildBeatsRenderContext(uiScale, context.legendWidth);
     renderTrackList(context, beatsContext);
     sequenceEditor_.render(context);
+    renderStepSequencerFromClipEditor();
 
     // Render InstanceDetails with context
     InstanceDetails::RenderContext detailsContext{
@@ -1160,6 +1167,28 @@ void TimelineEditor::renderPianoRollFromClipEditor() {
         return getPluginParametersForTrack(trackIndex);
     };
     pianoRollEditor_.render(pianoCtx);
+}
+
+void TimelineEditor::renderStepSequencerFromClipEditor() {
+    StepSequencerEditor::RenderContext stepCtx;
+    stepCtx.uiScale = currentUiScale_;
+    stepCtx.applyEdits = [this](int32_t trackIndex, int32_t clipId,
+                                std::vector<uapmd_ump_t> newEvents,
+                                std::vector<uint64_t> newTicks,
+                                std::string& error) {
+        return applyStepSequencerEdits(trackIndex, clipId,
+                                       std::move(newEvents), std::move(newTicks), error);
+    };
+    stepCtx.reloadPreview = [](int32_t trackIndex, int32_t clipId) {
+        auto& appModel = uapmd_app::AppModel::instance();
+        auto tracks = appModel.getTimelineTracks();
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+            return std::shared_ptr<ClipPreview>{};
+        auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+        return clip ? createMidiClipPreview(trackIndex, *clip, 0.0)
+                    : std::shared_ptr<ClipPreview>{};
+    };
+    stepSequencerEditor_.render(stepCtx);
 }
 
 void TimelineEditor::renderPluginSelectorWindow(float uiScale) {
@@ -2513,6 +2542,21 @@ void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
     pianoRollEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
 }
 
+void TimelineEditor::showStepSequencer(int32_t trackIndex, int32_t clipId) {
+    auto& appModel = uapmd_app::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+        return;
+    const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip || clip->clipType != uapmd::ClipType::Midi)
+        return;
+    auto preview = createMidiClipPreview(trackIndex, *clip, 0.0);
+    const auto clipName = clip->name.empty() ? std::format("Clip {}", clipId) : clip->name;
+    selected_midi_clip_ = std::pair{trackIndex, clipId};
+    clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{trackIndex, clipId, true, false});
+    stepSequencerEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
+}
+
 void TimelineEditor::showMasterMetaDump() {
     clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{
         uapmd::kMasterTrackIndex, kMasterTrackClipId, true, true});
@@ -2881,6 +2925,25 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
             !tracks[trackIndex]) {
+        error = "Track unavailable.";
+        return false;
+    }
+    if (!appModel.sequencer().engine()->timeline().replaceMidiClipContent(
+            trackIndex, clipId, std::move(newUmpEvents), std::move(newTickTimestamps))) {
+        error = "Failed to replace MIDI clip data.";
+        return false;
+    }
+    refreshSequenceEditorForTrack(trackIndex);
+    return true;
+}
+
+bool TimelineEditor::applyStepSequencerEdits(int32_t trackIndex, int32_t clipId,
+                                             std::vector<uapmd_ump_t> newUmpEvents,
+                                             std::vector<uint64_t> newTickTimestamps,
+                                             std::string& error) {
+    auto& appModel = uapmd_app::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
         error = "Track unavailable.";
         return false;
     }

@@ -507,6 +507,15 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                     }
                     if (!canRoll) ImGui::EndDisabled();
 
+                    const bool canStep = contextClip->isMidiClip && static_cast<bool>(context.showStepSequencer);
+                    if (!canStep) ImGui::BeginDisabled();
+                    if (contextActionMenuItem("Open Step Sequencer")) {
+                        if (context.showStepSequencer)
+                            context.showStepSequencer(trackIndex, contextClip->clipId);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (!canStep) ImGui::EndDisabled();
+
                     const bool canDelete = static_cast<bool>(context.removeClip);
                     if (!canDelete) ImGui::BeginDisabled();
                     if (contextActionMenuItem("Delete")) {
