@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -30,6 +31,8 @@ private:
         bool active{false};
         float velocity{0.8f};
         float gate{0.8f};
+        uint8_t attributeType{0};
+        uint16_t attributeValue{0};
     };
 
     struct NoteLane {
@@ -40,6 +43,12 @@ private:
     enum class NoteSet {
         GmDrums,
         AllNotes,
+    };
+
+    enum class InlineEditor {
+        None,
+        Velocity,
+        AttributeValue,
     };
 
     struct State {
@@ -60,6 +69,18 @@ private:
         float defaultGate{0.8f};
         std::vector<NoteLane> lanes;
         bool focusDrumRoot{true};
+        bool longPressOpened{false};
+        InlineEditor inlineEditor{InlineEditor::None};
+        uint8_t inlineEditorNote{0};
+        int inlineEditorStep{-1};
+        std::array<char, 16> inlineEditorText{};
+        bool focusInlineEditor{false};
+        InlineEditor pendingSliderClick{InlineEditor::None};
+        uint8_t pendingSliderNote{0};
+        int pendingSliderStep{-1};
+        float pendingVelocity{0.0f};
+        uint16_t pendingAttributeValue{0};
+        double pendingSliderClickTime{0.0};
         bool dirty{false};
         std::string status;
     } state_;

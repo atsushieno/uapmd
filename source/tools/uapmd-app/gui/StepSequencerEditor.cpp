@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <format>
 #include <utility>
 
@@ -148,6 +150,10 @@ void StepSequencerEditor::resetFromPreview(bool focusDrumRoot) {
         step.velocity = note.velocity;
         step.gate = std::clamp(static_cast<float>(offTick - startTick) /
                                static_cast<float>(stepTicks()), 0.05f, 1.0f);
+        if (note.isMidi2 && note.noteOnWordIdx + 1 < raw.umpEvents.size()) {
+            step.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
+            step.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
+        }
     }
 }
 
@@ -187,6 +193,11 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
     ImGui::SetNextWindowSize(ImVec2(900.0f * context.uiScale, 620.0f * context.uiScale),
                              ImGuiCond_FirstUseEver);
     if (ImGui::Begin(title.c_str(), &open)) {
+        if (!ImGui::GetIO().MouseDown[ImGuiMouseButton_Left])
+            state_.longPressOpened = false;
+        if (state_.pendingSliderClick != InlineEditor::None &&
+            ImGui::GetTime() - state_.pendingSliderClickTime > ImGui::GetIO().MouseDoubleClickTime)
+            state_.pendingSliderClick = InlineEditor::None;
         ImGui::Text("Pattern: %d steps at 1/%d", state_.patternSteps,
                     kDivisions[std::clamp(state_.divisionIndex, 0, kDivisionCount - 1)]);
         ImGui::SameLine();
@@ -255,6 +266,7 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
                 ImGui::SameLine(labelWidth + (i + 1) * (buttonSize + ImGui::GetStyle().ItemSpacing.x));
         }
         ImGui::Separator();
+        bool inlineEditorVisible = false;
         for (auto& lane : state_.lanes) {
             ImGui::PushID(lane.note);
             const auto label = noteLabel(lane.note, state_.noteSet == NoteSet::GmDrums);
@@ -281,14 +293,203 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
                     editedThisFrame = true;
                 }
                 ImGui::PopStyleColor(3);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("%s | Step %d | velocity %.2f | gate %.0f%%", label.c_str(),
+                const bool stepHovered = ImGui::IsItemHovered();
+                const bool openOnDoubleClick = stepHovered &&
+                    ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                const bool openOnLongPress = ImGui::IsItemActive() &&
+                    ImGui::GetIO().MouseDownDuration[ImGuiMouseButton_Left] >= 0.5f &&
+                    !state_.longPressOpened;
+                if (openOnDoubleClick || openOnLongPress) {
+                    ImGui::OpenPopup("##note_editor");
+                    state_.longPressOpened = openOnLongPress;
+                }
+                if (ImGui::BeginPopupContextItem("##note_editor")) {
+                    if (!step.active) {
+                        ImGui::TextDisabled("Activate this step to edit its note.");
+                    } else {
+                        ImGui::Text("%s, step %d", label.c_str(), i + 1);
+                        ImGui::Separator();
+                        bool noteEdited = false;
+
+                        ImGui::TextUnformatted("Velocity");
+                        const ImVec2 velocityStart = ImGui::GetCursorScreenPos();
+                        const ImVec2 velocityEnd = ImVec2(
+                            velocityStart.x + 230.0f * context.uiScale,
+                            velocityStart.y + ImGui::GetFrameHeight());
+                        const bool velocityDoubleClick = ImGui::IsMouseHoveringRect(velocityStart, velocityEnd) &&
+                            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                        if (ImGui::IsMouseHoveringRect(velocityStart, velocityEnd) &&
+                            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !velocityDoubleClick) {
+                            state_.pendingSliderClick = InlineEditor::Velocity;
+                            state_.pendingSliderNote = lane.note;
+                            state_.pendingSliderStep = i;
+                            state_.pendingVelocity = step.velocity;
+                            state_.pendingSliderClickTime = ImGui::GetTime();
+                        }
+                        ImGui::SetNextItemWidth(230.0f * context.uiScale);
+                        const bool velocityChanged = ImGui::SliderFloat("##velocity_slider", &step.velocity,
+                                                                         0.0f, 1.0f, "%.3f",
+                                                                         ImGuiSliderFlags_NoInput);
+                        const ImVec2 velocityMin = ImGui::GetItemRectMin();
+                        const ImVec2 velocityMax = ImGui::GetItemRectMax();
+                        if (velocityDoubleClick && state_.pendingSliderClick == InlineEditor::Velocity &&
+                            state_.pendingSliderNote == lane.note && state_.pendingSliderStep == i) {
+                            step.velocity = state_.pendingVelocity;
+                            state_.inlineEditor = InlineEditor::Velocity;
+                            state_.inlineEditorNote = lane.note;
+                            state_.inlineEditorStep = i;
+                            std::snprintf(state_.inlineEditorText.data(), state_.inlineEditorText.size(),
+                                          "%.3f", step.velocity);
+                            state_.focusInlineEditor = true;
+                            state_.pendingSliderClick = InlineEditor::None;
+                            noteEdited = true;
+                        } else {
+                            noteEdited |= velocityChanged;
+                        }
+                        step.velocity = std::clamp(step.velocity, 0.0f, 1.0f);
+                        if (state_.inlineEditor == InlineEditor::Velocity &&
+                            state_.inlineEditorNote == lane.note && state_.inlineEditorStep == i) {
+                            ImGui::SetCursorScreenPos(velocityMin);
+                            ImGui::SetNextItemWidth(velocityMax.x - velocityMin.x);
+                            if (state_.focusInlineEditor) {
+                                ImGui::SetKeyboardFocusHere();
+                                state_.focusInlineEditor = false;
+                            }
+                            const bool commit = ImGui::InputText("##velocity_text", state_.inlineEditorText.data(),
+                                                                 state_.inlineEditorText.size(),
+                                                                 ImGuiInputTextFlags_EnterReturnsTrue |
+                                                                 ImGuiInputTextFlags_AutoSelectAll);
+                            const bool lostFocus = ImGui::IsItemDeactivated();
+                            if (commit) {
+                                char* end{};
+                                const float value = std::strtof(state_.inlineEditorText.data(), &end);
+                                if (end != state_.inlineEditorText.data()) {
+                                    step.velocity = std::clamp(value, 0.0f, 1.0f);
+                                    noteEdited = true;
+                                }
+                                state_.inlineEditor = InlineEditor::None;
+                            } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) || lostFocus) {
+                                state_.inlineEditor = InlineEditor::None;
+                            }
+                        }
+
+                        ImGui::TextUnformatted("Note attribute type");
+                        uint8_t attributeType = step.attributeType;
+                        ImGui::SetNextItemWidth(200.0f * context.uiScale);
+                        if (ImGui::InputScalar("##attribute_type_input", ImGuiDataType_U8,
+                                               &attributeType, nullptr, nullptr, "%u")) {
+                            step.attributeType = std::min<uint8_t>(attributeType, 127);
+                            noteEdited = true;
+                        }
+                        const ImVec2 attributeTypeMin = ImGui::GetItemRectMin();
+                        const ImVec2 attributeTypeMax = ImGui::GetItemRectMax();
+                        ImGui::SameLine();
+                        if (ImGui::ArrowButton("##attribute_type_dropdown", ImGuiDir_Down))
+                            ImGui::OpenPopup("##attribute_type_options");
+                        ImGui::SetNextWindowPos(attributeTypeMin, ImGuiCond_Appearing);
+                        ImGui::SetNextWindowSize(ImVec2(attributeTypeMax.x - attributeTypeMin.x, 0.0f),
+                                                 ImGuiCond_Appearing);
+                        if (ImGui::BeginPopup("##attribute_type_options")) {
+                            if (ImGui::Selectable("Pitch 7.9 (3)", step.attributeType == 3)) {
+                                step.attributeType = 3;
+                                noteEdited = true;
+                            }
+                            ImGui::EndPopup();
+                        }
+
+                        ImGui::TextUnformatted("Note attribute value");
+                        uint16_t attributeValue = step.attributeValue;
+                        const uint16_t minAttributeValue = 0;
+                        const uint16_t maxAttributeValue = 65535;
+                        const ImVec2 attributeValueStart = ImGui::GetCursorScreenPos();
+                        const ImVec2 attributeValueEnd = ImVec2(
+                            attributeValueStart.x + 230.0f * context.uiScale,
+                            attributeValueStart.y + ImGui::GetFrameHeight());
+                        const bool attributeValueDoubleClick =
+                            ImGui::IsMouseHoveringRect(attributeValueStart, attributeValueEnd) &&
+                            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                        if (ImGui::IsMouseHoveringRect(attributeValueStart, attributeValueEnd) &&
+                            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !attributeValueDoubleClick) {
+                            state_.pendingSliderClick = InlineEditor::AttributeValue;
+                            state_.pendingSliderNote = lane.note;
+                            state_.pendingSliderStep = i;
+                            state_.pendingAttributeValue = step.attributeValue;
+                            state_.pendingSliderClickTime = ImGui::GetTime();
+                        }
+                        ImGui::SetNextItemWidth(230.0f * context.uiScale);
+                        const bool attributeValueChanged = ImGui::SliderScalar(
+                            "##attribute_value_slider", ImGuiDataType_U16, &attributeValue,
+                            &minAttributeValue, &maxAttributeValue, "%u", ImGuiSliderFlags_NoInput);
+                        const ImVec2 attributeValueMin = ImGui::GetItemRectMin();
+                        const ImVec2 attributeValueMax = ImGui::GetItemRectMax();
+                        if (attributeValueDoubleClick &&
+                            state_.pendingSliderClick == InlineEditor::AttributeValue &&
+                            state_.pendingSliderNote == lane.note && state_.pendingSliderStep == i) {
+                            step.attributeValue = state_.pendingAttributeValue;
+                            state_.inlineEditor = InlineEditor::AttributeValue;
+                            state_.inlineEditorNote = lane.note;
+                            state_.inlineEditorStep = i;
+                            std::snprintf(state_.inlineEditorText.data(), state_.inlineEditorText.size(), "%u",
+                                          static_cast<unsigned>(step.attributeValue));
+                            state_.focusInlineEditor = true;
+                            state_.pendingSliderClick = InlineEditor::None;
+                            noteEdited = true;
+                        } else {
+                            step.attributeValue = attributeValue;
+                            noteEdited |= attributeValueChanged;
+                        }
+                        if (state_.inlineEditor == InlineEditor::AttributeValue &&
+                            state_.inlineEditorNote == lane.note && state_.inlineEditorStep == i) {
+                            ImGui::SetCursorScreenPos(attributeValueMin);
+                            ImGui::SetNextItemWidth(attributeValueMax.x - attributeValueMin.x);
+                            if (state_.focusInlineEditor) {
+                                ImGui::SetKeyboardFocusHere();
+                                state_.focusInlineEditor = false;
+                            }
+                            const bool commit = ImGui::InputText("##attribute_value_text",
+                                                                 state_.inlineEditorText.data(),
+                                                                 state_.inlineEditorText.size(),
+                                                                 ImGuiInputTextFlags_EnterReturnsTrue |
+                                                                 ImGuiInputTextFlags_AutoSelectAll);
+                            const bool lostFocus = ImGui::IsItemDeactivated();
+                            if (commit) {
+                                char* end{};
+                                const unsigned long value = std::strtoul(state_.inlineEditorText.data(), &end, 10);
+                                if (end != state_.inlineEditorText.data()) {
+                                    step.attributeValue = static_cast<uint16_t>(std::min(value, 65535ul));
+                                    noteEdited = true;
+                                }
+                                state_.inlineEditor = InlineEditor::None;
+                            } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) || lostFocus) {
+                                state_.inlineEditor = InlineEditor::None;
+                            }
+                        }
+
+                        if (state_.inlineEditor != InlineEditor::None &&
+                            state_.inlineEditorNote == lane.note && state_.inlineEditorStep == i)
+                            inlineEditorVisible = true;
+
+                        if (noteEdited) {
+                            state_.dirty = true;
+                            editedThisFrame = true;
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+                if (stepHovered)
+                    ImGui::SetTooltip("%s | Step %d | velocity %.2f | gate %.0f%%\n"
+                                      "Right-click to edit note attributes.", label.c_str(),
                                       i + 1, step.velocity, step.gate * 100.0f);
                 ImGui::PopID();
                 if (i + 1 < state_.patternSteps)
                     ImGui::SameLine();
             }
             ImGui::PopID();
+        }
+        if (state_.inlineEditor != InlineEditor::None && !inlineEditorVisible) {
+            state_.inlineEditor = InlineEditor::None;
+            state_.focusInlineEditor = false;
+            state_.inlineEditorText.fill('\0');
         }
         ImGui::PopStyleVar();
         ImGui::EndChild();
@@ -390,10 +591,10 @@ bool StepSequencerEditor::apply(const RenderContext& context) {
                 const auto offTick = onTick + std::max<uint64_t>(1,
                     static_cast<uint64_t>(std::llround(step.gate * stepTicks())));
                 const auto on = umppi::UmpFactory::midi2NoteOn(
-                    state_.group, state_.channel, lane.note, 0,
-                    static_cast<uint16_t>(std::llround(step.velocity * 65535.0f)), 0);
+                    state_.group, state_.channel, lane.note, step.attributeType,
+                    static_cast<uint16_t>(std::llround(step.velocity * 65535.0f)), step.attributeValue);
                 const auto off = umppi::UmpFactory::midi2NoteOff(
-                    state_.group, state_.channel, lane.note, 0, 0, 0);
+                    state_.group, state_.channel, lane.note, step.attributeType, 0, step.attributeValue);
                 events.push_back({onTick, {static_cast<uapmd_ump_t>(on >> 32),
                                            static_cast<uapmd_ump_t>(on)}, 1});
                 events.push_back({offTick, {static_cast<uapmd_ump_t>(off >> 32),
@@ -422,11 +623,8 @@ bool StepSequencerEditor::apply(const RenderContext& context) {
     state_.dirty = false;
     state_.status = "Applied";
     if (context.reloadPreview) {
-        if (auto preview = context.reloadPreview(state_.trackIndex, state_.clipId)) {
+        if (auto preview = context.reloadPreview(state_.trackIndex, state_.clipId))
             state_.preview = std::move(preview);
-            resetFromPreview();
-            state_.status = "Applied";
-        }
     }
     return true;
 }
