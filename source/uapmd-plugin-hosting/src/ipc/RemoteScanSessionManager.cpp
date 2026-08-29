@@ -1,5 +1,9 @@
 #include "RemoteScanSessionManager.hpp"
+#include <uapmd-plugin-hosting/detail/scanner/RemoteScannerServer.hpp>
 #include "../scanner/ScanConstants.hpp"
+
+#include <filesystem>
+#include <mutex>
 
 #if UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED
 
@@ -322,7 +326,9 @@ void RemoteScanSessionManager::runScan(PluginScanTool& tool,
             return;
         }
 
-        auto exePathString = cpplocate::getExecutablePath();
+        auto exePathString = remoteScannerExecutable().string();
+        if (exePathString.empty())
+            exePathString = cpplocate::getExecutablePath();
         if (exePathString.empty()) {
             tool.notifyScanError("Unable to determine executable path for remote scanning.", observer);
             return;
@@ -536,3 +542,23 @@ void RemoteScanSessionManager::runScan(PluginScanTool& tool,
 } // namespace uapmd_plugin_hosting
 
 #endif // UAPMD_PLUGIN_HOSTING_REMOTE_SCAN_SUPPORTED
+
+// Outside the guard on purpose: the override is part of the public API on every
+// platform, so an embedder can set it unconditionally. Where remote scanning is not
+// supported it is simply never read.
+namespace uapmd_plugin_hosting {
+namespace {
+std::mutex g_remote_scanner_executable_mutex;
+std::filesystem::path g_remote_scanner_executable;
+}
+
+void setRemoteScannerExecutable(std::filesystem::path path) {
+    std::lock_guard lock(g_remote_scanner_executable_mutex);
+    g_remote_scanner_executable = std::move(path);
+}
+
+std::filesystem::path remoteScannerExecutable() {
+    std::lock_guard lock(g_remote_scanner_executable_mutex);
+    return g_remote_scanner_executable;
+}
+}

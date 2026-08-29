@@ -6,6 +6,7 @@
 #include <android/looper.h>
 #elif defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
+#include <emscripten/threading.h>
 #elif (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 #include "EventLoopLinux.hpp"
 #else
@@ -61,7 +62,14 @@ namespace remidy {
         }
 
         bool runningOnMainThreadImpl() override {
-            return true;
+            // Answering "yes" unconditionally is not harmless here. A pthread is a
+            // Web Worker with its own JS scope: no document, no AudioWorklet node,
+            // and its own copy of Module. Claiming a worker is the main thread makes
+            // runTaskOnMainThread() run the task *there*, so anything that touches
+            // the DOM or the worklet bridge quietly builds a second, unreachable one
+            // and waits forever for a reply that can never arrive. Plug-in scanning
+            // runs on a std::thread, which is exactly that case.
+            return emscripten_is_main_browser_thread();
         }
 
         void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
@@ -69,7 +77,14 @@ namespace remidy {
                 std::lock_guard<std::mutex> lock(queueMutex_);
                 taskQueue_.emplace(std::move(func));
             }
-            emscripten_async_call(&EventLoopEmscripten::drainTasksThunk, this, 0);
+            if (emscripten_is_main_browser_thread()) {
+                emscripten_async_call(&EventLoopEmscripten::drainTasksThunk, this, 0);
+                return;
+            }
+            // From a worker the drain has to be proxied, or it would run back on the
+            // worker and defeat the point of enqueueing it.
+            emscripten_async_run_in_main_runtime_thread(
+                EM_FUNC_SIG_VI, reinterpret_cast<void*>(&EventLoopEmscripten::drainTasksThunk), this);
         }
 
         void startImpl() override {
