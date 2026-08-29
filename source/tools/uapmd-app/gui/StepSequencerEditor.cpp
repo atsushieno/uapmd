@@ -212,12 +212,7 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         ImGui::SetNextItemWidth(80.0f * context.uiScale);
         if (ImGui::Combo("Division", &state_.divisionIndex, divisionLabels, kDivisionCount))
             changed = true;
-        if (changed) {
-            resizeLanes(state_.patternSteps);
-            state_.dirty = true;
-            editedThisFrame = true;
-        }
-
+        ImGui::SameLine();
         ImGui::SetNextItemWidth(90.0f * context.uiScale);
         if (ImGui::SliderFloat("Default Velocity", &state_.defaultVelocity, 0.0f, 1.0f)) {
             state_.dirty = true;
@@ -226,6 +221,11 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(90.0f * context.uiScale);
         if (ImGui::SliderFloat("Default Gate", &state_.defaultGate, 0.05f, 1.0f)) {
+            state_.dirty = true;
+            editedThisFrame = true;
+        }
+        if (changed) {
+            resizeLanes(state_.patternSteps);
             state_.dirty = true;
             editedThisFrame = true;
         }
