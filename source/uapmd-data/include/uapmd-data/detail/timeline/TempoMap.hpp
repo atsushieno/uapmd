@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <vector>
-#include "../midi/MidiTimelineEvents.hpp"
+#include "../project/MidiTimelineEvents.hpp"
 
 namespace uapmd {
 

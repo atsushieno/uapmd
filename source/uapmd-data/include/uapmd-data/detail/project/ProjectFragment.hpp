@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../midi/MidiTimelineEvents.hpp"
+#include "MidiTimelineEvents.hpp"
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {

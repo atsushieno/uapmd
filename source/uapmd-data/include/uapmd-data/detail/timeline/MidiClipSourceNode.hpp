@@ -4,7 +4,7 @@
 #include <vector>
 #include <atomic>
 #include <cstdint>
-#include "../midi/MidiTimelineEvents.hpp"
+#include "../project/MidiTimelineEvents.hpp"
 #include "MidiSourceNode.hpp"
 
 namespace uapmd {

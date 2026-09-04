@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <cstdint>
 #include <string>
-#include "../midi/MidiTimelineEvents.hpp"
+#include "../project/MidiTimelineEvents.hpp"
 
 namespace umppi {
     struct Midi1Music;

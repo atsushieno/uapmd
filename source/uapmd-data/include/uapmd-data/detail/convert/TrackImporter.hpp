@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../midi/MidiTimelineEvents.hpp"
+#include "../project/MidiTimelineEvents.hpp"
 #include "StemSeparator.hpp"
 
 namespace uapmd::import {
