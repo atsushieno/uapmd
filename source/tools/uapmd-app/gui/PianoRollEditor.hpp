@@ -80,7 +80,12 @@ private:
     struct ViewState {
         float hZoom{100.0f};      // Pixels per second at uiScale=1
         float vZoom{12.0f};       // Pixels per note row at uiScale=1
+        float hScrollPx{0.0f};   // Horizontal scroll in pixels
         float vScrollNote{0.0f};  // Vertical scroll in note-slot units (0=top/note127)
+        bool  rowScrollbarDragging{false};
+        float rowScrollbarDragOffset{0.0f};
+        bool  timelineScrollbarDragging{false};
+        float timelineScrollbarDragOffset{0.0f};
         int   snapIdx{3};         // Snap grid: 0=Free 1=1/1 2=1/2 3=1/4 4=1/8 5=1/16 6=1/32
     };
 

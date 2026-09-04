@@ -87,7 +87,10 @@ PianoRollTheme getPianoRollTheme() {
     theme.key_white = IM_COL32(218, 218, 218, 255);
     theme.key_preview_black = ImGui::GetColorU32(mixColor(accent_active, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.20f));
     theme.key_preview_white = ImGui::GetColorU32(mixColor(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), accent_hover, 0.35f));
-    theme.key_label = ImGui::GetColorU32(withAlpha(text, dark ? 0.58f : 0.70f));
+    // Octave labels sit on the white piano keys, so use a dark key label
+    // color rather than the generally light UI text color.
+    theme.key_label = ImGui::GetColorU32(
+        mixColor(ImVec4(0.10f, 0.10f, 0.12f, 1.0f), editor_bg, dark ? 0.20f : 0.05f));
     theme.key_separator = ImGui::GetColorU32(withAlpha(border, dark ? 0.55f : 0.45f));
     theme.key_border = ImGui::GetColorU32(withAlpha(border, dark ? 0.85f : 0.75f));
     theme.editor_bg = ImGui::GetColorU32(editor_bg);
@@ -844,9 +847,15 @@ void PianoRollEditor::renderPianoKeys(ImDrawList* dl, ImVec2 origin, float width
             const bool isPreview = (midiNote == previewNote);
             if (isBlackKey(midiNote)) {
                 ImU32 keyCol = isPreview ? theme.key_preview_black : theme.key_black;
-                dl->AddRectFilled({origin.x, y0}, {origin.x + blackKeyW, y1 - 0.5f}, keyCol);
+                // A pressed key represents the whole note row.  Fill the
+                // complete key column so black-key preview regions do not
+                // look like detached short bars.
+                const float keyW = isPreview ? width : blackKeyW;
+                dl->AddRectFilled({origin.x, y0}, {origin.x + keyW, y1 - 0.5f}, keyCol);
             } else {
-                ImU32 keyCol = isPreview ? theme.key_preview_white : theme.key_white;
+                // Use the same pressed-note color for both key types.  The
+                // white key base must not make its preview appear washed out.
+                ImU32 keyCol = isPreview ? theme.key_preview_black : theme.key_white;
                 dl->AddRectFilled({origin.x, y0}, {origin.x + width, y1 - 0.5f}, keyCol);
                 // Octave label on every C note
                 if (midiNote % 12 == 0) {
@@ -1798,11 +1807,11 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     const float rulerH   = kRulerHeight * uiScale;
 
     double clipDuration = state.preview ? std::max(0.01, state.preview->clipDurationSeconds) : 10.0;
-    // Canvas width: at least 1 hour at the current zoom so the user can always scroll
-    // freely without hitting a hard right boundary, just like the timeline track.
+    // Keep a modest tail after the clip so notes can be added just beyond its
+    // current end without making the scrollbar thumb unusably small.
     const float totalNoteW = std::max(
         static_cast<float>(clipDuration + std::max(4.0, clipDuration * 0.5)),
-        3600.0f) * pxPerSec;
+        static_cast<float>(clipDuration)) * pxPerSec;
 
     const float scrollbarSize  = ImGui::GetStyle().ScrollbarSize;
     const ImVec2 avail         = ImGui::GetContentRegionAvail();
@@ -1811,18 +1820,40 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     const float panelH   = std::min(180.0f * uiScale, avail.y * 0.30f);
     const float mainAreaH = avail.y - panelH - ImGui::GetStyle().ItemSpacing.y;
 
-    // Clamp vertical scroll
-    const float noteAreaH     = mainAreaH - rulerH - scrollbarSize;
+    // Clamp both scroll positions.
+    // Both scrollbars are explicit controls.  This keeps scrolling available
+    // on touch devices, where wheel input and dragging the note canvas are not
+    // dependable navigation mechanisms.
+    const float gridW = std::max(0.0f, avail.x - pianoW - scrollbarSize);
+    const float maxHScrollPx = std::max(0.0f, totalNoteW - gridW);
+    // Keep the horizontal scrollbar visible even when the whole timeline fits;
+    // its full-width thumb communicates the current 0 position and preserves
+    // a stable touch target as zoom or window size changes.
+    const float rollAreaH = mainAreaH - scrollbarSize;
+    const float noteAreaH = rollAreaH - rulerH;
     const float maxVScrollNote = std::max(0.0f,
         static_cast<float>(kNoteCount) - noteAreaH / noteH);
     state.view.vScrollNote = std::clamp(state.view.vScrollNote, 0.0f, maxVScrollNote);
-    const float vScrollPx = state.view.vScrollNote * noteH;
+    state.view.hScrollPx = std::clamp(state.view.hScrollPx, 0.0f, maxHScrollPx);
+
+    // The shared dark theme uses a very subdued scrollbar grab.  PianoRoll
+    // needs both positions to remain discoverable against its dark grid, so
+    // use the app accent for the grab while retaining a dark track.
+    const auto& style = ImGui::GetStyle();
+    const ImVec4 scrollbarBg = mixColor(style.Colors[ImGuiCol_ScrollbarBg],
+                                         style.Colors[ImGuiCol_FrameBg], 0.35f);
+    const ImVec4 scrollbarGrab = style.Colors[ImGuiCol_Button];
+    const ImVec4 scrollbarGrabHovered = style.Colors[ImGuiCol_ButtonHovered];
+    const ImVec4 scrollbarGrabActive = style.Colors[ImGuiCol_ButtonActive];
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,   {0.0f, 0.0f});
 
+    const float vScrollPx = state.view.vScrollNote * noteH;
+    const float rollOriginX = ImGui::GetCursorPosX();
+
     // ── Piano Key Child (left, fixed width) ──────────────────────────────────
-    ImGui::BeginChild("##PianoKeys", {pianoW, mainAreaH}, false,
+    ImGui::BeginChild("##PianoKeys", {pianoW, rollAreaH}, false,
                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
                        ImGuiWindowFlags_NoBackground);
     {
@@ -1887,10 +1918,66 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
 
     ImGui::SameLine(0.0f, 0.0f);
 
-    // ── Note Grid Child (right, H-scrollable, V-manual) ──────────────────────
-    ImGui::BeginChild("##NoteGrid", {0.0f, mainAreaH}, false,
-                       ImGuiWindowFlags_HorizontalScrollbar |
-                       ImGuiWindowFlags_NoScrollWithMouse  |
+    // ── Row scrollbar (immediately beside the keyboard) ─────────────────────
+    // Keep the ruler area out of the scroll range.  The custom bar uses the
+    // same note-row height as the keyboard and grid, avoiding a native child
+    // scrollbar whose viewport would also include the ruler.
+    ImGui::BeginChild("##PianoRollRowScrollbar", {scrollbarSize, rollAreaH}, false,
+                       ImGuiWindowFlags_NoScrollbar |
+                       ImGuiWindowFlags_NoBackground);
+    ImGui::Dummy({scrollbarSize, rulerH});
+    const ImVec2 rowBarMin = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##PianoRollRows", {scrollbarSize, noteAreaH});
+
+    const float totalRowsH = kNoteCount * noteH;
+    const float rowThumbH = std::clamp(
+        noteAreaH * noteAreaH / std::max(totalRowsH, noteAreaH),
+        style.GrabMinSize, noteAreaH);
+    const float rowThumbTravel = noteAreaH - rowThumbH;
+    const float rowScrollRatio = maxVScrollNote > 0.0f
+                                 ? state.view.vScrollNote / maxVScrollNote : 0.0f;
+    const float rowThumbY = rowBarMin.y +
+                            rowThumbTravel * std::clamp(rowScrollRatio, 0.0f, 1.0f);
+
+    if (ImGui::IsItemActivated()) {
+        const float mouseY = ImGui::GetIO().MousePos.y;
+        state.view.rowScrollbarDragging = true;
+        state.view.rowScrollbarDragOffset =
+            (mouseY >= rowThumbY && mouseY <= rowThumbY + rowThumbH)
+            ? mouseY - rowThumbY : rowThumbH * 0.5f;
+    }
+    if (ImGui::IsItemActive() && state.view.rowScrollbarDragging &&
+            maxVScrollNote > 0.0f && rowThumbTravel > 0.0f) {
+        const float thumbStart = ImGui::GetIO().MousePos.y -
+                                 state.view.rowScrollbarDragOffset;
+        const float ratio = std::clamp((thumbStart - rowBarMin.y) /
+                                       rowThumbTravel, 0.0f, 1.0f);
+        state.view.vScrollNote = ratio * maxVScrollNote;
+    }
+    if (!ImGui::IsItemActive())
+        state.view.rowScrollbarDragging = false;
+
+    const ImU32 rowTrackColor = ImGui::GetColorU32(scrollbarBg);
+    const ImU32 rowThumbColor = ImGui::GetColorU32(
+        ImGui::IsItemActive() ? scrollbarGrabActive
+                              : ImGui::IsItemHovered() ? scrollbarGrabHovered
+                                                       : scrollbarGrab);
+    ImDrawList* rowDrawList = ImGui::GetWindowDrawList();
+    rowDrawList->AddRectFilled(rowBarMin,
+                               {rowBarMin.x + scrollbarSize,
+                                rowBarMin.y + noteAreaH},
+                               rowTrackColor, style.ScrollbarRounding);
+    rowDrawList->AddRectFilled({rowBarMin.x, rowThumbY},
+                               {rowBarMin.x + scrollbarSize, rowThumbY + rowThumbH},
+                               rowThumbColor, style.ScrollbarRounding);
+    ImGui::EndChild();
+
+    // ── Note Grid Child (right, manually positioned in both axes) ───────────
+    // The grid cannot use its own vertical scrolling because the piano-key
+    // column and the grid are drawn separately and must share one offset.
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::BeginChild("##NoteGrid", {0.0f, rollAreaH}, false,
+                       ImGuiWindowFlags_NoScrollWithMouse |
                        ImGuiWindowFlags_NoBackground);
     {
         // Scroll handling (NoScrollWithMouse suppresses ImGui's own wheel
@@ -1904,22 +1991,23 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
             const bool  shift  = ImGui::GetIO().KeyShift;
 
             if (std::abs(wheelH) > 0.0001f) {
-                ImGui::SetScrollX(ImGui::GetScrollX() - wheelH * 40.0f * uiScale);
+                state.view.hScrollPx -= wheelH * 40.0f * uiScale;
             } else if (std::abs(wheel) > 0.0001f && shift) {
-                ImGui::SetScrollX(ImGui::GetScrollX() - wheel * 40.0f * uiScale);
+                state.view.hScrollPx -= wheel * 40.0f * uiScale;
             } else if (std::abs(wheel) > 0.0001f) {
                 state.view.vScrollNote -= wheel * 3.0f;
                 state.view.vScrollNote = std::clamp(state.view.vScrollNote, 0.0f, maxVScrollNote);
             }
         }
+        state.view.hScrollPx = std::clamp(state.view.hScrollPx, 0.0f, maxHScrollPx);
 
-        // Define H scroll range (only width matters — we control V manually)
+        // Define the H scroll range (we control both axes manually).
         ImGui::SetCursorPos({0.0f, 0.0f});
         ImGui::Dummy({totalNoteW, 1.0f});
 
-        float hScroll = ImGui::GetScrollX();
+        float hScroll = state.view.hScrollPx;
         float visW    = ImGui::GetWindowSize().x;
-        float visH    = ImGui::GetWindowSize().y - scrollbarSize;
+        float visH    = ImGui::GetWindowSize().y;
         if (visW < 0.0f) visW = 0.0f;
         if (visH < 0.0f) visH = 0.0f;
 
@@ -1928,6 +2016,57 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
                        state, uiScale);
     }
     ImGui::EndChild();
+
+    // ── Timeline scrollbar (below the note grid) ────────────────────────────
+    // Align it with the note grid, leaving both the keyboard and row bar blank.
+    ImGui::SetCursorPosX(rollOriginX + pianoW + scrollbarSize);
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, scrollbarBg);
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, scrollbarGrab);
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, scrollbarGrabHovered);
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, scrollbarGrabActive);
+    if (gridW > 0.0f) {
+        const ImVec2 barMin = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##PianoRollTimelineScrollbar", {gridW, scrollbarSize});
+
+        const float contentW = std::max(totalNoteW, gridW);
+        const float thumbW = std::clamp(
+            gridW * gridW / contentW, style.GrabMinSize, gridW);
+        const float thumbTravel = gridW - thumbW;
+        const float scrollRatio = maxHScrollPx > 0.0f
+                                  ? state.view.hScrollPx / maxHScrollPx : 0.0f;
+        const float thumbX = barMin.x + thumbTravel * std::clamp(scrollRatio, 0.0f, 1.0f);
+
+        if (ImGui::IsItemActivated()) {
+            const float mouseX = ImGui::GetIO().MousePos.x;
+            state.view.timelineScrollbarDragging = true;
+            state.view.timelineScrollbarDragOffset =
+                (mouseX >= thumbX && mouseX <= thumbX + thumbW)
+                ? mouseX - thumbX : thumbW * 0.5f;
+        }
+        if (ImGui::IsItemActive() && state.view.timelineScrollbarDragging &&
+                maxHScrollPx > 0.0f && thumbTravel > 0.0f) {
+            const float thumbStart = ImGui::GetIO().MousePos.x -
+                                     state.view.timelineScrollbarDragOffset;
+            const float ratio = std::clamp((thumbStart - barMin.x) / thumbTravel, 0.0f, 1.0f);
+            state.view.hScrollPx = ratio * maxHScrollPx;
+        }
+        if (!ImGui::IsItemActive())
+            state.view.timelineScrollbarDragging = false;
+
+        const ImU32 trackColor = ImGui::GetColorU32(scrollbarBg);
+        const ImU32 thumbColor = ImGui::GetColorU32(
+            ImGui::IsItemActive() ? scrollbarGrabActive
+                                  : ImGui::IsItemHovered() ? scrollbarGrabHovered
+                                                           : scrollbarGrab);
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRectFilled(barMin,
+                                {barMin.x + gridW, barMin.y + scrollbarSize},
+                                trackColor, style.ScrollbarRounding);
+        drawList->AddRectFilled({thumbX, barMin.y},
+                                {thumbX + thumbW, barMin.y + scrollbarSize},
+                                thumbColor, style.ScrollbarRounding);
+    }
+    ImGui::PopStyleColor(4);
 
     ImGui::PopStyleVar(2);
 
