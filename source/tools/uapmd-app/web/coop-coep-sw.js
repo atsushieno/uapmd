@@ -13,6 +13,16 @@ function withIsolationHeaders(response) {
     if (!response || !response.url.startsWith(self.location.origin))
         return response;
 
+    // 204, 205 and 304 are null-body statuses, and `new Response(body, {status})`
+    // throws a TypeError for them. The throw happens inside the promise passed to
+    // respondWith(), so the browser blames the page being fetched: "A ServiceWorker
+    // intercepted the request and encountered an unexpected error". These responses
+    // carry no body to re-wrap and no document to isolate, so pass them straight
+    // through. This matters most on static hosts such as GitHub Pages, which answer
+    // conditional requests with 304 on every revisit.
+    if (response.status === 204 || response.status === 205 || response.status === 304)
+        return response;
+
     const headers = new Headers(response.headers);
     headers.set('Cross-Origin-Opener-Policy', 'same-origin');
     headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
