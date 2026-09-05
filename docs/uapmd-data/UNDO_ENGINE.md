@@ -1,12 +1,14 @@
-# Undo Engine Plan (AI slop)
+# Project Commands and Undo History (AI slop)
 
 ## Scope and status
 
-Undo history is owned by `uapmd-engine` and is shared by the native
-application, JavaScript and MCP clients. The scope is the project document:
-clips, tracks, plug-in graphs, plug-in state and authored content. Transport,
-rendering, scanning, cache contents and UI-window state are runtime state and
-are not undoable.
+The command and history infrastructure is implemented in `uapmd-data`.
+`uapmd-engine` owns each project's history instance through `TimelineFacadeImpl`
+and supplies the concrete sequencer mutations. The native application,
+JavaScript and MCP clients share that project history. The scope is the project
+document: clips, tracks, plug-in graphs, plug-in state and authored content.
+Transport, rendering, scanning, cache contents and UI-window state are runtime
+state and are not undoable.
 
 The document mutation funnel, persistent object identity, event transactions
 and detachable fragments are in place. Phase 1 tasks 1–7 and task 10 are
@@ -19,11 +21,11 @@ The ARA integration has not been verified against a real ARA plug-in.
 | --- | --- |
 | History core and operation API | Implemented |
 | Clip properties, structure and compounds | Implemented |
-| Gesture scopes and compatible coalescing | Implemented in the engine; additional callers may still need integration |
+| Gesture scopes and compatible coalescing | Implemented in the command/history layer; additional callers may still need integration |
 | Track add, remove and restore | Implemented, including asynchronous preparation and failure cleanup |
 | Plug-in graph, parameter, state and lifecycle operations | Implemented for command surfaces; unprovenanceable plug-in notifications are synchronization-only |
 | Native, JavaScript and MCP history control | Implemented; persistent progress UI remains |
-| Save point and dirty state | Implemented in `SequencerEngine` |
+| Save point and dirty state | Implemented in the history layer; exposed with pending plug-in state by `SequencerEngine` |
 | Resource retention and replay failures | Core policy implemented and tested; relinking UX remains |
 
 ## Why undo precedes the clipboard
@@ -33,6 +35,31 @@ fragments exist, paste and duplicate can reuse them and become undoable without
 a second insertion architecture. Undoing a deletion also needs the same
 self-contained fragment that a clipboard payload needs, so the dependency runs
 from undo to clipboard rather than the other way around.
+
+## Module responsibilities
+
+`uapmd-data` provides `ProjectCommand`, `ProjectCommandManager`, `ProjectHistory`
+and the operation-level `ProjectUndoEngine`, along with persistent addresses,
+fragment types and document-event transactions. These contracts do not require
+`uapmd-engine`.
+
+`uapmd-engine` provides `ProjectCommands`, concrete commands and mutation
+primitives in `TimelineFacade`, including resource preparation and fragment
+capture/restore. `TimelineFacadeImpl` owns the history and command manager,
+supplying model-thread dispatch and document-transaction callbacks. A
+`ProjectHistoryFactory` passed at engine construction selects the history
+implementation.
+
+The default `CommandInverseHistory` adapts forward/revert command pairs onto
+`ProjectUndoEngine`. `ProjectHistory` is expressed in commands so alternative
+strategies, such as snapshots or journals, need not implement retained inverse
+operations. `NullProjectHistory` executes commands without recording history;
+it reports no history-derived dirty state and is unsuitable for callers that
+use that state to decide whether to prompt for saving.
+
+The sequencer, plug-in, ARA and application sections below describe integration
+with this infrastructure, rather than additional responsibilities of
+`uapmd-data`.
 
 ## Design contract
 
@@ -45,8 +72,10 @@ Events contain post-change state and cannot reliably recover before-state or
 gesture boundaries. A failed mutation must therefore fail at its call site,
 not silently leave an incorrect history entry.
 
-Undo uses typed operations rather than whole-project snapshots or JSON Patch.
-Property operations retain before and after values. Structural operations retain
+The default history uses typed commands and their inverses rather than
+whole-project snapshots or JSON Patch. This is the default implementation's
+strategy, not a restriction on `ProjectHistory` implementations. Property
+commands retain the values needed in each direction. Structural commands retain
 detached fragments and opaque extension data. Every operation addresses tracks,
 clips and graph nodes by persistent identity, never by a mutable vector index.
 
@@ -56,10 +85,12 @@ copy-on-write project tree.
 
 ## Asynchronous execution
 
-There is one undo engine, `ProjectUndoEngine`; there is no synchronous variant.
-Each operation exposes asynchronous `perform`, `undo` and `redo` completion.
-Simple property operations complete inline, while plug-in and track operations
-may prepare resources asynchronously.
+Commands expose callback-based `execute` completion, and `ProjectHistory`
+exposes callback-based undo and redo. The default history uses
+`ProjectUndoEngine`, whose operations expose asynchronous `perform`, `undo` and
+`redo` completion; there is no separate synchronous variant of that engine.
+Simple property commands complete inline, while plug-in and track commands may
+prepare resources asynchronously.
 
 History state and document commits are serialized on the model thread. Callbacks
 from plug-in or file APIs must be dispatched back to that thread before they
@@ -97,11 +128,20 @@ session-local plug-in instance IDs.
 
 ### Mutation funnel and transactions
 
-`TimelineFacade` owns document mutations and emits document events from the
-same committed path. Event transactions nest; only the outermost transaction
-flushes. Events outside an explicit transaction are delivered as a batch of
+`ProjectCommands` supplies concrete sequencer commands to
+`ProjectCommandManager`, which centralizes mutation-origin policy, history
+interaction, model-thread completion dispatch and event-transaction scoping.
+For recorded edits, `ProjectHistory` executes the command so it can capture
+state before mutation. `TimelineFacade` supplies the underlying mutation
+primitives and emits document events from the same committed path. Event
+transactions nest; only the outermost transaction flushes. Events outside an explicit transaction are delivered as a batch of
 one. Repeated events for the same object and event kind may collapse, with
 listeners re-reading the current document state at the batch boundary.
+
+Transactions must not remain open across asynchronous external work, including
+plug-in state requests and ARA archiving. Such commands batch only their
+synchronous commits. Steps and gestures default to per-command event batching;
+whole-step batching is reserved for steps whose commands all complete inline.
 
 ### Detachable fragments
 
@@ -172,10 +212,10 @@ an explicit compound scope.
 
 ## Save points and dirty state
 
-`SequencerEngine::isProjectDirty()` compares the current history-node identity
-with the node marked saved and also reports pending asynchronous plug-in
-mutations. This handles undo followed by a new edit, where a numeric cursor
-alone would be ambiguous.
+`SequencerEngine::isProjectDirty()` combines the selected history's dirty state
+with pending asynchronous plug-in mutations. The default history compares the
+current history-node identity with the node marked saved. This handles undo
+followed by a new edit, where a numeric cursor alone would be ambiguous.
 
 File saves capture the history-node ID when serialization starts and mark that
 node saved only after the write succeeds. Document-provider saves defer the
@@ -185,8 +225,8 @@ runtime cache/render invalidation state and is owned by `SequencerEngine`, not
 
 ## Resource and retention policy
 
-Every operation reports a history-size estimate. The engine evicts complete
-oldest history entries when the configured budget is exceeded, retains a newest
+The default history uses command retention estimates to account for its
+operations. `ProjectUndoEngine` evicts complete oldest history entries when the configured budget is exceeded, retains a newest
 operation even when it alone exceeds the budget, and treats a compound as one
 atomic budget unit. Clearing or evicting entries releases their fragments and
 opaque state on the model thread, never on the audio thread.
@@ -200,7 +240,7 @@ track or hosted instance behind.
 
 ### Plug-in and graph adoption
 
-- Route every authored parameter or state mutation through an explicit facade
+- Route every authored parameter or state mutation through an explicit project
   command so its cause is known before it reaches the plug-in.
 - Define a hosting contract with genuine human-gesture provenance before
   making native plug-in-editor changes undoable. VST3 begin/perform/end edit is
@@ -257,6 +297,6 @@ audio-file doubles for those paths.
 
 ## Related documents
 
-- `docs/uapmd-engine/SEQUENCER.md`
-- `docs/uapmd-engine/TRACK_FREEZING.md`
-- `docs/design/API_POLICY.md`
+- [Sequencer](../uapmd-engine/SEQUENCER.md)
+- [Track freezing](../uapmd-engine/TRACK_FREEZING.md)
+- [API policy](../design/API_POLICY.md)
