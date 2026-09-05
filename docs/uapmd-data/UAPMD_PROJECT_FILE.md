@@ -4,10 +4,10 @@
 
 UAPMD project files are JSON-based documents that define a timeline-based audio/MIDI project structure. The format supports multiple tracks, each containing clips (audio or MIDI) and optional audio graph state.
 
-This document currently serves two purposes:
-
-- it documents the currently implemented on-disk project and graph format that the codebase can already load and save today;
-- it records the draft generic graph schema that new graph work should target.
+This document describes the project structure and its references to graph files.
+The graph payload is specified separately in the
+[Audio Graph File Format Specification](AUDIO_GRAPH_FILE.md), which describes the
+currently implemented graph format.
 
 The currently implemented format has these important properties:
 
@@ -20,8 +20,6 @@ The currently implemented format has these important properties:
 - the default runtime fader node `builtin:track_gain` is not serialized in `graph.nodes[]`;
 - external DAG graph data uses `node_id` endpoint identifiers when newly written;
 - older DAG graph data that still uses `plugin_index` remains readable for backward compatibility.
-
-The generic graph schema is intended to describe common DAW-style audio graphs without baking UAPMD-specific DSP node names into the interchange format. Utility nodes should therefore be identified by public semantics, currently based on Web Audio API node concepts such as `GainNode`, `ChannelMergerNode`, and `ChannelSplitterNode`.
 
 ## File Structure
 
@@ -83,7 +81,7 @@ Each track represents an independent timeline with its own clips and optional au
 - **`graph`** (object, optional): Defines the audio graph for this track
   - The field may be omitted when the track does not need explicit graph topology or plugin state
   - The current writer emits it only when the graph carries an external file reference, which is
-    how the application saves every graph; see Current Implemented Graph Object
+    how the application saves every graph; see [Graph Reference Object](#graph-reference-object)
 - **`markers`** (array, optional): Track-level markers
   - Uses the same marker object as clip `markers`; see Marker Object
 - **`clips`** (array, optional): List of audio or MIDI clips on this track's timeline
@@ -111,6 +109,28 @@ Today a track can persist audio processing state in one of these ways:
     before graphs were always externalized
 
 When DAG `connections[]` are written by current code, endpoint objects use `node_id`. Readers still accept deprecated `plugin_index` endpoint data from older project files.
+
+### Graph Reference Object
+
+The current writer stores this project-level reference in `track.graph` (also
+applicable to `master_track.graph`):
+
+```json
+{
+  "graph_type": "",
+  "external_file": "graphs/track_0.graph.json"
+}
+```
+
+- `graph_type` identifies the graph provider; see the standalone specification's
+  [Current Implemented Format](AUDIO_GRAPH_FILE.md#current-implemented-format).
+- `external_file` locates the graph payload. Relative paths are resolved against
+  the project directory, as are plugin state paths inside that payload.
+
+The referenced file follows the [Audio Graph File Format Specification](AUDIO_GRAPH_FILE.md).
+The reference object and the track's `volume` are part of this project format,
+not fields that other enclosing formats must adopt. Legacy inline `plugins[]`
+records use the plugin fields described in that specification.
 
 ## Clip Object
 
@@ -233,198 +253,7 @@ Markers appear both in a clip's `markers` array and in a track's `markers` array
 - **`marker_id`** (string, optional): Legacy duplicate of `reference_marker_id`
   - Written only when `reference_type` is `"clip_marker"`, so that older readers still resolve the reference
 
-## Generic Graph Schema Draft
-
-This is the proposed direction for future graph serialization work. It is not yet the complete description of the currently written project format.
-
-### Goals
-
-- represent plugin nodes and utility DSP nodes in one common graph model;
-- avoid plugin-index-based endpoint addressing;
-- allow node kinds that are not tied to UAPMD branding;
-- preserve room for future DAW interoperability;
-- keep version 1 focused on plain values and explicit connections.
-
-### Top-Level Graph Object
-
-```json
-{
-  "schema_version": 1,
-  "graph_type": "urn:uapmd-graph:generic/dag/v1",
-  "nodes": [],
-  "connections": []
-}
-```
-
-### Fields
-
-- **`schema_version`** (integer, required): Version of the generic graph schema
-- **`graph_type`** (string, required): Graph format identifier
-- **`nodes`** (array, required): Graph-local node definitions
-- **`connections`** (array, required): Directed edges between node ports
-
-### Generic Graph Persistence Notes
-
-- The implicit track/master fader is not serialized in `nodes[]`; use the parent track object's `volume` field instead.
-- Graph-authored built-in nodes, including authored `webaudio:GainNode` instances that are not the implicit default fader, are serialized in `nodes[]`.
-
-### Node Object
-
-All runtime nodes share one common envelope:
-
-```json
-{
-  "id": "track_gain_0",
-  "type": "webaudio:GainNode",
-  "display_name": "Track Volume",
-  "options": {},
-  "parameters": {
-    "gain": 1.0
-  },
-  "state": {},
-  "metadata": {}
-}
-```
-
-### Node Fields
-
-- **`id`** (string, required): Stable graph-local node identifier
-- **`type`** (string, required): Namespaced node type
-- **`display_name`** (string, optional): Human-readable label
-- **`options`** (object, optional): Structural configuration for the node
-- **`parameters`** (object, optional): Plain runtime parameter values
-- **`state`** (object, optional): Persisted opaque or type-specific state
-- **`metadata`** (object, optional): Non-audio hints such as editor metadata
-
-### Node Type Naming
-
-The `type` field should use a namespace-like prefix to make node semantics explicit.
-
-Examples:
-
-- `webaudio:GainNode`
-- `webaudio:ChannelMergerNode`
-- `webaudio:ChannelSplitterNode`
-- `plugin:vst3`
-- `plugin:clap`
-- `plugin:au`
-- `plugin:lv2`
-
-### Connection Object
-
-```json
-{
-  "id": "c0",
-  "kind": "audio",
-  "source": {
-    "node_id": "plugin_0",
-    "port": "out:0"
-  },
-  "target": {
-    "node_id": "track_gain_0",
-    "port": "in"
-  }
-}
-```
-
-### Connection Fields
-
-- **`id`** (string, required): Stable graph-local connection identifier
-- **`kind`** (string, required): Connection kind. Version 1 uses `audio`
-- **`source`** (object, required): Source endpoint
-- **`target`** (object, required): Target endpoint
-
-### Endpoint Object
-
-```json
-{
-  "node_id": "graph:output",
-  "port": "in:0",
-  "channel": 0
-}
-```
-
-### Endpoint Fields
-
-- **`node_id`** (string, required): Node identifier or reserved pseudo-node identifier
-- **`port`** (string, required): Symbolic port name such as `in`, `out`, `in:0`, or `out:1`
-- **`channel`** (integer, optional): Optional per-channel selection for future fine-grained routing
-
-### Reserved Pseudo-Nodes
-
-The generic graph reserves pseudo-node identifiers for graph boundaries:
-
-- `graph:input`
-- `graph:output`
-
-These allow the graph to represent track/master ingress and egress without inventing a separate endpoint type outside the node model.
-
-### Example: Gain Node
-
-```json
-{
-  "id": "track_gain_0",
-  "type": "webaudio:GainNode",
-  "display_name": "Track Volume",
-  "parameters": {
-    "gain": 1.0
-  }
-}
-```
-
-Notes:
-
-- `parameters.gain` is a linear scalar gain value;
-- UAPMD may choose to present it in the UI with a dB-oriented or exponential-feeling slider;
-- the UI taper is host behavior and is not serialized;
-- a recommended initial UAPMD-supported range is `0.0 .. 8.0`, default `1.0`.
-
-### Example: Channel Merger Node
-
-```json
-{
-  "id": "mono_to_stereo_0",
-  "type": "webaudio:ChannelMergerNode",
-  "options": {
-    "number_of_inputs": 2
-  }
-}
-```
-
-### Example: Channel Splitter Node
-
-```json
-{
-  "id": "stereo_split_0",
-  "type": "webaudio:ChannelSplitterNode",
-  "options": {
-    "number_of_outputs": 2
-  }
-}
-```
-
-### Example: Plugin Node
-
-```json
-{
-  "id": "plugin_0",
-  "type": "plugin:vst3",
-  "display_name": "SuperSynth",
-  "plugin": {
-    "plugin_id": "com.example.supersynth",
-    "state_file": "states/plugin_0.bin"
-  }
-}
-```
-
-Plugin node notes:
-
-- `plugin` is a type-specific payload for plugin-backed nodes;
-- `plugin_id` is the plugin identifier used by the corresponding plugin format;
-- `state_file` references persisted plugin state owned by the project;
-- additional type-specific fields may be added later if required.
-
-### Complete Example
+## Complete Example
 
 This is the shape the current writer produces: persistent `id` on tracks and clips, and each
 track's graph stored as an external graph file rather than an inline `plugins[]` array.
@@ -484,31 +313,8 @@ track's graph stored as an external graph file rather than an inline `plugins[]`
 }
 ```
 
-The referenced `graphs/track_0.graph.json` holds the plugin chain itself:
-
-```json
-{
-  "graph_type": "",
-  "plugins": [
-    {
-      "node_id": "plugin:0",
-      "plugin_id": "com.fabfilter.proq3",
-      "format": "VST3",
-      "display_name": "FabFilter Pro-Q 3",
-      "state_file": "/presets/vocal_eq.vstpreset",
-      "group_index": -1
-    },
-    {
-      "node_id": "plugin:1",
-      "plugin_id": "com.fabfilter.proc2",
-      "format": "VST3",
-      "display_name": "FabFilter Pro-C 2",
-      "state_file": "/presets/vocal_comp.vstpreset",
-      "group_index": -1
-    }
-  ]
-}
-```
+For the referenced graph payload, see the standalone specification’s
+[Linear Chain Example](AUDIO_GRAPH_FILE.md#linear-chain-example).
 
 ## Implementation Notes
 
@@ -544,11 +350,10 @@ Warning: Invalid anchor 'track_0_clip_1' in track 0 clip 0 - creates recursive r
 
 ### Sample Rate Considerations
 
-All positions are specified in samples, not time units. When working with projects that may use different sample rates:
-
-- Store sample rate metadata at the project level (future enhancement)
-- Convert positions when importing/exporting between different sample rates
-- UI should display both samples and time units (HH:MM:SS.mmm)
+Clip positions and durations are stored in samples; marker and audio warp offsets
+are stored in seconds. The current project writer does not emit a dedicated
+project sample-rate field. The loader uses the host sample rate when converting
+sample positions to time.
 
 ### File Path Resolution
 
@@ -558,10 +363,4 @@ All positions are specified in samples, not time units. When working with projec
 
 ### Supported MIDI Format
 
-The `.midi2` files referenced in clips should conform to the **MIDI 2.0 Clip File Specification** (M2-116-U v1.0). This is distinct from standard MIDI files:
-
-- MIDI 1.0 SMF: `.mid` files (not currently supported in clip format)
-- MIDI 2.0 Clip: `.midi2` files (SMF2 Clip format)
-- MIDI 2.0 Container: Future format for complete project files with embedded clips
-
-Note that we ONLY support `.midi2`. These formats explained above are for clarification.
+The `.midi2` files referenced in clips should conform to the **MIDI 2.0 Clip File Specification** (M2-116-U v1.0). It is distinct from standard MIDI file version 1.0 (SMF1).
