@@ -217,7 +217,7 @@ std::vector<uint32_t> uapmd::MiniAudioIODeviceManager::getDeviceSampleRates(cons
 
     if (direction & UAPMD_AUDIO_DIRECTION_INPUT) {
         for (ma_uint32 i = 0; i < captureCount; i++) {
-            if (deviceName == capture[i].name) {
+            if (deviceName.empty() ? capture[i].isDefault : deviceName == capture[i].name) {
                 // Use ma_context_get_device_info to get detailed device information
                 ma_device_info deviceInfo;
                 ma_result result = ma_context_get_device_info(&context, ma_device_type_capture, &capture[i].id, &deviceInfo);
@@ -233,7 +233,7 @@ std::vector<uint32_t> uapmd::MiniAudioIODeviceManager::getDeviceSampleRates(cons
 
     if (direction & UAPMD_AUDIO_DIRECTION_OUTPUT) {
         for (ma_uint32 i = 0; i < playbackCount; i++) {
-            if (deviceName == playback[i].name) {
+            if (deviceName.empty() ? playback[i].isDefault : deviceName == playback[i].name) {
                 // Use ma_context_get_device_info to get detailed device information
                 ma_device_info deviceInfo;
                 ma_result result = ma_context_get_device_info(&context, ma_device_type_playback, &playback[i].id, &deviceInfo);

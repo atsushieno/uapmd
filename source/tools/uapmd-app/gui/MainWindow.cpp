@@ -1322,7 +1322,7 @@ void MainWindow::updateAudioDeviceSettingsData() {
     int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
     int selectedOutput = audioDeviceSettings_.getSelectedOutputDevice();
 
-    // Get device names from the lists
+    // An empty name queries the system default when the selected index is -1.
     auto devices = manager->devices();
 
     std::string inputDeviceName;
@@ -1456,12 +1456,10 @@ void MainWindow::refreshDeviceList() {
     int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
     int selectedOutput = audioDeviceSettings_.getSelectedOutputDevice();
 
-    if (selectedInput >= static_cast<int>(inputDevices.size())) {
-        audioDeviceSettings_.setSelectedInputDevice(0);
-    }
-    if (selectedOutput >= static_cast<int>(outputDevices.size())) {
-        audioDeviceSettings_.setSelectedOutputDevice(0);
-    }
+    if (selectedInput >= static_cast<int>(inputDevices.size()))
+        audioDeviceSettings_.setSelectedInputDevice(-1);
+    if (selectedOutput >= static_cast<int>(outputDevices.size()))
+        audioDeviceSettings_.setSelectedOutputDevice(-1);
 
     // Get sample rates from the opened audio device and update the UI
     updateAudioDeviceSettingsData();

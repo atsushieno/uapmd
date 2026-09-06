@@ -82,6 +82,7 @@ namespace uapmd {
                             uint32_t bufferSize = 0) {
             return onOpen(inputDeviceIndex, outputDeviceIndex, sampleRate, bufferSize);
         }
+        // An empty deviceName selects the system default for the requested direction.
         virtual std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) = 0;
 
         void setDeviceChangeCallback(DeviceChangeCallback callback) {

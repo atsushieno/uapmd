@@ -116,7 +116,14 @@ void AudioDeviceSettings::render() {
     ImGui::Text("Audio Device Configuration:");
 
     // Input device selection
-    if (ImGui::BeginCombo("Input Device", selectedInputDevice_ < static_cast<int>(inputDevices_.size()) ? inputDevices_[selectedInputDevice_].c_str() : "None")) {
+    if (ImGui::BeginCombo("Input Device", selectedInputDevice_ >= 0 && selectedInputDevice_ < static_cast<int>(inputDevices_.size()) ? inputDevices_[selectedInputDevice_].c_str() : "System Default")) {
+        if (UapmdSelectable("System Default", selectedInputDevice_ == -1)) {
+            selectedInputDevice_ = -1;
+            if (onDeviceChanged_)
+                onDeviceChanged_();
+        }
+        if (selectedInputDevice_ == -1)
+            ImGui::SetItemDefaultFocus();
         for (size_t i = 0; i < inputDevices_.size(); i++) {
             bool isSelected = (selectedInputDevice_ == static_cast<int>(i));
             if (UapmdSelectable(inputDevices_[i].c_str(), isSelected)) {
@@ -133,7 +140,14 @@ void AudioDeviceSettings::render() {
     }
 
     // Output device selection
-    if (ImGui::BeginCombo("Output Device", selectedOutputDevice_ < static_cast<int>(outputDevices_.size()) ? outputDevices_[selectedOutputDevice_].c_str() : "None")) {
+    if (ImGui::BeginCombo("Output Device", selectedOutputDevice_ >= 0 && selectedOutputDevice_ < static_cast<int>(outputDevices_.size()) ? outputDevices_[selectedOutputDevice_].c_str() : "System Default")) {
+        if (UapmdSelectable("System Default", selectedOutputDevice_ == -1)) {
+            selectedOutputDevice_ = -1;
+            if (onDeviceChanged_)
+                onDeviceChanged_();
+        }
+        if (selectedOutputDevice_ == -1)
+            ImGui::SetItemDefaultFocus();
         for (size_t i = 0; i < outputDevices_.size(); i++) {
             bool isSelected = (selectedOutputDevice_ == static_cast<int>(i));
             if (UapmdSelectable(outputDevices_[i].c_str(), isSelected)) {
