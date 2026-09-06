@@ -128,16 +128,22 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
 
         double flexTempo = 0.0;
         MidiTimeSignatureChange flexSig{};
-        if (it->isTempo() || extractFlexTempo(*it, flexTempo)) {
-            double bpm = it->isTempo() ? tempoFromRawUmpValue(it->getTempo()) : flexTempo;
+        // umppi's status predicates do not check the Flex Data status bank.
+        // Metadata Text status 0/1 must not be consumed as tempo/time signature.
+        const bool setupBank = ((it->int1 >> 8) & 0xFFu) ==
+            umppi::FlexDataStatusBank::SETUP_AND_PERFORMANCE;
+        const bool isTempo = setupBank && it->isTempo();
+        const bool isTimeSignature = setupBank && it->isTimeSignature();
+        if (isTempo || extractFlexTempo(*it, flexTempo)) {
+            double bpm = isTempo ? tempoFromRawUmpValue(it->getTempo()) : flexTempo;
             result.tempo_changes.push_back(MidiTempoChange{currentTick, bpm});
             result.has_explicit_tempo_changes = true;
             if (result.tempo_changes.size() == 1)
                 result.tempo = bpm;
-        } else if (it->isTimeSignature() || extractFlexTimeSignature(*it, flexSig)) {
+        } else if (isTimeSignature || extractFlexTimeSignature(*it, flexSig)) {
             MidiTimeSignatureChange sig{};
             sig.tickPosition = currentTick;
-            if (it->isTimeSignature()) {
+            if (isTimeSignature) {
                 sig.numerator = it->getTimeSignatureNumerator();
                 sig.denominator = it->getTimeSignatureDenominator();
             } else {

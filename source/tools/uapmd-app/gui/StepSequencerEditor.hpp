@@ -11,8 +11,7 @@
 
 namespace uapmd_app_gui {
 
-// A compact MIDI-clip step editor. It writes ordinary MIDI events; the
-// Flex-metadata loop convention is kept as a follow-up integration point.
+// A compact MIDI-clip step editor with baked notes and timestamped Flex metadata.
 class StepSequencerEditor {
 public:
     struct RenderContext {
@@ -56,13 +55,14 @@ private:
         int32_t clipId{-1};
         std::string clipName;
         bool visible{false};
+        bool pendingOriginWarning{false};
         std::shared_ptr<ClipPreview> preview;
         uint32_t tickResolution{480};
         uint8_t group{0};
         // Channel 10 (zero-based 9) is the General MIDI percussion channel.
         uint8_t channel{9};
         NoteSet noteSet{NoteSet::GmDrums};
-        int divisionIndex{3}; // 1/16
+        int divisionIndex{3}; // 1/8
         int patternSteps{16};
         int repetitions{1};
         float defaultVelocity{0.8f};
@@ -88,7 +88,7 @@ private:
     static constexpr int kDivisionCount = 6;
     static constexpr int kDivisions[kDivisionCount] = {1, 2, 4, 8, 16, 32};
 
-    void resetFromPreview(bool focusDrumRoot = false);
+    void resetFromPreview(bool focusDrumRoot = false, bool restoreSettings = false);
     void rebuildLanes();
     void resizeLanes(int patternSteps);
     void renderWindow(const RenderContext& context);

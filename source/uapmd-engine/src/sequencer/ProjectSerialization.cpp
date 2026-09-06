@@ -74,6 +74,9 @@ namespace uapmd::sequencer_detail {
             const auto& timeSigChanges = node.timeSignatureChanges();
 
             auto priorityFor = [](const umppi::Ump& message) {
+                // umppi's tempo/time-signature predicates ignore the status bank.
+                if (((message.int1 >> 8) & 0xFFu) != umppi::FlexDataStatusBank::SETUP_AND_PERFORMANCE)
+                    return 2;
                 if (message.isTempo())
                     return 0;
                 if (message.isTimeSignature())
@@ -145,9 +148,9 @@ namespace uapmd::sequencer_detail {
                 if (entry.tick > result.endTick)
                     result.endTick = entry.tick;
 
-                if (message.isTempo())
+                if (entry.priority == 0)
                     tempoTicks.insert(entry.tick);
-                else if (message.isTimeSignature())
+                else if (entry.priority == 1)
                     timeSigTicks.insert(entry.tick);
             }
 

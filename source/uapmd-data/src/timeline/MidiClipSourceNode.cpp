@@ -164,7 +164,10 @@ namespace uapmd {
                 uint32_t frameOffset = frameOffsetInBlock + static_cast<uint32_t>(eventSamples - currentPos);
 
                 // NRPN intercept: MIDI2 channel voice messages (messageType==4) with 2 words
-                bool intercepted = false;
+                // Metadata Text is authoring information, including step-sequencer
+                // markers. Retain it in the source but never send it to instruments.
+                bool intercepted = messageType == static_cast<uint8_t>(umppi::MessageType::FLEX_DATA) &&
+                    ((ump_events_[eventIdx] >> 8) & 0xFFu) == umppi::FlexDataStatusBank::METADATA_TEXT;
                 if (nrpn_intercept_callback_ && messageType == 4 && wordsNeeded >= 2) {
                     umppi::Ump ump(ump_events_[eventIdx], ump_events_[eventIdx + 1], 0, 0);
                     auto statusCode = static_cast<uint8_t>(ump.getStatusCode());

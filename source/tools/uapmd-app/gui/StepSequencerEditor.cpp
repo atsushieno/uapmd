@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <format>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include <imgui.h>
@@ -15,6 +17,109 @@ namespace uapmd_app_gui {
 constexpr int StepSequencerEditor::kDivisions[kDivisionCount];
 
 namespace {
+
+constexpr std::string_view loopMarker = "uapmd.step-loop-end:v1";
+constexpr std::string_view gridMarker = "uapmd.step-grid:v1";
+
+struct StepMetadata {
+    uint64_t loop_ticks{};
+    uint64_t grid_ticks{};
+    uint64_t end_ticks{};
+    uint32_t stream{};
+    bool valid{false};
+    std::vector<size_t> packet_indices;
+};
+
+StepMetadata readStepMetadata(const ClipPreview::RawMidiData& raw) {
+    StepMetadata result;
+    std::vector<std::pair<uint32_t, uint64_t>> boundaries;
+    std::vector<std::pair<uint32_t, uint64_t>> grids;
+    struct TextMessage {
+        uint64_t tick{};
+        std::string text;
+        std::vector<size_t> packet_indices;
+    };
+    std::unordered_map<uint32_t, TextMessage> messages;
+    for (size_t i = 0; i < raw.umpEvents.size();) {
+        const uint32_t header = raw.umpEvents[i];
+        const umppi::Ump ump(header);
+        const auto wordCount = static_cast<size_t>(std::max(1, ump.getSizeInInts()));
+        if (wordCount > raw.umpEvents.size() - i)
+            break;
+        if (ump.getMessageType() == umppi::MessageType::FLEX_DATA && wordCount == 4 &&
+            ((header >> 8) & 0xFFu) == umppi::FlexDataStatusBank::METADATA_TEXT &&
+            ((header >> 20) & 3u) <= umppi::FlexDataAddress::GROUP) {
+            // Reassemble text packets independently by group, address, channel and status.
+            const uint32_t key = header & 0x0F3FFFFFu;
+            const auto format = (header >> 22) & 3u;
+            const uint64_t tick = i < raw.tickTimestamps.size() ? raw.tickTimestamps[i] : 0;
+            if (format == 0 || format == 1)
+                messages[key] = {tick, {}, {}};
+            auto message = messages.find(key);
+            if (message != messages.end()) {
+                auto& text = message->second.text;
+                message->second.packet_indices.push_back(i);
+                for (size_t word = 1; word < 4; ++word)
+                    for (int shift = 24; shift >= 0; shift -= 8)
+                        text.push_back(static_cast<char>((raw.umpEvents[i + word] >> shift) & 0xFFu));
+                const bool finalPacket = format == 0 || format == 3;
+                if (finalPacket)
+                    while (!text.empty() && text.back() == '\0')
+                        text.pop_back();
+                if (finalPacket && (text == loopMarker || text == gridMarker) &&
+                    message->second.tick == tick) {
+                    result.packet_indices.insert(result.packet_indices.end(),
+                        message->second.packet_indices.begin(), message->second.packet_indices.end());
+                    if (tick > 0) {
+                        if (text == loopMarker) {
+                            boundaries.emplace_back(key, tick);
+                            if (result.loop_ticks == 0 || tick < result.loop_ticks) {
+                                result.loop_ticks = tick;
+                                result.stream = key;
+                            }
+                            result.end_ticks = std::max(result.end_ticks, tick);
+                        } else {
+                            grids.emplace_back(key, tick);
+                            result.grid_ticks = tick;
+                        }
+                    }
+                }
+                if (finalPacket || message->second.tick != tick ||
+                    (loopMarker.substr(0, text.size()) != text && gridMarker.substr(0, text.size()) != text))
+                    messages.erase(message);
+            }
+        }
+        i += wordCount;
+    }
+    // Loop-only clips may omit later boundary markers. Recover their baked extent.
+    if (result.loop_ticks > 0 && grids.empty() && !raw.tickTimestamps.empty()) {
+        const auto extent = *std::max_element(raw.tickTimestamps.begin(), raw.tickTimestamps.end());
+        const auto repetitions = extent / result.loop_ticks + (extent % result.loop_ticks != 0);
+        if (repetitions > 64)
+            return result;
+        result.end_ticks = std::max(result.end_ticks, repetitions * result.loop_ticks);
+    }
+    result.valid = result.loop_ticks > 0 && result.end_ticks % result.loop_ticks == 0 &&
+        result.end_ticks / result.loop_ticks <= 64 &&
+        (result.grid_ticks == 0 || (result.loop_ticks % result.grid_ticks == 0 &&
+                                   result.loop_ticks / result.grid_ticks <= 128));
+    for (const auto& [stream, tick] : boundaries)
+        if (stream != result.stream || tick % result.loop_ticks != 0)
+            result.valid = false;
+    for (const auto& [stream, tick] : grids)
+        if (stream != result.stream || tick != result.grid_ticks)
+            result.valid = false;
+    // Do not silently open metadata that the current grid controls cannot represent.
+    bool supportedGrid = false;
+    for (uint32_t division = 1; division <= 32; division *= 2) {
+        const auto ticks = std::max<uint64_t>(1, raw.tickResolution / division);
+        if ((result.grid_ticks == 0 || result.grid_ticks == ticks) &&
+            result.loop_ticks > 0 && result.loop_ticks % ticks == 0 && result.loop_ticks / ticks <= 128)
+            supportedGrid = true;
+    }
+    result.valid &= supportedGrid;
+    return result;
+}
 
 const char* gmDrumName(uint8_t note) {
     switch (note) {
@@ -101,17 +206,43 @@ ImVec4 dimmed(ImVec4 color, float factor) {
 void StepSequencerEditor::showClip(int32_t trackIndex, int32_t clipId,
                                    const std::string& clipName,
                                    std::shared_ptr<ClipPreview> preview) {
+    state_ = State{};
     state_.trackIndex = trackIndex;
     state_.clipId = clipId;
     state_.clipName = clipName;
     state_.preview = std::move(preview);
     state_.visible = true;
-    resetFromPreview(true);
+    state_.pendingOriginWarning = !state_.preview || !state_.preview->rawMidiData ||
+        !readStepMetadata(*state_.preview->rawMidiData).valid;
+    if (!state_.pendingOriginWarning)
+        resetFromPreview(true, true);
 }
 
-void StepSequencerEditor::resetFromPreview(bool focusDrumRoot) {
+void StepSequencerEditor::resetFromPreview(bool focusDrumRoot, bool restoreSettings) {
     state_.tickResolution = state_.preview && state_.preview->rawMidiData
         ? std::max(1u, state_.preview->rawMidiData->tickResolution) : 480u;
+    const auto metadata = state_.preview && state_.preview->rawMidiData
+        ? readStepMetadata(*state_.preview->rawMidiData) : StepMetadata{};
+    if (restoreSettings && metadata.valid) {
+        // The grid marker disambiguates sparse and empty patterns. For older
+        // loop-only clips, use the finest supported grid that fits the pattern.
+        for (int division = kDivisionCount - 1; division >= 0; --division) {
+            const auto ticks = std::max<uint64_t>(1, state_.tickResolution / kDivisions[division]);
+            if ((metadata.grid_ticks == 0 || ticks == metadata.grid_ticks) &&
+                metadata.loop_ticks % ticks == 0 && metadata.loop_ticks / ticks <= 128) {
+                state_.divisionIndex = division;
+                state_.patternSteps = static_cast<int>(metadata.loop_ticks / ticks);
+                break;
+            }
+        }
+        state_.repetitions = static_cast<int>(metadata.end_ticks / metadata.loop_ticks);
+        state_.group = static_cast<uint8_t>((metadata.stream >> 24) & 0xFu);
+        state_.channel = static_cast<uint8_t>((metadata.stream >> 16) & 0xFu);
+    }
+    if (restoreSettings && state_.preview)
+        for (const auto& note : state_.preview->midiNotes)
+            if (note.note < 35 || note.note > 81)
+                state_.noteSet = NoteSet::AllNotes;
     rebuildLanes();
     state_.focusDrumRoot = focusDrumRoot && state_.noteSet == NoteSet::GmDrums;
     state_.dirty = false;
@@ -121,12 +252,17 @@ void StepSequencerEditor::resetFromPreview(bool focusDrumRoot) {
         return;
 
     const auto& raw = *state_.preview->rawMidiData;
-    if (!state_.preview->midiNotes.empty()) {
-        const auto& firstNote = state_.preview->midiNotes.front();
-        state_.channel = firstNote.channel;
-        if (firstNote.noteOnWordIdx < raw.umpEvents.size())
-            state_.group = static_cast<uint8_t>((raw.umpEvents[firstNote.noteOnWordIdx] >> 24) & 0xFu);
-    }
+    if (!metadata.valid || ((metadata.stream >> 20) & 3u) == umppi::FlexDataAddress::GROUP)
+        for (const auto& note : state_.preview->midiNotes) {
+            if (note.noteOnWordIdx >= raw.umpEvents.size())
+                continue;
+            const auto group = static_cast<uint8_t>((raw.umpEvents[note.noteOnWordIdx] >> 24) & 0xFu);
+            if (metadata.valid && group != state_.group)
+                continue;
+            state_.channel = note.channel;
+            state_.group = group;
+            break;
+        }
     for (const auto& note : state_.preview->midiNotes) {
         if (note.noteOnWordIdx >= raw.tickTimestamps.size() || note.channel != state_.channel)
             continue;
@@ -139,6 +275,8 @@ void StepSequencerEditor::resetFromPreview(bool focusDrumRoot) {
         if (lane == state_.lanes.end())
             continue;
         const uint64_t startTick = raw.tickTimestamps[note.noteOnWordIdx];
+        if (metadata.valid && startTick >= metadata.loop_ticks)
+            continue;
         const uint64_t offTick = note.noteOffWordIdx < raw.tickTimestamps.size()
             ? raw.tickTimestamps[note.noteOffWordIdx] : startTick + stepTicks();
         const size_t index = static_cast<size_t>(std::llround(
@@ -182,6 +320,35 @@ uint64_t StepSequencerEditor::patternTicks() const {
 }
 
 void StepSequencerEditor::render(const RenderContext& context) {
+    if (state_.visible && state_.pendingOriginWarning) {
+        constexpr auto title = "Clip not from Step Sequencer##StepSequencerOrigin";
+        if (!ImGui::IsPopupOpen(title))
+            ImGui::OpenPopup(title);
+        if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 460.0f * context.uiScale);
+            ImGui::Text("\"%s\" has no step sequencer Flex Data metadata and is not recognized "
+                        "as originating from the step sequencer.", state_.clipName.c_str());
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Edits apply immediately and may discard unsupported notes or other "
+                                   "clip data. Opening alone will not change the clip.");
+            ImGui::PopTextWrapPos();
+            ImGui::Spacing();
+            if (ImGui::Button("Close without changes") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                state_.visible = false;
+                state_.pendingOriginWarning = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SetItemDefaultFocus();
+            ImGui::SameLine();
+            if (ImGui::Button("Open anyway")) {
+                state_.pendingOriginWarning = false;
+                resetFromPreview(true, true);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+        return;
+    }
     if (state_.visible)
         renderWindow(context);
 }
@@ -536,7 +703,7 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         ImGui::TextDisabled("Changes apply immediately");
         ImGui::SameLine();
         if (ImGui::Button("Reload"))
-            resetFromPreview();
+            resetFromPreview(false, true);
         if (!state_.status.empty()) {
             ImGui::SameLine();
             ImGui::TextDisabled("%s", state_.status.c_str());
@@ -547,12 +714,13 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
 }
 
 bool StepSequencerEditor::apply(const RenderContext& context) {
-    if (!context.applyEdits || !state_.preview || !state_.preview->rawMidiData)
+    if (state_.pendingOriginWarning || !context.applyEdits || !state_.preview || !state_.preview->rawMidiData)
         return false;
 
     const auto& raw = *state_.preview->rawMidiData;
     struct TimedWords { uint64_t tick{}; std::vector<uapmd_ump_t> words; int order{}; };
     std::vector<TimedWords> events;
+    const auto metadata = readStepMetadata(raw);
     for (size_t i = 0; i < raw.umpEvents.size();) {
         umppi::Ump ump(raw.umpEvents[i]);
         const size_t wordCount = static_cast<size_t>(std::max(1, ump.getSizeInInts()));
@@ -572,16 +740,29 @@ bool StepSequencerEditor::apply(const RenderContext& context) {
                            return lane.note == eventNote;
                        });
         }
-        if (!ownsNote)
+        const bool ownsMetadata = std::find(metadata.packet_indices.begin(),
+            metadata.packet_indices.end(), i) != metadata.packet_indices.end();
+        if (!ownsNote && !ownsMetadata)
             events.push_back({i < raw.tickTimestamps.size() ? raw.tickTimestamps[i] : 0,
                               {raw.umpEvents.begin() + static_cast<std::ptrdiff_t>(i),
                                raw.umpEvents.begin() + static_cast<std::ptrdiff_t>(end)}, 0});
         i = end;
     }
 
+    const auto appendMarker = [&](std::string_view text, uint64_t tick) {
+        TimedWords event{tick, {}, 0};
+        for (const auto& ump : umppi::UmpFactory::flexDataText(
+                state_.group, umppi::FlexDataAddress::CHANNEL_FIELD, state_.channel,
+                umppi::FlexDataStatusBank::METADATA_TEXT, umppi::MetadataTextStatus::UNKNOWN,
+                std::string(text)))
+            event.words.insert(event.words.end(), {ump.int1, ump.int2, ump.int3, ump.int4});
+        events.push_back(std::move(event));
+    };
+    appendMarker(gridMarker, stepTicks());
     const auto loopTicks = patternTicks();
     for (int repetition = 0; repetition < state_.repetitions; ++repetition) {
         const auto baseTick = loopTicks * static_cast<uint64_t>(repetition);
+        appendMarker(loopMarker, baseTick + loopTicks);
         for (const auto& lane : state_.lanes) {
             for (size_t i = 0; i < lane.steps.size(); ++i) {
                 const auto& step = lane.steps[i];

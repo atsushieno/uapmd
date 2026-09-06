@@ -1,10 +1,11 @@
-# Step Sequencer (AI slop)
+# Step Sequencer
 
 ## Status
 
-Design note only. This document records an initial design discussion and is
-intentionally marked as AI-generated working material. It may be removed or
-replaced when the design changes significantly.
+The editor writes expanded MIDI notes with Flex Data loop and grid metadata,
+restores the pattern from those markers, and warns before opening unmarked
+clips. Sections describing possible API work and long-term features remain
+design notes.
 
 ## Goal
 
@@ -71,9 +72,18 @@ repetition 3
 optional boundary marker at tick 3L
 ```
 
-Boundary markers after the first cycle are optional. They can help with
-validation and recovery, but the first loop-end marker is the authoritative
-one.
+The editor writes a boundary marker after every cycle, including the final
+cycle, so empty patterns and trailing silent repetitions retain their length.
+The first loop-end marker is authoritative for the pattern length. Older clips
+without later markers use the expanded event extent to infer repetitions.
+
+A separate `uapmd.step-grid:v1` marker at the end of the first step records the
+grid spacing by timestamp. This disambiguates sparse and empty patterns without
+embedding tick values in text. Both marker types use Flex Data Metadata Text,
+Unknown status, with channel addressing to retain the edited group and channel.
+Step count is the loop timestamp divided by the grid timestamp; repetition
+count is the final boundary timestamp divided by the first boundary timestamp.
+Loop-only clips use the finest supported grid that fits within 128 steps.
 
 ## DCTPQ changes
 
@@ -107,9 +117,18 @@ stream from the editable pattern and its repetition count, then call the
 existing MIDI clip-content replacement path. This should remain one undoable
 clip-content operation.
 
-If no marker exists, the whole clip is treated as one ordinary pattern. If a
-marker is malformed or contradictory, UAPMD should leave the clip untouched
-and fall back to ordinary MIDI editing behavior.
+If no valid marker exists, the step editor warns that the clip is not recognized
+as originating from the step sequencer. The user can close without changes or
+open anyway, acknowledging that subsequent edits apply immediately and may
+discard data the editor cannot represent. Opening alone must leave the source
+untouched. Unrelated Flex Data text and incomplete marker messages do not count
+as step-sequencer metadata.
+
+Edits replace the old recognized marker packets instead of accumulating them.
+Only notes before the first loop boundary populate the working pattern; edits
+regenerate the baked repetitions. Unsupported or contradictory marker settings
+also trigger the warning. Clips saved before metadata writing was implemented
+remain unmarked and trigger the warning until the user opens and edits them.
 
 ## `Expand by N`
 
@@ -145,11 +164,10 @@ be specified before those events are expanded automatically.
 
 ## Playback filtering
 
-Flex Metadata events are persisted in the MIDI clip but are internal authoring
-metadata. They should normally not be forwarded to instrument plugins as
-musical track output. The playback path should recognize and consume these
-metadata messages, or otherwise apply an explicit policy that prevents
-internal markers from reaching ordinary instrument processing.
+Flex Metadata Text events are persisted in the MIDI clip but are authoring
+information. MIDI clip playback consumes this status bank instead of forwarding
+it to instrument plugins. This check does not allocate or lock on the audio thread;
+other Flex Data status banks retain their existing playback behavior.
 
 ## Possible API work
 
