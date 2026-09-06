@@ -128,7 +128,13 @@ libremidi::observer makeObserver() {
     configuration.track_virtual = true;
     configuration.track_network = true;
     configuration.track_any = true;
+#if defined(__ANDROID__)
+    // The default observer picks the computer-keyboard backend before AMidi.
+    // Platform port discovery must use Android's MIDI device manager.
+    return libremidi::observer(configuration, libremidi::API::ANDROID_AMIDI);
+#else
     return libremidi::observer(configuration);
+#endif
 }
 
 class LibreMidiInputPort final : public MidiIOFeature {

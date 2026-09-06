@@ -19,3 +19,5 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# libremidi constructs this callback and resolves its members through JNI.
+-keep class dev.celtera.libremidi.MidiDeviceCallback { *; }
