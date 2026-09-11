@@ -1,9 +1,10 @@
 [versions]
-androidTargetSdk = "36"
+androidTargetSdk = "37"
+androidCompileSdk = "37"
 androidMinSdk = "31"
 androidSdkTools = "36.1"
 agp = "9.1.1"
-androidaudioplugin = "0.11.1"
+androidaudioplugin = "0.11.2"
 coreKtx = "1.18.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"

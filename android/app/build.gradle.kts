@@ -9,11 +9,7 @@ val aapDir = project.projectDir.parentFile.listFiles {
 
 android {
     namespace = "dev.atsushieno.uapmd"
-    compileSdk {
-        version = release(libs.versions.androidTargetSdk.get().toInt()) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = libs.versions.androidCompileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "dev.atsushieno.uapmd"
