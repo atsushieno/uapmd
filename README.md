@@ -1,21 +1,24 @@
-# UAPMD: next-gen, cross-platform, multi-format, liberally licensed audio plugin host engine with fully equipped virtual MIDI 2.0 devices provider
+# UAPMD: a "MIDI 2.0 native" audio plugin hosting and DAW sequencer engine libraries
 
 ![UAPMD v0.5.2 example screenshot](docs/images/uapmd-app-v0.5.2-sshot.png)
 ![UAPMD v0.4 example screenshot](docs/images/uapmd-app-v0.4-sshot.png)
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) is a music sequencer engine with the following features and characteristics:
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is a music sequencer engine (library) with the following features and characteristics:
 
-- MIT-licensed, with some exceptional opt-in features (e.g. ARA support module, under the Apache V2 license).
-- cross-platform.
-- builds upon its own audio plugin hosting foundation.
-- builds upon its own MIDI 2.0 UMP and MIDI-CI processing library from scratch, including Flex Data, Mixed Data Set, as well as Process Inquiry. No other MIDI 2.0 library provides such complete feature sets.
-- audio processing is done with UMP, which can bring in timestamps ("sample accurate") and parameter controllers in 32-bit resolution.
-- import SMF (either as a clip or split into tracks), MIDI 2.0 clips, audio recording (either as a clip or split into tracks using demucs.cpp or BSRoformer.cpp).
-- save and load user projects, based on audio and MIDI2 clips (to fully control audio plugins), organized into multiple tracks.
-- audio warps i.e. time-stretched audio clips.
-- provides full access to the sequencer engine using JavaScript and MCP server.
+- **MIT-licensed**, with some exceptional opt-in features (e.g. ARA support module, under the Apache V2 license).
+- **cross-platform**, including Android, Linux, and iOS.
+- **ubiquitous plugin hosting**: provides cross-platform audio plugin hosting foundation with almost no dependency except for official SDKs (all under the MIT-compatible licenses).
+- **complete MIDI 2.0 implementation**: builds upon its own MIDI 2.0 UMP and MIDI-CI processing library from scratch, including Flex Data, Mixed Data Set, as well as Process Inquiry. No other MIDI 2.0 library provides such complete feature sets.
+- **MIDI2-native audio processor**: audio processing is done with UMP, which can bring in timestamps ("sample accurate") and parameter controllers in 32-bit resolution.
+- **standard-based sequencer**: import SMF (either as a clip or split into tracks), MIDI 2.0 clips, audio recording (either as a clip or split into tracks using demucs.cpp or BSRoformer.cpp), and save/load them as a project.
+- **audio warps** i.e. time-stretched audio clips.
+- provides full access to the sequencer engine using **JavaScript API and MCP server**.
 - implements various DAW engine features including fast plugin scanning without loading plugins, remote process plugin scanner, DAG, latency compensation, track freezing, and offline renderer.
-- highly modularized: you can just take plugin hosting abstraction layer, virtual MIDI device hosting, project data format, sequencer engine, or up to the actual application layer.
+- **highly modularized**: you can just take plugin hosting abstraction layer, virtual MIDI device hosting, project data format, sequencer engine, or up to the actual application layer.
+
+It comes with a proof-of-concept application `uapmd-app` which runs as a desktop app, Android app, iOS app, or a webpage (app).
+
+### UAPMD as a virtual MIDI 2.0 device host
 
 UAPMD can expose audio plugins' control points as platform virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
@@ -25,7 +28,9 @@ UAPMD can expose audio plugins' control points as platform virtual MIDI 2.0 devi
 
 We also develop [midicci](https://github.com/atsushieno/midicci), an fully featured MIDI 2.0 software keyboard that leverages the full potential of this project.
 
-UAPMD targets the following platforms:
+### Supported audio plugin formats
+
+UAPMD is unique in that it supports audio plugins on desktop, iOS, and Android.
 
 | platform | plugin formats | missing features |
 |-|-|-|
@@ -36,62 +41,6 @@ UAPMD targets the following platforms:
 | iOS | AUv3 | |
 | Web (Emscripten) | [WebCLAP](https://github.com/WebCLAP) | |
 
-Note that there are handful of experimental formats.
-
-## Build + Install
-
-There is an application `uapmd-app` that performs almost all features UAPMD provides.
-
-### packages
-
-`uapmd` offers Linux packages on the release pages and GitHub Actions build artifacts, in `.deb`, `.rpm` and `.tar.xz` (They are based on CPack packaging tasks). On macOS the `package` target generates a DMG image ready to distribute and the build also emits a standalone `uapmd-app.app` bundle you can drag to Applications. On Windows, running the same target produces a ZIP archive, and if [NSIS](https://nsis.sourceforge.io/Main_Page) is installed you also get a standard installer executable.
-
-`uapmd` offers Homebrew package as well. You can install it as: `brew install atsushieno/oss/uapmd` then run `/opt/homebrew/bin/uapmd-app` or use those libraries the package offers.
-Our package settings are stored at [atsushieno/homebrew-oss](https://github.com/atsushieno/homebrew-oss).
-
-### building from source
-
-This `uapmd` Git repository provides the simple normative `cmake` build:
-
-```
-$ cmake -B build -G Ninja -DCPM_SOURCE_CACHE=~/.cache/CPM/uapmd    # you can skip -DCPM_SOURCE_CACHE
-$ cmake --build build
-$ cmake --build build --target package # if you prefer package files
-```
-
-If you are using Windows:
-
-```
-$ cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Release -DUAPMD_ENABLE_WINMIDI=ON -DCPM_SOURCE_CACHE=%HOME%\.cache\CPM\uapmd    # you can skip -DCPM_SOURCE_CACHE
-$ cmake --build build
-$ cmake --build build --target package # if you prefer package files
-```
-
-After successful build on those desktop platforms, the artifacts are found like: `*.deb`, `*.rpm`, `*.tar.xz`, `uapmd-*.zip`, `*.exe`, or `*.dmg` (under `build` directory)
-
-If you target Android:
-
-```
-$ cd android && ./gradlew build
-```
-
-If you target iOS:
-
-```
-$ bash build-ios-sim.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
-```
-
-If you target Web:
-
-```
-$ bash build-wasm.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
-```
-
-Then you can run it like:
-
-```
-npx http-server cmake-build-wasm/source/tools/uapmd-app
-```
 
 ## Screenshots
 
@@ -104,6 +53,9 @@ v0.1: With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the marke
 v0.2: UAPMD works more like a multitrack sequencer that lets you organize audio and MIDI 2.0 clips with audio plugins, to play all together or record statically into audio files.
 
 v0.3: UAPMD works everywhere on desktop, mobile, and web (virtual MIDI 2.0 devices as long as the platform is eligible).
+
+v0.4 .. v0.5.x: it became a practical audio sequencer engine on Android and Web.
+
 
 ## Usage
 
@@ -134,6 +86,62 @@ We have some [users guide documentation](docs/users/USERS_GUIDE.md).
 `uapmd-apply` is an offline rendering engine for `*.uapmdz` project files. It instantiates all the plugins used in the project, then render a WAV without GUI. You can achieve the same functionality using `uapmd-app`.
 
 
+## Build + Install
+
+There is an application `uapmd-app` that performs almost all features UAPMD provides.
+
+### app packages
+
+`uapmd` offers Linux packages on the release pages and GitHub Actions build artifacts, in `.deb`, `.rpm` and `.tar.xz` (They are based on CPack packaging tasks). On macOS the `package` target generates a DMG image ready to distribute and the build also emits a standalone `uapmd-app.app` bundle you can drag to Applications. On Windows, running the same target produces a ZIP archive, and if [NSIS](https://nsis.sourceforge.io/Main_Page) is installed you also get a standard installer executable.
+
+`uapmd` offers Homebrew package as well. You can install it as: `brew install atsushieno/oss/uapmd` then run `/opt/homebrew/bin/uapmd-app` or use those libraries the package offers.
+Our package settings are stored at [atsushieno/homebrew-oss](https://github.com/atsushieno/homebrew-oss).
+
+### building from source
+
+This `uapmd` Git repository provides the simple normative `cmake` build:
+
+```
+cmake -B build -G Ninja -DCPM_SOURCE_CACHE=~/.cache/CPM/uapmd    # you can skip -DCPM_SOURCE_CACHE
+cmake --build build
+cmake --build build --target package # if you prefer package files
+```
+
+If you are using Windows:
+
+```
+cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Release -DUAPMD_ENABLE_WINMIDI=ON -DCPM_SOURCE_CACHE=%HOME%\.cache\CPM\uapmd    # you can skip -DCPM_SOURCE_CACHE
+cmake --build build
+cmake --build build --target package # if you prefer package files
+```
+
+After successful build on those desktop platforms, the artifacts are found like: `*.deb`, `*.rpm`, `*.tar.xz`, `uapmd-*.zip`, `*.exe`, or `*.dmg` (under `build` directory)
+
+If you target Android:
+
+```
+cd android && ./gradlew build
+```
+
+If you target iOS:
+
+```
+bash build-ios-sim.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
+```
+
+If you target Web:
+
+```
+bash build-wasm.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
+```
+
+Then you can run it like:
+
+```
+npx http-server cmake-build-wasm/source/tools/uapmd-app
+```
+
+
 ## Documentation
 
 ALL docs under [`docs`](docs) are supposed to describe design investigation and thoughts.
@@ -142,40 +150,12 @@ We are moving quick and may not reflect the latest state of union, or describe o
 
 There are some notable docs:
 
+- [Developer's Guide](docs/DEVELOPERS.md)
 - [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md)
 - [State](docs/remidy/STATE.md)
 - [GUI support and main thread constraints](docs/remidy/GUI_SUPPORT.md)
 - [Parameters](docs/remidy/PARAMETERS.md)
 - [Presets](docs/remidy/PRESETS.md)
-
-## Code modules
-
-There are handful of libraries in this repository:
-
-### remidy
-
-`remidy` offers plugin API abstraction layer at lower level that primarily involves application agnostic audio and event processing. Apart from parameter API, it adopts UMP for event inputs, including parameter support via NRPN (AC, Assignable Controller) and Per-Note AC. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins.
-
-### remidy-tooling
-
-`remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in the common manner.
-What this layer introduces in practice is a set of filters; various existing specific plugin products and vendors are filtered by "safe for multithreaded access to the plugin API," "plugin scanning requires the UI thread," or "crashes remidy" kind of information.
-
-### uapmd, uapmd-file, uapmd-data, and uapmd-engine
-
-`uapmd` and `uapmd-engine` provide reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). `uapmd` serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner.
-
-`uapmd` itself contains core engine behind MIDI-CI processing for audio plugin hosting and instancing API without implementation and usable backends. `uapmd-engine` goes one step further to establish the premise that there is single audio processing backend, multiple MIDI 2.0 devices, audio graphs, and so on to make everything in usable form.
-
-`uapmd-file` implements supplemental cross-platform file/document API.
-
-`uapmd-data` defines the sequencer model such as tracks and clips, then implements audio processing data provider for realtime processing.
-
-### uapmd-app
-
-`uapmd-app` is a plugin host that you can list the installed plugins, instantiate plugins, process audio with a UMP keyboard, adjust parameters, select presets, launch the GUI, save, and restore the states. It also exposes those plugins as platform virtual MIDI 2.0 devices, translating UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange.
-
-It likely works with MIDI 1.0 inputs (translated, depending on the platform) to control plugins.
 
 
 ## License and Dependencies
