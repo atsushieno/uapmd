@@ -94,13 +94,6 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
     return hash;
 }
 
-const char* timelineUnitsLabel(const SequenceEditor::RenderContext& context) {
-    if (context.timelineUnitsLabel && context.timelineUnitsLabel[0] != '\0') {
-        return context.timelineUnitsLabel;
-    }
-    return "seconds";
-}
-
 bool timelineStyleMatches(const ImTimelineStyle& style, const SequenceEditor::RenderContext& context) {
     const int expectedHeaderHeight = static_cast<int>(24.0f * context.uiScale);
     const int expectedScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
@@ -113,6 +106,19 @@ bool timelineStyleMatches(const ImTimelineStyle& style, const SequenceEditor::Re
 } // namespace
 
 SequenceEditor::~SequenceEditor() = default;
+
+void SequenceEditor::setAxisMode(TimelineAxisMode mode) {
+    if (axis_.mode() == mode)
+        return;
+    axis_.setMode(mode);
+    // Every cached frame extent -- the clip rows, the timeline's own nodes, the current zoom --
+    // was computed under the outgoing mapping, so none of it survives the switch. Dropping the
+    // explicit zoom lets the rebuild pick the new axis's default rather than reinterpreting a
+    // pixels-per-millisecond value as pixels-per-tick.
+    unified_.hasExplicitZoom = false;
+    unified_.hasPendingFit = false;
+    unified_.dirty = true;
+}
 
 void SequenceEditor::showWindow(int32_t trackIndex) {
     auto [it, inserted] = windows_.try_emplace(trackIndex);
@@ -324,6 +330,10 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     const int32_t sampleRate = appModel.sampleRate();
     const double playheadSeconds = sampleRate > 0
         ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
+    const double contentFrames = bounds.hasContent
+        ? static_cast<double>(axis_.frameFromSeconds(bounds.durationSeconds)) : 0.0;
+    const double playheadFrame = playheadSeconds >= 0.0
+        ? static_cast<double>(axis_.frameFromSeconds(playheadSeconds)) : -1.0;
 
     // Whole-song overview lanes, in the same track order the timeline sections use
     // (sorted track index; kMasterTrackIndex naturally sorts first).
@@ -354,10 +364,9 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
             break;
         }
 
-    renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom,
+    renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom, axis_,
                             context.uiScale, barStartScreenX,
-                            bounds.hasContent ? bounds.durationSeconds : 0.0,
-                            playheadSeconds, unified_.lastVisibleWidthPixels,
+                            contentFrames, playheadFrame, unified_.lastVisibleWidthPixels,
                             overview, static_cast<int>(sortedTracks.size()),
                             freezeProgress);
 }
@@ -440,6 +449,9 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             io.MouseWheel = savedMouseWheel; io.MouseWheelH = savedMouseWheelH;
         }
 
+        if (clipAreaMaxX > clipAreaMinX)
+            drawRuler(context, clipAreaMinX, clipAreaMinY, clipAreaMaxX, clipAreaMaxY, winPos.y);
+
         if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
             drawPlayheadIndicator(clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
 
@@ -450,10 +462,10 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             const float scale = unified_.timeline->GetScale();
             if (scale > 0.0f) {
-                const double positionSeconds =
+                const double frame =
                     static_cast<double>(unified_.timeline->GetStartTimestamp()) +
                     static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
-                uapmd_app::AppModel::instance().transport().jump(positionSeconds);
+                uapmd_app::AppModel::instance().transport().jump(axis_.secondsFromFrame(frame));
             }
         }
 
@@ -476,7 +488,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                 if (node && node->start != unified_.active_drag_start && context.moveClipAbsolute) {
-                    const double newStartSeconds = static_cast<double>(node->start);
+                    const double newStartSeconds =
+                        axis_.secondsFromFrame(static_cast<double>(node->start));
                     context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
                 }
             }
@@ -610,9 +623,12 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             // even when the click lands on an existing clip.
             if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
-                const double tsUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                const double maxSec = static_cast<double>(unified_.timeline->GetMaxFrame());
-                trackState.requestedAddPosition = std::clamp(tsUnits, 0.0, maxSec);
+                const double clickedFrame =
+                    startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
+                const double maxSeconds = axis_.secondsFromFrame(
+                    static_cast<double>(unified_.timeline->GetMaxFrame()));
+                trackState.requestedAddPosition =
+                    std::clamp(axis_.secondsFromFrame(clickedFrame), 0.0, maxSeconds);
                 if (!clipUnderMouse)
                     requestedAddClipTrack = hoveredTrackIndex;
             }
@@ -662,9 +678,12 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                                                   4.0f * context.uiScale, rTrack, rStart, rEnd);
                     if (isRange && marqueeSelected.value_or(0u) == 0u) {
                         auto& trackState = windows_[rTrack];
-                        const double maxSec = static_cast<double>(unified_.timeline->GetMaxFrame());
-                        trackState.requestedRangeStart = std::clamp(static_cast<double>(rStart), 0.0, maxSec);
-                        trackState.requestedRangeEnd = std::clamp(static_cast<double>(rEnd), 0.0, maxSec);
+                        const double maxSeconds = axis_.secondsFromFrame(
+                            static_cast<double>(unified_.timeline->GetMaxFrame()));
+                        trackState.requestedRangeStart = std::clamp(
+                            axis_.secondsFromFrame(static_cast<double>(rStart)), 0.0, maxSeconds);
+                        trackState.requestedRangeEnd = std::clamp(
+                            axis_.secondsFromFrame(static_cast<double>(rEnd)), 0.0, maxSeconds);
                         requestedRangeTrack = rTrack;
                     }
                 }
@@ -851,9 +870,13 @@ void SequenceEditor::fitToContent(double contentDurationSeconds, float visibleWi
         unified_.pendingFitUiScale = uiScale;
         return;
     }
-    const float defaultScale = std::max(1.0f, 5.0f * uiScale);
-    const float idealScale = static_cast<float>(visibleWidthPixels / contentDurationSeconds);
-    const float fitted = std::clamp(idealScale, kMinSafeTimelineScale, defaultScale);
+    const double contentFrames =
+        static_cast<double>(axis_.frameFromSeconds(contentDurationSeconds));
+    if (contentFrames <= 0.0)
+        return;
+    const float defaultScale = axis_.defaultScale(uiScale);
+    const float idealScale = static_cast<float>(visibleWidthPixels / contentFrames);
+    const float fitted = std::clamp(idealScale, axis_.minScale(), defaultScale);
     unified_.timeline->SetScale(fitted);
     unified_.hasExplicitZoom = true;
     unified_.hasPendingFit = false;
@@ -892,7 +915,10 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     // competing pan controls and reclaim the vertical space.
     style.HasScrollbar = false;
     style.HeaderBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, windowBg, 0.35f));
-    style.HeaderTimeStampColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
+    // ImTimeline's header can only print the raw frame index, which on either axis is a unit
+    // nobody reads in (a millisecond, a 96th of a beat). Make its ticks and labels invisible and
+    // let TimelineAxis::drawRuler put a real ruler in the same strip.
+    style.HeaderTimeStampColor = IM_COL32(0, 0, 0, 0);
     style.LegendTextColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
     style.SectionBackgroundColor = ImGui::GetColorU32(mixColor(childBg, frameBg, 0.65f));
     style.SectionBackgroundHoveredColor = ImGui::GetColorU32(withAlpha(headerHovered, 0.18f));
@@ -999,17 +1025,40 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
 
     unified_.computedTimelineHeight = headerHeight + totalSectionHeight + kTimelineChildPadding;
 
-    if (maxFrame <= 0) maxFrame = 1000;
+    if (maxFrame <= 0) maxFrame = axis_.frameFromSeconds(10.0);
     unified_.timeline->SetStartFrame(0);
-    unified_.timeline->SetMaxFrame(maxFrame + 200);
+    unified_.timeline->SetMaxFrame(maxFrame + axis_.trailingPadFrames());
     // Once the user (or fitToContent) has set an explicit zoom, ordinary rebuilds (triggered by
     // any clip add/move/remove) must not reset it back to the default -- carry the prior scale
     // forward onto the new Timeline object instead.
     if (preservedScale >= 0.0f)
         unified_.timeline->SetScale(preservedScale);
     else
-        unified_.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
+        unified_.timeline->SetScale(axis_.defaultScale(context.uiScale));
     unified_.dirty = false;
+}
+
+void SequenceEditor::drawRuler(
+    const RenderContext& context,
+    float clipAreaMinX,
+    float clipAreaMinY,
+    float clipAreaMaxX,
+    float clipAreaMaxY,
+    float headerMinY
+) const {
+    if (!unified_.timeline)
+        return;
+
+    TimelineAxis::RulerGeometry geometry;
+    geometry.headerMinY = headerMinY;
+    geometry.headerMaxY = clipAreaMinY;
+    geometry.contentMinX = clipAreaMinX;
+    geometry.contentMaxX = clipAreaMaxX;
+    geometry.contentMaxY = clipAreaMaxY;
+    geometry.startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+    geometry.scale = unified_.timeline->GetScale();
+    geometry.uiScale = context.uiScale;
+    axis_.drawRuler(geometry);
 }
 
 void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
@@ -1248,7 +1297,8 @@ void SequenceEditor::drawPlayheadIndicator(
     if (maxFrame <= 0)
         return;
 
-    const double clampedFrame = std::clamp(playheadSeconds, 0.0, static_cast<double>(maxFrame));
+    const double playheadFrame = static_cast<double>(axis_.frameFromSeconds(playheadSeconds));
+    const double clampedFrame = std::clamp(playheadFrame, 0.0, static_cast<double>(maxFrame));
     const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
         return;
@@ -1339,10 +1389,13 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
     } else if (clipData) {
         warpHash = clipWarpFingerprint(*clipData);
     }
+    const auto spanMilliseconds = static_cast<int64_t>(std::llround(
+        (axis_.secondsFromFrame(static_cast<double>(clip.timelineEnd)) -
+         axis_.secondsFromFrame(static_cast<double>(clip.timelineStart))) * 1000.0));
     return std::format("{}|{}|{}|{}|{}|{}|{}",
                        sourcePath,
                        clip.isMidiClip ? 'm' : 'a',
-                       clip.timelineEnd - clip.timelineStart,
+                       spanMilliseconds,
                        durationSamples,
                        sourceNodeId,
                        midiHash,
@@ -1368,9 +1421,12 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
         return existingIt->second;
     }
 
+    // timelineStart/End are axis frames; a preview wants real seconds, and on the beats axis
+    // those are not even proportional to each other.
     const double fallbackDurationSeconds = std::max(
         0.0,
-        static_cast<double>(clip.timelineEnd - clip.timelineStart)
+        axis_.secondsFromFrame(static_cast<double>(clip.timelineEnd)) -
+            axis_.secondsFromFrame(static_cast<double>(clip.timelineStart))
     );
 
     auto makeErrorPreview = [&](const std::string& message) {

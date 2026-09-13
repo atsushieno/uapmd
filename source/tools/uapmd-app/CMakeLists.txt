@@ -49,7 +49,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp
-        gui/BeatsSequenceEditor.cpp
+        gui/TimelineAxis.cpp
         gui/TimelineEditor.cpp
         gui/TimelineNavigator.cpp
         gui/ClipPreview.cpp

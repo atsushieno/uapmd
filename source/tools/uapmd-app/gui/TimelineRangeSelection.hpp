@@ -8,7 +8,7 @@ namespace uapmd_app_gui {
 // Tracks a drag-to-select-a-range gesture within a single track's clip lane. Unit-agnostic
 // (frame ints, same convention as TimelineLaneAssignment.hpp) -- the caller supplies frame
 // coordinates already converted from pixels, and converts the finished range back to seconds
-// itself (seconds-frames for SequenceEditor, beat-ticks for BeatsSequenceEditor).
+// itself through its TimelineAxis.
 struct RangeSelectionDrag {
     bool active = false;
     int32_t trackIndex = -1;

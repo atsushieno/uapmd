@@ -23,7 +23,6 @@
 #include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include "TimelineEditor.hpp"
-#include "BeatsTimelineConstants.hpp"
 #include "ClipPreview.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ContextActions.hpp"
@@ -394,12 +393,22 @@ bool wouldCreateClipAnchorCycle(
     return false;
 }
 
-int32_t toTimelineFrame(double units) {
-    if (!std::isfinite(units))
-        return 0;
-    const double maxUnits = static_cast<double>(std::numeric_limits<int32_t>::max() - 1);
-    const double clamped = std::clamp(units, 0.0, maxUnits);
-    return static_cast<int32_t>(std::llround(clamped));
+// Where a clip's right edge lands on the axis.
+//
+// Audio is straightforward: the endpoint is a real-world time like any other, so it goes through
+// the axis (and therefore the tempo map) exactly as the start did -- durationSamples already
+// bakes in whatever the audio-warp resolution decided. A MIDI clip's width, though, is authored
+// in beats: durationSamples was captured at import time under clipTempo, so on the beats axis the
+// clip has to keep that beat length however the tempo map changes around it. Adding the beat
+// length to the start *in units* is what keeps that true; converting it to seconds first would
+// push it back through the very tempo map it is supposed to be immune to.
+int32_t clipEndFrame(const uapmd::ClipData& clip, double startSeconds, double durationSeconds,
+                     const uapmd_app_gui::TimelineAxis& axis) {
+    if (axis.isBeats() && clip.clipType == uapmd::ClipType::Midi && clip.clipTempo > 0.0) {
+        const double beats = durationSeconds * (clip.clipTempo / 60.0);
+        return axis.frameFromUnits(axis.unitsFromSeconds(startSeconds) + beats);
+    }
+    return axis.frameFromSeconds(startSeconds + durationSeconds);
 }
 
 std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
@@ -724,6 +733,13 @@ bool validateMarkerReferenceSelection(
 }  // namespace
 
 TimelineEditor::TimelineEditor() {
+    // tempoMap_ is a member, so the axis can hold its address for the editor's whole lifetime;
+    // it reads whatever rebuildTempoSegments last put there.
+    sequenceEditor_.axis().setTempoMap(&tempoMap_);
+    // Push the starting view mode rather than relying on TimelineAxis's own default matching it.
+    // Going through the same call the toggle uses is what keeps the two from drifting apart.
+    setTimelineAxisMode();
+
     // Set up PluginSelector callbacks
     pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
         // Create plugin instance through AppModel
@@ -742,6 +758,16 @@ TimelineEditor::TimelineEditor() {
             remoteTimeoutSeconds);
     });
 
+    refreshAllSequenceEditorTracks();
+}
+
+void TimelineEditor::setTimelineAxisMode() {
+    sequenceEditor_.setAxisMode(timelineViewMode_ == TimelineViewMode::BeatsTicks
+        ? TimelineAxisMode::Beats : TimelineAxisMode::Seconds);
+    // Every ClipRow on screen carries frame extents computed under the outgoing mapping, so they
+    // all have to be recomputed -- clearing the master signature is what gets the master row
+    // rebuilt along with the rest on the next frame.
+    masterTrackSignature_.clear();
     refreshAllSequenceEditorTracks();
 }
 
@@ -887,7 +913,6 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .renderLegendContent = [this](int32_t trackIndex, const ImRect& legendArea) {
             renderTrackLegendContent(trackIndex, legendArea);
         },
-        .timelineUnitsLabel = timelineUnitsLabel_.c_str(),
         .uiScale = uiScale,
         .legendWidth = legendWidth,
     };
@@ -1191,104 +1216,19 @@ void TimelineEditor::renderClipCommands(int32_t trackIndex, int32_t clipId, bool
     }
 }
 
-BeatsSequenceEditor::RenderContext TimelineEditor::buildBeatsRenderContext(float uiScale, float legendWidth) {
-    return BeatsSequenceEditor::RenderContext{
-        .clipActions = buildClipActions(),
-        .refreshClips = [this](int32_t trackIndex) {
-            refreshBeatsSequenceEditorForTrack(trackIndex);
-        },
-        .addBlankMidiClipAtPosition = [this](int32_t trackIndex, double positionSeconds) {
-            addBlankMidi2ClipToTrackAtPosition(trackIndex, positionSeconds);
-        },
-        .addEmptyAudioClip = [this](int32_t trackIndex, double positionSeconds) {
-            addEmptyAudioClipToTrack(trackIndex, positionSeconds);
-        },
-        .addAudioClip = [this](int32_t trackIndex, double positionSeconds) {
-            addAudioClipToTrack(trackIndex, positionSeconds);
-        },
-        .addSmfClip = [this](int32_t trackIndex, double positionSeconds) {
-            addSmfClipToTrack(trackIndex, positionSeconds);
-        },
-        .addSmf2Clip = [this](int32_t trackIndex) {
-            addSmf2ClipToTrack(trackIndex);
-        },
-        .addBlankMidiClipInRange = [this](int32_t trackIndex, double startSeconds, double endSeconds) {
-            addBlankMidiClipInRange(trackIndex, startSeconds, endSeconds);
-        },
-        .addEmptyAudioClipInRange = [this](int32_t trackIndex, double startSeconds, double endSeconds) {
-            addEmptyAudioClipInRange(trackIndex, startSeconds, endSeconds);
-        },
-        .removeClip = [this](int32_t trackIndex, int32_t clipId) {
-            removeClipFromTrack(trackIndex, clipId);
-        },
-        .clipEnabled = [this](int32_t trackIndex, int32_t clipId) {
-            return uapmd_app::AppModel::instance().sequencer().engine()->timeline().clipEnabled(trackIndex, clipId);
-        },
-        .setClipEnabled = [this](int32_t trackIndex, int32_t clipId, bool enabled) {
-            uapmd_app::AppModel::instance().sequencer().engine()->commands().setClipEnabled(trackIndex, clipId, enabled);
-        },
-        .clearAllClips = [this](int32_t trackIndex) {
-            clearAllClipsFromTrack(trackIndex);
-        },
-        .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
-            moveClipAbsolute(trackIndex, clipId, seconds);
-        },
-        .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
-            showMidiClipDump(trackIndex, clipId);
-        },
-        .showAudioClipEvents = [this](int32_t trackIndex, int32_t clipId) {
-            showAudioClipEvents(trackIndex, clipId);
-        },
-        .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
-            showPianoRoll(trackIndex, clipId);
-        },
-        .showStepSequencer = [this](int32_t trackIndex, int32_t clipId) {
-            showStepSequencer(trackIndex, clipId);
-        },
-        .renderClipCommands = [this](int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack) {
-            renderClipCommands(trackIndex, clipId, isMidiClip, isMasterTrack);
-        },
-        .showMasterTrackDump = [this]() {
-            showMasterMetaDump();
-        },
-        .showClipsWindow = [this](int32_t trackIndex) {
-            // Reuse the existing "Edit Clips..." table window (owned by sequenceEditor_) rather
-            // than duplicating it -- that window stays seconds-based regardless of which unified
-            // timeline is currently visible.
-            sequenceEditor_.showWindow(trackIndex);
-            refreshSequenceEditorForTrack(trackIndex);
-        },
-        .renderLegendContent = [this](int32_t trackIndex, const ImRect& legendArea) {
-            renderTrackLegendContent(trackIndex, legendArea);
-        },
-        .secondsToBeats = [this](double seconds) {
-            return tempoMap_.secondsToBeats(seconds);
-        },
-        .beatsToSeconds = [this](double beats) {
-            return tempoMap_.beatsToSeconds(beats);
-        },
-        .tempoMap = &tempoMap_,
-        .timelineUnitsLabel = "beats",
-        .uiScale = uiScale,
-        .legendWidth = legendWidth,
-    };
-}
-
 void TimelineEditor::render(float uiScale) {
     currentUiScale_ = uiScale;
     clipEditorHost_.render();
     if (pendingFullReset_) {
         pendingFullReset_ = false;
         sequenceEditor_.reset();
-        beatsSequenceEditor_.reset();
         trackContentSignatures_.clear();
         masterTrackSignature_.clear();
         masterTrackSectionCreated_ = false;
     }
     syncExternalTimelineChanges();
     auto context = buildRenderContext(uiScale);
-    auto beatsContext = buildBeatsRenderContext(uiScale, context.legendWidth);
-    renderTrackList(context, beatsContext);
+    renderTrackList(context);
     sequenceEditor_.render(context);
     renderStepSequencerFromClipEditor();
     if (pending_clip_edit_) {
@@ -1490,7 +1430,7 @@ void TimelineEditor::renderPluginGraphWindow(float uiScale) {
     pluginGraphEditor_.render(uiScale, setNextChildWindowSize_, updateChildWindowSizeState_);
 }
 
-void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext) {
+void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context) {
     auto& appModel = uapmd_app::AppModel::instance();
     // Toolbar row: view switcher + navigation controls (zoom slider, position controller).
     // Rendered outside TrackListScroll so they stay visible regardless of track scrolling;
@@ -1503,17 +1443,13 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     if (ImGui::Button(timelineViewMode_ == TimelineViewMode::AbsoluteTime ? "View: Seconds" : "View: Beats")) {
         timelineViewMode_ = (timelineViewMode_ == TimelineViewMode::AbsoluteTime)
             ? TimelineViewMode::BeatsTicks : TimelineViewMode::AbsoluteTime;
-        beatsSequenceEditor_.invalidateTimeline();
-        sequenceEditor_.invalidateTimeline();
+        setTimelineAxisMode();
     }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Switch between absolute-time and beats/ticks track list views");
+        ImGui::SetTooltip("Switch between absolute-time and bars/beats rulers");
     ImGui::SameLine();
     ImGui::SetCursorPosY(navRowTopY);
-    if (timelineViewMode_ == TimelineViewMode::AbsoluteTime)
-        sequenceEditor_.renderNavigator(context, navBarStartX);
-    else
-        beatsSequenceEditor_.renderNavigator(beatsContext, navBarStartX);
+    sequenceEditor_.renderNavigator(context, navBarStartX);
     ImGui::Spacing();
 
     const float footerHeight = ImGui::GetFrameHeightWithSpacing();
@@ -1522,13 +1458,8 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     // Update master track clips if snapshot changed (runs every frame, cheap)
     renderMasterTrackRow(context);
 
-    if (timelineViewMode_ == TimelineViewMode::AbsoluteTime) {
-        const float totalHeight = sequenceEditor_.getUnifiedTimelineHeight(context.uiScale);
-        sequenceEditor_.renderUnifiedTimeline(context, totalHeight);
-    } else {
-        const float totalHeight = beatsSequenceEditor_.getUnifiedTimelineHeight(beatsContext.uiScale);
-        beatsSequenceEditor_.renderUnifiedTimeline(beatsContext, totalHeight);
-    }
+    const float totalHeight = sequenceEditor_.getUnifiedTimelineHeight(context.uiScale);
+    sequenceEditor_.renderUnifiedTimeline(context, totalHeight);
 
     ImGui::EndChild();
 
@@ -1590,12 +1521,11 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     }
 
     // Build one ClipRow per master-track clip so they can be moved / deleted independently.
-    // Master-track clips are always treated as an audio-type span for the timeline widget (they
-    // have no MIDI note content of their own -- just tempo/time-signature meta events), so the
-    // beats-domain row below uses the audio-clip endpoint formula (tempo-varying width), matching
-    // the seconds row's uniform treatment here.
+    // Master-track clips are always treated as an audio-type span (they have no MIDI note content
+    // of their own -- just tempo/time-signature meta events), so their width follows the tempo map
+    // on the beats axis rather than being pinned to an authored beat length.
+    const auto& axis = sequenceEditor_.axis();
     std::vector<SequenceEditor::ClipRow> rows;
-    std::vector<BeatsSequenceEditor::ClipRow> beatsRows;
     for (const auto& clip : clips) {
         SequenceEditor::ClipRow row;
         row.clipId              = clip.clipId;
@@ -1614,9 +1544,9 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
             ? static_cast<double>(clip.durationSamples) / sampleRate
             : std::max(1.0, snapshot->maxTimeSeconds - startSeconds);
         row.duration       = std::format("{:.3f}s", durationSeconds);
-        row.timelineStart  = toTimelineFrame(startSeconds);
+        row.timelineStart  = axis.frameFromSeconds(startSeconds);
         row.timelineEnd    = std::max(row.timelineStart + 1,
-                                      toTimelineFrame(startSeconds + durationSeconds));
+                                      axis.frameFromSeconds(startSeconds + durationSeconds));
 
         // Extract per-clip tempo / time-signature events for the waveform preview.
         auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
@@ -1637,19 +1567,6 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         }
         row.customPreview = createMasterMetaPreview(std::move(tempoPoints), std::move(sigPoints), durationSeconds);
 
-        BeatsSequenceEditor::ClipRow beatsRow;
-        beatsRow.clipId         = clip.clipId;
-        beatsRow.isMidiClip     = false;
-        beatsRow.isMasterTrack  = true;
-        beatsRow.name           = row.name;
-        beatsRow.filepath       = clip.filepath;
-        const double startBeats = tempoMap_.secondsToBeats(startSeconds);
-        const double endBeats   = tempoMap_.secondsToBeats(startSeconds + durationSeconds);
-        beatsRow.timelineStartTicks = toBeatFrame(startBeats);
-        beatsRow.timelineEndTicks   = std::max(beatsRow.timelineStartTicks + 1, toBeatFrame(endBeats));
-        beatsRow.customPreview  = row.customPreview;
-        beatsRows.push_back(std::move(beatsRow));
-
         rows.push_back(std::move(row));
     }
 
@@ -1662,26 +1579,14 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         row.name           = "No Meta Events";
         row.filename       = "-";
         const double dur   = std::max(1.0, snapshot->maxTimeSeconds);
-        row.timelineStart  = toTimelineFrame(0.0);
-        row.timelineEnd    = std::max(row.timelineStart + 1, toTimelineFrame(dur));
+        row.timelineStart  = axis.frameFromSeconds(0.0);
+        row.timelineEnd    = std::max(row.timelineStart + 1, axis.frameFromSeconds(dur));
         row.customPreview  = createMasterMetaPreview({}, {}, dur);
-
-        BeatsSequenceEditor::ClipRow beatsRow;
-        beatsRow.clipId        = kMasterTrackClipId;
-        beatsRow.isMasterTrack = true;
-        beatsRow.name          = row.name;
-        const double startBeats = tempoMap_.secondsToBeats(0.0);
-        const double endBeats   = tempoMap_.secondsToBeats(dur);
-        beatsRow.timelineStartTicks = toBeatFrame(startBeats);
-        beatsRow.timelineEndTicks   = std::max(beatsRow.timelineStartTicks + 1, toBeatFrame(endBeats));
-        beatsRow.customPreview = row.customPreview;
-        beatsRows.push_back(std::move(beatsRow));
 
         rows.push_back(std::move(row));
     }
 
     sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
-    beatsSequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, beatsRows);
     masterTrackSectionCreated_ = true;
 
     // Only refresh regular tracks when tempo segments actually changed.
@@ -2171,7 +2076,6 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLay
             clip_clipboard_.clear();
             pending_clip_edit_ = {};
             sequenceEditor_.reset();
-            beatsSequenceEditor_.reset();
             trackContentSignatures_.clear();
             masterTrackSignature_.clear();
             masterTrackSectionCreated_ = false;
@@ -2182,7 +2086,6 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLay
 void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot>& snapshot) {
     if (!snapshot || snapshot->tempoPoints.empty()) {
         tempoMap_.clear();
-        timelineUnitsLabel_ = "seconds";
         return;
     }
 
@@ -2197,7 +2100,6 @@ void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppMo
         timeSignaturePoints.push_back({p.timeSeconds, p.signature});
 
     tempoMap_.rebuild(tempoPoints, timeSignaturePoints, kDisplayDefaultBpm);
-    timelineUnitsLabel_ = tempoMap_.hasTempoData() ? "beats" : "seconds";
 
     Logger::global()->logDiagnostic("[TEMPO MAP] Rebuilt from %d tempo point(s), %d time-signature point(s)",
         tempoPoints.size(), timeSignaturePoints.size());
@@ -2208,107 +2110,19 @@ void TimelineEditor::fitTimelineToContent(float uiScale) {
     if (!bounds.hasContent || bounds.durationSeconds <= 0.0)
         return;
 
-    const float secondsWidth = sequenceEditor_.lastVisibleWidth();
-    sequenceEditor_.fitToContent(bounds.durationSeconds, secondsWidth, uiScale);
-
     // tempoMap_ must already be built (e.g. via refreshAllSequenceEditorTracks, called just
-    // before this) -- it's cleared by invalidateMasterTrackSnapshot(), so this must run
-    // before that call, not after.
-    const double durationBeats = tempoMap_.secondsToBeats(bounds.durationSeconds);
-    if (durationBeats > 0.0) {
-        const float beatsWidth = beatsSequenceEditor_.lastVisibleWidth();
-        beatsSequenceEditor_.fitToContent(durationBeats, beatsWidth, uiScale);
-    }
+    // before this) -- it's cleared by invalidateMasterTrackSnapshot(), so this must run before
+    // that call, not after. The axis reads the map when it converts these seconds.
+    sequenceEditor_.fitToContent(bounds.durationSeconds, sequenceEditor_.lastVisibleWidth(), uiScale);
 }
 
 void TimelineEditor::invalidateMasterTrackSnapshot() {
     masterTrackSnapshot_.reset();
     masterTrackSignature_.clear();
     tempoMap_.clear();
-    timelineUnitsLabel_ = "seconds";
 }
 
 void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
-    if (trackIndex < 0)
-        return;
-    auto& appModel = uapmd_app::AppModel::instance();
-
-    // Ensure the tempo map is built before computing clip positions
-    if (tempoMap_.empty()) {
-        auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
-            appModel.buildMasterTrackSnapshot());
-        rebuildTempoSegments(snapshot);
-    }
-    auto tracks = appModel.getTimelineTracks();
-
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
-        return;
-
-    auto* track = tracks[trackIndex];
-    auto clips = track->clipManager().getAllClips();
-
-    // Sort clips by clipId to ensure chronological order
-    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
-        return a.clipId > b.clipId;
-    });
-
-    std::vector<SequenceEditor::ClipRow> displayClips;
-    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-
-    for (const auto& clip : clips) {
-        SequenceEditor::ClipRow row;
-        row.clipId = clip.clipId;
-        row.referenceId = clip.referenceId;
-        row.trackReferenceId = track->referenceId();
-        const auto timeReference = clip.timeReference(appModel.sampleRate());
-        row.anchorReferenceId = timeReference.referenceId;
-        row.anchorOrigin = (timeReference.type == uapmd::TimeReferenceType::ContainerEnd) ? "End" : "Start";
-
-        double positionSeconds = timeReference.offset;
-        row.position = std::format("{:+.3f}s", positionSeconds);
-
-        double durationSeconds = static_cast<double>(clip.durationSamples) / appModel.sampleRate();
-        row.duration = std::format("{:.3f}s", durationSeconds);
-
-        row.name = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
-        row.filepath = clip.filepath;
-        if (clip.filepath.empty()) {
-            row.filename = clip.clipType == uapmd::ClipType::Midi ? "(MIDI UMP)" : "(no audio file)";
-        } else {
-            size_t lastSlash = clip.filepath.find_last_of("/\\");
-            row.filename = (lastSlash != std::string::npos)
-                ? clip.filepath.substr(lastSlash + 1)
-                : clip.filepath;
-        }
-
-        row.isMidiClip = (clip.clipType == uapmd::ClipType::Midi);
-        if (row.isMidiClip)
-            row.mimeType = "audio/midi";
-        else
-            row.mimeType = "";
-
-        auto absolutePosition = clip.position;
-        double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
-        double durationSecondsExact = static_cast<double>(clip.durationSamples) / sampleRate;
-        row.timelineStart = toTimelineFrame(absoluteStartSeconds);
-        int32_t endFrame = toTimelineFrame(absoluteStartSeconds + durationSecondsExact);
-        if (endFrame <= row.timelineStart)
-            endFrame = row.timelineStart + 1;
-        row.timelineEnd = endFrame;
-
-        displayClips.push_back(row);
-    }
-
-    sequenceEditor_.refreshClips(trackIndex, displayClips);
-    trackContentSignatures_[trackIndex] = buildTrackContentSignature(trackIndex);
-
-    // Keep the beats editor in sync with every call site that refreshes the seconds editor,
-    // rather than requiring each clip-mutation call site to remember to refresh both -- that
-    // split responsibility is exactly what let the beats editor silently go stale earlier.
-    refreshBeatsSequenceEditorForTrack(trackIndex);
-}
-
-void TimelineEditor::refreshBeatsSequenceEditorForTrack(int32_t trackIndex) {
     if (trackIndex < 0)
         return;
     auto& appModel = uapmd_app::AppModel::instance();
@@ -2327,47 +2141,54 @@ void TimelineEditor::refreshBeatsSequenceEditorForTrack(int32_t trackIndex) {
     auto* track = tracks[trackIndex];
     auto clips = track->clipManager().getAllClips();
 
-    // Sort clips by clipId to ensure chronological order (matches refreshSequenceEditorForTrack)
+    // Sort clips by clipId to ensure chronological order
     std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
         return a.clipId > b.clipId;
     });
 
-    std::vector<BeatsSequenceEditor::ClipRow> displayClips;
+    const auto& axis = sequenceEditor_.axis();
+    std::vector<SequenceEditor::ClipRow> displayClips;
     const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
 
     for (const auto& clip : clips) {
-        BeatsSequenceEditor::ClipRow row;
+        SequenceEditor::ClipRow row;
         row.clipId = clip.clipId;
+        row.referenceId = clip.referenceId;
+        row.trackReferenceId = track->referenceId();
+        const auto timeReference = clip.timeReference(appModel.sampleRate());
+        row.anchorReferenceId = timeReference.referenceId;
+        row.anchorOrigin = (timeReference.type == uapmd::TimeReferenceType::ContainerEnd) ? "End" : "Start";
+
+        row.position = std::format("{:+.3f}s", timeReference.offset);
+
+        const double durationSeconds = static_cast<double>(clip.durationSamples) / sampleRate;
+        row.duration = std::format("{:.3f}s", durationSeconds);
+
         row.name = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
         row.filepath = clip.filepath;
-        row.isMidiClip = (clip.clipType == uapmd::ClipType::Midi);
-
-        // Position: a clip's anchor is always a real-world-seconds concept, so it always needs
-        // the tempo-map integration regardless of clip type.
-        const double absoluteStartSeconds = static_cast<double>(clip.position.samples) / sampleRate;
-        const double startBeats = tempoMap_.secondsToBeats(absoluteStartSeconds);
-        row.timelineStartTicks = toBeatFrame(startBeats);
-
-        if (row.isMidiClip) {
-            // MIDI width is tempo-immune: derive it from the clip's own authored tempo
-            // (durationSamples was captured at import time under clipTempo), bypassing the
-            // live tempo map entirely. This is what makes MIDI clip width stay constant across
-            // tempo changes, unlike audio (below).
-            const double beatsLength = (static_cast<double>(clip.durationSamples) / sampleRate) * (clip.clipTempo / 60.0);
-            row.timelineEndTicks = row.timelineStartTicks + toBeatFrame(beatsLength);
+        if (clip.filepath.empty()) {
+            row.filename = clip.clipType == uapmd::ClipType::Midi ? "(MIDI UMP)" : "(no audio file)";
         } else {
-            // Audio width varies with tempo: push the *endpoint* (not the duration) through the
-            // tempo map, since durationSamples already bakes in any audio-warp resolution.
-            const double durationSeconds = static_cast<double>(clip.durationSamples) / sampleRate;
-            const double endBeats = tempoMap_.secondsToBeats(absoluteStartSeconds + durationSeconds);
-            row.timelineEndTicks = toBeatFrame(endBeats);
+            size_t lastSlash = clip.filepath.find_last_of("/\\");
+            row.filename = (lastSlash != std::string::npos)
+                ? clip.filepath.substr(lastSlash + 1)
+                : clip.filepath;
         }
-        row.timelineEndTicks = std::max(row.timelineEndTicks, row.timelineStartTicks + 1);
+
+        row.isMidiClip = (clip.clipType == uapmd::ClipType::Midi);
+        row.mimeType = row.isMidiClip ? "audio/midi" : "";
+
+        const double startSeconds = static_cast<double>(clip.position.samples) / sampleRate;
+        row.timelineStart = axis.frameFromSeconds(startSeconds);
+        row.timelineEnd = clipEndFrame(clip, startSeconds, durationSeconds, axis);
+        if (row.timelineEnd <= row.timelineStart)
+            row.timelineEnd = row.timelineStart + 1;
 
         displayClips.push_back(row);
     }
 
-    beatsSequenceEditor_.refreshClips(trackIndex, displayClips);
+    sequenceEditor_.refreshClips(trackIndex, displayClips);
+    trackContentSignatures_[trackIndex] = buildTrackContentSignature(trackIndex);
 }
 
 std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const {

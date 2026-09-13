@@ -14,6 +14,8 @@ namespace uapmd {
     //
     // "Beat" here always means a quarter note, matching BPM (quarter notes per minute) and
     // MIDI tick-resolution (ticks per quarter note) conventions used elsewhere in the codebase.
+    //
+    // A map with no tempo data converts at the default BPM rebuild() was given (120 by default).
     class TempoMap {
     public:
         struct TempoPoint {
@@ -33,9 +35,10 @@ namespace uapmd {
 
         void rebuild(const std::vector<TempoPoint>& tempoPoints,
                      const std::vector<TimeSignaturePoint>& timeSignaturePoints,
-                     double defaultBpm = 120.0) {
+                     double defaultBpm = kDefaultBpm) {
             tempoSegments_.clear();
             effectiveSignatures_.clear();
+            defaultBpm_ = defaultBpm > 0.0 ? defaultBpm : kDefaultBpm;
 
             if (tempoPoints.empty()) {
                 hasTempoData_ = false;
@@ -87,6 +90,7 @@ namespace uapmd {
             tempoSegments_.clear();
             effectiveSignatures_.clear();
             hasTempoData_ = false;
+            defaultBpm_ = kDefaultBpm;
         }
 
         bool empty() const { return tempoSegments_.empty(); }
@@ -94,7 +98,7 @@ namespace uapmd {
 
         double secondsToBeats(double seconds) const {
             if (tempoSegments_.empty())
-                return std::max(0.0, seconds);
+                return std::max(0.0, seconds) * (defaultBpm_ / 60.0);
 
             const double clampedSeconds = std::max(0.0, seconds);
             for (const auto& segment : tempoSegments_) {
@@ -111,7 +115,7 @@ namespace uapmd {
 
         double beatsToSeconds(double beats) const {
             if (tempoSegments_.empty())
-                return std::max(0.0, beats);
+                return std::max(0.0, beats) * (60.0 / defaultBpm_);
 
             const double clampedBeats = std::max(0.0, beats);
             for (const auto& segment : tempoSegments_) {
@@ -144,6 +148,7 @@ namespace uapmd {
         std::vector<TempoSegment> tempoSegments_;
         std::vector<EffectiveSignature> effectiveSignatures_;
         bool hasTempoData_{false};
+        double defaultBpm_{kDefaultBpm};
     };
 
 } // namespace uapmd

@@ -10,6 +10,7 @@
 namespace uapmd_app_gui {
 
 void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZoom,
+                             const TimelineAxis& axis,
                              float uiScale, float barStartScreenX,
                              double contentFrames, double playheadFrame,
                              float visibleWidthPixels,
@@ -27,15 +28,17 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
     const ImVec2 rowStart = ImGui::GetCursorScreenPos();
     const float sliderHeight = ImGui::GetFrameHeight();
     ImGui::SetCursorScreenPos(ImVec2(rowStart.x, rowStart.y + (rowHeight - sliderHeight) * 0.5f));
-    float scale = timeline.GetScale();
+    const auto framesPerUnit = static_cast<float>(axis.framesPerUnit());
+    float pixelsPerUnit = timeline.GetScale() * framesPerUnit;
     ImGui::SetNextItemWidth(std::max(40.0f, barStartScreenX - rowStart.x - style.ItemSpacing.x));
-    if (ImGui::SliderFloat("##Zoom", &scale, kMinSafeTimelineScale, kMaxTimelineScale, "%.2f",
+    if (ImGui::SliderFloat("##Zoom", &pixelsPerUnit,
+                           TimelineAxis::kMinScalePerUnit, TimelineAxis::kMaxScalePerUnit, "%.2f",
                            ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) {
-        timeline.SetScale(scale);
+        timeline.SetScale(pixelsPerUnit / framesPerUnit);
         hasExplicitZoom = true;
     }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Timeline zoom");
+        ImGui::SetTooltip("Timeline zoom (pixels per %s)", axis.unitsLabel());
 
     // Position controller bar filling the rest of the row, aligned with the clip area.
     ImGui::SameLine();
@@ -52,7 +55,7 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
     // Re-read in case the slider changed it this frame. The bar's domain is the song content
     // length, NOT timeline.GetMaxFrame(): ImTimeline inflates mFrameMax when zoomed out past
     // the content and never shrinks it back, which would permanently squash the region rect.
-    scale = timeline.GetScale();
+    const float scale = timeline.GetScale();
     const double domain = contentFrames;
     const double visibleFrames = (scale > 0.0f && visibleWidthPixels > 0.0f)
         ? static_cast<double>(visibleWidthPixels) / scale
@@ -125,8 +128,7 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
                     renderProgress->totalSeconds);
         }
 
-        // Only one ImGui item can be active at a time, so function-local state is safe even
-        // though both the Seconds and Beats editors call this helper.
+        // Only one ImGui item can be active at a time, so function-local state is safe.
         static bool draggingRegion = false;
         if (ImGui::IsItemActivated())
             draggingRegion = io.MousePos.x >= x0 && io.MousePos.x <= x1;
@@ -145,7 +147,7 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
     // Vertical wheel over the controller zooms (consumed so nothing else scrolls).
     if (hovered && io.MouseWheel != 0.0f) {
         const float newScale = timeline.GetScale() * std::pow(2.0f, io.MouseWheel * kZoomWheelSensitivity);
-        timeline.SetScale(std::clamp(newScale, kMinSafeTimelineScale, kMaxTimelineScale));
+        timeline.SetScale(std::clamp(newScale, axis.minScale(), axis.maxScale()));
         hasExplicitZoom = true;
         io.MouseWheel = 0.0f;
     }

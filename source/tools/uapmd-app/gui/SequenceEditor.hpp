@@ -15,6 +15,7 @@
 #include "TimelineRangeSelection.hpp"
 #include "TimelineClipSelection.hpp"
 #include "TimelineNavigator.hpp"
+#include "TimelineAxis.hpp"
 
 namespace uapmd_app_gui {
 
@@ -34,8 +35,11 @@ public:
         std::string filepath;       // Full path for waveform/piano roll loading
         std::string mimeType;
         std::string duration;       // Display string: "5.2s" (only shown when End anchor)
-        int32_t timelineStart = 0;   // Timeline start in milliseconds
-        int32_t timelineEnd = 0;     // Timeline end in milliseconds
+        // Extent on ImTimeline's frame axis, as produced by TimelineAxis::frameFromSeconds.
+        // What a frame means depends on the active axis mode, so these are recomputed whenever
+        // the mode changes -- never reinterpreted in place.
+        int32_t timelineStart = 0;
+        int32_t timelineEnd = 0;
         bool isMidiClip = false;
         bool isMasterTrack = false;
         std::shared_ptr<ClipPreview> customPreview;
@@ -74,10 +78,17 @@ public:
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         std::function<void(int32_t trackIndex, const ImRect& legendArea)> renderLegendContent;
-        const char* timelineUnitsLabel = "seconds";
         float uiScale = 1.0f;
         float legendWidth = 0.0f; // required legend pixel width; computed by caller
     };
+
+    // The axis owns everything that differs between the seconds and beats views: the
+    // seconds<->frame mapping, the zoom range, and the ruler/grid. Switching modes through it
+    // is a display change; the caller still has to re-push clip rows, because their frame
+    // extents were computed under the outgoing mapping.
+    TimelineAxis& axis() { return axis_; }
+    const TimelineAxis& axis() const { return axis_; }
+    void setAxisMode(TimelineAxisMode mode);
 
     void showWindow(int32_t trackIndex);
     void hideWindow(int32_t trackIndex);
@@ -97,7 +108,8 @@ public:
 
     // Zooms so the given content duration fits within visibleWidthPixels, clamped to never zoom
     // in past the default. Marks the zoom as user-explicit so the next ordinary rebuild doesn't
-    // reset it. No-op if visibleWidthPixels or contentDurationSeconds is non-positive.
+    // reset it. No-op if visibleWidthPixels or contentDurationSeconds is non-positive. Takes
+    // seconds in both modes; the axis converts.
     void fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale);
     // Clip-area width in pixels, cached from the most recent render (0 before any render).
     float lastVisibleWidth() const { return unified_.lastVisibleWidthPixels; }
@@ -141,10 +153,13 @@ private:
         float pendingFitUiScale = 1.0f;
     };
     UnifiedTimelineState unified_;
+    TimelineAxis axis_;
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
     void rebuildUnifiedTimeline(const RenderContext& context);
+    void drawRuler(const RenderContext& context, float clipAreaMinX, float clipAreaMinY,
+                   float clipAreaMaxX, float clipAreaMaxY, float headerMinY) const;
     void renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);

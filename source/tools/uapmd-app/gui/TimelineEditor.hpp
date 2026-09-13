@@ -11,7 +11,6 @@
 #include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include "SequenceEditor.hpp"
-#include "BeatsSequenceEditor.hpp"
 #include "AudioEventListEditor.hpp"
 #include "MidiDumpWindow.hpp"
 #include "PianoRollEditor.hpp"
@@ -52,12 +51,12 @@ public:
     void render(float uiScale);
     void update();
 
-    // Track-list view mode: absolute-time (seconds) vs. beats/ticks.
+    // Track-list view mode: absolute-time (seconds) vs. bars/beats. This only picks which
+    // TimelineAxis the one unified timeline runs on; there is no second timeline behind it.
     enum class TimelineViewMode { AbsoluteTime, BeatsTicks };
 
     // UI component accessors
     SequenceEditor& sequenceEditor() { return sequenceEditor_; }
-    BeatsSequenceEditor& beatsSequenceEditor() { return beatsSequenceEditor_; }
     AudioEventListEditor& audioEventListEditor() { return audioEventListEditor_; }
     MidiDumpWindow& midiDumpWindow() { return midiDumpWindow_; }
     PluginSelector& pluginSelector() { return pluginSelector_; }
@@ -69,7 +68,6 @@ public:
     void renderPluginSelectorWindow(float uiScale);
     void renderPluginGraphWindow(float uiScale);
 
-    const char* timelineUnitsLabel() const { return timelineUnitsLabel_.c_str(); }
     const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();
     std::optional<std::pair<int32_t, int32_t>> selectedMidiClip() const { return selected_midi_clip_; }
@@ -81,7 +79,6 @@ public:
 
     // Clip management
     void refreshSequenceEditorForTrack(int32_t trackIndex);
-    void refreshBeatsSequenceEditorForTrack(int32_t trackIndex);
     void refreshAllSequenceEditorTracks();
     void refreshAfterHistoryMutation();
     void addClipToTrack(int32_t trackIndex, const std::string& filepath);
@@ -119,10 +116,12 @@ public:
 
 private:
     SequenceEditor sequenceEditor_;
-    BeatsSequenceEditor beatsSequenceEditor_;
     uapmd_addin::ClipCommandRegistry* clipCommandRegistry_{};
     uapmd_addin::ClipEditorHost clipEditorHost_;
-    TimelineViewMode timelineViewMode_ = TimelineViewMode::AbsoluteTime;
+    // Bars and beats is the default: this is a MIDI sequencer, and musical time is what most
+    // editing here is expressed in. The constructor pushes this onto the timeline's axis, so
+    // this member stays the single source of truth for which ruler is showing.
+    TimelineViewMode timelineViewMode_ = TimelineViewMode::BeatsTicks;
     AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;
     PianoRollEditor pianoRollEditor_;
@@ -141,7 +140,6 @@ private:
 
     // Tempo map for timeline unit conversion (seconds <-> beats)
     uapmd::TempoMap tempoMap_;
-    std::string timelineUnitsLabel_ = "seconds";
 
     // Callbacks to parent window
     TimelineEditorCallbacks callbacks_;
@@ -179,7 +177,10 @@ private:
     bool pendingFullReset_ = false;
 
     // Internal rendering
-    void renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext);
+    void renderTrackList(const SequenceEditor::RenderContext& context);
+    // Pushes timelineViewMode_ onto the timeline's axis and re-pushes every clip row, whose
+    // frame extents only mean anything under the mapping they were computed with.
+    void setTimelineAxisMode();
     void renderClipCommands(int32_t trackIndex, int32_t clipId, bool isMidiClip, bool isMasterTrack);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
@@ -229,7 +230,6 @@ private:
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);
-    BeatsSequenceEditor::RenderContext buildBeatsRenderContext(float uiScale, float legendWidth);
 };
 
 }  // namespace uapmd_app_gui
