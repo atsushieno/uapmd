@@ -430,15 +430,25 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                 {min.x + visualOffsetX, visualTop}, {max.x + visualOffsetX, visualTop + visualHeight},
                 node->displayProperties.BorderRadius, node->displayProperties.BorderThickness});
         }
-        unified_.marquee.render(context.clipActions, selectionBoxes,
+        const auto marqueeSelected = unified_.marquee.render(context.clipActions, selectionBoxes,
             {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
             timelineHovered && !shouldBlockInput, context.uiScale);
+
+        // A long press opens the menus the desktop reaches by right-click, and takes the
+        // gesture away from the selection drag it had started out as.
+        const bool longPress = unified_.longPress.fired(
+            timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 && !shouldBlockInput);
+        if (longPress) {
+            unified_.marquee.active = false;
+            unified_.rangeDrag = {};
+        }
 
         int32_t requestedContextTrack = -1;
         int32_t requestedAddClipTrack = -1;
 
         if (timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
-            (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+            (longPress || ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
+             ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
             auto& trackState = tracks_[hoveredTrackIndex];
             const float scale = unified_.timeline->GetScale();
             const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
@@ -466,6 +476,8 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
         // Range-selection drag: click-drag across empty space (not on an existing node) within
         // a track's lane selects a time range, offering "Add New MIDI Clip"/"Add Empty Audio
         // Clip" sized to that range on release, snapped to the nearest quarter-note beat.
+        // Shares the drag with the clip marquee above: whichever the drag turns out to mean --
+        // clips crossed, or empty space -- acts on release, never both.
         int32_t requestedRangeTrack = -1;
         {
             const float scale = unified_.timeline->GetScale();
@@ -476,24 +488,34 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
                     startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale)));
 
                 const bool mouseClicked = timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
-                    !shouldBlockInput && ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    !shouldBlockInput && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                     unified_.timeline->mDragData.DragState == eDragState::None;
                 const bool overNode = mouseClicked && isOverClipNode(hoveredTrackIndex, mousePos, scale, startFrame, nullptr);
 
                 updateRangeSelectionDrag(unified_.rangeDrag, ImGui::IsMouseDown(ImGuiMouseButton_Left),
                                           mouseClicked, overNode, hoveredTrackIndex, frameUnderMouse);
 
-                if (unified_.rangeDrag.active) {
+                // The marquee draws its own rectangle for the same drag; the lane-height
+                // overlay would only duplicate it. Alt-drag runs the range alone and shows it.
+                if (unified_.rangeDrag.active && !unified_.marquee.active) {
                     drawRangeSelectionOverlay(clipAreaMinX, scale, static_cast<float>(startFrame),
                         sectionTopYFor(unified_.rangeDrag.trackIndex), sectionHeightFor(unified_.rangeDrag.trackIndex));
                 }
+
+                // Escape cancels the whole gesture, matching the marquee it is paired with.
+                if (unified_.rangeDrag.active && ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    unified_.rangeDrag = {};
 
                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && unified_.rangeDrag.active) {
                     int32_t rTrack = -1, rStart = 0, rEnd = 0;
                     const float pixelsDragged = std::abs(static_cast<float>(
                         unified_.rangeDrag.currentFrame - unified_.rangeDrag.anchorFrame)) * scale;
-                    if (finishRangeSelectionDrag(unified_.rangeDrag, pixelsDragged, 4.0f * context.uiScale,
-                                                  rTrack, rStart, rEnd)) {
+                    // finishRangeSelectionDrag is what ends the drag, so it runs either way; a
+                    // drag that caught clips was a selection and stops there, while one that came
+                    // up empty goes on to offer a new clip filling its span.
+                    const bool isRange = finishRangeSelectionDrag(unified_.rangeDrag, pixelsDragged,
+                                                  4.0f * context.uiScale, rTrack, rStart, rEnd);
+                    if (isRange && marqueeSelected.value_or(0u) == 0u) {
                         auto& trackState = tracks_[rTrack];
                         // Snap to the nearest quarter-note beat before converting to seconds.
                         const double startBeats = std::round(static_cast<double>(rStart) / kTicksPerBeatDisplay);

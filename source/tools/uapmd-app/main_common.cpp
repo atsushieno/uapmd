@@ -19,6 +19,10 @@
 
 #include <imgui.h>
 
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
+
 #ifdef USE_GLFW_BACKEND
     #include <GLFW/glfw3.h>
 #endif
@@ -216,9 +220,14 @@ int runMainLoop(int argc, char** argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-#if ANDROID
+    // A fingertip lands less precisely than a cursor and drifts while held, so both the
+    // double-tap radius and the drag threshold (which decides whether a held press is a
+    // long press or a drag) are widened on touch platforms.
+#if ANDROID || (defined(__APPLE__) && TARGET_OS_IPHONE)
     io.MouseDoubleClickMaxDist = 12;
     io.MouseDragThreshold = 12;
+#endif
+#if ANDROID
     io.MouseDoubleClickTime = 1.0f;  // compensate for 10 FPS frame cap
 #endif
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;

@@ -62,11 +62,16 @@ UAPMD initially launches with a few empty tracks.
 You can either import MIDI 2.0 Clip Files (`*.midi2`), MIDI 1.0 SMF files (`.mid`) or audio files (`.wav`, `.ogg`, `.flac`).
 
 In either timeline view, drag across empty space to select the clips intersecting a rectangle.
+A drag that intersects no clips is read as a time range instead, and offers to add a new MIDI clip
+or an empty audio clip filling the dragged span. Alt-drag always takes that range reading and leaves
+the selection alone.
 Shift-click or Shift-drag adds clips to the selection; Ctrl-click (Cmd-click on macOS) toggles a clip.
 Click an unselected clip to select it alone, click empty space to clear selection, or press Escape
-while the timeline is hovered. Alt-drag retains the range-based MIDI/audio clip creation menu.
+while the timeline is hovered.
 
-Right-click (or double-click) a clip for Cut, Copy, Paste here, Paste to original tracks, and Delete. Cut, Copy, and Delete apply
+Right-click, double-click, or press and hold a clip for Cut, Copy, Paste here, Paste to original
+tracks, and Delete. Press and hold -- half a second without moving -- is the gesture to use on touch
+devices, and works on empty space as well as on clips. Cut, Copy, and Delete apply
 to all selected clips. The track's Clips and More menus, and the empty-space context menu, also offer
 Select All Clips. Both paste modes start at the clicked timeline position, or at the playhead
 when invoked from a track header, and preserve time spacing. Paste here preserves track offsets;

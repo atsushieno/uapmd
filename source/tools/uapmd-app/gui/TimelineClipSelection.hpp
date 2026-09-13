@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -45,11 +46,15 @@ struct TimelineClipMarquee {
     bool additive = false;
     ImVec2 anchor;
 
-    void render(const TimelineClipActions& actions,
+    // Returns how many clips a marquee gesture caught, on the frame one completes.
+    // Empty space drags are reported as 0 so the caller can offer clip creation for the
+    // dragged span instead -- the two gestures share one drag but never both act on it.
+    std::optional<size_t> render(const TimelineClipActions& actions,
                 const std::vector<TimelineClipHitBox>& boxes,
                 ImVec2 areaMin, ImVec2 areaMax, bool acceptsInput, float uiScale) {
         if (!actions.select || !actions.isSelected)
-            return;
+            return {};
+        std::optional<size_t> completed;
         const auto mouse = ImGui::GetMousePos();
         const bool inArea = mouse.x >= areaMin.x && mouse.x <= areaMax.x &&
             mouse.y >= areaMin.y && mouse.y <= areaMax.y;
@@ -97,11 +102,39 @@ struct TimelineClipMarquee {
                                 box.max.y > min.y && box.min.y < max.y)
                             targets.push_back(box.target);
                 actions.select(targets, additive, false);
+                completed = targets.size();
                 active = false;
             }
         } else if (acceptsInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
             actions.select({}, false, false);
         draw->PopClipRect();
+        return completed;
+    }
+};
+
+// Touch has no right button, and a double tap is an awkward gesture to land on a clip. A press
+// held in place opens the same context menus instead, matching the step sequencer's note editor.
+struct TimelineLongPress {
+    static constexpr float kHoldSeconds = 0.5f;
+
+    bool opened = false;
+
+    // Call once per frame. True on the single frame the press becomes long enough; the caller
+    // then has to cancel whichever drag the press would otherwise have turned into.
+    bool fired(bool acceptsInput) {
+        const auto& io = ImGui::GetIO();
+        if (!io.MouseDown[ImGuiMouseButton_Left]) {
+            opened = false;
+            return false;
+        }
+        if (opened || !acceptsInput || io.MouseDownDuration[ImGuiMouseButton_Left] < kHoldSeconds)
+            return false;
+        // Past the platform drag threshold (widened on touch) this press is a drag, and stays
+        // one for the rest of its life -- IsMouseDragging latches until the button comes up.
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, -1.0f))
+            return false;
+        opened = true;
+        return true;
     }
 };
 

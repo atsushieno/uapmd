@@ -133,6 +133,7 @@ private:
         float computedTimelineHeight = 0.0f;  // actual height after lane expansion; 0 = use estimate
         RangeSelectionDrag rangeDrag;
         TimelineClipMarquee marquee;
+        TimelineLongPress longPress;
         bool hasExplicitZoom = false;  // once true, rebuildUnifiedTimeline stops resetting scale
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet

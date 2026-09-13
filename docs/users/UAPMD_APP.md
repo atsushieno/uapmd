@@ -231,14 +231,19 @@ The master track offers the same menu minus the audio-clip and `Clear All` entri
 
 ![The clip context menu](../images/uapmd-app-guide-clip-context.png)
 
-Drag across empty space to select intersecting clips in either timeline view. Shift-click or
-Shift-drag adds to the selection; Ctrl-click (Cmd-click on macOS) toggles a clip. Click an
-unselected clip to select it alone. Click empty space, or press Escape while hovering the
-timeline, to clear selection. Alt-drag opens the existing range-based clip creation menu.
-The track's Clips and More menus include **Select All Clips**.
+Drag across empty space in either timeline view to select the clips the rectangle crosses.
+A drag that crosses no clips is a range instead, and offers **Add New MIDI Clip** and
+**Add Empty Audio Clip** sized to the dragged span on release; in the beats view the range
+snaps to the nearest quarter-note beat. Alt-drag always takes the range reading and leaves the
+selection alone. Shift-click or Shift-drag adds to the selection; Ctrl-click (Cmd-click on
+macOS) toggles a clip. Click an unselected clip to select it alone. Click empty space, or press
+Escape while hovering the timeline, to clear selection. The track's Clips and More menus
+include **Select All Clips**.
 
-**Right-click or double-click a clip** to open its context menu. Opening the menu on a selected
-clip keeps the other clips selected:
+**Right-click, double-click, or press and hold a clip** to open its context menu. Opening the
+menu on a selected clip keeps the other clips selected, so the commands below that act on the
+selection act on all of it. Press and hold is how touch devices reach these menus: hold for half
+a second without moving, and the press opens the menu instead of selecting:
 
 - **Show Dump List** -- the [MIDI event list editor](#the-midi-event-list).
 - **Edit Audio Events** -- the audio marker and warp editor. Enabled for audio clips only.
@@ -256,7 +261,8 @@ clip keeps the other clips selected:
   **Create Audio Clip From File Here...**, **Import SMF Here...** -- these use the timeline
   position you double-clicked as the new clip's start.
 
-Right-clicking or double-clicking empty space also offers selection and clipboard commands.
+Right-clicking, double-clicking, or pressing and holding empty space also offers selection and
+clipboard commands.
 Paste from a track header's Clips or More menu uses the playhead position. The internal clip
 clipboard is cleared when the project is cleared.
 
