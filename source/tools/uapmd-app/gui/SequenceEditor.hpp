@@ -13,6 +13,7 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include "ClipPreview.hpp"
 #include "TimelineRangeSelection.hpp"
+#include "TimelineClipSelection.hpp"
 #include "TimelineNavigator.hpp"
 
 namespace uapmd_app_gui {
@@ -41,6 +42,7 @@ public:
     };
 
     struct RenderContext {
+        TimelineClipActions clipActions;
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, const std::string& filepath)> addClip;
         std::function<void(int32_t trackIndex, const std::string& filepath, double positionSeconds)> addClipAtPosition;
@@ -126,9 +128,11 @@ private:
         bool dirty = true;
         std::unordered_map<NodeID, NodeClipRef> nodeToClip;
         NodeID activeDragNodeId = InvalidNodeID;
+        int32_t active_drag_start = 0;
         std::vector<int32_t> sectionToTrack; // section index -> track index
         float computedTimelineHeight = 0.0f;  // actual height after lane expansion; 0 = use estimate
         RangeSelectionDrag rangeDrag;
+        TimelineClipMarquee marquee;
         bool hasExplicitZoom = false;  // once true, rebuildUnifiedTimeline stops resetting scale
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet

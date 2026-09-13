@@ -423,16 +423,17 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             io.MouseWheel = 0.0f; io.MouseWheelH = 0.0f;
         }
 
+        // Empty-space selection owns the gesture even when it crosses a clip.
+        // ImTimeline otherwise starts dragging whichever node the held mouse enters.
+        const bool selectingRange = unified_.marquee.active || unified_.rangeDrag.active;
+        const bool savedSelectionMouseDown = io.MouseDown[0];
+        if (selectingRange)
+            io.MouseDown[0] = false;
+        if (!unified_.timeline->IsDragging())
+            unified_.timeline->SelectNode(nullptr);
         unified_.timeline->DrawTimeline();
-
-        // ImTimeline owns normal single-click selection. Mirror that selection
-        // into the transport-facing MIDI-record target on every frame, rather
-        // than requiring a context-menu double click.
-        if (const auto* selectedNode = unified_.timeline->GetSelectedNode()) {
-            const auto selectedIt = unified_.nodeToClip.find(selectedNode->GetID());
-            if (selectedIt != unified_.nodeToClip.end() && context.selectMidiClip)
-                context.selectMidiClip(selectedIt->second.trackIndex, selectedIt->second.clipId);
-        }
+        if (selectingRange)
+            io.MouseDown[0] = savedSelectionMouseDown;
 
         if (shouldBlockInput) {
             for (int i = 0; i < 5; ++i) io.MouseDown[i] = savedMouseDown[i];
@@ -458,8 +459,10 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         // Drag tracking
         if (unified_.timeline->mDragData.DragState == eDragState::DragNode &&
-            unified_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered)
+            unified_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered) {
             unified_.activeDragNodeId = unified_.timeline->mDragData.DragNode.GetID();
+            unified_.active_drag_start = unified_.timeline->mDragData.DragNode.start;
+        }
         if (unified_.activeDragNodeId != InvalidNodeID && shouldBlockInput)
             unified_.activeDragNodeId = InvalidNodeID;
 
@@ -472,7 +475,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             auto clipIt = unified_.nodeToClip.find(nodeId);
             if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
-                if (node && context.moveClipAbsolute) {
+                if (node && node->start != unified_.active_drag_start && context.moveClipAbsolute) {
                     const double newStartSeconds = static_cast<double>(node->start);
                     context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
                 }
@@ -530,11 +533,55 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         const bool mouseInClipArea = mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
                                      mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
 
+        // Right-click does not update ImTimeline's selected section. Resolve the
+        // destination from the pointer, rather than a previously clicked track.
+        hoveredTrackIndex = -1;
+        if (mouseInClipArea)
+            for (const auto trackIndex : unified_.sectionToTrack) {
+                const float top = sectionTopYFor(trackIndex);
+                if (mousePos.y >= top && mousePos.y < top + sectionHeightFor(trackIndex)) {
+                    hoveredTrackIndex = trackIndex;
+                    break;
+                }
+            }
+
+        // Use the same visible node geometry for selection in seconds and beats views.
+        std::vector<TimelineClipHitBox> selectionBoxes;
+        const float selectionScale = unified_.timeline->GetScale();
+        const float selectionOffset = clipAreaMinX -
+            static_cast<float>(unified_.timeline->GetStartTimestamp()) * selectionScale;
+        for (const auto& [nodeId, ref] : unified_.nodeToClip) {
+            if (ref.trackIndex < 0)
+                continue;
+            const auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
+            if (!node)
+                continue;
+            const float top = sectionTopYFor(ref.trackIndex) + node->displayProperties.yOffset;
+            const float height = node->displayProperties.mHeight > 0.0f
+                ? node->displayProperties.mHeight : sectionHeightFor(ref.trackIndex);
+            const ImVec2 min(selectionOffset + static_cast<float>(node->start) * selectionScale, top);
+            const ImVec2 max(selectionOffset + static_cast<float>(node->end + 1) * selectionScale, top + height);
+            // Keep gesture hit boxes unchanged; the rendered outline follows
+            // ImTimeline's padded child origin, height policy and accent inset.
+            const float visualTop = top + unified_.timeline->mContentAreaRect.Min.y + 1.0f - clipAreaMinY;
+            const float visualHeight = static_cast<float>(static_cast<size_t>(
+                node->mFlags.test(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight)
+                    ? sectionHeightFor(ref.trackIndex) : node->displayProperties.mHeight))
+                - node->displayProperties.AccentThickness;
+            const float visualOffsetX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth - clipAreaMinX;
+            selectionBoxes.push_back({{ref.trackIndex, ref.clipId}, min, max,
+                {min.x + visualOffsetX, visualTop}, {max.x + visualOffsetX, visualTop + visualHeight},
+                node->displayProperties.BorderRadius, node->displayProperties.BorderThickness});
+        }
+        unified_.marquee.render(context.clipActions, selectionBoxes,
+            {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
+            timelineHovered && !shouldBlockInput, context.uiScale);
+
         int32_t requestedContextTrack = -1;
         int32_t requestedAddClipTrack = -1;
 
         if (timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
-            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
             auto& trackState = windows_[hoveredTrackIndex];
             const float scale = unified_.timeline->GetScale();
             const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
@@ -574,7 +621,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale)));
 
                 const bool mouseClicked = timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
-                    !shouldBlockInput && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    !shouldBlockInput && ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                     unified_.timeline->mDragData.DragState == eDragState::None;
                 const bool overNode = mouseClicked && isOverClipNode(hoveredTrackIndex, mousePos, scale, startFrame, nullptr);
 
@@ -665,13 +712,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     }
                     if (!canStep) ImGui::EndDisabled();
 
-                    const bool canDelete = static_cast<bool>(context.removeClip);
-                    if (!canDelete) ImGui::BeginDisabled();
-                    if (contextActionMenuItem("Delete")) {
-                        if (context.removeClip) context.removeClip(trackIndex, contextClip->clipId);
-                        ImGui::CloseCurrentPopup();
-                    }
-                    if (!canDelete) ImGui::EndDisabled();
+                    if (context.clipActions.renderMenu)
+                        context.clipActions.renderMenu(trackIndex, contextClip->clipId, trackState.requestedAddPosition);
 
                     const bool enabled = !context.clipEnabled || context.clipEnabled(trackIndex, contextClip->clipId);
                     if (contextActionMenuItem(enabled ? "Disable Clip" : "Enable Clip")) {
@@ -712,6 +754,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             }
 
             if (ImGui::BeginPopup(addPopupId.c_str())) {
+                if (context.clipActions.renderMenu)
+                    context.clipActions.renderMenu(trackIndex, -1, trackState.requestedAddPosition);
                 const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
                 if (contextActionMenuItem("Edit Clips...", isVisible(trackIndex))) {
                     showWindow(trackIndex);
@@ -1154,7 +1198,7 @@ void SequenceEditor::drawRangeSelectionOverlay(
     if (x1 <= x0)
         return;
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImDrawList* drawList = timelineSelectionDrawList();
     drawList->AddRectFilled(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 40));
     drawList->AddRect(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 140), 0.0f, 0, 1.5f);
 }

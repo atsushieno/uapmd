@@ -1138,6 +1138,10 @@ namespace uapmd {
             const ProjectClipFragment& fragment,
             ProjectObjectIdPolicy idPolicy) override;
 
+        ClipAddResult pasteClipFragment(
+            int32_t trackIndex,
+            const ProjectClipFragment& fragment) override;
+
         bool appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
             std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) override;
 

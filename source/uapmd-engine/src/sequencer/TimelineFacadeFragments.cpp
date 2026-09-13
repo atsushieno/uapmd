@@ -534,10 +534,7 @@ namespace uapmd {
     std::optional<ProjectClipFragment> TimelineFacadeImpl::captureClipFragment(
             int32_t trackIndex,
             int32_t clipId) const {
-                // Extensions contribute state here, and at least one of them --
-        // ARA -- cannot legally archive while the document is being edited.
-        // Refusing at this boundary reports the mistake at the real call
-        // site rather than as a missing slot discovered much later.
+        // ARA extension state cannot be archived while its document is being edited.
         if (project_document_events_.inTransaction()) {
             std::cerr << "Error: captureClipFragment must not be called inside a document "
                          "transaction; capture first, then mutate." << std::endl;
@@ -699,6 +696,20 @@ namespace uapmd {
             }
         }
         return result;
+    }
+
+    TimelineFacade::ClipAddResult TimelineFacadeImpl::pasteClipFragment(
+            int32_t trackIndex, const ProjectClipFragment& fragment) {
+        // Undo capture archives extension state after attachment, outside its transaction.
+        if (project_document_events_.inTransaction() || (command_manager_.state().busy &&
+                !command_manager_.state().compoundOpen)) {
+            ClipAddResult result;
+            result.error = "Cannot paste while another document operation is pending";
+            return result;
+        }
+        return recordAddedClip(trackIndex,
+            attachClipFragment(trackIndex, fragment, ProjectObjectIdPolicy::Mint),
+            ProjectMutationOrigin::User);
     }
 
     std::optional<ProjectClipFragment> TimelineFacadeImpl::clipFragment(

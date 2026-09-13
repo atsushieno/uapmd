@@ -136,53 +136,39 @@ public:
         std::vector<uint64_t> umpTickTimestamps,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
-    // Detached clip representation, shared by undo and the clipboard.
-    //
-    // Capture is non-destructive: deleting is a separate removeClipFromTrack,
-    // which lets copy, cut and delete-with-undo all be composed from the same
-    // two operations.
-    //
-    // Must NOT be called inside a document transaction. Extensions contribute
-    // their own state to the fragment, and an ARA plug-in cannot be archived
-    // while its document is being edited -- which is precisely what a
-    // transaction holds open. Compose a cut as capture first, then remove
-    // inside a transaction, rather than wrapping both.
+    // Captures a clip without modifying it; returns nullopt on failure.
+    // Must be called outside a document transaction.
     virtual std::optional<ProjectClipFragment> captureClipFragment(
         int32_t trackIndex,
         int32_t clipId) const = 0;
 
-    // Recreates a captured clip on the given track. With
-    // ProjectObjectIdPolicy::Restore the clip returns under its original
-    // identifiers, which is what undoing a delete requires; with Mint it
-    // becomes a new clip, which is what paste and duplicate require.
+    // Recreates a captured clip. Restore preserves identifiers; Mint creates fresh ones.
     virtual ClipAddResult attachClipFragment(
         int32_t trackIndex,
         const ProjectClipFragment& fragment,
         ProjectObjectIdPolicy idPolicy) = 0;
 
-    // Detached track representation.
-    //
-    // Both halves are asynchronous, unlike the clip equivalents, because a
-    // track owns live plugin instances: reading plugin state and creating
-    // plugin instances are both callback-based. The callback is invoked
-    // exactly once, on the thread that completes the last plugin operation.
-    //
-    // Capture, like the clip version, must not be called inside a document
-    // transaction, and is non-destructive.
+    // Pastes a clip with fresh identifiers as an undoable edit.
+    // Must be called outside a document transaction.
+    virtual ClipAddResult pasteClipFragment(
+        int32_t trackIndex,
+        const ProjectClipFragment& fragment) = 0;
+
     using TrackFragmentCallback =
         std::function<void(std::optional<ProjectTrackFragment> fragment, std::string error)>;
+    // Captures a track without modifying it. Call outside a document transaction.
+    // Calls back once, potentially on another thread, with the fragment or an error.
     virtual void captureTrackFragment(int32_t trackIndex, TrackFragmentCallback callback) = 0;
 
-    // Creates a new track from a captured one. `trackIndex` in the callback is
-    // the created track, or -1 on failure.
     using TrackAttachCallback = std::function<void(int32_t trackIndex, std::string error)>;
+    // Creates a track from a captured one. Calls back once, potentially on another
+    // thread, with the new track index or -1 and an error on failure.
     virtual void attachTrackFragment(
         const ProjectTrackFragment& fragment,
         ProjectTrackAttachOptions options,
         TrackAttachCallback callback) = 0;
 
-    // Structural track mutations use the same asynchronous callback shape as
-    // fragment attachment because deletion first captures plugin state.
+    // Adds an empty track; reports its index or -1 and an error via the callback.
     virtual void addEmptyTrack(
         ProjectMutationOrigin origin,
         TrackAttachCallback callback) = 0;

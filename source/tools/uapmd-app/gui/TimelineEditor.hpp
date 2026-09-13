@@ -152,6 +152,27 @@ private:
 
     float currentUiScale_ = 1.0f;
     std::optional<std::pair<int32_t, int32_t>> selected_midi_clip_;
+    std::vector<std::string> selected_clip_references_;
+    struct ClipboardClip {
+        uapmd::ProjectClipFragment fragment;
+        int32_t track_offset;
+        std::string source_track_reference;
+        int32_t source_track_index;
+        double time_offset;
+    };
+    std::vector<ClipboardClip> clip_clipboard_;
+    std::function<void()> pending_clip_edit_;
+
+    TimelineClipActions buildClipActions();
+    std::vector<TimelineClipTarget> selectedClips() const;
+    void selectClips(const std::vector<TimelineClipTarget>& clips, bool additive, bool toggle);
+    void renderClipEditMenu(int32_t trackIndex, int32_t clipId, double positionSeconds);
+    bool copySelectedClips();
+    void deleteSelectedClips(bool cut);
+    std::vector<int32_t> pasteDestinations(int32_t trackIndex, bool originalTracks, std::string& error) const;
+    void renderPastePreview(int32_t trackIndex, double positionSeconds);
+    void pasteClips(int32_t trackIndex, double positionSeconds, bool originalTracks = false);
+
 
     // Set by handleTrackLayoutChange(Removed) and applied at the top of the next render()
     // call, safely outside any ongoing ImTimeline::DrawTimeline() call stack.

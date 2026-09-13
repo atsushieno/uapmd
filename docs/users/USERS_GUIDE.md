@@ -61,6 +61,21 @@ On playback, those audio and MIDI 2.0 "inputs" are both processed as input to th
 UAPMD initially launches with a few empty tracks.
 You can either import MIDI 2.0 Clip Files (`*.midi2`), MIDI 1.0 SMF files (`.mid`) or audio files (`.wav`, `.ogg`, `.flac`).
 
+In either timeline view, drag across empty space to select the clips intersecting a rectangle.
+Shift-click or Shift-drag adds clips to the selection; Ctrl-click (Cmd-click on macOS) toggles a clip.
+Click an unselected clip to select it alone, click empty space to clear selection, or press Escape
+while the timeline is hovered. Alt-drag retains the range-based MIDI/audio clip creation menu.
+
+Right-click (or double-click) a clip for Cut, Copy, Paste here, Paste to original tracks, and Delete. Cut, Copy, and Delete apply
+to all selected clips. The track's Clips and More menus, and the empty-space context menu, also offer
+Select All Clips. Both paste modes start at the clicked timeline position, or at the playhead
+when invoked from a track header, and preserve time spacing. Paste here preserves track offsets;
+for multi-track copies, a submenu previews destination tracks and plugins before applying the paste.
+Paste to original tracks follows persistent track identities, even after reordering. Missing or
+hidden destinations prevent the paste. Successful pastes select the new clips. Each cut, paste, or group deletion is one undo step.
+The clip clipboard is internal to UAPMD and is cleared when the project is cleared; pasted clips
+use absolute positions instead of retaining links to the source clips.
+
 Audio files can be imported as multiple, source-separated tracks. Source separation is provided by addins;
 UAPMD ships two of them, Demucs and BS-Roformer, and "Import Split Audio Tracks" only appears while at least one
 separation addin is enabled in the Addin Manager. When both are enabled the import window lets you pick which one to use.

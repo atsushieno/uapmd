@@ -227,22 +227,38 @@ whole:
 
 The master track offers the same menu minus the audio-clip and `Clear All` entries.
 
-### Acting on one clip
+### Selecting and editing clips
 
 ![The clip context menu](../images/uapmd-app-guide-clip-context.png)
 
-**Double-click a clip** on the timeline to select it and open its context menu:
+Drag across empty space to select intersecting clips in either timeline view. Shift-click or
+Shift-drag adds to the selection; Ctrl-click (Cmd-click on macOS) toggles a clip. Click an
+unselected clip to select it alone. Click empty space, or press Escape while hovering the
+timeline, to clear selection. Alt-drag opens the existing range-based clip creation menu.
+The track's Clips and More menus include **Select All Clips**.
+
+**Right-click or double-click a clip** to open its context menu. Opening the menu on a selected
+clip keeps the other clips selected:
 
 - **Show Dump List** -- the [MIDI event list editor](#the-midi-event-list).
 - **Edit Audio Events** -- the audio marker and warp editor. Enabled for audio clips only.
 - **Open Piano Roll** -- the [piano roll editor](#the-piano-roll).
-- **Delete** and **Disable Clip**.
+- **Cut**, **Copy**, and **Delete** apply to all selected clips. **Disable Clip** applies to the clicked clip.
+- **Paste here** inserts copied clips relative to the clicked track, preserving their track offsets.
+  For multi-track copies, its submenu previews the source-to-destination track mapping, destination
+  plugins, and clip counts. Choose **Paste into these tracks** to apply it.
+- **Paste to original tracks** follows the original tracks by persistent identity, even if tracks
+  have been reordered since copying. If an original track was deleted, nothing is pasted.
+- Both paste modes start at the clicked time, preserve time spacing, and select the new clips.
+  Destinations must exist and be visible. Pasted clips get fresh identities and absolute positions.
+  Cut, paste, and group deletion each form one undo step.
 - **Add an Empty MIDI2 Clip Here**, **Add Empty Audio Clip Here**,
   **Create Audio Clip From File Here...**, **Import SMF Here...** -- these use the timeline
   position you double-clicked as the new clip's start.
 
-Double-clicking empty space in a track row opens the same "add here" entries without the
-clip-specific ones.
+Right-clicking or double-clicking empty space also offers selection and clipboard commands.
+Paste from a track header's Clips or More menu uses the playhead position. The internal clip
+clipboard is cleared when the project is cleared.
 
 
 ## Clip editors
