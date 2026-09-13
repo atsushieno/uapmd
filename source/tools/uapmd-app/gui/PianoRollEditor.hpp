@@ -21,6 +21,8 @@ namespace uapmd_app_gui {
 struct EditNote : ClipPreview::MidiNote {
     EditNote() = default;
     explicit EditNote(const ClipPreview::MidiNote& base) : ClipPreview::MidiNote(base) {}
+    uint8_t attributeType{0};
+    uint16_t attributeValue{0};
     std::vector<ClipPreview::AutomationEvent> automationEvents;
 };
 
@@ -156,6 +158,9 @@ private:
     static void parseAutomationFromRaw(const ClipPreview::RawMidiData& raw,
                                        std::vector<EditNote>& editNotes,
                                        std::vector<ClipPreview::AutomationEvent>& clipEvents);
+
+    static void seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& raw,
+                                          std::vector<EditNote>& editNotes);
 
     // Two-pane NRPN parameter picker popup (no trigger button — caller must call
     // ImGui::OpenPopup(popupId) before this). Left pane shows plugin names (with

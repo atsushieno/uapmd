@@ -352,6 +352,18 @@ void PianoRollEditor::parseAutomationFromRaw(
     }
 }
 
+void PianoRollEditor::seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& raw,
+                                                std::vector<EditNote>& editNotes) {
+    for (auto& note : editNotes) {
+        note.attributeType = 0;
+        note.attributeValue = 0;
+        if (!note.isMidi2 || note.noteOnWordIdx + 1 >= raw.umpEvents.size())
+            continue;
+        note.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
+        note.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
+    }
+}
+
 // ── public API ───────────────────────────────────────────────────────────────
 
 void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
@@ -373,8 +385,10 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
         state.editNotes.reserve(state.preview->midiNotes.size());
         for (const auto& n : state.preview->midiNotes)
             state.editNotes.emplace_back(n);
-        if (state.preview->rawMidiData)
+        if (state.preview->rawMidiData) {
+            seedNoteAttributesFromRaw(*state.preview->rawMidiData, state.editNotes);
             parseAutomationFromRaw(*state.preview->rawMidiData, state.editNotes, state.editClipEvents);
+        }
     }
     state.drag = DragState{};
 
@@ -529,16 +543,11 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         const uint8_t  ch       = hasBacking
                                   ? static_cast<uint8_t>((onWord0 >> 16) & 0xFu) : defaultChannel;
 
-        if (editNote.isMidi2 && hasBacking &&
-                editNote.noteOnWordIdx + 1 < orig.umpEvents.size()) {
-            // MIDI2: preserve attrType / attrData from original words.
-            const uint8_t  attrType = static_cast<uint8_t>(onWord0 & 0xFFu);
-            const uint16_t attrData = static_cast<uint16_t>(
-                orig.umpEvents[editNote.noteOnWordIdx + 1] & 0xFFFFu);
+        if (editNote.isMidi2) {
             const uint16_t vel16  = static_cast<uint16_t>(
                 std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 65535.0f));
             const uint64_t onUmp  = umppi::UmpFactory::midi2NoteOn(
-                grp, ch, editNote.note, attrType, vel16, attrData);
+                grp, ch, editNote.note, editNote.attributeType, vel16, editNote.attributeValue);
             newEvents.push_back(static_cast<uint32_t>(onUmp >> 32));
             newTicks.push_back(onTick);
             newEvents.push_back(static_cast<uint32_t>(onUmp & 0xFFFFFFFFu));
@@ -547,20 +556,17 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
             // NoteOff — reuse original NoteOff attr/vel when present.
             const size_t offIdx = editNote.noteOffWordIdx;
             if (offIdx < orig.umpEvents.size() && offIdx + 1 < orig.umpEvents.size()) {
-                const uint32_t offW0     = orig.umpEvents[offIdx];
-                const uint8_t  oAttrType = static_cast<uint8_t>(offW0 & 0xFFu);
-                const uint16_t oAttrData = static_cast<uint16_t>(
-                    orig.umpEvents[offIdx + 1] & 0xFFFFu);
                 const uint16_t oVel16    = static_cast<uint16_t>(
                     (orig.umpEvents[offIdx + 1] >> 16) & 0xFFFFu);
                 const uint64_t offUmp    = umppi::UmpFactory::midi2NoteOff(
-                    grp, ch, editNote.note, oAttrType, oVel16, oAttrData);
+                    grp, ch, editNote.note, editNote.attributeType, oVel16, editNote.attributeValue);
                 newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
                 newTicks.push_back(offTick);
                 newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
                 newTicks.push_back(offTick);
             } else {
-                const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(grp, ch, editNote.note, 0, 0, 0);
+                const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
+                    grp, ch, editNote.note, editNote.attributeType, 0, editNote.attributeValue);
                 newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
                 newTicks.push_back(offTick);
                 newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
@@ -773,8 +779,10 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
             state.editNotes.reserve(state.preview->midiNotes.size());
             for (const auto& n : state.preview->midiNotes)
                 state.editNotes.emplace_back(n);
-            if (state.preview->rawMidiData)
+            if (state.preview->rawMidiData) {
+                seedNoteAttributesFromRaw(*state.preview->rawMidiData, state.editNotes);
                 parseAutomationFromRaw(*state.preview->rawMidiData, state.editNotes, state.editClipEvents);
+            }
             state.drag            = DragState{};
             // Preserve the selected note index across reload so the user
             // doesn't lose context when editing automation events.  Only
@@ -1004,6 +1012,9 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         bool   mouseClick = !state.drag.active &&
                             ImGui::IsWindowHovered() &&
                             ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        bool   mouseRightClick = !state.drag.active &&
+                                  ImGui::IsWindowHovered() &&
+                                  ImGui::IsMouseClicked(ImGuiMouseButton_Right);
         ImVec2 mousePos   = ImGui::GetMousePos();
         bool   hoverNote  = false;
         bool   hoverEdge  = false;
@@ -1079,6 +1090,74 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 state.selectedNoteIdx = ni;
                 mouseClick = false; // consume so only the top-most note is picked
             }
+            if (mouseRightClick && overNote) {
+                state.selectedNoteIdx = ni;
+                ImGui::OpenPopup("##note_editor");
+                mouseRightClick = false;
+            }
+        }
+
+        if (ImGui::BeginPopup("##note_editor")) {
+            const int idx = state.selectedNoteIdx;
+            if (idx < 0 || idx >= static_cast<int>(state.editNotes.size()) ||
+                    state.editNotes[idx].deleted) {
+                ImGui::TextDisabled("No note selected.");
+            } else {
+                auto& note = state.editNotes[idx];
+                ImGui::Text("%s | %.3fs", fullNoteName(note.note).c_str(), note.startSeconds);
+                ImGui::Separator();
+
+                bool noteEdited = false;
+                ImGui::TextUnformatted("Velocity");
+                ImGui::SetNextItemWidth(230.0f * uiScale);
+                if (ImGui::SliderFloat("##velocity_slider", &note.velocity, 0.0f, 1.0f, "%.3f"))
+                    noteEdited = true;
+                note.velocity = std::clamp(note.velocity, 0.0f, 1.0f);
+
+                ImGui::TextUnformatted("Note attribute type");
+                if (note.isMidi2) {
+                    uint8_t attributeType = note.attributeType;
+                    ImGui::SetNextItemWidth(200.0f * uiScale);
+                    if (ImGui::InputScalar("##attribute_type_input", ImGuiDataType_U8,
+                                           &attributeType, nullptr, nullptr, "%u")) {
+                        note.attributeType = std::min<uint8_t>(attributeType, 127);
+                        noteEdited = true;
+                    }
+                    const ImVec2 attributeTypeMin = ImGui::GetItemRectMin();
+                    const ImVec2 attributeTypeMax = ImGui::GetItemRectMax();
+                    ImGui::SameLine();
+                    if (ImGui::ArrowButton("##attribute_type_dropdown", ImGuiDir_Down))
+                        ImGui::OpenPopup("##attribute_type_options");
+                    ImGui::SetNextWindowPos(attributeTypeMin, ImGuiCond_Appearing);
+                    ImGui::SetNextWindowSize(ImVec2(attributeTypeMax.x - attributeTypeMin.x, 0.0f),
+                                             ImGuiCond_Appearing);
+                    if (ImGui::BeginPopup("##attribute_type_options")) {
+                        if (ImGui::Selectable("Pitch 7.9 (3)", note.attributeType == 3)) {
+                            note.attributeType = 3;
+                            noteEdited = true;
+                        }
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::TextUnformatted("Note attribute value");
+                    uint16_t attributeValue = note.attributeValue;
+                    const uint16_t minAttributeValue = 0;
+                    const uint16_t maxAttributeValue = 65535;
+                    ImGui::SetNextItemWidth(230.0f * uiScale);
+                    if (ImGui::SliderScalar("##attribute_value_slider", ImGuiDataType_U16,
+                                            &attributeValue, &minAttributeValue,
+                                            &maxAttributeValue, "%u")) {
+                        note.attributeValue = attributeValue;
+                        noteEdited = true;
+                    }
+                } else {
+                    ImGui::TextDisabled("MIDI 1 notes do not carry MIDI 2 note attributes.");
+                }
+
+                if (noteEdited)
+                    state.dirtyAfterEdit = true;
+            }
+            ImGui::EndPopup();
         }
 
         // Click on empty space → deselect
@@ -1149,7 +1228,9 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 newNote.note            = static_cast<uint8_t>(std::clamp(midiNote, 0, 127));
                 newNote.velocity        = 0.787f; // ≈ 100/127
                 newNote.channel         = 0;
-                newNote.isMidi2         = false;
+                newNote.isMidi2         = true;
+                newNote.attributeType   = 0;
+                newNote.attributeValue  = 0;
                 newNote.noteOnWordIdx   = SIZE_MAX; // marks as new — no backing raw event
                 newNote.noteOffWordIdx  = SIZE_MAX;
                 state.editNotes.push_back(std::move(newNote));
