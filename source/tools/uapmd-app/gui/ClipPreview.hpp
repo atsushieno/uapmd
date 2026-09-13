@@ -46,7 +46,6 @@ struct ClipPreview {
         uint8_t note{0};
         float   velocity{0.0f};             // normalized 0.0–1.0 (MIDI1→/127, MIDI2→/65535)
         uint8_t channel{0};
-        bool    isMidi2{false};             // true if from a 2-word MIDI2 UMP
         bool    deleted{false};             // marked for removal on next write-back
         size_t  noteOnWordIdx{SIZE_MAX};    // index of NoteOn first word in RawMidiData
         size_t  noteOffWordIdx{SIZE_MAX};   // index of NoteOff first word in RawMidiData

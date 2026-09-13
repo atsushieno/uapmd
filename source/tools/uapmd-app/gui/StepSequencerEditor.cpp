@@ -288,7 +288,7 @@ void StepSequencerEditor::resetFromPreview(bool focusDrumRoot, bool restoreSetti
         step.velocity = note.velocity;
         step.gate = std::clamp(static_cast<float>(offTick - startTick) /
                                static_cast<float>(stepTicks()), 0.05f, 1.0f);
-        if (note.isMidi2 && note.noteOnWordIdx + 1 < raw.umpEvents.size()) {
+        if (note.noteOnWordIdx + 1 < raw.umpEvents.size()) {
             step.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
             step.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
         }

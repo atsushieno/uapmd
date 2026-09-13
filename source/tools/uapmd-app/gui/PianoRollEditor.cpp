@@ -357,7 +357,7 @@ void PianoRollEditor::seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& 
     for (auto& note : editNotes) {
         note.attributeType = 0;
         note.attributeValue = 0;
-        if (!note.isMidi2 || note.noteOnWordIdx + 1 >= raw.umpEvents.size())
+        if (note.noteOnWordIdx + 1 >= raw.umpEvents.size())
             continue;
         note.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
         note.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
@@ -543,42 +543,32 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         const uint8_t  ch       = hasBacking
                                   ? static_cast<uint8_t>((onWord0 >> 16) & 0xFu) : defaultChannel;
 
-        if (editNote.isMidi2) {
-            const uint16_t vel16  = static_cast<uint16_t>(
-                std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 65535.0f));
-            const uint64_t onUmp  = umppi::UmpFactory::midi2NoteOn(
-                grp, ch, editNote.note, editNote.attributeType, vel16, editNote.attributeValue);
-            newEvents.push_back(static_cast<uint32_t>(onUmp >> 32));
-            newTicks.push_back(onTick);
-            newEvents.push_back(static_cast<uint32_t>(onUmp & 0xFFFFFFFFu));
-            newTicks.push_back(onTick);
+        const uint16_t vel16  = static_cast<uint16_t>(
+            std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 65535.0f));
+        const uint64_t onUmp  = umppi::UmpFactory::midi2NoteOn(
+            grp, ch, editNote.note, editNote.attributeType, vel16, editNote.attributeValue);
+        newEvents.push_back(static_cast<uint32_t>(onUmp >> 32));
+        newTicks.push_back(onTick);
+        newEvents.push_back(static_cast<uint32_t>(onUmp & 0xFFFFFFFFu));
+        newTicks.push_back(onTick);
 
-            // NoteOff — reuse original NoteOff attr/vel when present.
-            const size_t offIdx = editNote.noteOffWordIdx;
-            if (offIdx < orig.umpEvents.size() && offIdx + 1 < orig.umpEvents.size()) {
-                const uint16_t oVel16    = static_cast<uint16_t>(
-                    (orig.umpEvents[offIdx + 1] >> 16) & 0xFFFFu);
-                const uint64_t offUmp    = umppi::UmpFactory::midi2NoteOff(
-                    grp, ch, editNote.note, editNote.attributeType, oVel16, editNote.attributeValue);
-                newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
-                newTicks.push_back(offTick);
-                newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
-                newTicks.push_back(offTick);
-            } else {
-                const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
-                    grp, ch, editNote.note, editNote.attributeType, 0, editNote.attributeValue);
-                newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
-                newTicks.push_back(offTick);
-                newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
-                newTicks.push_back(offTick);
-            }
+        // NoteOff — reuse original NoteOff velocity when present.
+        const size_t offIdx = editNote.noteOffWordIdx;
+        if (offIdx < orig.umpEvents.size() && offIdx + 1 < orig.umpEvents.size()) {
+            const uint16_t oVel16    = static_cast<uint16_t>(
+                (orig.umpEvents[offIdx + 1] >> 16) & 0xFFFFu);
+            const uint64_t offUmp    = umppi::UmpFactory::midi2NoteOff(
+                grp, ch, editNote.note, editNote.attributeType, oVel16, editNote.attributeValue);
+            newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
+            newTicks.push_back(offTick);
+            newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
+            newTicks.push_back(offTick);
         } else {
-            // MIDI1 (also used for brand-new notes, noteOnWordIdx == SIZE_MAX).
-            const uint8_t vel7 = static_cast<uint8_t>(
-                std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 127.0f));
-            newEvents.push_back(umppi::UmpFactory::midi1NoteOn(grp, ch, editNote.note, vel7));
-            newTicks.push_back(onTick);
-            newEvents.push_back(umppi::UmpFactory::midi1NoteOff(grp, ch, editNote.note, 0));
+            const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
+                grp, ch, editNote.note, editNote.attributeType, 0, editNote.attributeValue);
+            newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
+            newTicks.push_back(offTick);
+            newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
             newTicks.push_back(offTick);
         }
 
@@ -1115,43 +1105,39 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 note.velocity = std::clamp(note.velocity, 0.0f, 1.0f);
 
                 ImGui::TextUnformatted("Note attribute type");
-                if (note.isMidi2) {
-                    uint8_t attributeType = note.attributeType;
-                    ImGui::SetNextItemWidth(200.0f * uiScale);
-                    if (ImGui::InputScalar("##attribute_type_input", ImGuiDataType_U8,
-                                           &attributeType, nullptr, nullptr, "%u")) {
-                        note.attributeType = std::min<uint8_t>(attributeType, 127);
+                uint8_t attributeType = note.attributeType;
+                ImGui::SetNextItemWidth(200.0f * uiScale);
+                if (ImGui::InputScalar("##attribute_type_input", ImGuiDataType_U8,
+                                       &attributeType, nullptr, nullptr, "%u")) {
+                    note.attributeType = std::min<uint8_t>(attributeType, 127);
+                    noteEdited = true;
+                }
+                const ImVec2 attributeTypeMin = ImGui::GetItemRectMin();
+                const ImVec2 attributeTypeMax = ImGui::GetItemRectMax();
+                ImGui::SameLine();
+                if (ImGui::ArrowButton("##attribute_type_dropdown", ImGuiDir_Down))
+                    ImGui::OpenPopup("##attribute_type_options");
+                ImGui::SetNextWindowPos(attributeTypeMin, ImGuiCond_Appearing);
+                ImGui::SetNextWindowSize(ImVec2(attributeTypeMax.x - attributeTypeMin.x, 0.0f),
+                                         ImGuiCond_Appearing);
+                if (ImGui::BeginPopup("##attribute_type_options")) {
+                    if (ImGui::Selectable("Pitch 7.9 (3)", note.attributeType == 3)) {
+                        note.attributeType = 3;
                         noteEdited = true;
                     }
-                    const ImVec2 attributeTypeMin = ImGui::GetItemRectMin();
-                    const ImVec2 attributeTypeMax = ImGui::GetItemRectMax();
-                    ImGui::SameLine();
-                    if (ImGui::ArrowButton("##attribute_type_dropdown", ImGuiDir_Down))
-                        ImGui::OpenPopup("##attribute_type_options");
-                    ImGui::SetNextWindowPos(attributeTypeMin, ImGuiCond_Appearing);
-                    ImGui::SetNextWindowSize(ImVec2(attributeTypeMax.x - attributeTypeMin.x, 0.0f),
-                                             ImGuiCond_Appearing);
-                    if (ImGui::BeginPopup("##attribute_type_options")) {
-                        if (ImGui::Selectable("Pitch 7.9 (3)", note.attributeType == 3)) {
-                            note.attributeType = 3;
-                            noteEdited = true;
-                        }
-                        ImGui::EndPopup();
-                    }
+                    ImGui::EndPopup();
+                }
 
-                    ImGui::TextUnformatted("Note attribute value");
-                    uint16_t attributeValue = note.attributeValue;
-                    const uint16_t minAttributeValue = 0;
-                    const uint16_t maxAttributeValue = 65535;
-                    ImGui::SetNextItemWidth(230.0f * uiScale);
-                    if (ImGui::SliderScalar("##attribute_value_slider", ImGuiDataType_U16,
-                                            &attributeValue, &minAttributeValue,
-                                            &maxAttributeValue, "%u")) {
-                        note.attributeValue = attributeValue;
-                        noteEdited = true;
-                    }
-                } else {
-                    ImGui::TextDisabled("MIDI 1 notes do not carry MIDI 2 note attributes.");
+                ImGui::TextUnformatted("Note attribute value");
+                uint16_t attributeValue = note.attributeValue;
+                const uint16_t minAttributeValue = 0;
+                const uint16_t maxAttributeValue = 65535;
+                ImGui::SetNextItemWidth(230.0f * uiScale);
+                if (ImGui::SliderScalar("##attribute_value_slider", ImGuiDataType_U16,
+                                        &attributeValue, &minAttributeValue,
+                                        &maxAttributeValue, "%u")) {
+                    note.attributeValue = attributeValue;
+                    noteEdited = true;
                 }
 
                 if (noteEdited)
@@ -1228,7 +1214,6 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 newNote.note            = static_cast<uint8_t>(std::clamp(midiNote, 0, 127));
                 newNote.velocity        = 0.787f; // ≈ 100/127
                 newNote.channel         = 0;
-                newNote.isMidi2         = true;
                 newNote.attributeType   = 0;
                 newNote.attributeValue  = 0;
                 newNote.noteOnWordIdx   = SIZE_MAX; // marks as new — no backing raw event
