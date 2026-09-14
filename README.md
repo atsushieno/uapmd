@@ -201,7 +201,6 @@ MIT/ISC/whatever compatible with them:
 - [0aids/imnodes](https://github.com/0aids/imnodes/) (a well-maintained and buildable fork of Piratkopia13/imnodes) - MIT
 - [juliettef/IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
 - [eyalamirmusic/ResEmbed](https://github.com/eyalamirmusic/ResEmbed) - MIT
-- [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
 - [sevagh/pitch-detection](https://github.com/sevagh/pitch-detection) (MPM and YIN pitch estimators) - MIT
 - [mreineck/pocketfft](https://github.com/mreineck/pocketfft) - BSD (3-clause)
 - [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) (optional for demucs.cpp acceleration; disabled by default) - BSD (3-clause) 
@@ -211,7 +210,6 @@ MIT/ISC/whatever compatible with them:
 - [Signalsmith-Audio/signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) - MIT
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
-- [olilarkin/librosa.cpp](https://github.com/olilarkin/librosa.cpp) - ISC
 - [chenmozhijin/BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp) - MIT
   - [ggml-org/ggml](https://github.com/ggml-org/ggml) (CPU backend only) - MIT
 
@@ -221,10 +219,19 @@ Fonts used:
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
 
-Apache V2 or compatible (opt-in features that have to be enabled using CMake options for each):
+Apache V2 or compatible (opt-in features):
 
 - [Celemony/ARA_SDK](https://github.com/Celemony/ARA_SDK) - Apache V2
 - [libraz/libsonare](https://github.com/libraz/libsonare) - Apache V2
 - [spotify/basic-pitch](https://github.com/spotify/basic-pitch) (ported note decoder; model weights downloaded at build time) - Apache V2
+
+These libraries drag in libraries that are released under the MPL (opt-in features):
+
+- [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
+  - [libeigen/eigen](https://gitlab.com/libeigen/eigen) - MPL
+- [olilarkin/librosa.cpp](https://github.com/olilarkin/librosa.cpp) - ISC
+  - libeigen/eiggen (ditto)
+
+For opt-in features, they have to be enabled using CMake options for each.
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.

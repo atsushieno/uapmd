@@ -15,20 +15,33 @@ option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (W
 option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
 option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
-option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM" OFF)
+option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM (requires UAPMD_ENABLE_DEMUCS_CPP)" OFF)
 # Declared here rather than next to add_subdirectory(tests): uapmd-mir reads it and
 # is added well before that point.
 option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
 
+# librosa.cpp is ISC, but fetches Eigen (MPL-2.0) as a submodule, so it is opt-in for the
+# same reason as UAPMD_ENABLE_DEMUCS_CPP. It stands on its own rather than following
+# UAPMD_ENABLE_MIR: the analysis addins require librosa.cpp, but librosa.cpp is usable
+# without them.
+option(UAPMD_ENABLE_LIBROSA_CPP "Build against librosa.cpp (ISC, fetches MPL-2.0 Eigen)" OFF)
+
 # The MIR analysis results are not trustworthy yet (see docs/uapmd-mir/MIR_FEATURES.md),
-# so those addins and their dependencies are opt-in. UAPMD_ENABLE_LIBSONARE selects the
-# libsonare backend within them and has no effect on its own. The uapmd-mir addin library
-# is always built regardless: it also carries the pitch transcription addin, which needs
-# neither librosa.cpp nor libsonare. The stem separation addins in the same directory are
-# always built too, so uapmd-mir is added unconditionally and gates the analysis half
-# internally.
+# so those addins are opt-in. They run on librosa.cpp and therefore require
+# UAPMD_ENABLE_LIBROSA_CPP; UAPMD_ENABLE_LIBSONARE selects the second backend within them
+# and has no effect on its own. The uapmd-mir addin library is always built regardless: it
+# also carries the pitch transcription addin, which needs neither librosa.cpp nor
+# libsonare. The BS-Roformer stem separation addin in the same directory is always built
+# too, so uapmd-mir is added unconditionally and gates the analysis half internally.
 option(UAPMD_ENABLE_MIR "Build the music-analysis addins in uapmd-mir (tempo, meter, chords)" OFF)
 option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
+
+# demucs.cpp is MIT, but it vendors Eigen, which is MPL-2.0 -- a third licence category
+# beside the MIT/ISC default build and the Apache-2.0 opt-ins, so a default build carries
+# neither. BS-Roformer runs on GGML (MIT) and stays unconditional, so stem separation is
+# still available with this option off.
+option(UAPMD_ENABLE_DEMUCS_CPP "Build the Demucs stem separation addin (demucs.cpp, vendors MPL-2.0 Eigen)" OFF)
+
 # Basic Pitch is Apache-2.0, including its model weights, so it follows the same opt-out
 # shape as libsonare and ARA rather than being unconditional -- except that it defaults OFF,
 # because a build that enables it downloads the model at configure time and embeds it in the
@@ -44,7 +57,7 @@ option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
 
 if((UAPMD_TARGET_WASM OR EMSCRIPTEN) AND UAPMD_DEMUCS_USE_OPENBLAS)
     message(WARNING "UAPMD_DEMUCS_USE_OPENBLAS is not supported for WASM builds; disabling.")
-    set(UAPMD_DEMUCS_USE_OPENBLAS OFF CACHE BOOL "Build Demucs (demucs.cpp) against OpenBLAS via CPM" FORCE)
+    set(UAPMD_DEMUCS_USE_OPENBLAS OFF CACHE BOOL "Build Demucs (demucs.cpp) against OpenBLAS via CPM (requires UAPMD_ENABLE_DEMUCS_CPP)" FORCE)
 endif()
 
 #### end of section ####
@@ -285,14 +298,10 @@ install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)
 
-# ARA_API currently rejects wasm32: it has no ABI packing/alignment definition
-# for this architecture. Enable ARA by default on supported platforms.
-if(UAPMD_TARGET_WASM OR EMSCRIPTEN)
-    set(_UAPMD_ENABLE_ARA_DEFAULT OFF)
-else()
-    set(_UAPMD_ENABLE_ARA_DEFAULT ON)
-endif()
-option(UAPMD_ENABLE_ARA "Build the optional ARA host integration" ${_UAPMD_ENABLE_ARA_DEFAULT})
+# The ARA SDK is Apache-2.0, so it is opt-in like every other Apache-2.0 dependency here.
+# The guards below exclude WebAssembly regardless of this option: ARA_API rejects wasm32,
+# having no ABI packing/alignment definition for that architecture.
+option(UAPMD_ENABLE_ARA "Build the optional ARA host integration (Apache-2.0)" OFF)
 if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     CPMAddPackage(
             NAME           ARA_SDK

@@ -35,7 +35,7 @@ Enablement is persisted by package ID and addin ID. Project data owned by an add
 
 WebAssembly uses built-in addins only. The manager has no separate code loading or unloading there. Its current enable/disable controls invoke the built-in lifecycle immediately; a restart-only policy is not yet implemented.
 
-The stem separation backends for audio import are built-in addins, always present, as is the Basic Pitch polyphonic transcription addin (`/uapmd/basic-pitch`) when `UAPMD_ENABLE_BASIC_PITCH` is set. ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is disabled by default for WebAssembly because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
+The stem separation backends for audio import are built-in addins: BS-Roformer is always present, and Demucs is built when `UAPMD_ENABLE_DEMUCS_CPP` is set, as is the Basic Pitch polyphonic transcription addin (`/uapmd/basic-pitch`) when `UAPMD_ENABLE_BASIC_PITCH` is set. ARA support is a built-in addin when `UAPMD_ENABLE_ARA` is enabled. It uses the engine's plugin-instance lifecycle extension point. `UAPMD_HAS_ARA` remains the build-time availability and license-compliance gate. ARA is off by default on every platform, and is excluded from WebAssembly builds regardless of the option because the current ARA SDK rejects `wasm32`: it has no packing/alignment definition for that architecture.
 
 ## Extension points
 
@@ -114,10 +114,11 @@ alongside whatever else is registered, and must `remove()` it during
 import is unavailable -- and the application hides it -- when no addin
 contributed a separator. Two backends ship: Demucs (demucs.cpp) and
 BS-Roformer (BSRoformer.cpp, on GGML). Both live in `uapmd-mir`, alongside the
-analysis addins but built separately from them, and both are built-in addins,
-so they are always present and can only be turned off at runtime. Each is its
-own package (`/uapmd/demucs`, `/uapmd/bs-roformer`), so enabling one says
-nothing about the other.
+analysis addins but built separately from them, and both are built-in addins.
+BS-Roformer is always present and can only be turned off at runtime; Demucs is
+built only when `UAPMD_ENABLE_DEMUCS_CPP` is set, because demucs.cpp vendors
+MPL-2.0 Eigen. Each is its own package (`/uapmd/demucs`,
+`/uapmd/bs-roformer`), so enabling one says nothing about the other.
 
 A separation run takes minutes and happens on a worker thread, while the addin
 that owns the separator can be disabled at any moment from the Addin Manager.

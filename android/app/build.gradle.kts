@@ -30,6 +30,9 @@ android {
                     // here. Enabling it downloads the Apache-2.0 model at
                     // configure time and embeds it in the .so.
                     "-DUAPMD_ENABLE_BASIC_PITCH=ON",
+                    // Demucs is a built-in addin and reachable here for the same
+                    // reason; it is opt-in because demucs.cpp vendors MPL-2.0 Eigen.
+                    "-DUAPMD_ENABLE_DEMUCS_CPP=ON",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",

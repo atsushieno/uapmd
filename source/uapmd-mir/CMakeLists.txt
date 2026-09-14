@@ -41,12 +41,21 @@ CPMAddPackage(
         DOWNLOAD_ONLY  YES
 )
 
-if(UAPMD_ENABLE_MIR)
+# The analysis addins have no backend without librosa.cpp, and enabling them without it
+# would otherwise fail later with a missing librosa::librosa target.
+if(UAPMD_ENABLE_MIR AND NOT UAPMD_ENABLE_LIBROSA_CPP)
+    message(FATAL_ERROR
+            "UAPMD_ENABLE_MIR requires UAPMD_ENABLE_LIBROSA_CPP: librosa.cpp is the "
+            "baseline analysis backend. Configure with -DUAPMD_ENABLE_LIBROSA_CPP=ON, "
+            "which also fetches Eigen (MPL-2.0).")
+endif()
+
+if(UAPMD_ENABLE_LIBROSA_CPP)
 
     set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
     set(BUILD_SHARED_LIBS OFF)
 
-    if(UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
+    if(UAPMD_ENABLE_MIR AND UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
         CPMAddPackage(
                 NAME           libsonare
                 GIT_TAG        develop
@@ -73,10 +82,8 @@ if(UAPMD_ENABLE_MIR)
         endif()
     endif()
 
-    # librosa.cpp backs the always-available backend of this module, so it is
-    # mandatory here -- but the module itself is opt-in, so nothing is fetched
-    # unless UAPMD_ENABLE_MIR is set. Added after libsonare so both libraries
-    # reuse the same Eigen target when libsonare is enabled.
+    # Added after libsonare so both libraries reuse the same Eigen target when
+    # libsonare is enabled.
     CPMAddPackage(
             NAME           librosa_cpp
             GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
@@ -146,6 +153,13 @@ uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-mir
         "${pitch_detection_SOURCE_DIR}/src/yin.cpp"
 )
 
+if(UAPMD_ENABLE_LIBROSA_CPP)
+    target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_LIBROSA=1)
+    target_link_libraries(uapmd-mir PRIVATE librosa::librosa)
+else()
+    target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_LIBROSA=0)
+endif()
+
 if(UAPMD_ENABLE_MIR)
 
     target_sources(uapmd-mir PRIVATE
@@ -156,12 +170,7 @@ if(UAPMD_ENABLE_MIR)
             src/MirMeterMap.cpp
     )
 
-    target_compile_definitions(uapmd-mir PRIVATE
-            UAPMD_ENABLE_MIR_ANALYSIS=1
-            UAPMD_ENABLE_LIBROSA=1
-    )
-
-    target_link_libraries(uapmd-mir PRIVATE librosa::librosa)
+    target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_MIR_ANALYSIS=1)
 
     if(UAPMD_ENABLE_LIBSONARE AND TARGET sonare_core)
         target_compile_definitions(uapmd-mir PRIVATE UAPMD_ENABLE_LIBSONARE=1)
@@ -204,7 +213,6 @@ else()
 
     target_compile_definitions(uapmd-mir PRIVATE
             UAPMD_ENABLE_MIR_ANALYSIS=0
-            UAPMD_ENABLE_LIBROSA=0
             UAPMD_ENABLE_LIBSONARE=0
     )
 
@@ -254,142 +262,150 @@ uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-stem-support
 # ---------------------------------------------------------------------------
 # Demucs stem separation
 #
-# Built unconditionally, and as a *built-in* addin: uapmd-demucs is a static
-# library that the application links WHOLE_ARCHIVE, so it needs no addin
-# directory, no install rule of its own, and works the same on WebAssembly,
-# Android and iOS, where dynamic addin loading is unavailable or has nowhere
-# to scan.
+# Opt-in: demucs.cpp itself is MIT, but it vendors Eigen, which is MPL-2.0 --
+# a licence category the default build carries nowhere else. BS-Roformer below
+# covers stem separation for builds that leave this off.
+#
+# A *built-in* addin: uapmd-demucs is a static library that the application
+# links WHOLE_ARCHIVE, so it needs no addin directory, no install rule of its
+# own, and works the same on WebAssembly, Android and iOS, where dynamic addin
+# loading is unavailable or has nowhere to scan.
 # ---------------------------------------------------------------------------
 
-CPMAddPackage(
-    NAME demucscpp
-    GIT_REPOSITORY https://github.com/sevagh/demucs.cpp
-    GIT_TAG f1206e9adeea103aef4a636b9e62297cf1f8e34e
-    DOWNLOAD_ONLY YES
-)
+if(UAPMD_ENABLE_DEMUCS_CPP)
 
-set(_UAPMD_DEMUCS_PRIVATE_LIBS)
-set(_UAPMD_DEMUCS_PRIVATE_DEFINES)
-set(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
+    CPMAddPackage(
+        NAME demucscpp
+        GIT_REPOSITORY https://github.com/sevagh/demucs.cpp
+        GIT_TAG f1206e9adeea103aef4a636b9e62297cf1f8e34e
+        DOWNLOAD_ONLY YES
+    )
 
-if(UAPMD_DEMUCS_USE_OPENBLAS)
-    if(APPLE)
-        find_library(_UAPMD_ACCELERATE_FRAMEWORK Accelerate)
-        if(_UAPMD_ACCELERATE_FRAMEWORK)
-            list(APPEND _UAPMD_DEMUCS_PRIVATE_LIBS ${_UAPMD_ACCELERATE_FRAMEWORK})
-            list(APPEND _UAPMD_DEMUCS_PRIVATE_DEFINES EIGEN_USE_BLAS)
-        else()
-            message(WARNING "Accelerate framework not found on this Apple toolchain; Demucs BLAS acceleration disabled.")
-        endif()
-    else()
-        set(_UAPMD_OPENBLAS_DYNAMIC_ARCH ON)
-        set(_UAPMD_OPENBLAS_TARGET "")
-        if(CMAKE_CROSSCOMPILING)
-            set(_UAPMD_OPENBLAS_DYNAMIC_ARCH OFF)
-            string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _uapmd_proc)
-            if(_uapmd_proc MATCHES "aarch64" OR _uapmd_proc MATCHES "arm64")
-                set(_UAPMD_OPENBLAS_TARGET ARMV8)
-            elseif(_uapmd_proc MATCHES "armv7")
-                set(_UAPMD_OPENBLAS_TARGET ARMV7)
-            elseif(_uapmd_proc MATCHES "x86_64")
-                set(_UAPMD_OPENBLAS_TARGET HASWELL)
-            elseif(_uapmd_proc MATCHES "i[3-6]86" OR _uapmd_proc MATCHES "x86")
-                set(_UAPMD_OPENBLAS_TARGET PENTIUM4)
+    set(_UAPMD_DEMUCS_PRIVATE_LIBS)
+    set(_UAPMD_DEMUCS_PRIVATE_DEFINES)
+    set(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
+
+    if(UAPMD_DEMUCS_USE_OPENBLAS)
+        if(APPLE)
+            find_library(_UAPMD_ACCELERATE_FRAMEWORK Accelerate)
+            if(_UAPMD_ACCELERATE_FRAMEWORK)
+                list(APPEND _UAPMD_DEMUCS_PRIVATE_LIBS ${_UAPMD_ACCELERATE_FRAMEWORK})
+                list(APPEND _UAPMD_DEMUCS_PRIVATE_DEFINES EIGEN_USE_BLAS)
             else()
-                set(_UAPMD_OPENBLAS_TARGET GENERIC)
+                message(WARNING "Accelerate framework not found on this Apple toolchain; Demucs BLAS acceleration disabled.")
             endif()
+        else()
+            set(_UAPMD_OPENBLAS_DYNAMIC_ARCH ON)
+            set(_UAPMD_OPENBLAS_TARGET "")
+            if(CMAKE_CROSSCOMPILING)
+                set(_UAPMD_OPENBLAS_DYNAMIC_ARCH OFF)
+                string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _uapmd_proc)
+                if(_uapmd_proc MATCHES "aarch64" OR _uapmd_proc MATCHES "arm64")
+                    set(_UAPMD_OPENBLAS_TARGET ARMV8)
+                elseif(_uapmd_proc MATCHES "armv7")
+                    set(_UAPMD_OPENBLAS_TARGET ARMV7)
+                elseif(_uapmd_proc MATCHES "x86_64")
+                    set(_UAPMD_OPENBLAS_TARGET HASWELL)
+                elseif(_uapmd_proc MATCHES "i[3-6]86" OR _uapmd_proc MATCHES "x86")
+                    set(_UAPMD_OPENBLAS_TARGET PENTIUM4)
+                else()
+                    set(_UAPMD_OPENBLAS_TARGET GENERIC)
+                endif()
+            endif()
+            set(_UAPMD_OPENBLAS_OPTIONS
+                    "BUILD_SHARED_LIBS OFF"
+                    "BUILD_TESTING OFF"
+                    "BUILD_WITHOUT_LAPACK ON"
+                    "DYNAMIC_ARCH ${_UAPMD_OPENBLAS_DYNAMIC_ARCH}"
+                    "NOFORTRAN ON"
+                    "CMAKE_POLICY_VERSION 3.5"
+                    "CMAKE_POLICY_VERSION_MINIMUM 3.5"
+            )
+            if(_UAPMD_OPENBLAS_TARGET)
+                list(APPEND _UAPMD_OPENBLAS_OPTIONS "TARGET ${_UAPMD_OPENBLAS_TARGET}")
+            endif()
+            CPMAddPackage(
+                    NAME openblas
+                    GIT_REPOSITORY https://github.com/OpenMathLib/OpenBLAS
+                    GIT_TAG v0.3.26
+                    EXCLUDE_FROM_ALL YES
+                    OPTIONS ${_UAPMD_OPENBLAS_OPTIONS}
+            )
+            if(NOT TARGET openblas)
+                message(FATAL_ERROR "Requested UAPMD_DEMUCS_USE_OPENBLAS=ON, but the OpenBLAS target was not created.")
+            endif()
+            list(APPEND _UAPMD_DEMUCS_PRIVATE_LIBS openblas)
+            list(APPEND _UAPMD_DEMUCS_PRIVATE_DEFINES EIGEN_USE_BLAS)
+            list(APPEND _UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS
+                    ${openblas_SOURCE_DIR}
+                    ${openblas_SOURCE_DIR}/include
+                    ${openblas_SOURCE_DIR}/interface
+                    ${openblas_BINARY_DIR}
+                    ${openblas_BINARY_DIR}/generated
+            )
         endif()
-        set(_UAPMD_OPENBLAS_OPTIONS
-                "BUILD_SHARED_LIBS OFF"
-                "BUILD_TESTING OFF"
-                "BUILD_WITHOUT_LAPACK ON"
-                "DYNAMIC_ARCH ${_UAPMD_OPENBLAS_DYNAMIC_ARCH}"
-                "NOFORTRAN ON"
-                "CMAKE_POLICY_VERSION 3.5"
-                "CMAKE_POLICY_VERSION_MINIMUM 3.5"
-        )
-        if(_UAPMD_OPENBLAS_TARGET)
-            list(APPEND _UAPMD_OPENBLAS_OPTIONS "TARGET ${_UAPMD_OPENBLAS_TARGET}")
-        endif()
-        CPMAddPackage(
-                NAME openblas
-                GIT_REPOSITORY https://github.com/OpenMathLib/OpenBLAS
-                GIT_TAG v0.3.26
-                EXCLUDE_FROM_ALL YES
-                OPTIONS ${_UAPMD_OPENBLAS_OPTIONS}
-        )
-        if(NOT TARGET openblas)
-            message(FATAL_ERROR "Requested UAPMD_DEMUCS_USE_OPENBLAS=ON, but the OpenBLAS target was not created.")
-        endif()
-        list(APPEND _UAPMD_DEMUCS_PRIVATE_LIBS openblas)
-        list(APPEND _UAPMD_DEMUCS_PRIVATE_DEFINES EIGEN_USE_BLAS)
-        list(APPEND _UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS
-                ${openblas_SOURCE_DIR}
-                ${openblas_SOURCE_DIR}/include
-                ${openblas_SOURCE_DIR}/interface
-                ${openblas_BINARY_DIR}
-                ${openblas_BINARY_DIR}/generated
-        )
     endif()
-endif()
 
-if(NOT TARGET demucs-cpp)
-    file(GLOB DEMUCSPP_SOURCES
-        ${demucscpp_SOURCE_DIR}/src/*.cpp
+    if(NOT TARGET demucs-cpp)
+        file(GLOB DEMUCSPP_SOURCES
+            ${demucscpp_SOURCE_DIR}/src/*.cpp
+        )
+        add_library(demucs-cpp STATIC ${DEMUCSPP_SOURCES})
+        target_include_directories(demucs-cpp PUBLIC
+            ${demucscpp_SOURCE_DIR}/src
+            ${demucscpp_SOURCE_DIR}/vendor/eigen
+        )
+        target_compile_features(demucs-cpp PUBLIC cxx_std_17)
+        if(_UAPMD_DEMUCS_PRIVATE_LIBS)
+            target_link_libraries(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_LIBS})
+        endif()
+        if(_UAPMD_DEMUCS_PRIVATE_DEFINES)
+            target_compile_definitions(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_DEFINES})
+        endif()
+        if(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
+            target_include_directories(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS})
+        endif()
+        uapmd_optimize_heavy_audio_feature_target_in_debug(demucs-cpp)
+    endif()
+
+    # Not add_uapmd_addin_library(): that helper is for libraries the addin
+    # manager loads from disk, and this one is linked into the application.
+    add_library(uapmd-demucs STATIC
+            src/DemucsAddin.cpp
+            src/DemucsStemSeparator.cpp
     )
-    add_library(demucs-cpp STATIC ${DEMUCSPP_SOURCES})
-    target_include_directories(demucs-cpp PUBLIC
-        ${demucscpp_SOURCE_DIR}/src
-        ${demucscpp_SOURCE_DIR}/vendor/eigen
+    add_library(uapmd::demucs ALIAS uapmd-demucs)
+
+    target_compile_features(uapmd-demucs PRIVATE cxx_std_23)
+
+    target_include_directories(uapmd-demucs PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+            ${choc_SOURCE_DIR}
+            ${midicci_SOURCE_DIR}/include
     )
-    target_compile_features(demucs-cpp PUBLIC cxx_std_17)
-    if(_UAPMD_DEMUCS_PRIVATE_LIBS)
-        target_link_libraries(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_LIBS})
-    endif()
-    if(_UAPMD_DEMUCS_PRIVATE_DEFINES)
-        target_compile_definitions(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_DEFINES})
-    endif()
-    if(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
-        target_include_directories(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS})
-    endif()
-    uapmd_optimize_heavy_audio_feature_target_in_debug(demucs-cpp)
+
+    target_link_libraries(uapmd-demucs PRIVATE
+            uapmd::uapmd-addin-core
+            uapmd-stem-support
+            uapmd-data
+            demucs-cpp
+    )
+
+    uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-demucs
+            src/DemucsStemSeparator.cpp
+    )
+
 endif()
-
-# Not add_uapmd_addin_library(): that helper is for libraries the addin
-# manager loads from disk, and this one is linked into the application.
-add_library(uapmd-demucs STATIC
-        src/DemucsAddin.cpp
-        src/DemucsStemSeparator.cpp
-)
-add_library(uapmd::demucs ALIAS uapmd-demucs)
-
-target_compile_features(uapmd-demucs PRIVATE cxx_std_23)
-
-target_include_directories(uapmd-demucs PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
-        ${choc_SOURCE_DIR}
-        ${midicci_SOURCE_DIR}/include
-)
-
-target_link_libraries(uapmd-demucs PRIVATE
-        uapmd::uapmd-addin-core
-        uapmd-stem-support
-        uapmd-data
-        demucs-cpp
-)
-
-uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-demucs
-        src/DemucsStemSeparator.cpp
-)
 
 # ---------------------------------------------------------------------------
 # BS-Roformer stem separation
 #
-# Built unconditionally and as a built-in addin, exactly like Demucs above.
+# Built unconditionally and as a built-in addin, in the shape Demucs above
+# takes when it is enabled.
 # BSRoformer.cpp runs on GGML, which it resolves from a parent-provided `ggml`
 # target when one exists -- so ggml is added first, CPU-only: no GPU backend
 # needs its shader library or toolkit found at runtime, and every platform

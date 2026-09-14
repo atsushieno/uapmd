@@ -87,6 +87,10 @@ These CMake options controls enablement of some modules:
 - `UAPMD_ENABLE_MIR`: enables MIR module (experimental and not-yet-working module)
   - `UAPMD_ENABLE_BASIC_PITCH` : enables basic-pitch support (opt-in Apache2-licensed module)
   - `UAPMD_ENABLE_LIBSONARE` : enables libsonare support (opt-in Apache2-licensed module)
+  - `UAPMD_ENABLE_LIBROSA_CPP` : enables librosa.cpp support (ISC-licensed module, but vendors Eigen which is an opt-in MPL-2.0 module)
+- `UAPMD_ENABLE_DEMUCS_CPP`: enables the Demucs.cpp stem separation addin (MIT-licensed module, but vendors Eigen ^)
+  - `UAPMD_DEMUCS_USE_OPENBLAS` : enables OpenBLAS within Demucs.cpp
+- `UAPMD_ENABLE_ARA`: enables the ARA host integration (opt-in Apache2-licensed module)
 
 
 ## Release workflow
