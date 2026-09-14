@@ -277,6 +277,31 @@ The piano roll edits the notes of a MIDI 2.0 clip. Its toolbar carries `H Zoom` 
 second, `V Zoom` as the height of one semitone row, and a `Snap` division. The header also
 reports the clip length, the note count, and how many clip-level events it holds.
 
+Drag across empty grid space to select notes. Shift-click or Shift-drag adds notes;
+Ctrl-click (Cmd-click on macOS) toggles a note. Clicking an unselected note selects it alone.
+Click empty space or press Escape over the grid to clear selection. Selection highlights use
+the note rectangles, and selected notes remain selected when an edit changes their event order.
+Reloading changed clip content, including undo/redo, clears note selection; refreshing unchanged
+content preserves it.
+
+Right-click or long-press a note or empty grid space for **Cut**, **Copy**, **Paste here**,
+**Delete**, and **Select All Notes**. Opening a menu on a selected note preserves the selection.
+The clipboard belongs to that open clip: it does not transfer notes between clips, and closing
+the piano-roll window discards it. Paste preserves pitches, durations, relative timing, MIDI
+group/channel, velocity, release velocity, note attributes, and attached per-note automation.
+It starts at the clicked time, snapped to the grid, and selects the pasted notes. Clip-level
+controllers are not included in a note copy. Each cut, paste, or group deletion is one undo step.
+
+While the pointer is over the note grid, Ctrl/Cmd+A selects all notes, Ctrl/Cmd+C/X copies/cuts,
+Ctrl/Cmd+V pastes at the pointer's snapped time, and Delete/Backspace deletes selected notes.
+Double-click still creates a note in empty space or requests deletion of the clicked note.
+Dragging a selected note moves all selected notes in time and pitch, preserving their spacing,
+durations, and pitch intervals. Attached per-note automation follows each note. The clicked note
+anchors grid snapping; the whole group stops at time zero or MIDI pitch limits. Release commits
+one undo step and keeps the moved notes selected; Escape cancels the drag. Edges also move the group when multiple notes are selected.
+Group resizing and property editing are not included: the property popup and lower panel edit
+the primary note. Single-note edge dragging still resizes that note.
+
 Selecting a note fills the lower pane with that note's per-note events, where you can insert an
 event before the selected one, edit its type and value, or delete it. With no note selected the
 pane lists the clip-level automation events instead.

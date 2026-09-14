@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <unordered_set>
 
 #include <imgui.h>
 
@@ -21,6 +22,9 @@ namespace uapmd_app_gui {
 struct EditNote : ClipPreview::MidiNote {
     EditNote() = default;
     explicit EditNote(const ClipPreview::MidiNote& base) : ClipPreview::MidiNote(base) {}
+    uint64_t edit_id{0};
+    uint8_t ump_group{0};
+    uint16_t release_velocity{0};
     uint8_t attributeType{0};
     uint16_t attributeValue{0};
     std::vector<ClipPreview::AutomationEvent> automationEvents;
@@ -102,7 +106,10 @@ private:
         double origStartSec{0.0};
         double origEndSec{0.0};  // origStartSec + origDuration (for resize)
         int    origNoteNum{0};
+        std::vector<std::pair<int, EditNote>> notes;
     };
+
+    enum class NoteAction { None, Copy, Cut, Paste, Delete, SelectAll };
 
     struct WindowState {
         int32_t trackIndex{-1};
@@ -111,7 +118,18 @@ private:
         bool visible{false};
         std::shared_ptr<ClipPreview> preview;
         ViewState view;
-        int selectedNoteIdx{-1};
+        int selectedNoteIdx{-1}; // Primary note for the property and automation panels.
+        uint64_t next_note_id{1};
+        std::unordered_set<uint64_t> selected_notes;
+        std::vector<EditNote> clipboard;
+        NoteAction pending_action{NoteAction::None};
+        bool retry_available{false};
+        double paste_seconds{0.0};
+        bool marquee_active{false};
+        bool marquee_additive{false};
+        ImVec2 marquee_anchor;
+        bool long_press_opened{false};
+        std::string edit_error;
         std::vector<EditNote>                        editNotes;      // mutable working copy of notes
         std::vector<ClipPreview::AutomationEvent>    editClipEvents; // mutable working copy of clip-level automation
         DragState drag;
@@ -136,7 +154,11 @@ private:
 
     void renderWindow(WindowState& state, const RenderContext& ctx);
     void renderControls(WindowState& state, float uiScale);
-    void applyNoteEdits(WindowState& state, const RenderContext& ctx);
+    bool applyNoteEdits(WindowState& state, const RenderContext& ctx);
+    static void moveDraggedNotes(WindowState& state, double timeDelta, int pitchDelta);
+    static void selectNote(WindowState& state, int index, bool additive = false, bool toggle = false);
+    static void renderNoteActions(WindowState& state);
+    static void performNoteAction(WindowState& state);
 
     // Piano key column (left strip, V-synced with note grid)
     // previewNote: MIDI note to highlight as pressed (-1 = none)
@@ -178,7 +200,7 @@ private:
     static std::string fullNoteName(int midiNote);
     static const char* automationTypeName(ClipPreview::AutomationEvent::Type t) noexcept;
     static void sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
-                                   std::vector<uint64_t>&    ticks);
+                                   std::vector<uint64_t>&    ticks, std::vector<size_t>& wordOrder);
     static uint64_t secondsToTicks(double seconds, uint32_t tickRes, double bpm) noexcept;
 };
 

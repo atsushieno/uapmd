@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <format>
+#include <limits>
 #include <unordered_map>
 
 #include "ContextActions.hpp"
@@ -357,8 +358,12 @@ void PianoRollEditor::seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& 
     for (auto& note : editNotes) {
         note.attributeType = 0;
         note.attributeValue = 0;
-        if (note.noteOnWordIdx + 1 >= raw.umpEvents.size())
+        if (note.noteOnWordIdx >= raw.umpEvents.size() || note.noteOnWordIdx + 1 >= raw.umpEvents.size())
             continue;
+        note.ump_group = static_cast<uint8_t>((raw.umpEvents[note.noteOnWordIdx] >> 24) & 0xFu);
+        note.channel = static_cast<uint8_t>((raw.umpEvents[note.noteOnWordIdx] >> 16) & 0xFu);
+        if (note.noteOffWordIdx < raw.umpEvents.size() && note.noteOffWordIdx + 1 < raw.umpEvents.size())
+            note.release_velocity = static_cast<uint16_t>(raw.umpEvents[note.noteOffWordIdx + 1] >> 16);
         note.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
         note.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
     }
@@ -390,6 +395,18 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
             parseAutomationFromRaw(*state.preview->rawMidiData, state.editNotes, state.editClipEvents);
         }
     }
+    for (auto& note : state.editNotes)
+        note.edit_id = state.next_note_id++;
+    state.selected_notes.clear();
+    state.selectedNoteIdx = -1;
+    state.deletedRawIdxs.clear();
+    state.pending_action = NoteAction::None;
+    state.retry_available = false;
+    state.edit_error.clear();
+    state.dirtyAfterEdit = false;
+    state.marquee_active = false;
+    state.noteToDeleteIdx = -1;
+    state.needsDeletePopup = false;
     state.drag = DragState{};
 
     // On first open (vScrollNote still at its default 0), scroll so the
@@ -411,7 +428,21 @@ void PianoRollEditor::reloadClip(int32_t trackIndex, int32_t clipId,
     const auto it = windows_.find(key);
     if (it == windows_.end() || !it->second.visible)
         return;
-    showClip(trackIndex, clipId, it->second.clipName, std::move(preview));
+    auto& state = it->second;
+    if (state.preview && state.preview->rawMidiData && preview && preview->rawMidiData) {
+        const auto& current = *state.preview->rawMidiData;
+        const auto& incoming = *preview->rawMidiData;
+        // Timeline refreshes can report our own committed edit again. Keep the editable
+        // notes and their selection when the source content has not changed.
+        if (current.umpEvents == incoming.umpEvents &&
+            current.tickTimestamps == incoming.tickTimestamps &&
+            current.tickResolution == incoming.tickResolution &&
+            current.clipTempo == incoming.clipTempo) {
+            state.preview = std::move(preview);
+            return;
+        }
+    }
+    showClip(trackIndex, clipId, state.clipName, std::move(preview));
 }
 
 void PianoRollEditor::render(const RenderContext& ctx) {
@@ -430,11 +461,12 @@ uint64_t PianoRollEditor::secondsToTicks(double seconds, uint32_t tickRes, doubl
 }
 
 void PianoRollEditor::sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
-                                         std::vector<uint64_t>&    ticks) {
+                                         std::vector<uint64_t>&    ticks, std::vector<size_t>& wordOrder) {
     // Group consecutive words that form a single UMP message, sort groups by
     // tick, then flatten back to word-per-entry arrays.
     struct Group {
         uint64_t tick{0};
+        size_t original_index{0};
         std::vector<uapmd_ump_t> words;
     };
 
@@ -446,6 +478,7 @@ void PianoRollEditor::sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
         umppi::Ump ump(events[i]);
         int wordCount = std::max(1, ump.getSizeInInts());
         Group g;
+        g.original_index = i;
         g.tick = (i < ticks.size()) ? ticks[i] : 0;
         size_t end = std::min(i + static_cast<size_t>(wordCount), events.size());
         for (size_t j = i; j < end; ++j)
@@ -458,10 +491,13 @@ void PianoRollEditor::sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
         return a.tick < b.tick;
     });
 
+    wordOrder.resize(events.size());
     events.clear();
     ticks.clear();
     for (const auto& g : groups) {
+        size_t source = g.original_index;
         for (auto w : g.words) {
+            wordOrder[source++] = events.size();
             events.push_back(w);
             ticks.push_back(g.tick);
         }
@@ -470,22 +506,23 @@ void PianoRollEditor::sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
 
 // ── note write-back ───────────────────────────────────────────────────────────
 
-void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ctx) {
+bool PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ctx) {
     state.dirtyAfterEdit = false;
-    if (!ctx.applyEdits) return;
-    if (!state.preview || !state.preview->rawMidiData) return;
+    if (!ctx.applyEdits || !state.preview || !state.preview->rawMidiData) {
+        state.edit_error = "MIDI clip data is unavailable.";
+        return false;
+    }
 
     const ClipPreview::RawMidiData& orig = *state.preview->rawMidiData;
     const uint32_t tickRes = orig.tickResolution;
     const double   bpm     = orig.clipTempo > 0.0 ? orig.clipTempo : 120.0;
 
-    // Default group/channel for new notes — borrowed from the first tracked note.
-    uint8_t defaultGroup = 0, defaultChannel = 0;
+    // Fallback group for clip-level automation.
+    uint8_t defaultGroup = 0;
     if (!state.preview->midiNotes.empty()) {
         const size_t idx0 = state.preview->midiNotes[0].noteOnWordIdx;
         if (idx0 < orig.umpEvents.size()) {
             defaultGroup   = static_cast<uint8_t>((orig.umpEvents[idx0] >> 24) & 0xFu);
-            defaultChannel = static_cast<uint8_t>((orig.umpEvents[idx0] >> 16) & 0xFu);
         }
     }
 
@@ -513,8 +550,6 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
     // Also skip raw events whose in-memory counterpart was deleted this frame.
     for (size_t idx : state.deletedRawIdxs)
         markSkip(idx);
-    state.deletedRawIdxs.clear();
-
     // Begin the new event list with all non-note events (CC, pitch-bend, …).
     std::vector<uapmd_ump_t> newEvents;
     std::vector<uint64_t>    newTicks;
@@ -527,6 +562,9 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         }
     }
 
+    std::vector<std::pair<size_t, uint64_t>> emittedIds;
+    const uint64_t primaryId = state.selectedNoteIdx >= 0 && state.selectedNoteIdx < static_cast<int>(state.editNotes.size())
+        ? state.editNotes[state.selectedNoteIdx].edit_id : 0;
     // Emit NoteOn + NoteOff for each live (non-deleted) note.
     for (const auto& editNote : state.editNotes) {
         if (editNote.deleted) continue;
@@ -535,13 +573,9 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         const uint64_t offTick = secondsToTicks(
             editNote.startSeconds + editNote.durationSeconds, tickRes, bpm);
 
-        // Group / channel: from backing original if available, else defaults.
-        const bool   hasBacking = (editNote.noteOnWordIdx < orig.umpEvents.size());
-        const uint32_t onWord0  = hasBacking ? orig.umpEvents[editNote.noteOnWordIdx] : 0;
-        const uint8_t  grp      = hasBacking
-                                  ? static_cast<uint8_t>((onWord0 >> 24) & 0xFu) : defaultGroup;
-        const uint8_t  ch       = hasBacking
-                                  ? static_cast<uint8_t>((onWord0 >> 16) & 0xFu) : defaultChannel;
+        const uint8_t grp = editNote.ump_group;
+        const uint8_t ch = editNote.channel;
+        emittedIds.emplace_back(newEvents.size(), editNote.edit_id);
 
         const uint16_t vel16  = static_cast<uint16_t>(
             std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 65535.0f));
@@ -552,25 +586,12 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         newEvents.push_back(static_cast<uint32_t>(onUmp & 0xFFFFFFFFu));
         newTicks.push_back(onTick);
 
-        // NoteOff — reuse original NoteOff velocity when present.
-        const size_t offIdx = editNote.noteOffWordIdx;
-        if (offIdx < orig.umpEvents.size() && offIdx + 1 < orig.umpEvents.size()) {
-            const uint16_t oVel16    = static_cast<uint16_t>(
-                (orig.umpEvents[offIdx + 1] >> 16) & 0xFFFFu);
-            const uint64_t offUmp    = umppi::UmpFactory::midi2NoteOff(
-                grp, ch, editNote.note, editNote.attributeType, oVel16, editNote.attributeValue);
-            newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
-            newTicks.push_back(offTick);
-            newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
-            newTicks.push_back(offTick);
-        } else {
-            const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
-                grp, ch, editNote.note, editNote.attributeType, 0, editNote.attributeValue);
-            newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
-            newTicks.push_back(offTick);
-            newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
-            newTicks.push_back(offTick);
-        }
+        const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
+            grp, ch, editNote.note, editNote.attributeType, editNote.release_velocity, editNote.attributeValue);
+        newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
+        newTicks.push_back(offTick);
+        newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
+        newTicks.push_back(offTick);
 
         // Emit per-note automation events (edited or newly added).
         for (const auto& ae : editNote.automationEvents) {
@@ -752,12 +773,23 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
         }
     }
 
-    sortRawMidiEvents(newEvents, newTicks);
+    std::vector<size_t> wordOrder;
+    sortRawMidiEvents(newEvents, newTicks, wordOrder);
+    std::unordered_map<size_t, uint64_t> reloadedIds;
+    for (const auto& [word, id] : emittedIds)
+        reloadedIds.emplace(wordOrder[word], id);
 
+    const auto selected_ids = state.selected_notes;
     std::string error;
     if (!ctx.applyEdits(state.trackIndex, state.clipId,
-                        std::move(newEvents), std::move(newTicks), error))
-        return; // TODO: surface error to the user
+                        std::move(newEvents), std::move(newTicks), error)) {
+        state.edit_error = error.empty() ? "Could not save note edits." : error;
+        state.retry_available = true;
+        return false;
+    }
+    state.edit_error.clear();
+    state.retry_available = false;
+    state.deletedRawIdxs.clear();
 
     // Reload preview from the freshly-updated engine state.
     if (ctx.reloadPreview) {
@@ -774,17 +806,139 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
                 parseAutomationFromRaw(*state.preview->rawMidiData, state.editNotes, state.editClipEvents);
             }
             state.drag            = DragState{};
-            // Preserve the selected note index across reload so the user
-            // doesn't lose context when editing automation events.  Only
-            // clear it if the reload produced fewer notes than the index.
-            if (state.selectedNoteIdx >= static_cast<int>(state.editNotes.size()))
-                state.selectedNoteIdx = -1;
+            state.selectedNoteIdx = -1;
+            std::unordered_set<uint64_t> survivingSelection;
+            for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i) {
+                auto& note = state.editNotes[i];
+                const auto found = reloadedIds.find(note.noteOnWordIdx);
+                note.edit_id = found != reloadedIds.end() ? found->second : state.next_note_id++;
+                if (selected_ids.contains(note.edit_id))
+                    survivingSelection.insert(note.edit_id);
+                if (note.edit_id == primaryId)
+                    state.selectedNoteIdx = i;
+            }
+            state.selected_notes = std::move(survivingSelection);
             state.noteToDeleteIdx = -1;
+        }
+    }
+    return true;
+}
+
+// ── controls bar ─────────────────────────────────────────────────────────────
+
+void PianoRollEditor::moveDraggedNotes(WindowState& state, double timeDelta, int pitchDelta) {
+    double earliest = std::numeric_limits<double>::max();
+    int lowest = 127, highest = 0;
+    for (const auto& [index, original] : state.drag.notes) {
+        earliest = std::min(earliest, original.startSeconds);
+        for (const auto& event : original.automationEvents)
+            earliest = std::min(earliest, event.timeSeconds);
+        lowest = std::min(lowest, static_cast<int>(original.note));
+        highest = std::max(highest, static_cast<int>(original.note));
+    }
+    // Clamp the shared delta so notes keep their spacing and pitch intervals.
+    timeDelta = std::max(timeDelta, -earliest);
+    pitchDelta = std::clamp(pitchDelta, -lowest, 127 - highest);
+    for (const auto& [index, original] : state.drag.notes) {
+        auto& note = state.editNotes[index];
+        note.startSeconds = original.startSeconds + timeDelta;
+        note.note = static_cast<uint8_t>(original.note + pitchDelta);
+        for (size_t i = 0; i < note.automationEvents.size(); ++i) {
+            note.automationEvents[i].timeSeconds = original.automationEvents[i].timeSeconds + timeDelta;
+            note.automationEvents[i].noteNumber = note.note;
         }
     }
 }
 
-// ── controls bar ─────────────────────────────────────────────────────────────
+void PianoRollEditor::selectNote(WindowState& state, int index, bool additive, bool toggle) {
+    if (!additive)
+        state.selected_notes.clear();
+    if (index < 0 || index >= static_cast<int>(state.editNotes.size()) || state.editNotes[index].deleted) {
+        state.selectedNoteIdx = -1;
+        return;
+    }
+    const auto id = state.editNotes[index].edit_id;
+    if (toggle && state.selected_notes.contains(id)) {
+        state.selected_notes.erase(id);
+        state.selectedNoteIdx = -1;
+    } else {
+        state.selected_notes.insert(id);
+        state.selectedNoteIdx = index;
+    }
+}
+
+void PianoRollEditor::renderNoteActions(WindowState& state) {
+    ImGui::TextDisabled("%zu notes selected", state.selected_notes.size());
+    ImGui::BeginDisabled(state.selected_notes.empty());
+    if (contextActionMenuItem("Cut"))
+        state.pending_action = NoteAction::Cut;
+    if (contextActionMenuItem("Copy"))
+        state.pending_action = NoteAction::Copy;
+    if (contextActionMenuItem("Delete"))
+        state.pending_action = NoteAction::Delete;
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(state.clipboard.empty());
+    if (contextActionMenuItem("Paste here"))
+        state.pending_action = NoteAction::Paste;
+    ImGui::EndDisabled();
+    if (contextActionMenuItem("Select All Notes"))
+        state.pending_action = NoteAction::SelectAll;
+    ImGui::Separator();
+}
+
+void PianoRollEditor::performNoteAction(WindowState& state) {
+    const auto action = std::exchange(state.pending_action, NoteAction::None);
+    if (action == NoteAction::SelectAll) {
+        state.selected_notes.clear();
+        state.selectedNoteIdx = -1;
+        for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i)
+            if (!state.editNotes[i].deleted)
+                selectNote(state, i, true);
+        return;
+    }
+    if (action == NoteAction::Copy || action == NoteAction::Cut) {
+        std::vector<EditNote> copied;
+        double firstTime = std::numeric_limits<double>::max();
+        for (const auto& note : state.editNotes)
+            if (!note.deleted && state.selected_notes.contains(note.edit_id)) {
+                copied.push_back(note);
+                firstTime = std::min(firstTime, note.startSeconds);
+            }
+        if (copied.empty())
+            return;
+        for (auto& note : copied) {
+            note.startSeconds -= firstTime;
+            note.edit_id = 0;
+            note.noteOnWordIdx = SIZE_MAX;
+            note.noteOffWordIdx = SIZE_MAX;
+            for (auto& event : note.automationEvents) {
+                event.timeSeconds -= firstTime;
+                event.rawEventIdx = SIZE_MAX;
+            }
+        }
+        state.clipboard = std::move(copied);
+    }
+    if (action == NoteAction::Cut || action == NoteAction::Delete) {
+        for (auto& note : state.editNotes)
+            if (!note.deleted && state.selected_notes.contains(note.edit_id)) {
+                note.deleted = true;
+                state.dirtyAfterEdit = true;
+            }
+        state.selected_notes.clear();
+        state.selectedNoteIdx = -1;
+    } else if (action == NoteAction::Paste && !state.clipboard.empty()) {
+        state.selected_notes.clear();
+        for (auto note : state.clipboard) {
+            note.edit_id = state.next_note_id++;
+            note.startSeconds += state.paste_seconds;
+            for (auto& event : note.automationEvents)
+                event.timeSeconds += state.paste_seconds;
+            state.editNotes.push_back(std::move(note));
+            selectNote(state, static_cast<int>(state.editNotes.size()) - 1, true);
+        }
+        state.dirtyAfterEdit = true;
+    }
+}
 
 void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
     const float itemW = 140.0f * uiScale;
@@ -916,10 +1070,9 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     }
 
     // ── BPM (shared by beat lines, ruler, and snap) ──────────────────────────
-    double bpm = 120.0;
-    if (state.preview && !state.preview->tempoPoints.empty() &&
-            state.preview->tempoPoints[0].bpm > 0.0)
-        bpm = state.preview->tempoPoints[0].bpm;
+    // The grid edits clip-local time using the same reference tempo as write-back.
+    const double bpm = state.preview && state.preview->rawMidiData && state.preview->rawMidiData->clipTempo > 0.0
+        ? state.preview->rawMidiData->clipTempo : 120.0;
 
     // ── Vertical beat / bar lines ─────────────────────────────────────────────
     if (pxPerSec > 0.0f && state.preview) {
@@ -941,6 +1094,24 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         }
     }
 
+    const auto pointer = ImGui::GetMousePos();
+    const bool inGrid = pointer.x >= origin.x && pointer.x < origin.x + width &&
+        pointer.y >= noteAreaY && pointer.y < noteAreaY + noteAreaH;
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        state.long_press_opened = false;
+    const bool longPress = inGrid && ImGui::IsWindowHovered() && !state.long_press_opened &&
+        ImGui::GetIO().MouseDownDuration[ImGuiMouseButton_Left] >= 0.5f &&
+        !ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+    const bool cancelDrag = state.drag.active && ImGui::IsKeyPressed(ImGuiKey_Escape);
+    if (longPress || cancelDrag) {
+        if (longPress)
+            state.long_press_opened = true;
+        for (const auto& [index, original] : state.drag.notes)
+            state.editNotes[index] = original;
+        state.drag = DragState{};
+        state.marquee_active = false;
+    }
+
     // ── Drag update (runs every frame before notes are drawn) ─────────────────
     // Snap values match the kSnapLabels[] order in renderControls.
     static constexpr float  kSnapValues[7]   = { 0.f, 1.f, 0.5f, 0.25f, 0.125f, 0.0625f, 0.03125f };
@@ -953,17 +1124,16 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             const double snapSec   = (snapBeats > 0.0f && bpm > 0.0)
                                      ? static_cast<double>(snapBeats) * 60.0 / bpm : 0.0;
 
-            if (state.drag.noteIdx >= 0 &&
+            if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && state.drag.noteIdx >= 0 &&
                     state.drag.noteIdx < static_cast<int>(state.editNotes.size())) {
                 auto& n = state.editNotes[state.drag.noteIdx];
 
                 if (state.drag.mode == DragState::Mode::Move) {
-                    double newStart = state.drag.origStartSec + static_cast<double>(dx) / pxPerSec;
-                    int    newNote  = state.drag.origNoteNum -
-                                     static_cast<int>(std::round(static_cast<double>(dy) / noteH));
-                    if (snapSec > 0.0) newStart = std::round(newStart / snapSec) * snapSec;
-                    n.startSeconds = std::max(0.0, newStart);
-                    n.note         = static_cast<uint8_t>(std::clamp(newNote, 0, 127));
+                    double timeDelta = static_cast<double>(dx) / pxPerSec;
+                    if (snapSec > 0.0 && dx != 0.0f)
+                        timeDelta = std::round((state.drag.origStartSec + timeDelta) / snapSec) * snapSec - state.drag.origStartSec;
+                    const int pitchDelta = -static_cast<int>(std::round(static_cast<double>(dy) / noteH));
+                    moveDraggedNotes(state, timeDelta, pitchDelta);
                 } else if (state.drag.mode == DragState::Mode::ResizeRight) {
                     double newEnd = state.drag.origEndSec + static_cast<double>(dx) / pxPerSec;
                     if (snapSec > 0.0) newEnd = std::round(newEnd / snapSec) * snapSec;
@@ -989,22 +1159,44 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                         static_cast<int>(n.note) != state.drag.origNoteNum)
                     state.dirtyAfterEdit = true;
             }
-            state.drag.active  = false;
-            state.drag.noteIdx = -1;
+            state.drag = DragState{};
         }
     }
 
     // ── Note rectangles ───────────────────────────────────────────────────────
     // Edge threshold (px) within which dragging resizes instead of moves.
     static constexpr float kResizeEdgePx = 8.0f;
-    if (!state.editNotes.empty() && noteAreaH > 0.0f) {
+    if (noteAreaH > 0.0f) {
         // Capture click intent before the loop; consumed by the first hit note.
-        bool   mouseClick = !state.drag.active &&
+        bool   mouseClick = inGrid && !state.drag.active &&
                             ImGui::IsWindowHovered() &&
                             ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        bool   mouseRightClick = !state.drag.active &&
-                                  ImGui::IsWindowHovered() &&
-                                  ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        bool   mouseRightClick = inGrid && !state.drag.active && ImGui::IsWindowHovered() &&
+            (longPress || ImGui::IsMouseClicked(ImGuiMouseButton_Right));
+        const auto& io = ImGui::GetIO();
+        const bool shortcuts = inGrid && ImGui::IsWindowHovered() && !io.WantTextInput &&
+            !state.drag.active && !state.marquee_active && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+        const bool pasteKey = shortcuts && (io.KeyCtrl || io.KeySuper) && ImGui::IsKeyPressed(ImGuiKey_V, false);
+        if (shortcuts) {
+            if (io.KeyCtrl || io.KeySuper) {
+                if (ImGui::IsKeyPressed(ImGuiKey_A, false)) state.pending_action = NoteAction::SelectAll;
+                if (ImGui::IsKeyPressed(ImGuiKey_C, false)) state.pending_action = NoteAction::Copy;
+                if (ImGui::IsKeyPressed(ImGuiKey_X, false)) state.pending_action = NoteAction::Cut;
+                if (pasteKey) state.pending_action = NoteAction::Paste;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
+                state.pending_action = NoteAction::Delete;
+        }
+        if (mouseRightClick)
+            state.marquee_active = false;
+        if (mouseRightClick || pasteKey) {
+            const float snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, 6)];
+            const double snapSeconds = snapBeats * 60.0 / bpm;
+            double seconds = (pointer.x - origin.x + hScroll) / pxPerSec;
+            if (snapSeconds > 0.0)
+                seconds = std::round(seconds / snapSeconds) * snapSeconds;
+            state.paste_seconds = std::max(0.0, seconds);
+        }
         ImVec2 mousePos   = ImGui::GetMousePos();
         bool   hoverNote  = false;
         bool   hoverEdge  = false;
@@ -1024,7 +1216,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             if (x1 < origin.x || x0 > origin.x + width) continue;
             if (y1 < noteAreaY || y0 > noteAreaY + noteAreaH) continue;
 
-            const bool  selected = (ni == state.selectedNoteIdx);
+            const bool  selected = state.selected_notes.contains(note.edit_id);
             const bool  dragging = (state.drag.active && ni == state.drag.noteIdx);
             const float vel      = note.velocity; // already 0-1
 
@@ -1067,33 +1259,52 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
 
             // Drag / select on click
             if (mouseClick && overNote) {
-                state.drag.active       = true;
+                const auto& io = ImGui::GetIO();
+                const bool toggle = io.KeyCtrl || io.KeySuper;
+                if (toggle || io.KeyShift || !selected)
+                    selectNote(state, ni, toggle || io.KeyShift, toggle);
+                else
+                    state.selectedNoteIdx = ni;
+                state.drag.active = !toggle && !io.KeyShift;
+                state.drag.notes.clear();
+                if (state.drag.active)
+                    for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i)
+                        if (!state.editNotes[i].deleted && state.selected_notes.contains(state.editNotes[i].edit_id))
+                            state.drag.notes.emplace_back(i, state.editNotes[i]);
                 state.drag.noteIdx      = ni;
                 state.drag.startMouseX  = ImGui::GetIO().MousePos.x;
                 state.drag.startMouseY  = ImGui::GetIO().MousePos.y;
                 state.drag.origStartSec = note.startSeconds;
                 state.drag.origEndSec   = note.startSeconds + note.durationSeconds;
                 state.drag.origNoteNum  = static_cast<int>(note.note);
-                if (atRightEdge)      state.drag.mode = DragState::Mode::ResizeRight;
+                if (state.selected_notes.size() > 1) state.drag.mode = DragState::Mode::Move;
+                else if (atRightEdge) state.drag.mode = DragState::Mode::ResizeRight;
                 else if (atLeftEdge)  state.drag.mode = DragState::Mode::ResizeLeft;
                 else                  state.drag.mode = DragState::Mode::Move;
-                state.selectedNoteIdx = ni;
                 mouseClick = false; // consume so only the top-most note is picked
             }
             if (mouseRightClick && overNote) {
-                state.selectedNoteIdx = ni;
+                if (!state.selected_notes.contains(note.edit_id))
+                    selectNote(state, ni);
+                else
+                    state.selectedNoteIdx = ni;
                 ImGui::OpenPopup("##note_editor");
                 mouseRightClick = false;
             }
         }
 
+        if (mouseRightClick)
+            ImGui::OpenPopup("##note_editor");
         if (ImGui::BeginPopup("##note_editor")) {
+            renderNoteActions(state);
             const int idx = state.selectedNoteIdx;
             if (idx < 0 || idx >= static_cast<int>(state.editNotes.size()) ||
                     state.editNotes[idx].deleted) {
                 ImGui::TextDisabled("No note selected.");
             } else {
                 auto& note = state.editNotes[idx];
+                if (state.selected_notes.size() > 1)
+                    ImGui::TextDisabled("Properties below apply to the primary note only.");
                 ImGui::Text("%s | %.3fs", fullNoteName(note.note).c_str(), note.startSeconds);
                 ImGui::Separator();
 
@@ -1146,9 +1357,38 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             ImGui::EndPopup();
         }
 
-        // Click on empty space → deselect
-        if (mouseClick)
-            state.selectedNoteIdx = -1;
+        if (mouseClick && !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            state.marquee_active = true;
+            state.marquee_additive = ImGui::GetIO().KeyShift;
+            state.marquee_anchor = mousePos;
+        }
+        if (state.marquee_active) {
+            const ImVec2 end(std::clamp(pointer.x, origin.x, origin.x + width),
+                             std::clamp(pointer.y, noteAreaY, noteAreaY + noteAreaH));
+            const ImVec2 min(std::min(state.marquee_anchor.x, end.x), std::min(state.marquee_anchor.y, end.y));
+            const ImVec2 max(std::max(state.marquee_anchor.x, end.x), std::max(state.marquee_anchor.y, end.y));
+            dl->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_Header, 0.3f));
+            dl->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_HeaderActive));
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                state.marquee_active = false;
+            else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                if (!state.marquee_additive)
+                    selectNote(state, -1);
+                if (max.x - min.x >= 4.0f * uiScale || max.y - min.y >= 4.0f * uiScale)
+                    for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i) {
+                        const auto& note = state.editNotes[i];
+                        if (note.deleted)
+                            continue;
+                        const float x = origin.x + note.startSeconds * pxPerSec - hScroll;
+                        const float y = noteAreaY + (127 - note.note) * noteH - vScrollPx;
+                        if (x < max.x && x + std::max(2.0f * uiScale, static_cast<float>(note.durationSeconds) * pxPerSec) > min.x &&
+                                y < max.y && y + noteH - 1.0f > min.y)
+                            selectNote(state, i, true);
+                    }
+                state.marquee_active = false;
+            }
+        } else if (!cancelDrag && ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Escape))
+            selectNote(state, -1);
 
         // Cursor: EW-resize for edges, ResizeAll for body; same when drag is active.
         if (state.drag.active) {
@@ -1156,7 +1396,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
             else
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-        } else if (hoverEdge) {
+        } else if (hoverEdge && state.selected_notes.size() <= 1) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         } else if (hoverNote) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
@@ -1169,7 +1409,8 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
             state.preview && state.preview->rawMidiData) {
         const ImVec2 mp = ImGui::GetMousePos();
-        if (mp.y > noteAreaY && mp.y < noteAreaY + noteAreaH) {
+        if (inGrid) {
+            state.marquee_active = false;
             // Find any existing, non-deleted note under the cursor.
             int hitIdx = -1;
             for (int ni = 0; ni < static_cast<int>(state.editNotes.size()); ++ni) {
@@ -1213,13 +1454,15 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 newNote.durationSeconds = noteDuration;
                 newNote.note            = static_cast<uint8_t>(std::clamp(midiNote, 0, 127));
                 newNote.velocity        = 0.787f; // ≈ 100/127
-                newNote.channel         = 0;
+                newNote.edit_id = state.next_note_id++;
+                newNote.channel = state.editNotes.empty() ? 0 : state.editNotes.front().channel;
+                newNote.ump_group = state.editNotes.empty() ? 0 : state.editNotes.front().ump_group;
                 newNote.attributeType   = 0;
                 newNote.attributeValue  = 0;
                 newNote.noteOnWordIdx   = SIZE_MAX; // marks as new — no backing raw event
                 newNote.noteOffWordIdx  = SIZE_MAX;
                 state.editNotes.push_back(std::move(newNote));
-                state.selectedNoteIdx = static_cast<int>(state.editNotes.size()) - 1;
+                selectNote(state, static_cast<int>(state.editNotes.size()) - 1);
                 state.dirtyAfterEdit  = true;
             }
         }
@@ -1397,7 +1640,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                         if (!n.deleted &&
                                 evt.timeSeconds >= n.startSeconds &&
                                 evt.timeSeconds <= n.startSeconds + n.durationSeconds) {
-                            state.selectedNoteIdx = ni;
+                            selectNote(state, ni);
                             // Scroll the piano-roll vertically to show the note.
                             const float targetIdx = static_cast<float>(kNoteCount - 1) -
                                                     static_cast<float>(n.note);
@@ -1865,6 +2108,13 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     }
 
     renderControls(state, uiScale);
+    if (!state.edit_error.empty()) {
+        ImGui::TextWrapped("Edits were not saved: %s", state.edit_error.c_str());
+        if (state.retry_available && ImGui::Button("Retry saving"))
+            state.dirtyAfterEdit = true;
+        if (ImGui::Button("Dismiss error"))
+            state.edit_error.clear();
+    }
     ImGui::Separator();
 
     const float pianoW   = kPianoKeyWidth * uiScale;
@@ -2159,6 +2409,7 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
             const int idx = state.noteToDeleteIdx;
             if (idx >= 0 && idx < static_cast<int>(state.editNotes.size())) {
                 state.editNotes[idx].deleted = true;
+                state.selected_notes.erase(state.editNotes[idx].edit_id);
                 if (state.selectedNoteIdx == idx) state.selectedNoteIdx = -1;
                 state.dirtyAfterEdit = true;
             }
@@ -2173,9 +2424,19 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
         ImGui::EndPopup();
     }
 
-    // ── Write-back ───────────────────────────────────────────────────────────
-    if (state.dirtyAfterEdit)
-        applyNoteEdits(state, ctx);
+    // Apply clipboard commands after drawing, when no widgets reference note storage.
+    const bool batchEdit = state.pending_action == NoteAction::Cut || state.pending_action == NoteAction::Paste ||
+        state.pending_action == NoteAction::Delete;
+    const auto beforeNotes = batchEdit ? state.editNotes : std::vector<EditNote>{};
+    const auto beforeSelection = batchEdit ? state.selected_notes : std::unordered_set<uint64_t>{};
+    const int beforePrimary = state.selectedNoteIdx;
+    performNoteAction(state);
+    if (state.dirtyAfterEdit && !applyNoteEdits(state, ctx) && batchEdit) {
+        state.editNotes = beforeNotes;
+        state.selected_notes = beforeSelection;
+        state.selectedNoteIdx = beforePrimary;
+        state.retry_available = false;
+    }
 
     // Store bounds so the next frame can hit-test before Begin().
     state.lastWindowPos  = ImGui::GetWindowPos();
