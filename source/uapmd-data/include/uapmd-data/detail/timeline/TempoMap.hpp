@@ -79,6 +79,26 @@ namespace uapmd {
             }
             std::sort(effectiveSignatures_.begin(), effectiveSignatures_.end(),
                 [](const EffectiveSignature& a, const EffectiveSignature& b) { return a.startBeat < b.startBeat; });
+
+            // Bar one starts at beat zero. Without a signature there, the bars before the first
+            // change would have no meter to be counted in.
+            if (effectiveSignatures_.empty() || effectiveSignatures_.front().startBeat > 1e-9) {
+                EffectiveSignature implicit;
+                implicit.startBeat = 0.0;
+                effectiveSignatures_.insert(effectiveSignatures_.begin(), implicit);
+            }
+
+            // A meta event restating the meter already in force does not start a new region. It
+            // is the region's start that sets where its bars fall, so honouring a restatement
+            // would re-phase the bar grid onto whatever beat that event happens to sit on --
+            // moving every later bar line, and every genuine meter change with it.
+            effectiveSignatures_.erase(
+                std::unique(effectiveSignatures_.begin(), effectiveSignatures_.end(),
+                    [](const EffectiveSignature& a, const EffectiveSignature& b) {
+                        return a.numerator == b.numerator && a.denominator == b.denominator;
+                    }),
+                effectiveSignatures_.end());
+
             for (size_t i = 0; i < effectiveSignatures_.size(); ++i) {
                 effectiveSignatures_[i].endBeat = (i + 1 < effectiveSignatures_.size())
                     ? effectiveSignatures_[i + 1].startBeat
@@ -134,6 +154,14 @@ namespace uapmd {
         }
 
         const std::vector<EffectiveSignature>& effectiveSignatures() const { return effectiveSignatures_; }
+
+        // How many quarter notes one bar of this meter spans (e.g. 3.5 for 7/8).
+        static double barLengthBeats(const EffectiveSignature& signature) {
+            const double numerator = signature.numerator > 0 ? signature.numerator : 4;
+            const double denominator = signature.denominator > 0 ? signature.denominator : 4;
+            return numerator * 4.0 / denominator;
+        }
+
 
     private:
         static constexpr double kDefaultBpm = 120.0;

@@ -145,7 +145,12 @@ private:
             typeLabel.c_str()
         );
 
+        // Time-positioned content spans the node's full width. Padding it horizontally the way
+        // the labels are padded would shift every note, marker and meter line inward by a few
+        // pixels, putting them off the bar lines the ruler draws from the node's own extent.
         ImRect contentRect = padded;
+        contentRect.Min.x = area.Min.x;
+        contentRect.Max.x = area.Max.x;
         contentRect.Min.y += ImGui::GetFontSize() + kLabelSpacing * uiScale_;
         if (contentRect.Min.y >= contentRect.Max.y) {
             return;

@@ -177,19 +177,16 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
     const double endBeat = startBeat +
         static_cast<double>(g.contentMaxX - g.contentMinX) / pixelsPerBeat;
 
-    // Signature regions to walk: the tempo map's effective signatures, or a single implicit 4/4
-    // region when no time-signature meta events exist yet.
+    // TempoMap owns the meter regions: the list starts at beat zero and carries one entry per
+    // actual change, so each region's own start is where its bars begin.
     std::vector<uapmd::TempoMap::EffectiveSignature> regions;
     if (tempoMap_)
         regions = tempoMap_->effectiveSignatures();
-    if (regions.empty() || regions.front().startBeat > 1e-9) {
+    if (regions.empty()) {
         uapmd::TempoMap::EffectiveSignature defaultRegion;
         defaultRegion.startBeat = 0.0;
-        defaultRegion.endBeat = regions.empty()
-            ? std::numeric_limits<double>::infinity() : regions.front().startBeat;
-        defaultRegion.numerator = 4;
-        defaultRegion.denominator = 4;
-        regions.insert(regions.begin(), defaultRegion);
+        defaultRegion.endBeat = std::numeric_limits<double>::infinity();
+        regions.push_back(defaultRegion);
     }
 
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -209,88 +206,96 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
     headerList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
                              ImVec2(g.contentMaxX, g.headerMaxY), true);
 
-    // Bar numbers are continuous across signature changes, so every region has to know how many
-    // bars the regions before it contributed.
-    long long barsBefore = 0;
-    int drawn = 0;
+    // Bar numbers run continuously, so each region needs the count of the bars before it.
+    struct RulerRegion {
+        double startBeat{0.0};
+        double endBeat{std::numeric_limits<double>::infinity()};
+        double signatureBeatLength{1.0};
+        double barLength{4.0};
+        long long numerator{4};
+        long long firstBarNumber{1};
+    };
+    std::vector<RulerRegion> laid;
+    laid.reserve(regions.size());
+    long long nextBarNumber = 1;
     for (const auto& region : regions) {
-        const uint8_t numerator = region.numerator > 0 ? region.numerator : 4;
+        const long long numerator = region.numerator > 0 ? region.numerator : 4;
         const uint8_t denominator = region.denominator > 0 ? region.denominator : 4;
         // One "signature beat" (e.g. an eighth note in 6/8) spans this many quarter-note beats.
         const double signatureBeatLength = 4.0 / static_cast<double>(denominator);
         if (signatureBeatLength <= 0.0)
             continue;
+        const double barLength = signatureBeatLength * static_cast<double>(numerator);
+        if (!laid.empty()) {
+            const auto& previous = laid.back();
+            nextBarNumber += previous.barLength > 0.0
+                ? static_cast<long long>(std::llround(
+                      (region.startBeat - previous.startBeat) / previous.barLength))
+                : 0;
+        }
+        laid.push_back({std::max(0.0, region.startBeat), region.endBeat,
+                        signatureBeatLength, barLength, numerator, nextBarNumber});
+    }
 
-        const double regionBeats = std::isfinite(region.endBeat)
-            ? std::max(0.0, region.endBeat - region.startBeat) : 0.0;
-        // Round a partial trailing bar UP. A signature region that ends mid-bar -- which happens
-        // whenever the master clip's meta events do not start on a bar line -- would otherwise
-        // hand the next region a bar number this region has already used, printing the same
-        // number twice a few pixels apart. (The doubled bar *line* that pairing also produces is
-        // a tempo-map question, not a ruler one, and is left alone here.)
-        const long long regionBars = std::isfinite(region.endBeat)
-            ? static_cast<long long>(std::ceil(
-                  regionBeats / (signatureBeatLength * numerator) - 1e-9))
-            : 0;
+    int drawn = 0;
+    for (const auto& region : laid) {
+        if (region.endBeat <= startBeat || region.startBeat >= endBeat)
+            continue;
 
-        if (region.endBeat > startBeat && region.startBeat < endBeat) {
-            const double pixelsPerSignatureBeat = signatureBeatLength * pixelsPerBeat;
-            const bool drawSubBeatLines = pixelsPerSignatureBeat >= 3.0;
-            // When even whole bars would crowd together, thin them out rather than drawing a
-            // solid block of lines.
-            const double pixelsPerBar = pixelsPerSignatureBeat * numerator;
-            long long barStride = 1;
-            while (pixelsPerBar * static_cast<double>(barStride) < 4.0 && barStride < (1LL << 20))
-                barStride *= 2;
-            const bool labelBars = pixelsPerBar * static_cast<double>(barStride) >= 48.0 * g.uiScale;
+        const double pixelsPerSignatureBeat = region.signatureBeatLength * pixelsPerBeat;
+        const bool drawSubBeatLines = pixelsPerSignatureBeat >= 3.0;
+        // When even whole bars would crowd together, thin them out rather than drawing a
+        // solid block of lines.
+        const double pixelsPerBar = pixelsPerSignatureBeat * static_cast<double>(region.numerator);
+        long long barStride = 1;
+        while (pixelsPerBar * static_cast<double>(barStride) < 4.0 && barStride < (1LL << 20))
+            barStride *= 2;
+        const bool labelBars = pixelsPerBar * static_cast<double>(barStride) >= 48.0 * g.uiScale;
 
-            const double regionEnd = std::min(region.endBeat, endBeat);
-            const double visibleStart = std::max(region.startBeat, startBeat);
-            long long index = static_cast<long long>(
-                std::floor((visibleStart - region.startBeat) / signatureBeatLength));
+        const double regionEnd = std::min(region.endBeat, endBeat);
+        const double visibleStart = std::max(region.startBeat, startBeat);
+        long long index = static_cast<long long>(
+            std::floor((visibleStart - region.startBeat) / region.signatureBeatLength));
+        if (index < 0)
+            index = 0;
 
-            for (; drawn < kMaxRulerLines; ++drawn, ++index) {
-                const double beatPos = region.startBeat +
-                    static_cast<double>(index) * signatureBeatLength;
-                if (beatPos > regionEnd + 1e-9)
-                    break;
-                if (beatPos < visibleStart - 1e-9)
+        for (; drawn < kMaxRulerLines; ++drawn, ++index) {
+            const double beatPos = region.startBeat +
+                static_cast<double>(index) * region.signatureBeatLength;
+            if (beatPos > regionEnd + 1e-9)
+                break;
+            if (beatPos < visibleStart - 1e-9)
+                continue;
+
+            const bool isBar = (index % region.numerator) == 0;
+            const long long barIndex = index / region.numerator;
+            if (isBar) {
+                if (barIndex % barStride != 0)
                     continue;
+            } else if (!drawSubBeatLines) {
+                continue;
+            }
 
-                const bool isBar = (index % static_cast<long long>(numerator)) == 0;
-                const long long barIndex = index / static_cast<long long>(numerator);
-                if (isBar) {
-                    if (barIndex % barStride != 0)
-                        continue;
-                } else if (!drawSubBeatLines) {
-                    continue;
-                }
+            const float x = g.contentMinX +
+                static_cast<float>((beatPos - startBeat) * pixelsPerBeat);
+            if (x < g.contentMinX || x > g.contentMaxX)
+                continue;
 
-                const float x = g.contentMinX +
-                    static_cast<float>((beatPos - startBeat) * pixelsPerBeat);
-                if (x < g.contentMinX || x > g.contentMaxX)
-                    continue;
+            gridList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
+                              isBar ? barColor : beatColor,
+                              isBar ? barThickness : beatThickness);
 
-                gridList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
-                                  isBar ? barColor : beatColor,
-                                  isBar ? barThickness : beatThickness);
-
-                if (headerHeight <= 0.0f)
-                    continue;
-                const float tickTop = g.headerMaxY - headerHeight * (isBar ? 0.5f : 0.25f);
-                headerList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
-                if (isBar && labelBars) {
-                    // Bars are numbered from 1, the way every other tool counts them.
-                    const auto label = std::format("{}", barsBefore + barIndex + 1);
-                    headerList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
-                                        label.c_str());
-                }
+            if (headerHeight <= 0.0f)
+                continue;
+            const float tickTop = g.headerMaxY - headerHeight * (isBar ? 0.5f : 0.25f);
+            headerList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
+            if (isBar && labelBars) {
+                // Bars are numbered from 1, the way every other tool counts them.
+                const auto label = std::format("{}", region.firstBarNumber + barIndex);
+                headerList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
+                                    label.c_str());
             }
         }
-
-        if (!std::isfinite(region.endBeat) || region.startBeat >= endBeat)
-            break;
-        barsBefore += regionBars;
     }
 
     headerList->PopClipRect();

@@ -433,9 +433,11 @@ The analysis result is not what the ruler draws. Four more conversions happen:
 3. `uapmd::TempoMap::rebuild()` integrates the tempo points into quarter-note
    beats and stores each time signature's `startBeat = secondsToBeats(t)` — a
    **fractional** beat position.
-4. `TimelineAxis::drawBeatsRuler()` restarts the bar grid at each region's
+4. `TimelineAxis::drawBeatsRuler()` starts each region's bars at its own
    `startBeat`, stepping by `signatureBeatLength = 4.0 / denominator` quarter
-   notes and drawing a bar line every `numerator` steps.
+   notes and drawing a bar line every `numerator` steps. `TempoMap::rebuild()`
+   drops meta events that restate the meter already in force, so only an actual
+   change re-phases the grid.
 
 Two properties of that chain matter:
 

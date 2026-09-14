@@ -1059,11 +1059,16 @@ void SequenceEditor::drawRuler(
     if (!unified_.timeline)
         return;
 
+    // Clips are positioned from ImTimeline's own content area, which sits inside a further child
+    // window and is therefore inset from this window's rect. Anchoring the ruler to clipAreaMinX
+    // instead would shift every bar line off the clips by that inset -- the same correction the
+    // selection overlay makes above.
+    const float nodeOriginX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth;
     TimelineAxis::RulerGeometry geometry;
     geometry.headerMinY = headerMinY;
     geometry.headerMaxY = clipAreaMinY;
-    geometry.contentMinX = clipAreaMinX;
-    geometry.contentMaxX = clipAreaMaxX;
+    geometry.contentMinX = nodeOriginX;
+    geometry.contentMaxX = std::max(nodeOriginX, unified_.timeline->mContentAreaRect.Max.x);
     geometry.contentMaxY = clipAreaMaxY;
     geometry.startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
     geometry.scale = unified_.timeline->GetScale();
@@ -1325,7 +1330,10 @@ void SequenceEditor::drawPlayheadIndicator(
         return;
     }
 
-    const float x = clipMinX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale));
+    // Same origin the clips use, so the playhead lines up with them rather than with this
+    // window's edge (see drawRuler).
+    const float nodeOriginX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth;
+    const float x = nodeOriginX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale));
     const float yTop = headerMinY;
     const float yBottom = headerMaxY;
     if (yBottom <= yTop) {
