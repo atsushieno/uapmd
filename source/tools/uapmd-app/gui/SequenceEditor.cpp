@@ -181,7 +181,16 @@ float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
 
 void SequenceEditor::reset() {
     windows_.clear();
+    // Undo and redo arrive here as a Cleared track-layout change, as does removing a track:
+    // all three edit the project the user is already looking at, so the zoom is theirs and has
+    // to survive. It is carried as a plain value because this drops the Timeline object the
+    // rebuild would otherwise read it back from. Opening a project instead re-fits the zoom
+    // explicitly, through MainWindow's projectLoaded hook.
+    const bool keepZoom = unified_.hasExplicitZoom && unified_.timeline;
+    const float keptScale = keepZoom ? unified_.timeline->GetScale() : -1.0f;
     unified_ = UnifiedTimelineState{};
+    unified_.hasExplicitZoom = keepZoom;
+    unified_.keptScale = keptScale;
 }
 
 void SequenceEditor::render(const RenderContext& context) {
@@ -896,8 +905,10 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     // rebuildUnifiedTimeline replaces the Timeline object outright, so an explicit zoom has to be
     // captured from the outgoing object and re-applied to the new one -- hasExplicitZoom alone
     // only prevents the *default* from being set below, it doesn't carry the value across.
-    const float preservedScale = (unified_.timeline && unified_.hasExplicitZoom)
-        ? unified_.timeline->GetScale() : -1.0f;
+    // After reset() there is no outgoing object, and the value comes from keptScale instead.
+    // Both are gated on hasExplicitZoom, so the scale setAxisMode invalidates stays discarded.
+    const float preservedScale = !unified_.hasExplicitZoom ? -1.0f
+        : (unified_.timeline ? unified_.timeline->GetScale() : unified_.keptScale);
     unified_.timeline = std::make_unique<ImTimeline::Timeline>();
     unified_.nodeToClip.clear();
     unified_.activeDragNodeId = InvalidNodeID;

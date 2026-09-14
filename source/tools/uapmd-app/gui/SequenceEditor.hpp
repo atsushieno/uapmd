@@ -147,6 +147,7 @@ private:
         TimelineClipMarquee marquee;
         TimelineLongPress longPress;
         bool hasExplicitZoom = false;  // once true, rebuildUnifiedTimeline stops resetting scale
+        float keptScale = -1.0f;  // explicit zoom held across reset(), which drops the Timeline
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet
         double pendingFitDurationSeconds = 0.0;
