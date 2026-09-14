@@ -100,11 +100,11 @@ public:
     void reset();
 
     // Navigation row (zoom slider + position controller); lives in the always-visible toolbar,
-    // so it renders separately from (and typically before) renderUnifiedTimeline.
+    // so it renders separately from (and typically before) renderTimeline.
     // barStartScreenX anchors the controller's left edge to the track content column.
     void renderNavigator(const RenderContext& context, float barStartScreenX);
-    void renderUnifiedTimeline(const RenderContext& context, float availableHeight);
-    float getUnifiedTimelineHeight(float uiScale) const;
+    void renderTimeline(const RenderContext& context, float availableHeight);
+    float getTimelineHeight(float uiScale) const;
 
     // Zooms so the given content duration fits within visibleWidthPixels, clamped to never zoom
     // in past the default. Marks the zoom as user-explicit so the next ordinary rebuild doesn't
@@ -112,7 +112,7 @@ public:
     // seconds in both modes; the axis converts.
     void fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale);
     // Clip-area width in pixels, cached from the most recent render (0 before any render).
-    float lastVisibleWidth() const { return unified_.lastVisibleWidthPixels; }
+    float lastVisibleWidth() const { return timeline_.lastVisibleWidthPixels; }
 
 private:
     struct SequenceEditorState {
@@ -134,8 +134,8 @@ private:
     std::unordered_map<int32_t, SequenceEditorState> windows_;
 
     struct NodeClipRef { int32_t trackIndex; int32_t clipId; };
-    struct UnifiedTimelineState {
-        std::unique_ptr<ImTimeline::Timeline> timeline;
+    struct TimelineState {
+        std::unique_ptr<ImTimeline::Timeline> widget;
         ImTimelineStyle style{};
         bool dirty = true;
         std::unordered_map<NodeID, NodeClipRef> nodeToClip;
@@ -146,19 +146,19 @@ private:
         RangeSelectionDrag rangeDrag;
         TimelineClipMarquee marquee;
         TimelineLongPress longPress;
-        bool hasExplicitZoom = false;  // once true, rebuildUnifiedTimeline stops resetting scale
+        bool hasExplicitZoom = false;  // once true, rebuildTimeline stops resetting scale
         float keptScale = -1.0f;  // explicit zoom held across reset(), which drops the Timeline
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet
         double pendingFitDurationSeconds = 0.0;
         float pendingFitUiScale = 1.0f;
     };
-    UnifiedTimelineState unified_;
+    TimelineState timeline_;
     TimelineAxis axis_;
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
-    void rebuildUnifiedTimeline(const RenderContext& context);
+    void rebuildTimeline(const RenderContext& context);
     void drawRuler(const RenderContext& context, float clipAreaMinX, float clipAreaMinY,
                    float clipAreaMaxX, float clipAreaMaxY, float headerMinY) const;
     void renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);

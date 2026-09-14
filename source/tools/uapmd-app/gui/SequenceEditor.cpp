@@ -115,16 +115,16 @@ void SequenceEditor::setAxisMode(TimelineAxisMode mode) {
     // was computed under the outgoing mapping, so none of it survives the switch. Dropping the
     // explicit zoom lets the rebuild pick the new axis's default rather than reinterpreting a
     // pixels-per-millisecond value as pixels-per-tick.
-    unified_.hasExplicitZoom = false;
-    unified_.hasPendingFit = false;
-    unified_.dirty = true;
+    timeline_.hasExplicitZoom = false;
+    timeline_.hasPendingFit = false;
+    timeline_.dirty = true;
 }
 
 void SequenceEditor::showWindow(int32_t trackIndex) {
     auto [it, inserted] = windows_.try_emplace(trackIndex);
     it->second.visible = true;
     if (inserted)
-        unified_.dirty = true;
+        timeline_.dirty = true;
 }
 
 void SequenceEditor::hideWindow(int32_t trackIndex) {
@@ -142,7 +142,7 @@ bool SequenceEditor::isVisible(int32_t trackIndex) const {
 void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips) {
     auto& state = windows_[trackIndex];
     state.displayClips = clips;
-    unified_.dirty = true;
+    timeline_.dirty = true;
     pruneClipPreviewCache(state);
 }
 
@@ -157,19 +157,19 @@ void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
         }
     }
     if (removed)
-        unified_.dirty = true;
+        timeline_.dirty = true;
 }
 
 void SequenceEditor::invalidateTimeline() {
-    unified_.dirty = true;
+    timeline_.dirty = true;
 }
 
-float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
+float SequenceEditor::getTimelineHeight(float uiScale) const {
     const float minHeight = 120.0f * uiScale;
     // After a rebuild, computedTimelineHeight reflects the actual expanded section heights
     // (including multi-lane tracks). Fall back to a simple estimate before the first rebuild.
-    if (unified_.computedTimelineHeight > 0.0f)
-        return std::max(unified_.computedTimelineHeight, minHeight);
+    if (timeline_.computedTimelineHeight > 0.0f)
+        return std::max(timeline_.computedTimelineHeight, minHeight);
     const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
     const auto sectionCount = static_cast<float>(windows_.size());
     const float headerHeight = static_cast<float>(static_cast<int>(24.0f * uiScale));
@@ -186,11 +186,11 @@ void SequenceEditor::reset() {
     // to survive. It is carried as a plain value because this drops the Timeline object the
     // rebuild would otherwise read it back from. Opening a project instead re-fits the zoom
     // explicitly, through MainWindow's projectLoaded hook.
-    const bool keepZoom = unified_.hasExplicitZoom && unified_.timeline;
-    const float keptScale = keepZoom ? unified_.timeline->GetScale() : -1.0f;
-    unified_ = UnifiedTimelineState{};
-    unified_.hasExplicitZoom = keepZoom;
-    unified_.keptScale = keptScale;
+    const bool keepZoom = timeline_.hasExplicitZoom && timeline_.widget;
+    const float keptScale = keepZoom ? timeline_.widget->GetScale() : -1.0f;
+    timeline_ = TimelineState{};
+    timeline_.hasExplicitZoom = keepZoom;
+    timeline_.keptScale = keptScale;
 }
 
 void SequenceEditor::render(const RenderContext& context) {
@@ -327,11 +327,11 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
 void SequenceEditor::renderNavigator(const RenderContext& context, float barStartScreenX) {
     // Rebuild eagerly so the navigator works even when it renders before the timeline widget
     // (it lives in the always-visible toolbar row, outside the track scroll area).
-    if (unified_.timeline && !timelineStyleMatches(unified_.style, context))
-        unified_.dirty = true;
-    if (unified_.dirty)
-        rebuildUnifiedTimeline(context);
-    if (!unified_.timeline)
+    if (timeline_.widget && !timelineStyleMatches(timeline_.style, context))
+        timeline_.dirty = true;
+    if (timeline_.dirty)
+        rebuildTimeline(context);
+    if (!timeline_.widget)
         return;
 
     auto& appModel = uapmd_app::AppModel::instance();
@@ -339,7 +339,7 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     const int32_t sampleRate = appModel.sampleRate();
     const double playheadSeconds = sampleRate > 0
         ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
-    // The scrollable domain has to include the same trailing pad rebuildUnifiedTimeline gives
+    // The scrollable domain has to include the same trailing pad rebuildTimeline gives
     // the timeline's max frame. Without it the furthest scroll position puts the last clip's end
     // exactly on the right edge, so its end is clipped away and can never be brought into view.
     // (Deliberately not timeline->GetMaxFrame(): ImTimeline inflates that when zoomed out past
@@ -383,42 +383,42 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
             break;
         }
 
-    renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom, axis_,
+    renderTimelineNavigator(*timeline_.widget, timeline_.hasExplicitZoom, axis_,
                             context.uiScale, barStartScreenX,
-                            contentFrames, playheadFrame, unified_.lastVisibleWidthPixels,
+                            contentFrames, playheadFrame, timeline_.lastVisibleWidthPixels,
                             overview, static_cast<int>(sortedTracks.size()),
                             freezeProgress);
 }
 
-void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {
+void SequenceEditor::renderTimeline(const RenderContext& context, float availableHeight) {
     if (availableHeight <= 0.0f)
         availableHeight = ImGui::GetContentRegionAvail().y;
     availableHeight = std::max(availableHeight, 120.0f * context.uiScale);
 
-    if (unified_.timeline && !timelineStyleMatches(unified_.style, context))
-        unified_.dirty = true;
-    if (unified_.dirty)
-        rebuildUnifiedTimeline(context);
+    if (timeline_.widget && !timelineStyleMatches(timeline_.style, context))
+        timeline_.dirty = true;
+    if (timeline_.dirty)
+        rebuildTimeline(context);
 
-    if (!unified_.timeline) {
+    if (!timeline_.widget) {
         ImGui::TextUnformatted("Unable to build timeline.");
         return;
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    if (ImGui::BeginChild("##UnifiedTimeline", ImVec2(0, availableHeight), true,
+    if (ImGui::BeginChild("##Timeline", ImVec2(0, availableHeight), true,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         const bool timelineHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
         const ImVec2 winPos = ImGui::GetWindowPos();
         const ImVec2 winSize = ImGui::GetWindowSize();
-        const float clipAreaMinX = winPos.x + unified_.style.LegendWidth;
-        const float clipAreaMinY = winPos.y + static_cast<float>(unified_.style.HeaderHeight);
+        const float clipAreaMinX = winPos.x + timeline_.style.LegendWidth;
+        const float clipAreaMinY = winPos.y + static_cast<float>(timeline_.style.HeaderHeight);
         const float clipAreaMaxX = winPos.x + winSize.x;
         const float clipAreaMaxY = winPos.y + winSize.y;
-        unified_.lastVisibleWidthPixels = std::max(0.0f, clipAreaMaxX - clipAreaMinX);
-        if (unified_.hasPendingFit && unified_.lastVisibleWidthPixels > 0.0f) {
-            unified_.hasPendingFit = false;
-            fitToContent(unified_.pendingFitDurationSeconds, unified_.lastVisibleWidthPixels, unified_.pendingFitUiScale);
+        timeline_.lastVisibleWidthPixels = std::max(0.0f, clipAreaMaxX - clipAreaMinX);
+        if (timeline_.hasPendingFit && timeline_.lastVisibleWidthPixels > 0.0f) {
+            timeline_.hasPendingFit = false;
+            fitToContent(timeline_.pendingFitDurationSeconds, timeline_.lastVisibleWidthPixels, timeline_.pendingFitUiScale);
         }
 
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
@@ -432,7 +432,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         // (e.g. an overlay window being dragged above the timeline), or ImTimeline would see
         // the drag and move the underlying track. Scoped only to the "mouse outside window"
         // branch so that popup-blocking is always honoured regardless of active items.
-        const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
+        const bool scrollbarDragging = timeline_.widget->GetLastInputData().IsMovingScrollBar;
         const ImGuiWindow* timelineWindow = ImGui::GetCurrentWindow();
         bool timelineItemActive = false;
         if (ImGuiContext* ctx = ImGui::GetCurrentContext(); ctx->ActiveId != 0)
@@ -453,13 +453,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         // Empty-space selection owns the gesture even when it crosses a clip.
         // ImTimeline otherwise starts dragging whichever node the held mouse enters.
-        const bool selectingRange = unified_.marquee.active || unified_.rangeDrag.active;
+        const bool selectingRange = timeline_.marquee.active || timeline_.rangeDrag.active;
         const bool savedSelectionMouseDown = io.MouseDown[0];
         if (selectingRange)
             io.MouseDown[0] = false;
-        if (!unified_.timeline->IsDragging())
-            unified_.timeline->SelectNode(nullptr);
-        unified_.timeline->DrawTimeline();
+        if (!timeline_.widget->IsDragging())
+            timeline_.widget->SelectNode(nullptr);
+        timeline_.widget->DrawTimeline();
         if (selectingRange)
             io.MouseDown[0] = savedSelectionMouseDown;
 
@@ -479,34 +479,34 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             headerMousePos.x >= clipAreaMinX && headerMousePos.x <= clipAreaMaxX &&
             headerMousePos.y >= winPos.y && headerMousePos.y < clipAreaMinY &&
             ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            const float scale = unified_.timeline->GetScale();
+            const float scale = timeline_.widget->GetScale();
             if (scale > 0.0f) {
                 const double frame =
-                    static_cast<double>(unified_.timeline->GetStartTimestamp()) +
+                    static_cast<double>(timeline_.widget->GetStartTimestamp()) +
                     static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
                 uapmd_app::AppModel::instance().transport().jump(axis_.secondsFromFrame(frame));
             }
         }
 
         // Drag tracking
-        if (unified_.timeline->mDragData.DragState == eDragState::DragNode &&
-            unified_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered) {
-            unified_.activeDragNodeId = unified_.timeline->mDragData.DragNode.GetID();
-            unified_.active_drag_start = unified_.timeline->mDragData.DragNode.start;
+        if (timeline_.widget->mDragData.DragState == eDragState::DragNode &&
+            timeline_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered) {
+            timeline_.activeDragNodeId = timeline_.widget->mDragData.DragNode.GetID();
+            timeline_.active_drag_start = timeline_.widget->mDragData.DragNode.start;
         }
-        if (unified_.activeDragNodeId != InvalidNodeID && shouldBlockInput)
-            unified_.activeDragNodeId = InvalidNodeID;
+        if (timeline_.activeDragNodeId != InvalidNodeID && shouldBlockInput)
+            timeline_.activeDragNodeId = InvalidNodeID;
 
         // Drag completion
-        if (unified_.activeDragNodeId != InvalidNodeID &&
-            unified_.timeline->mDragData.DragState == eDragState::None &&
-            !unified_.timeline->IsDragging()) {
-            const NodeID nodeId = unified_.activeDragNodeId;
-            unified_.activeDragNodeId = InvalidNodeID;
-            auto clipIt = unified_.nodeToClip.find(nodeId);
-            if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
-                auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
-                if (node && node->start != unified_.active_drag_start && context.moveClipAbsolute) {
+        if (timeline_.activeDragNodeId != InvalidNodeID &&
+            timeline_.widget->mDragData.DragState == eDragState::None &&
+            !timeline_.widget->IsDragging()) {
+            const NodeID nodeId = timeline_.activeDragNodeId;
+            timeline_.activeDragNodeId = InvalidNodeID;
+            auto clipIt = timeline_.nodeToClip.find(nodeId);
+            if (clipIt != timeline_.nodeToClip.end() && clipIt->second.clipId >= 0) {
+                auto* node = timeline_.widget->FindNodeByNodeID(nodeId);
+                if (node && node->start != timeline_.active_drag_start && context.moveClipAbsolute) {
                     const double newStartSeconds =
                         axis_.secondsFromFrame(static_cast<double>(node->start));
                     context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
@@ -515,33 +515,33 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         }
 
         // Determine hovered track from selected section
-        const int32_t selectedSection = unified_.timeline->GetSelectedSection();
+        const int32_t selectedSection = timeline_.widget->GetSelectedSection();
         int32_t hoveredTrackIndex = -1;
-        if (selectedSection >= 0 && selectedSection < static_cast<int32_t>(unified_.sectionToTrack.size()))
-            hoveredTrackIndex = unified_.sectionToTrack[static_cast<size_t>(selectedSection)];
+        if (selectedSection >= 0 && selectedSection < static_cast<int32_t>(timeline_.sectionToTrack.size()))
+            hoveredTrackIndex = timeline_.sectionToTrack[static_cast<size_t>(selectedSection)];
 
         // Shared hit-testing helpers, used by both the double-click and range-drag interactions.
         auto sectionTopYFor = [&](int32_t trackIdx) -> float {
             float y = clipAreaMinY;
-            for (int32_t si = 0; si < static_cast<int32_t>(unified_.sectionToTrack.size()); ++si) {
-                if (unified_.sectionToTrack[static_cast<size_t>(si)] == trackIdx)
+            for (int32_t si = 0; si < static_cast<int32_t>(timeline_.sectionToTrack.size()); ++si) {
+                if (timeline_.sectionToTrack[static_cast<size_t>(si)] == trackIdx)
                     break;
-                y += unified_.timeline->GetSectionDisplayProperties(si).mHeight + kTimelineSectionSpacing;
+                y += timeline_.widget->GetSectionDisplayProperties(si).mHeight + kTimelineSectionSpacing;
             }
             return y;
         };
         auto sectionHeightFor = [&](int32_t trackIdx) -> float {
-            for (int32_t si = 0; si < static_cast<int32_t>(unified_.sectionToTrack.size()); ++si)
-                if (unified_.sectionToTrack[static_cast<size_t>(si)] == trackIdx)
-                    return unified_.timeline->GetSectionDisplayProperties(si).mHeight;
+            for (int32_t si = 0; si < static_cast<int32_t>(timeline_.sectionToTrack.size()); ++si)
+                if (timeline_.sectionToTrack[static_cast<size_t>(si)] == trackIdx)
+                    return timeline_.widget->GetSectionDisplayProperties(si).mHeight;
             return 0.0f;
         };
         auto isOverClipNode = [&](int32_t trackIdx, ImVec2 pos, float scale, double startFrame, int32_t* outClipId) -> bool {
             const float sectionTopY = sectionTopYFor(trackIdx);
             const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
-            for (const auto& [nodeId, ref] : unified_.nodeToClip) {
+            for (const auto& [nodeId, ref] : timeline_.nodeToClip) {
                 if (ref.trackIndex != trackIdx) continue;
-                auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
+                auto* node = timeline_.widget->FindNodeByNodeID(nodeId);
                 if (!node) continue;
                 const float nMinX = sfOffset + static_cast<float>(node->start) * scale;
                 const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * scale;
@@ -569,7 +569,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         // destination from the pointer, rather than a previously clicked track.
         hoveredTrackIndex = -1;
         if (mouseInClipArea)
-            for (const auto trackIndex : unified_.sectionToTrack) {
+            for (const auto trackIndex : timeline_.sectionToTrack) {
                 const float top = sectionTopYFor(trackIndex);
                 if (mousePos.y >= top && mousePos.y < top + sectionHeightFor(trackIndex)) {
                     hoveredTrackIndex = trackIndex;
@@ -579,13 +579,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         // Use the same visible node geometry for selection in seconds and beats views.
         std::vector<TimelineClipHitBox> selectionBoxes;
-        const float selectionScale = unified_.timeline->GetScale();
+        const float selectionScale = timeline_.widget->GetScale();
         const float selectionOffset = clipAreaMinX -
-            static_cast<float>(unified_.timeline->GetStartTimestamp()) * selectionScale;
-        for (const auto& [nodeId, ref] : unified_.nodeToClip) {
+            static_cast<float>(timeline_.widget->GetStartTimestamp()) * selectionScale;
+        for (const auto& [nodeId, ref] : timeline_.nodeToClip) {
             if (ref.trackIndex < 0)
                 continue;
-            const auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
+            const auto* node = timeline_.widget->FindNodeByNodeID(nodeId);
             if (!node)
                 continue;
             const float top = sectionTopYFor(ref.trackIndex) + node->displayProperties.yOffset;
@@ -595,27 +595,27 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             const ImVec2 max(selectionOffset + static_cast<float>(node->end + 1) * selectionScale, top + height);
             // Keep gesture hit boxes unchanged; the rendered outline follows
             // ImTimeline's padded child origin, height policy and accent inset.
-            const float visualTop = top + unified_.timeline->mContentAreaRect.Min.y + 1.0f - clipAreaMinY;
+            const float visualTop = top + timeline_.widget->mContentAreaRect.Min.y + 1.0f - clipAreaMinY;
             const float visualHeight = static_cast<float>(static_cast<size_t>(
                 node->mFlags.test(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight)
                     ? sectionHeightFor(ref.trackIndex) : node->displayProperties.mHeight))
                 - node->displayProperties.AccentThickness;
-            const float visualOffsetX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth - clipAreaMinX;
+            const float visualOffsetX = timeline_.widget->mContentAreaRect.Min.x + timeline_.style.LegendWidth - clipAreaMinX;
             selectionBoxes.push_back({{ref.trackIndex, ref.clipId}, min, max,
                 {min.x + visualOffsetX, visualTop}, {max.x + visualOffsetX, visualTop + visualHeight},
                 node->displayProperties.BorderRadius, node->displayProperties.BorderThickness});
         }
-        const auto marqueeSelected = unified_.marquee.render(context.clipActions, selectionBoxes,
+        const auto marqueeSelected = timeline_.marquee.render(context.clipActions, selectionBoxes,
             {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
             timelineHovered && !shouldBlockInput, context.uiScale);
 
         // A long press opens the menus the desktop reaches by right-click, and takes the
         // gesture away from the selection drag it had started out as.
-        const bool longPress = unified_.longPress.fired(
+        const bool longPress = timeline_.longPress.fired(
             timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 && !shouldBlockInput);
         if (longPress) {
-            unified_.marquee.active = false;
-            unified_.rangeDrag = {};
+            timeline_.marquee.active = false;
+            timeline_.rangeDrag = {};
         }
 
         int32_t requestedContextTrack = -1;
@@ -625,8 +625,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             (longPress || ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
              ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
             auto& trackState = windows_[hoveredTrackIndex];
-            const float scale = unified_.timeline->GetScale();
-            const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+            const float scale = timeline_.widget->GetScale();
+            const double startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
             bool clipUnderMouse = false;
             if (scale > 0.0f) {
                 int32_t hitClipId = -1;
@@ -645,7 +645,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                 const double clickedFrame =
                     startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
                 const double maxSeconds = axis_.secondsFromFrame(
-                    static_cast<double>(unified_.timeline->GetMaxFrame()));
+                    static_cast<double>(timeline_.widget->GetMaxFrame()));
                 trackState.requestedAddPosition =
                     std::clamp(axis_.secondsFromFrame(clickedFrame), 0.0, maxSeconds);
                 if (!clipUnderMouse)
@@ -660,8 +660,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         // clips crossed, or empty space -- acts on release, never both.
         int32_t requestedRangeTrack = -1;
         {
-            const float scale = unified_.timeline->GetScale();
-            const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+            const float scale = timeline_.widget->GetScale();
+            const double startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
             if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
                 const int32_t frameUnderMouse = static_cast<int32_t>(std::llround(
@@ -669,36 +669,36 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                 const bool mouseClicked = timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
                     !shouldBlockInput && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                    unified_.timeline->mDragData.DragState == eDragState::None;
+                    timeline_.widget->mDragData.DragState == eDragState::None;
                 const bool overNode = mouseClicked && isOverClipNode(hoveredTrackIndex, mousePos, scale, startFrame, nullptr);
 
-                updateRangeSelectionDrag(unified_.rangeDrag, ImGui::IsMouseDown(ImGuiMouseButton_Left),
+                updateRangeSelectionDrag(timeline_.rangeDrag, ImGui::IsMouseDown(ImGuiMouseButton_Left),
                                           mouseClicked, overNode, hoveredTrackIndex, frameUnderMouse);
 
                 // The marquee draws its own rectangle for the same drag; the lane-height
                 // overlay would only duplicate it. Alt-drag runs the range alone and shows it.
-                if (unified_.rangeDrag.active && !unified_.marquee.active) {
+                if (timeline_.rangeDrag.active && !timeline_.marquee.active) {
                     drawRangeSelectionOverlay(clipAreaMinX, scale, static_cast<float>(startFrame),
-                        sectionTopYFor(unified_.rangeDrag.trackIndex), sectionHeightFor(unified_.rangeDrag.trackIndex));
+                        sectionTopYFor(timeline_.rangeDrag.trackIndex), sectionHeightFor(timeline_.rangeDrag.trackIndex));
                 }
 
                 // Escape cancels the whole gesture, matching the marquee it is paired with.
-                if (unified_.rangeDrag.active && ImGui::IsKeyPressed(ImGuiKey_Escape))
-                    unified_.rangeDrag = {};
+                if (timeline_.rangeDrag.active && ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    timeline_.rangeDrag = {};
 
-                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && unified_.rangeDrag.active) {
+                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && timeline_.rangeDrag.active) {
                     int32_t rTrack = -1, rStart = 0, rEnd = 0;
                     const float pixelsDragged = std::abs(static_cast<float>(
-                        unified_.rangeDrag.currentFrame - unified_.rangeDrag.anchorFrame)) * scale;
+                        timeline_.rangeDrag.currentFrame - timeline_.rangeDrag.anchorFrame)) * scale;
                     // finishRangeSelectionDrag is what ends the drag, so it runs either way; a
                     // drag that caught clips was a selection and stops there, while one that came
                     // up empty goes on to offer a new clip filling its span.
-                    const bool isRange = finishRangeSelectionDrag(unified_.rangeDrag, pixelsDragged,
+                    const bool isRange = finishRangeSelectionDrag(timeline_.rangeDrag, pixelsDragged,
                                                   4.0f * context.uiScale, rTrack, rStart, rEnd);
                     if (isRange && marqueeSelected.value_or(0u) == 0u) {
                         auto& trackState = windows_[rTrack];
                         const double maxSeconds = axis_.secondsFromFrame(
-                            static_cast<double>(unified_.timeline->GetMaxFrame()));
+                            static_cast<double>(timeline_.widget->GetMaxFrame()));
                         trackState.requestedRangeStart = std::clamp(
                             axis_.secondsFromFrame(static_cast<double>(rStart)), 0.0, maxSeconds);
                         trackState.requestedRangeEnd = std::clamp(
@@ -710,7 +710,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         }
 
         // Open & render per-track context menus
-        for (int32_t trackIndex : unified_.sectionToTrack) {
+        for (int32_t trackIndex : timeline_.sectionToTrack) {
             auto it = windows_.find(trackIndex);
             if (it == windows_.end()) continue;
             auto& trackState = it->second;
@@ -881,12 +881,12 @@ void SequenceEditor::fitToContent(double contentDurationSeconds, float visibleWi
     if (contentDurationSeconds <= 0.0)
         return;
     // No render has happened yet to know the real visible width (e.g. fitting right after a
-    // project load, before the timeline widget's first frame) -- defer until renderUnifiedTimeline
+    // project load, before the timeline widget's first frame) -- defer until renderTimeline
     // knows the actual width, rather than silently doing nothing.
-    if (!unified_.timeline || visibleWidthPixels <= 0.0f) {
-        unified_.hasPendingFit = true;
-        unified_.pendingFitDurationSeconds = contentDurationSeconds;
-        unified_.pendingFitUiScale = uiScale;
+    if (!timeline_.widget || visibleWidthPixels <= 0.0f) {
+        timeline_.hasPendingFit = true;
+        timeline_.pendingFitDurationSeconds = contentDurationSeconds;
+        timeline_.pendingFitUiScale = uiScale;
         return;
     }
     const double contentFrames =
@@ -896,25 +896,25 @@ void SequenceEditor::fitToContent(double contentDurationSeconds, float visibleWi
     const float defaultScale = axis_.defaultScale(uiScale);
     const float idealScale = static_cast<float>(visibleWidthPixels / contentFrames);
     const float fitted = std::clamp(idealScale, axis_.minScale(), defaultScale);
-    unified_.timeline->SetScale(fitted);
-    unified_.hasExplicitZoom = true;
-    unified_.hasPendingFit = false;
+    timeline_.widget->SetScale(fitted);
+    timeline_.hasExplicitZoom = true;
+    timeline_.hasPendingFit = false;
 }
 
-void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
-    // rebuildUnifiedTimeline replaces the Timeline object outright, so an explicit zoom has to be
+void SequenceEditor::rebuildTimeline(const RenderContext& context) {
+    // rebuildTimeline replaces the Timeline object outright, so an explicit zoom has to be
     // captured from the outgoing object and re-applied to the new one -- hasExplicitZoom alone
     // only prevents the *default* from being set below, it doesn't carry the value across.
     // After reset() there is no outgoing object, and the value comes from keptScale instead.
     // Both are gated on hasExplicitZoom, so the scale setAxisMode invalidates stays discarded.
-    const float preservedScale = !unified_.hasExplicitZoom ? -1.0f
-        : (unified_.timeline ? unified_.timeline->GetScale() : unified_.keptScale);
-    unified_.timeline = std::make_unique<ImTimeline::Timeline>();
-    unified_.nodeToClip.clear();
-    unified_.activeDragNodeId = InvalidNodeID;
-    unified_.sectionToTrack.clear();
+    const float preservedScale = !timeline_.hasExplicitZoom ? -1.0f
+        : (timeline_.widget ? timeline_.widget->GetScale() : timeline_.keptScale);
+    timeline_.widget = std::make_unique<ImTimeline::Timeline>();
+    timeline_.nodeToClip.clear();
+    timeline_.activeDragNodeId = InvalidNodeID;
+    timeline_.sectionToTrack.clear();
 
-    unified_.timeline->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
+    timeline_.widget->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
 
     ImTimelineStyle style;
     const ImGuiStyle& imguiStyle = ImGui::GetStyle();
@@ -952,8 +952,8 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     style.ScrollbarHandleColor = ImGui::GetColorU32(withAlpha(text, 0.18f));
     style.ScrollbarHandleHoveredColor = ImGui::GetColorU32(withAlpha(text, 0.32f));
     style.SeekbarColor = ImGui::GetColorU32(withAlpha(text, 0.9f));
-    unified_.timeline->SetTimelineStyle(style);
-    unified_.style = style;
+    timeline_.widget->SetTimelineStyle(style);
+    timeline_.style = style;
 
     const float baseHeight = std::max(80.0f * context.uiScale, 40.0f);
 
@@ -963,7 +963,7 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     for (const auto& [trackIndex, _] : windows_)
         sortedTracks.push_back(trackIndex);
     std::sort(sortedTracks.begin(), sortedTracks.end());
-    unified_.sectionToTrack = sortedTracks;
+    timeline_.sectionToTrack = sortedTracks;
 
     int32_t maxFrame = 0;
     float totalSectionHeight = 0.0f;
@@ -981,11 +981,11 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
             auto legendView = std::make_shared<TrackLegendNodeView>();
             legendView->trackIndex = trackIndex;
             legendView->renderContent = context.renderLegendContent;
-            unified_.timeline->InitializeTimelineSectionEx(sectionIdx, sectionName, nullptr, nullptr, legendView);
+            timeline_.widget->InitializeTimelineSectionEx(sectionIdx, sectionName, nullptr, nullptr, legendView);
         } else {
-            unified_.timeline->InitializeTimelineSection(sectionIdx, sectionName);
+            timeline_.widget->InitializeTimelineSection(sectionIdx, sectionName);
         }
-        unified_.timeline->SetTimelineName(sectionIdx, sectionName);
+        timeline_.widget->SetTimelineName(sectionIdx, sectionName);
 
         // Greedy lane assignment distributes overlapping clips into separate vertical lanes
         // within the same section (see TimelineLaneAssignment.hpp for the algorithm).
@@ -998,7 +998,7 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
         const float laneHeight = baseHeight;
         const float sectionHeight = numLanes * laneHeight;
 
-        auto& props = unified_.timeline->GetSectionDisplayProperties(sectionIdx);
+        auto& props = timeline_.widget->GetSectionDisplayProperties(sectionIdx);
         props.mHeight = sectionHeight;
         props.mBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, header, 0.20f));
         props.mBackgroundColorTwo = ImGui::GetColorU32(mixColor(childBg, header, 0.10f));
@@ -1006,7 +1006,7 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
         props.BorderRadius = 6.0f * context.uiScale;
         props.BorderThickness = 1.0f;
         props.AccentThickness = 8;
-        unified_.timeline->SetTimelineHeight(sectionIdx, sectionHeight);
+        timeline_.widget->SetTimelineHeight(sectionIdx, sectionHeight);
         totalSectionHeight += sectionHeight + kTimelineSectionSpacing;
 
         for (const auto& clip : state.displayClips) {
@@ -1034,29 +1034,29 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
             if (customNode)
                 node.InitalizeCustomNode(customNode);
 
-            auto* addedNode = unified_.timeline->AddNewNode(&node);
+            auto* addedNode = timeline_.widget->AddNewNode(&node);
             if (addedNode) {
                 addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, false);
                 addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
-                unified_.nodeToClip[addedNode->GetID()] = {trackIndex, clip.clipId};
+                timeline_.nodeToClip[addedNode->GetID()] = {trackIndex, clip.clipId};
             }
             maxFrame = std::max(maxFrame, clip.timelineEnd);
         }
     }
 
-    unified_.computedTimelineHeight = headerHeight + totalSectionHeight + kTimelineChildPadding;
+    timeline_.computedTimelineHeight = headerHeight + totalSectionHeight + kTimelineChildPadding;
 
     if (maxFrame <= 0) maxFrame = axis_.frameFromSeconds(10.0);
-    unified_.timeline->SetStartFrame(0);
-    unified_.timeline->SetMaxFrame(maxFrame + axis_.trailingPadFrames());
+    timeline_.widget->SetStartFrame(0);
+    timeline_.widget->SetMaxFrame(maxFrame + axis_.trailingPadFrames());
     // Once the user (or fitToContent) has set an explicit zoom, ordinary rebuilds (triggered by
     // any clip add/move/remove) must not reset it back to the default -- carry the prior scale
     // forward onto the new Timeline object instead.
     if (preservedScale >= 0.0f)
-        unified_.timeline->SetScale(preservedScale);
+        timeline_.widget->SetScale(preservedScale);
     else
-        unified_.timeline->SetScale(axis_.defaultScale(context.uiScale));
-    unified_.dirty = false;
+        timeline_.widget->SetScale(axis_.defaultScale(context.uiScale));
+    timeline_.dirty = false;
 }
 
 void SequenceEditor::drawRuler(
@@ -1067,22 +1067,22 @@ void SequenceEditor::drawRuler(
     float clipAreaMaxY,
     float headerMinY
 ) const {
-    if (!unified_.timeline)
+    if (!timeline_.widget)
         return;
 
     // Clips are positioned from ImTimeline's own content area, which sits inside a further child
     // window and is therefore inset from this window's rect. Anchoring the ruler to clipAreaMinX
     // instead would shift every bar line off the clips by that inset -- the same correction the
     // selection overlay makes above.
-    const float nodeOriginX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth;
+    const float nodeOriginX = timeline_.widget->mContentAreaRect.Min.x + timeline_.style.LegendWidth;
     TimelineAxis::RulerGeometry geometry;
     geometry.headerMinY = headerMinY;
     geometry.headerMaxY = clipAreaMinY;
     geometry.contentMinX = nodeOriginX;
-    geometry.contentMaxX = std::max(nodeOriginX, unified_.timeline->mContentAreaRect.Max.x);
+    geometry.contentMaxX = std::max(nodeOriginX, timeline_.widget->mContentAreaRect.Max.x);
     geometry.contentMaxY = clipAreaMaxY;
-    geometry.startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
-    geometry.scale = unified_.timeline->GetScale();
+    geometry.startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
+    geometry.scale = timeline_.widget->GetScale();
     geometry.uiScale = context.uiScale;
     geometry.headerDrawList = ImGui::GetWindowDrawList();
     // Same list the selection overlays use: ImTimeline fills its sections from an inner child
@@ -1290,13 +1290,13 @@ void SequenceEditor::drawRangeSelectionOverlay(
     float sectionTopY,
     float sectionHeight
 ) const {
-    if (!unified_.rangeDrag.active || scale <= 0.0f || sectionHeight <= 0.0f)
+    if (!timeline_.rangeDrag.active || scale <= 0.0f || sectionHeight <= 0.0f)
         return;
 
     const float x0 = clipAreaMinX + (static_cast<float>(
-        std::min(unified_.rangeDrag.anchorFrame, unified_.rangeDrag.currentFrame)) - startFrame) * scale;
+        std::min(timeline_.rangeDrag.anchorFrame, timeline_.rangeDrag.currentFrame)) - startFrame) * scale;
     const float x1 = clipAreaMinX + (static_cast<float>(
-        std::max(unified_.rangeDrag.anchorFrame, unified_.rangeDrag.currentFrame)) - startFrame) * scale;
+        std::max(timeline_.rangeDrag.anchorFrame, timeline_.rangeDrag.currentFrame)) - startFrame) * scale;
     if (x1 <= x0)
         return;
 
@@ -1311,7 +1311,7 @@ void SequenceEditor::drawPlayheadIndicator(
     float headerMaxX,
     float headerMaxY
 ) const {
-    if (!unified_.timeline)
+    if (!timeline_.widget)
         return;
 
     auto& appModel = uapmd_app::AppModel::instance();
@@ -1324,17 +1324,17 @@ void SequenceEditor::drawPlayheadIndicator(
     if (!std::isfinite(playheadSeconds))
         return;
 
-    const int32_t maxFrame = unified_.timeline->GetMaxFrame();
+    const int32_t maxFrame = timeline_.widget->GetMaxFrame();
     if (maxFrame <= 0)
         return;
 
     const double playheadFrame = static_cast<double>(axis_.frameFromSeconds(playheadSeconds));
     const double clampedFrame = std::clamp(playheadFrame, 0.0, static_cast<double>(maxFrame));
-    const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+    const double startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
         return;
 
-    const float scale = unified_.timeline->GetScale();
+    const float scale = timeline_.widget->GetScale();
     const float clipMinX = headerMinX;
     const float clipMaxX = headerMaxX;
     if (clipMaxX <= clipMinX) {
@@ -1343,7 +1343,7 @@ void SequenceEditor::drawPlayheadIndicator(
 
     // Same origin the clips use, so the playhead lines up with them rather than with this
     // window's edge (see drawRuler).
-    const float nodeOriginX = unified_.timeline->mContentAreaRect.Min.x + unified_.style.LegendWidth;
+    const float nodeOriginX = timeline_.widget->mContentAreaRect.Min.x + timeline_.style.LegendWidth;
     const float x = nodeOriginX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale));
     const float yTop = headerMinY;
     const float yBottom = headerMaxY;

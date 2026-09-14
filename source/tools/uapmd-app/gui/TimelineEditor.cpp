@@ -1440,8 +1440,8 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     // Update master track clips if snapshot changed (runs every frame, cheap)
     renderMasterTrackRow(context);
 
-    const float totalHeight = sequenceEditor_.getUnifiedTimelineHeight(context.uiScale);
-    sequenceEditor_.renderUnifiedTimeline(context, totalHeight);
+    const float totalHeight = sequenceEditor_.getTimelineHeight(context.uiScale);
+    sequenceEditor_.renderTimeline(context, totalHeight);
 
     ImGui::EndChild();
 
@@ -1989,7 +1989,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 }
 
 void TimelineEditor::renderTrackRow(int32_t /*trackIndex*/, const SequenceEditor::RenderContext& /*context*/) {
-    // Tracks are rendered via renderUnifiedTimeline; this stub satisfies the vtable.
+    // Tracks are rendered via renderTimeline; this stub satisfies the vtable.
 }
 
 void TimelineEditor::deleteTrack(int32_t trackIndex) {
@@ -2064,7 +2064,7 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLay
             break;
         case uapmd_app::AppModel::TrackLayoutChange::Type::Removed:
             // Defer the reset to the start of the next render() call. Resetting here
-            // would destroy unified_.timeline while DrawTimeline() may still be on the
+            // would destroy timeline_.widget while DrawTimeline() may still be on the
             // call stack (deletion can be triggered from within the legend callback).
             pendingFullReset_ = true;
             break;
