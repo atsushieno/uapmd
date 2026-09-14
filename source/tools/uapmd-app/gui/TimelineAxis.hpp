@@ -79,6 +79,13 @@ public:
         double startFrame{0.0};
         float scale{0.0f};        // pixels per frame
         float uiScale{1.0f};
+        // The ruler strip and the clip lanes belong to different ImGui windows, and ImGui renders
+        // a child's draw list after its parent's. Grid lines issued to the parent's list would
+        // therefore be painted underneath the opaque section fills, so the caller hands over the
+        // list that renders on top of them; the header strip is not covered by anything and uses
+        // the ordinary window list.
+        ImDrawList* headerDrawList{nullptr};
+        ImDrawList* gridDrawList{nullptr};
     };
 
     // Draws the ruler ticks and labels across the header strip, and the matching grid lines down

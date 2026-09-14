@@ -330,8 +330,18 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     const int32_t sampleRate = appModel.sampleRate();
     const double playheadSeconds = sampleRate > 0
         ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
+    // The scrollable domain has to include the same trailing pad rebuildUnifiedTimeline gives
+    // the timeline's max frame. Without it the furthest scroll position puts the last clip's end
+    // exactly on the right edge, so its end is clipped away and can never be brought into view.
+    // (Deliberately not timeline->GetMaxFrame(): ImTimeline inflates that when zoomed out past
+    // the content and never shrinks it back, which would permanently squash the region rect.)
+    //
+    // endSeconds rather than durationSeconds: this is an absolute position on a [0, domain] axis,
+    // and the two only coincide when the first clip starts at zero.
     const double contentFrames = bounds.hasContent
-        ? static_cast<double>(axis_.frameFromSeconds(bounds.durationSeconds)) : 0.0;
+        ? static_cast<double>(axis_.frameFromSeconds(bounds.endSeconds)) +
+              static_cast<double>(axis_.trailingPadFrames())
+        : 0.0;
     const double playheadFrame = playheadSeconds >= 0.0
         ? static_cast<double>(axis_.frameFromSeconds(playheadSeconds)) : -1.0;
 
@@ -1058,6 +1068,11 @@ void SequenceEditor::drawRuler(
     geometry.startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
     geometry.scale = unified_.timeline->GetScale();
     geometry.uiScale = context.uiScale;
+    geometry.headerDrawList = ImGui::GetWindowDrawList();
+    // Same list the selection overlays use: ImTimeline fills its sections from an inner child
+    // window, whose draw list renders after this window's, so anything meant to sit on top of the
+    // lanes has to go there too.
+    geometry.gridDrawList = timelineSelectionDrawList();
     axis_.drawRuler(geometry);
 }
 

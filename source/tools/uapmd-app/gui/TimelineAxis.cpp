@@ -96,6 +96,8 @@ int32_t TimelineAxis::trailingPadFrames() const {
 void TimelineAxis::drawRuler(const RulerGeometry& geometry) const {
     if (geometry.scale <= 0.0f || geometry.contentMaxX <= geometry.contentMinX)
         return;
+    if (!geometry.headerDrawList || !geometry.gridDrawList)
+        return;
     if (isBeats())
         drawBeatsRuler(geometry);
     else
@@ -123,9 +125,12 @@ void TimelineAxis::drawSecondsRuler(const RulerGeometry& g) const {
     const ImU32 minorLine = ImGui::GetColorU32(withAlpha(text, 0.10f));
     const ImU32 tickColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
+    ImDrawList* gridList = g.gridDrawList;
+    ImDrawList* headerList = g.headerDrawList;
+    gridList->PushClipRect(ImVec2(g.contentMinX, g.headerMaxY),
                            ImVec2(g.contentMaxX, g.contentMaxY), true);
+    headerList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
+                             ImVec2(g.contentMaxX, g.headerMaxY), true);
 
     const float headerHeight = std::max(0.0f, g.headerMaxY - g.headerMinY);
     long long index = static_cast<long long>(std::floor(startSeconds / minorStep));
@@ -146,20 +151,21 @@ void TimelineAxis::drawSecondsRuler(const RulerGeometry& g) const {
         const auto perMajor = static_cast<long long>(std::llround(majorStep / minorStep));
         const bool isMajor = perMajor <= 1 || (index % perMajor) == 0;
 
-        drawList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
+        gridList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
                           isMajor ? majorLine : minorLine,
                           isMajor ? 1.5f * g.uiScale : 1.0f * g.uiScale);
 
         if (headerHeight <= 0.0f)
             continue;
         const float tickTop = g.headerMaxY - headerHeight * (isMajor ? 0.5f : 0.25f);
-        drawList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
+        headerList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
         if (isMajor)
-            drawList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
-                              formatSecondsLabel(seconds, majorStep).c_str());
+            headerList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
+                                formatSecondsLabel(seconds, majorStep).c_str());
     }
 
-    drawList->PopClipRect();
+    headerList->PopClipRect();
+    gridList->PopClipRect();
 }
 
 void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
@@ -196,9 +202,12 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
     const float beatThickness = 1.0f * g.uiScale;
     const float headerHeight = std::max(0.0f, g.headerMaxY - g.headerMinY);
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
+    ImDrawList* gridList = g.gridDrawList;
+    ImDrawList* headerList = g.headerDrawList;
+    gridList->PushClipRect(ImVec2(g.contentMinX, g.headerMaxY),
                            ImVec2(g.contentMaxX, g.contentMaxY), true);
+    headerList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
+                             ImVec2(g.contentMaxX, g.headerMaxY), true);
 
     // Bar numbers are continuous across signature changes, so every region has to know how many
     // bars the regions before it contributed.
@@ -262,19 +271,19 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
                 if (x < g.contentMinX || x > g.contentMaxX)
                     continue;
 
-                drawList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
+                gridList->AddLine(ImVec2(x, g.headerMaxY), ImVec2(x, g.contentMaxY),
                                   isBar ? barColor : beatColor,
                                   isBar ? barThickness : beatThickness);
 
                 if (headerHeight <= 0.0f)
                     continue;
                 const float tickTop = g.headerMaxY - headerHeight * (isBar ? 0.5f : 0.25f);
-                drawList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
+                headerList->AddLine(ImVec2(x, tickTop), ImVec2(x, g.headerMaxY), tickColor, 1.0f);
                 if (isBar && labelBars) {
                     // Bars are numbered from 1, the way every other tool counts them.
                     const auto label = std::format("{}", barsBefore + barIndex + 1);
-                    drawList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
-                                      label.c_str());
+                    headerList->AddText(ImVec2(x + 3.0f * g.uiScale, g.headerMinY), tickColor,
+                                        label.c_str());
                 }
             }
         }
@@ -284,7 +293,8 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
         barsBefore += regionBars;
     }
 
-    drawList->PopClipRect();
+    headerList->PopClipRect();
+    gridList->PopClipRect();
 }
 
 } // namespace uapmd_app_gui
