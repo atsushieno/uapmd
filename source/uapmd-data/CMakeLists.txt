@@ -51,6 +51,7 @@ target_sources(uapmd-data PRIVATE
         src/timeline/AudioFileSourceNode.cpp
         src/timeline/DeviceInputSourceNode.cpp
         src/timeline/MidiClipSourceNode.cpp
+        src/timeline/MasterTimelineMeta.cpp
         src/timeline/ClipManager.cpp
         src/timeline/TimeReferenceResolver.cpp
         src/timeline/TimelineTrack.cpp

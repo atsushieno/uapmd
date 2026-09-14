@@ -36,4 +36,5 @@
 #include "detail/timeline/AudioSourceNode.hpp"
 #include "detail/timeline/AudioFileSourceNode.hpp"
 #include "detail/timeline/MidiClipSourceNode.hpp"
+#include "detail/timeline/MasterTimelineMeta.hpp"
 #include "detail/timeline/MidiSourceNode.hpp"

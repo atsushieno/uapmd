@@ -393,24 +393,6 @@ bool wouldCreateClipAnchorCycle(
     return false;
 }
 
-// Where a clip's right edge lands on the axis.
-//
-// Audio is straightforward: the endpoint is a real-world time like any other, so it goes through
-// the axis (and therefore the tempo map) exactly as the start did -- durationSamples already
-// bakes in whatever the audio-warp resolution decided. A MIDI clip's width, though, is authored
-// in beats: durationSamples was captured at import time under clipTempo, so on the beats axis the
-// clip has to keep that beat length however the tempo map changes around it. Adding the beat
-// length to the start *in units* is what keeps that true; converting it to seconds first would
-// push it back through the very tempo map it is supposed to be immune to.
-int32_t clipEndFrame(const uapmd::ClipData& clip, double startSeconds, double durationSeconds,
-                     const uapmd_app_gui::TimelineAxis& axis) {
-    if (axis.isBeats() && clip.clipType == uapmd::ClipType::Midi && clip.clipTempo > 0.0) {
-        const double beats = durationSeconds * (clip.clipTempo / 60.0);
-        return axis.frameFromUnits(axis.unitsFromSeconds(startSeconds) + beats);
-    }
-    return axis.frameFromSeconds(startSeconds + durationSeconds);
-}
-
 std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
     const uapmd::MidiClipReader::ClipInfo& clipInfo,
     uint32_t tickResolution,
@@ -734,7 +716,7 @@ bool validateMarkerReferenceSelection(
 
 TimelineEditor::TimelineEditor() {
     // tempoMap_ is a member, so the axis can hold its address for the editor's whole lifetime;
-    // it reads whatever rebuildTempoSegments last put there.
+    // it reads whatever refreshTempoMap last pulled into it.
     sequenceEditor_.axis().setTempoMap(&tempoMap_);
     // Push the starting view mode rather than relying on TimelineAxis's own default matching it.
     // Going through the same call the toggle uses is what keeps the two from drifting apart.
@@ -1507,7 +1489,13 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     // signature -- invalidateMasterTrackSnapshot() clears the cached signature
     // to "", and a bare "" would compare equal to it, leaving the rows of the
     // clips that were just deleted on screen.
-    std::string signature = std::format("{}|", clips.size());
+    // The last meta clip's region runs to the end of the project, so the project's extent is part
+    // of what these rows depend on, alongside the clips themselves.
+    const auto contentBounds = appModel.timelineContentBounds();
+    const double projectEndSeconds = std::max({snapshot->maxTimeSeconds,
+                                               contentBounds.hasContent ? contentBounds.endSeconds : 0.0,
+                                               0.0});
+    std::string signature = std::format("{}|{:.3f}|", clips.size(), projectEndSeconds);
     for (const auto& clip : clips)
         signature += std::format("{}:{}:{}:{};",
             clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
@@ -1517,7 +1505,7 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
 
     if (signatureChanged) {
         masterTrackSignature_ = signature;
-        rebuildTempoSegments(masterTrackSnapshot_);
+        refreshTempoMap();
     }
 
     // Build one ClipRow per master-track clip so they can be moved / deleted independently.
@@ -1526,7 +1514,8 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     // on the beats axis rather than being pinned to an authored beat length.
     const auto& axis = sequenceEditor_.axis();
     std::vector<SequenceEditor::ClipRow> rows;
-    for (const auto& clip : clips) {
+    for (size_t i = 0; i < clips.size(); ++i) {
+        const auto& clip = clips[i];
         SequenceEditor::ClipRow row;
         row.clipId              = clip.clipId;
         row.trackReferenceId   = "master_track";
@@ -1539,10 +1528,18 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         row.filename = clip.filepath.empty() ? "-" : std::filesystem::path(clip.filepath).filename().string();
         row.filepath = clip.filepath;
 
-        const double startSeconds    = static_cast<double>(clip.position.samples) / sampleRate;
-        const double durationSeconds = clip.durationSamples > 0
-            ? static_cast<double>(clip.durationSamples) / sampleRate
-            : std::max(1.0, snapshot->maxTimeSeconds - startSeconds);
+        const double startSeconds = static_cast<double>(clip.position.samples) / sampleRate;
+        // A meta clip carries only tempo and time-signature events. Whatever durationSamples it
+        // reports is just where its last meta event happens to sit, which says nothing about how
+        // far those events reach -- the tempo in effect at the last event carries on until another
+        // clip replaces it. So the region is the span the events govern: up to the next meta clip,
+        // or to the end of the project for the last one. Clips are sorted by position above, so
+        // the next one in the list is the next in time.
+        const double endSeconds = (i + 1 < clips.size())
+            ? static_cast<double>(clips[i + 1].position.samples) / sampleRate
+            : projectEndSeconds;
+        // Keep a sliver even where two meta clips share a position, so every one stays clickable.
+        const double durationSeconds = std::max(endSeconds - startSeconds, 0.25);
         row.duration       = std::format("{:.3f}s", durationSeconds);
         row.timelineStart  = axis.frameFromSeconds(startSeconds);
         row.timelineEnd    = std::max(row.timelineStart + 1,
@@ -2083,26 +2080,11 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLay
     }
 }
 
-void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot>& snapshot) {
-    if (!snapshot || snapshot->tempoPoints.empty()) {
-        tempoMap_.clear();
-        return;
-    }
-
-    std::vector<uapmd::TempoMap::TempoPoint> tempoPoints;
-    tempoPoints.reserve(snapshot->tempoPoints.size());
-    for (const auto& p : snapshot->tempoPoints)
-        tempoPoints.push_back({p.timeSeconds, p.bpm});
-
-    std::vector<uapmd::TempoMap::TimeSignaturePoint> timeSignaturePoints;
-    timeSignaturePoints.reserve(snapshot->timeSignaturePoints.size());
-    for (const auto& p : snapshot->timeSignaturePoints)
-        timeSignaturePoints.push_back({p.timeSeconds, p.signature});
-
-    tempoMap_.rebuild(tempoPoints, timeSignaturePoints, kDisplayDefaultBpm);
-
-    Logger::global()->logDiagnostic("[TEMPO MAP] Rebuilt from %d tempo point(s), %d time-signature point(s)",
-        tempoPoints.size(), timeSignaturePoints.size());
+void TimelineEditor::refreshTempoMap() {
+    // Pulled, never assembled here: the master track owns the curve and uapmd-engine derives it
+    // (TimelineFacade::masterTempoMap). Copying rather than referencing keeps the pointer the
+    // axis already holds valid for this editor's lifetime.
+    tempoMap_ = uapmd_app::AppModel::instance().masterTempoMap();
 }
 
 void TimelineEditor::fitTimelineToContent(float uiScale) {
@@ -2127,12 +2109,10 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
         return;
     auto& appModel = uapmd_app::AppModel::instance();
 
-    // Ensure the tempo map is built before computing clip positions
-    if (tempoMap_.empty()) {
-        auto snapshot = std::make_shared<uapmd_app::AppModel::MasterTrackSnapshot>(
-            appModel.buildMasterTrackSnapshot());
-        rebuildTempoSegments(snapshot);
-    }
+    // Clip positions are computed through the tempo map, so make sure we hold the engine's
+    // current one first.
+    if (tempoMap_.empty())
+        refreshTempoMap();
     auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2179,8 +2159,14 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
         row.mimeType = row.isMidiClip ? "audio/midi" : "";
 
         const double startSeconds = static_cast<double>(clip.position.samples) / sampleRate;
+        // A clip occupies a real-world span, and the axis is what turns real-world time into the
+        // grid on screen -- so a MIDI clip's endpoint goes through it exactly like an audio one's.
+        // durationSamples already reflects the tempo map in force: TimelineFacade re-applies the
+        // master map to every MIDI clip whenever clips change, resizing them to match. A MIDI clip
+        // therefore keeps its beat width across a tempo change because the model and the axis
+        // agree, not because the display holds its width fixed.
         row.timelineStart = axis.frameFromSeconds(startSeconds);
-        row.timelineEnd = clipEndFrame(clip, startSeconds, durationSeconds, axis);
+        row.timelineEnd = axis.frameFromSeconds(startSeconds + durationSeconds);
         if (row.timelineEnd <= row.timelineStart)
             row.timelineEnd = row.timelineStart + 1;
 

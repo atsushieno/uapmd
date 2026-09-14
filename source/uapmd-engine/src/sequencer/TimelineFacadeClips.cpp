@@ -66,7 +66,7 @@ namespace uapmd {
             result.success = true;
             result.clipId = clipId;
             result.sourceNodeId = sourceNodeId;
-            applyAuthoritativeTempoMapToMusicalClips();
+            applyMasterTempoMapToMusicalClips();
             emitClipAdded(timelineTrack, clipId, sourceNodeId);
             emitMasterTrackChanged("master-track-content-changed");
             notifyTimelineChanged();

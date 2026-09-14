@@ -175,49 +175,6 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
     return true;
 }
 
-bool clipHasMeaningfulTempoMap(const MidiClipSourceNode& node) {
-    const auto& tempoChanges = node.tempoChanges();
-    if (tempoChanges.size() > 1)
-        return true;
-    if (!tempoChanges.empty() && std::abs(tempoChanges.front().bpm - 120.0) > 1.0e-6)
-        return true;
-    return false;
-}
-
-bool clipHasMeaningfulTimeSignatureMap(const MidiClipSourceNode& node) {
-    const auto& changes = node.timeSignatureChanges();
-    if (changes.size() > 1)
-        return true;
-    if (!changes.empty() &&
-        (changes.front().numerator != 4 || changes.front().denominator != 4))
-        return true;
-    return false;
-}
-
-// Finds the first clip on the master track carrying a "meaningful" tempo/time-signature map, by
-// clipId order. Regular tracks are never searched -- see MidiClipReader::stripToFlatTempo.
-MidiClipSourceNode* findAuthoritativeTimelineMetaSource(const std::shared_ptr<TimelineTrack>& masterTrack) {
-    if (!masterTrack)
-        return nullptr;
-
-    auto clips = masterTrack->clipManager().getAllClips();
-    std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
-        return a.clipId < b.clipId;
-    });
-
-    for (const auto& clip : clips) {
-        if (clip.clipType != ClipType::Midi)
-            continue;
-        auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
-        auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-        if (!midiNode)
-            continue;
-        if (clipHasMeaningfulTempoMap(*midiNode) || clipHasMeaningfulTimeSignatureMap(*midiNode))
-            return midiNode;
-    }
-    return nullptr;
-}
-
 } // namespace
 
     MidiClipReader::ClipInfo MidiClipReader::readAnyFormat(const std::filesystem::path& file) {
@@ -375,11 +332,14 @@ MidiClipSourceNode* findAuthoritativeTimelineMetaSource(const std::shared_ptr<Ti
         timeSignatureChanges.assign(1, MidiTimeSignatureChange{0, 4, 4});
     }
 
-    std::vector<MidiTempoChange> MidiClipReader::applyAuthoritativeTempoMapToMusicalClips(
+    MasterTimelineMeta MidiClipReader::applyMasterTempoMapToMusicalClips(
         const std::shared_ptr<TimelineTrack>& masterTrack,
-        const std::vector<std::shared_ptr<TimelineTrack>>& tracks
+        const std::vector<std::shared_ptr<TimelineTrack>>& tracks,
+        double sampleRate
     ) {
-        auto* authoritative = findAuthoritativeTimelineMetaSource(masterTrack);
+        const double sr = std::max(1.0, sampleRate);
+        auto meta = buildMasterTimelineMeta(masterTrack, sr);
+        const bool hasMasterTempo = !meta.tempoPoints.empty();
         for (const auto& track : tracks) {
             if (!track)
                 continue;
@@ -391,15 +351,16 @@ MidiClipSourceNode* findAuthoritativeTimelineMetaSource(const std::shared_ptr<Ti
                 auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
                 if (!midiNode)
                     continue;
-                if (authoritative)
-                    midiNode->setPlaybackTempoMap(authoritative->tempoChanges());
+                if (hasMasterTempo)
+                    midiNode->setTimelineTempoMap(
+                        meta.tempoMap, static_cast<double>(clip.position.samples) / sr);
                 else
                     midiNode->clearPlaybackTempoMap();
 
                 // ClipData.durationSamples was cached from sourceNode->totalLength() at
                 // add-time, using whichever tempo map the clip had *then* -- which may have been
                 // this clip's own (possibly flat/stripped, e.g. after a save/reload cycle) tempo
-                // before the authoritative map above corrected it. Refresh it now so
+                // before the master map above corrected it. Refresh it now so
                 // content-bounds/render-length calculations match the corrected schedule instead
                 // of silently truncating or extending playback.
                 const int64_t correctedDuration = midiNode->totalLength();
@@ -408,9 +369,7 @@ MidiClipSourceNode* findAuthoritativeTimelineMetaSource(const std::shared_ptr<Ti
             }
         }
 
-        if (authoritative)
-            return authoritative->tempoChanges();
-        return {};
+        return meta;
     }
 
 } // namespace uapmd

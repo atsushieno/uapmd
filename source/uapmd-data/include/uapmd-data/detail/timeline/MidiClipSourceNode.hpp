@@ -70,7 +70,16 @@ namespace uapmd {
         const std::vector<uint64_t>& timeSignatureChangeSamples() const { return time_signature_change_samples_; }
         uint32_t tickResolution() const { return tick_resolution_; }
         double clipTempo() const { return clip_tempo_; }
-        void setPlaybackTempoMap(std::vector<MidiTempoChange> tempoChanges);
+        // Schedules this clip's events against the project's tempo curve, which the master
+        // track owns (see buildMasterTimelineMeta). clipStartSeconds is where the clip sits on
+        // the timeline, so a tick lands at the global beat
+        //   tempoMap.secondsToBeats(clipStartSeconds) + tick / tickResolution
+        // and comes back through the same curve -- meaning the tempo in force at any point is
+        // the one the master track publishes for that position, rather than a curve restarted
+        // at the clip's own start. Non-realtime: allocates, call from the model thread.
+        void setTimelineTempoMap(const TempoMap& tempoMap, double clipStartSeconds);
+        // Falls back to the clip's own authored tempo curve, for a clip that is not (yet)
+        // placed under a project tempo map.
         void clearPlaybackTempoMap();
 
     private:
@@ -110,6 +119,9 @@ namespace uapmd {
 
         // Pre-compute sample timestamps using tempo change map
         void rebuildSampleTimelines();
+        // Derives tempo/time-signature sample positions and total_length_samples_ from whatever
+        // event_timestamps_samples_ currently holds. Shared by both scheduling paths.
+        void finishSampleTimelines();
         std::vector<uint64_t> computeSampleTimeline(
             const std::vector<uint64_t>& ticks,
             const std::vector<MidiTempoChange>& tempoChanges) const;

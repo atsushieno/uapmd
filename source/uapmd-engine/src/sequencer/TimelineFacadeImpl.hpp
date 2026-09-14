@@ -60,17 +60,21 @@ namespace uapmd {
         // timeline_tracks_snapshot_ above. Never null.
         RtSnapshotPublisher<MasterTrackSnapshot> master_track_snapshot_;
         std::shared_ptr<TimelineTrack> master_timeline_track_;
+        // Model-thread view of the same master-track curve, including its TempoMap. Not
+        // published to the audio thread: nothing there converts between seconds and beats.
+        MasterTimelineMeta master_timeline_meta_;
 
-        // Propagates the master track's tempo/time-signature authority to every regular-track
-        // MIDI clip (see MidiClipReader::applyAuthoritativeTempoMapToMusicalClips).
-        void applyAuthoritativeTempoMapToMusicalClips();
+        // Schedules every regular-track MIDI clip against the master track's tempo curve
+        // (see MidiClipReader::applyMasterTempoMapToMusicalClips).
+        void applyMasterTempoMapToMusicalClips();
+
+    public:
+        const uapmd::TempoMap& masterTempoMap() const override;
+
+    private:
 
         void resolveAllClipAnchors();
 
-        static void appendMidiNodeMetaToSnapshot(MasterTrackSnapshot& snapshot,
-                                                 const ClipData& clip,
-                                                 MidiClipSourceNode& midiNode,
-                                                 double sampleRate);
 
         void rebuildTrackSnapshot();
         // Walks the master track's MIDI clips. Model thread only.

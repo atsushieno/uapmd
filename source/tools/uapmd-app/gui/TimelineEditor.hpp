@@ -192,7 +192,7 @@ private:
     void resolveAllClipAnchors();
 
     // Tempo management
-    void rebuildTempoSegments(const std::shared_ptr<uapmd_app::AppModel::MasterTrackSnapshot>& snapshot);
+    void refreshTempoMap();
 
     // MIDI dump helpers
     MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);

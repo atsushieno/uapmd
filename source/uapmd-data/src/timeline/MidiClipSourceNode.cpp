@@ -116,10 +116,21 @@ namespace uapmd {
         is_playing_.store(playing, std::memory_order_release);
     }
 
-    void MidiClipSourceNode::setPlaybackTempoMap(std::vector<MidiTempoChange> tempoChanges) {
-        normalizeTempoChanges(tempoChanges, clip_tempo_);
-        playback_tempo_changes_ = std::move(tempoChanges);
-        rebuildSampleTimelines();
+    void MidiClipSourceNode::setTimelineTempoMap(const TempoMap& tempoMap, double clipStartSeconds) {
+        const double startBeat = tempoMap.secondsToBeats(std::max(0.0, clipStartSeconds));
+        const double ticksPerBeat = tick_resolution_ > 0
+            ? static_cast<double>(tick_resolution_) : 480.0;
+
+        event_timestamps_samples_.clear();
+        event_timestamps_samples_.reserve(event_timestamps_ticks_.size());
+        for (uint64_t tick : event_timestamps_ticks_) {
+            const double beat = startBeat + static_cast<double>(tick) / ticksPerBeat;
+            // Relative to the clip's own start: the caller positions the clip on the timeline.
+            const double seconds = tempoMap.beatsToSeconds(beat) - clipStartSeconds;
+            event_timestamps_samples_.push_back(
+                static_cast<uint64_t>(std::max(0.0, seconds) * target_sample_rate_));
+        }
+        finishSampleTimelines();
     }
 
     void MidiClipSourceNode::clearPlaybackTempoMap() {
@@ -225,7 +236,10 @@ namespace uapmd {
 
     void MidiClipSourceNode::rebuildSampleTimelines() {
         event_timestamps_samples_ = computeSampleTimeline(event_timestamps_ticks_, playback_tempo_changes_);
+        finishSampleTimelines();
+    }
 
+    void MidiClipSourceNode::finishSampleTimelines() {
         std::vector<uint64_t> tempoTicks;
         tempoTicks.reserve(tempo_changes_.size());
         for (const auto& change : tempo_changes_) {

@@ -376,6 +376,12 @@ namespace uapmd_app {
 
         // Timeline access
         uapmd::TimelineState& timeline() { return sequencer_.engine()->timeline().state(); }
+        // The project's tempo curve, as the engine derived it from the master track. The app
+        // reads this rather than assembling its own from the snapshot's points, so display and
+        // playback can never be working from different tempo maps.
+        const uapmd::TempoMap& masterTempoMap() const {
+            return const_cast<AppModel*>(this)->sequencer_.engine()->timeline().masterTempoMap();
+        }
         const uapmd::TimelineState& timeline() const { return const_cast<AppModel*>(this)->sequencer_.engine()->timeline().state(); }
 
         // Clip management

@@ -328,6 +328,10 @@ public:
 
     virtual MasterTrackSnapshot buildMasterTrackSnapshot() = 0;
 
+    // The project's seconds<->beats curve, owned by the master track. Model thread only: the
+    // audio thread reads the tempo/time-signature points above instead, and never converts.
+    virtual const uapmd::TempoMap& masterTempoMap() const = 0;
+
     struct ContentBounds {
         bool hasContent{false};
         int64_t firstSample{0};

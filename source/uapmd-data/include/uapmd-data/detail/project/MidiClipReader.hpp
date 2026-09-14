@@ -6,6 +6,7 @@
 #include <cstdint>
 #include "MidiTimelineEvents.hpp"
 #include "../timeline/TimelineTrack.hpp"
+#include "../timeline/MasterTimelineMeta.hpp"
 
 namespace uapmd {
     // MIDI Clip File reader supporting both traditional SMF and MIDI 2.0 Clip Files
@@ -78,17 +79,16 @@ namespace uapmd {
             double flatTempo
         );
 
-        // Finds the authoritative tempo/time-signature source among the master track's own
-        // clips (the first one carrying a "meaningful" -- multi-entry or non-default -- map, by
-        // clipId order) and propagates its tempo map to every MIDI clip on the given tracks,
-        // refreshing each clip's cached duration to match. Regular tracks never carry meaningful
-        // tempo/time-signature data of their own (see stripToFlatTempo), so the master track is
-        // always the sole source -- no cross-track search is needed. Returns the authoritative
-        // tempo changes (empty if none found), so the caller can update its own project-wide
-        // tempo bookkeeping.
-        static std::vector<MidiTempoChange> applyAuthoritativeTempoMapToMusicalClips(
+        // Schedules every MIDI clip on the given tracks against the project's tempo curve --
+        // the one the master track owns (buildMasterTimelineMeta) -- and refreshes each clip's
+        // cached duration to match the new schedule. Regular tracks never carry tempo or
+        // time-signature authority of their own (see stripToFlatTempo), so the master track is
+        // the only source consulted. Returns the master meta it applied, so the caller can reuse
+        // it for its own bookkeeping instead of walking the master track a second time.
+        static MasterTimelineMeta applyMasterTempoMapToMusicalClips(
             const std::shared_ptr<TimelineTrack>& masterTrack,
-            const std::vector<std::shared_ptr<TimelineTrack>>& tracks
+            const std::vector<std::shared_ptr<TimelineTrack>>& tracks,
+            double sampleRate
         );
     };
 }

@@ -303,73 +303,22 @@ namespace uapmd {
     }
 
     TimelineFacade::MasterTrackSnapshot TimelineFacadeImpl::computeMasterTrackSnapshot() const {
+        // The master track is the sole owner of tempo/time-signature data, and reading it is
+        // uapmd-data's job -- this only reshapes the result into the struct the audio thread
+        // reads. The TempoMap that comes back with it is kept in master_timeline_meta_ for the
+        // model thread; the audio thread never converts, so it stays out of here.
+        const auto meta = buildMasterTimelineMeta(master_timeline_track_,
+                                                  static_cast<double>(sampleRate_));
         MasterTrackSnapshot snapshot;
-        const double sr = std::max(1.0, static_cast<double>(sampleRate_));
-        auto appendTrackMeta = [&snapshot, sr](const std::shared_ptr<TimelineTrack>& track) {
-            if (!track)
-                return;
-            auto clips = track->clipManager().getAllClips();
-            std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
-                return a.clipId < b.clipId;
-            });
-
-            for (const auto& clip : clips) {
-                if (clip.clipType != ClipType::Midi)
-                    continue;
-                auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
-                auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                if (!midiNode)
-                    continue;
-                appendMidiNodeMetaToSnapshot(snapshot, clip, *midiNode, sr);
-            }
-        };
-
-        // Regular tracks can never carry meaningful tempo/time-signature data of their own
-        // (see MidiClipReader::stripToFlatTempo / TrackImporter::importMidiFile) -- the
-        // master track is always the sole source, so no fallback search is needed here.
-        appendTrackMeta(master_timeline_track_);
-
-        std::stable_sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
-            [](const MasterTrackSnapshot::TempoPoint& a, const MasterTrackSnapshot::TempoPoint& b) {
-                return a.timeSeconds < b.timeSeconds;
-            });
-        std::stable_sort(snapshot.timeSignaturePoints.begin(), snapshot.timeSignaturePoints.end(),
-            [](const MasterTrackSnapshot::TimeSignaturePoint& a, const MasterTrackSnapshot::TimeSignaturePoint& b) {
-                return a.timeSeconds < b.timeSeconds;
-            });
-
+        snapshot.maxTimeSeconds = meta.maxTimeSeconds;
+        snapshot.tempoPoints.reserve(meta.tempoPoints.size());
+        for (const auto& point : meta.tempoPoints)
+            snapshot.tempoPoints.push_back({point.timeSeconds, point.tickPosition, point.bpm});
+        snapshot.timeSignaturePoints.reserve(meta.timeSignaturePoints.size());
+        for (const auto& point : meta.timeSignaturePoints)
+            snapshot.timeSignaturePoints.push_back(
+                {point.timeSeconds, point.tickPosition, point.signature});
         return snapshot;
-    }
-
-    void TimelineFacadeImpl::appendMidiNodeMetaToSnapshot(MasterTrackSnapshot& snapshot,
-                                                 const ClipData& clip,
-                                                 MidiClipSourceNode& midiNode,
-                                                 double sampleRate) {
-                                                     const double clipStartSamples = static_cast<double>(clip.position.samples);
-
-        const auto& tempoSamples = midiNode.tempoChangeSamples();
-        const auto& tempoEvents = midiNode.tempoChanges();
-        const size_t tempoCount = std::min(tempoSamples.size(), tempoEvents.size());
-        for (size_t i = 0; i < tempoCount; ++i) {
-            MasterTrackSnapshot::TempoPoint point;
-            point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sampleRate;
-            point.tickPosition = tempoEvents[i].tickPosition;
-            point.bpm = tempoEvents[i].bpm;
-            snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-            snapshot.tempoPoints.push_back(point);
-        }
-
-        const auto& sigSamples = midiNode.timeSignatureChangeSamples();
-        const auto& sigEvents = midiNode.timeSignatureChanges();
-        const size_t sigCount = std::min(sigSamples.size(), sigEvents.size());
-        for (size_t i = 0; i < sigCount; ++i) {
-            MasterTrackSnapshot::TimeSignaturePoint point;
-            point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sampleRate;
-            point.tickPosition = sigEvents[i].tickPosition;
-            point.signature = sigEvents[i];
-            snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-            snapshot.timeSignaturePoints.push_back(point);
-        }
     }
 
     TimelineFacade::ContentBounds TimelineFacadeImpl::calculateContentBounds() const {
@@ -593,15 +542,25 @@ namespace uapmd {
             record.manager->setClipPosition(record.clip.clipId, resolve(referenceId));
     }
 
-    void TimelineFacadeImpl::applyAuthoritativeTempoMapToMusicalClips() {
-        auto tempoChanges = MidiClipReader::applyAuthoritativeTempoMapToMusicalClips(master_timeline_track_, timeline_tracks_);
-        if (!tempoChanges.empty())
-            timeline_.tempo = tempoChanges.front().bpm;
+    void TimelineFacadeImpl::applyMasterTempoMapToMusicalClips() {
+        auto meta = MidiClipReader::applyMasterTempoMapToMusicalClips(
+            master_timeline_track_, timeline_tracks_, static_cast<double>(sampleRate_));
+        if (!meta.tempoPoints.empty())
+            timeline_.tempo = meta.tempoPoints.front().bpm;
+        master_timeline_meta_ = std::move(meta);
+    }
+
+    const uapmd::TempoMap& TimelineFacadeImpl::masterTempoMap() const {
+        return master_timeline_meta_.tempoMap;
     }
 
     void TimelineFacadeImpl::rebuildMasterTrackSnapshot() {
         master_track_snapshot_.publish(
             std::make_unique<const MasterTrackSnapshot>(computeMasterTrackSnapshot()));
+        // Model-thread copy of the same curve. Refreshed on the same funnel so a reader can
+        // never see a tempo map that disagrees with the points just published.
+        master_timeline_meta_ = buildMasterTimelineMeta(master_timeline_track_,
+                                                        static_cast<double>(sampleRate_));
     }
 
     // External callers read the same snapshot the audio thread sees, so a

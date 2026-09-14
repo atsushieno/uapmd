@@ -891,7 +891,7 @@ namespace uapmd {
         auto removedClip = *clip;
         if (!targetTrack.removeClip(clipId))
             return false;
-        applyAuthoritativeTempoMapToMusicalClips();
+        applyMasterTempoMapToMusicalClips();
         emitClipRemoved(targetTrack, removedClip);
         if (removedClip.clipType == ClipType::Midi)
             emitMasterTrackChanged("master-track-content-changed");
