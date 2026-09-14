@@ -215,7 +215,12 @@ private:
                 continue;
             }
 
-            float t = count > 1 ? static_cast<float>(i) / static_cast<float>(count - 1) : 0.0f;
+            // Waveform columns are evenly spaced in seconds, which is not evenly spaced on
+            // screen unless the ruler is too.
+            const double columnSeconds = count > 1
+                ? static_cast<double>(i) / static_cast<double>(count - 1) * safeDurationSeconds
+                : 0.0;
+            float t = static_cast<float>(std::clamp(preview_->fractionAt(columnSeconds), 0.0, 1.0));
             float x = rect.Min.x + t * width;
             float maxValue = std::clamp(point.maxValue, -1.0f, 1.0f);
             float minValue = std::clamp(point.minValue, -1.0f, 1.0f);
@@ -231,7 +236,7 @@ private:
         const float markerLabelY = rect.Min.y + labelYOffset;
 
         auto drawClipLine = [&](double clipPositionSeconds, ImU32 color, const char* label, float labelY) {
-            double normalized = std::clamp(clipPositionSeconds / safeDurationSeconds, 0.0, 1.0);
+            double normalized = std::clamp(preview_->fractionAt(clipPositionSeconds), 0.0, 1.0);
             float x = rect.Min.x + static_cast<float>(normalized) * width;
             drawList->AddLine(ImVec2(x, rect.Min.y), ImVec2(x, rect.Max.y), color, 1.5f * uiScale_);
             if (label && label[0] != '\0') {
@@ -346,14 +351,13 @@ private:
             return;
         }
 
-        double duration = std::max(0.01, preview_->clipDurationSeconds);
         int noteRange = std::max(1, static_cast<int>(preview_->maxNote) - static_cast<int>(preview_->minNote) + 1);
         float laneHeight = height / static_cast<float>(noteRange);
 
         for (const auto& note : preview_->midiNotes) {
-            double startRatio = std::clamp(note.startSeconds / duration, 0.0, 1.0);
+            double startRatio = std::clamp(preview_->fractionAt(note.startSeconds), 0.0, 1.0);
             double endSeconds = note.startSeconds + note.durationSeconds;
-            double endRatio = std::clamp(endSeconds / duration, 0.0, 1.0);
+            double endRatio = std::clamp(preview_->fractionAt(endSeconds), 0.0, 1.0);
             float x1 = rect.Min.x + static_cast<float>(startRatio) * width;
             float x2 = rect.Min.x + static_cast<float>(endRatio) * width;
             if (x2 <= x1) {
@@ -394,7 +398,6 @@ private:
             return;
         }
 
-        double duration = std::max(0.001, preview_->clipDurationSeconds);
         double minBpm = std::numeric_limits<double>::max();
         double maxBpm = std::numeric_limits<double>::lowest();
         for (const auto& point : preview_->tempoPoints) {
@@ -410,7 +413,7 @@ private:
         const double bpmRange = std::max(1.0, maxBpm - minBpm);
 
         auto toX = [&](double seconds) -> float {
-            double normalized = std::clamp(seconds / duration, 0.0, 1.0);
+            double normalized = std::clamp(preview_->fractionAt(seconds), 0.0, 1.0);
             return rect.Min.x + static_cast<float>(normalized * width);
         };
         auto toY = [&](double bpm) -> float {

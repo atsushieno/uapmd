@@ -186,6 +186,7 @@ private:
         float sectionHeight
     ) const;
     void pruneClipPreviewCache(SequenceEditorState& state);
+    void applyPreviewTimeMapping(const ClipRow& clip, ClipPreview& preview) const;
     std::shared_ptr<ClipPreview> ensureClipPreview(int32_t trackIndex, const ClipRow& clip, SequenceEditorState& state);
     std::string buildClipSignature(int32_t trackIndex, const ClipRow& clip, const uapmd::ClipData* clipData) const;
     const uapmd::ClipData* findClipData(int32_t trackIndex, int32_t clipId) const;

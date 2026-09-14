@@ -1402,12 +1402,30 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
                        warpHash);
 }
 
+void SequenceEditor::applyPreviewTimeMapping(const ClipRow& clip, ClipPreview& preview) const {
+    // The node's box spans timelineStart..timelineEnd *frames*, so an instant inside the clip
+    // belongs wherever the axis puts it -- which is not proportional to seconds once a tempo
+    // curve is involved. Re-applied on every lookup rather than only on construction, because a
+    // cached preview outlives both the axis mode and the clip's frame extent.
+    const double spanFrames =
+        std::max(1.0, static_cast<double>(clip.timelineEnd - clip.timelineStart));
+    const double startSeconds = axis_.secondsFromFrame(static_cast<double>(clip.timelineStart));
+    const int32_t startFrame = clip.timelineStart;
+    const TimelineAxis* axis = &axis_;
+    preview.timeToFraction = [axis, startSeconds, startFrame, spanFrames](double seconds) {
+        const double frame =
+            static_cast<double>(axis->frameFromSeconds(startSeconds + std::max(0.0, seconds)));
+        return (frame - static_cast<double>(startFrame)) / spanFrames;
+    };
+}
+
 std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
     int32_t trackIndex,
     const ClipRow& clip,
     SequenceEditorState& state
 ) {
     if (clip.customPreview) {
+        applyPreviewTimeMapping(clip, *clip.customPreview);
         return clip.customPreview;
     }
 
@@ -1418,6 +1436,7 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
         existingIt->second &&
         existingIt->second->signature == signature) {
         existingIt->second->displayName = clip.name;
+        applyPreviewTimeMapping(clip, *existingIt->second);
         return existingIt->second;
     }
 
@@ -1458,6 +1477,7 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
 
     preview->signature = signature;
     preview->displayName = clip.name;
+    applyPreviewTimeMapping(clip, *preview);
     state.clipPreviews[clip.clipId] = preview;
     return preview;
 }

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -87,6 +88,20 @@ struct ClipPreview {
     std::vector<TimeSignaturePoint> timeSignaturePoints;
     // Raw MIDI source data for piano-roll write-back (null for audio / master-meta clips).
     std::shared_ptr<RawMidiData> rawMidiData;
+
+    // Where a clip-relative instant sits across the clip's drawn width, as a fraction.
+    //
+    // The box a preview draws into is only linear in seconds when the timeline's ruler is: on a
+    // bars-and-beats ruler the same instant lands somewhere else entirely, and under a varying
+    // tempo the two disagree by a different amount at every point. So the owner supplies the
+    // conversion instead of the preview assuming its width is seconds.
+    std::function<double(double)> timeToFraction;
+
+    double fractionAt(double clipRelativeSeconds) const {
+        if (timeToFraction)
+            return timeToFraction(clipRelativeSeconds);
+        return clipDurationSeconds > 0.0 ? clipRelativeSeconds / clipDurationSeconds : 0.0;
+    }
 };
 
 std::shared_ptr<ClipPreview> createAudioClipPreview(
