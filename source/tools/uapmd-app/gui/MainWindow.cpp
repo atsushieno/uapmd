@@ -544,19 +544,6 @@ void MainWindow::render(void* window) {
             const bool transportEngaged = transportPlaying || transportPaused;
             if (!audioEngineEnabled)
                 ImGui::BeginDisabled();
-            // The trailing ##id keeps these two buttons distinct even when they
-            // show the same glyph: an icon label alone is the whole ImGui ID.
-            const auto playStopLabel =
-                std::string(transportEngaged ? icons::Stop : icons::Play)
-                    + "##TransportPlayStop";
-            if (ImGui::Button(playStopLabel.c_str())) {
-                if (transportEngaged)
-                    transport.stop();
-                else
-                    transport.play();
-            }
-            ImGui::SameLine();
-
             const bool recording = transport.isRecording();
             if (recording)
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88f, 0.20f, 0.20f, 1.0f));
@@ -580,6 +567,19 @@ void MainWindow::render(void* window) {
                 ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(recording ? "Stop recording" : "Record into the selected MIDI clip");
+            ImGui::SameLine();
+
+            // The trailing ##id keeps the two play glyphs distinct when the
+            // transport is paused: an icon label alone is the whole ImGui ID.
+            const auto playStopLabel =
+                std::string(transportEngaged ? icons::Stop : icons::Play)
+                    + "##TransportPlayStop";
+            if (ImGui::Button(playStopLabel.c_str())) {
+                if (transportEngaged)
+                    transport.stop();
+                else
+                    transport.play();
+            }
             ImGui::SameLine();
 
             if (!transportEngaged)
