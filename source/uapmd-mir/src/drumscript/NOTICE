@@ -1,0 +1,15 @@
+The drum onset classifier in this directory is a C++ port of DrumScript's
+deterministic classification engine:
+
+    DrumScript, Copyright 2026 DrumScript
+    https://github.com/DrumScript/DrumScript
+    Licensed under the Apache License, Version 2.0
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Ported from drumscript/drum_classifier/classify.py (extract_features,
+classify_membranophone, classify_idiophone, classify_event) and the thresholds
+in drumscript/notation_generator/constants.py. No model weights are involved:
+the thresholds are the model.
+
+Any binary built from these sources redistributes that work, so this NOTICE and
+the accompanying LICENSE must accompany it.

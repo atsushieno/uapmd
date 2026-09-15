@@ -1,14 +1,113 @@
 # This directory holds several independent features.
 #
 # The uapmd-mir addin library itself is always built, because it always carries
-# the pitch transcription addin. UAPMD_ENABLE_MIR gates only the music-analysis
-# addins inside it -- their results are not yet trustworthy -- so librosa.cpp
-# and libsonare are not fetched at all for builds that do not want the analysis
-# commands. Pitch transcription needs neither of them. The stem separation
-# addins below are always built too, as separate static built-in libraries.
+# the pitch transcription addin, which needs neither librosa.cpp nor libsonare.
+# UAPMD_ENABLE_MIR gates only the music-analysis addins inside it -- their
+# results are not yet trustworthy.
 #
-# The library is a dynamically loaded addin, so it is built only where the addin
-# manager can load one; WebAssembly, Android and iOS use built-in addins only.
+# The static built-in addins below are separate libraries with their own options:
+# BS-Roformer is unconditional, while Demucs, Basic Pitch and DrumScript are
+# opt-in. librosa.cpp is fetched above the platform guard because DrumScript is
+# a built-in addin and needs it on every target.
+#
+# The analysis addins have no backend without librosa.cpp, and enabling them without it
+# would otherwise fail later with a missing librosa::librosa target.
+if(UAPMD_ENABLE_MIR AND NOT UAPMD_ENABLE_LIBROSA_CPP)
+    message(FATAL_ERROR
+            "UAPMD_ENABLE_MIR requires UAPMD_ENABLE_LIBROSA_CPP: librosa.cpp is the "
+            "baseline analysis backend. Configure with -DUAPMD_ENABLE_LIBROSA_CPP=ON, "
+            "which also fetches Eigen (MPL-2.0).")
+endif()
+
+# Drum transcription is a static built-in addin, so it reaches WebAssembly, Android and
+# iOS -- and it needs librosa.cpp's spectral features there too. That is why this fetch
+# sits outside the dynamic-addin platform guard below.
+if(UAPMD_ENABLE_DRUMSCRIPT AND NOT UAPMD_ENABLE_LIBROSA_CPP)
+    message(FATAL_ERROR
+            "UAPMD_ENABLE_DRUMSCRIPT requires UAPMD_ENABLE_LIBROSA_CPP: the drum "
+            "classifier is built on librosa.cpp's spectral features. Configure with "
+            "-DUAPMD_ENABLE_LIBROSA_CPP=ON, which also fetches Eigen (MPL-2.0).")
+endif()
+
+# libsonare backs the second analysis backend, which only the dynamically loaded
+# library carries -- hence the platform conditions on the line below rather than a
+# guard around this block.
+#
+# It must be added *before* librosa.cpp: both create the imported target
+# Eigen3::Eigen, and whichever is added second fails with a name collision.
+if(UAPMD_ENABLE_MIR AND UAPMD_ENABLE_LIBSONARE
+        AND NOT WIN32 AND NOT IOS AND NOT ANDROID AND NOT EMSCRIPTEN)
+
+    set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+    set(BUILD_SHARED_LIBS OFF)
+
+    CPMAddPackage(
+            NAME           libsonare
+            GIT_TAG        develop
+            GIT_REPOSITORY https://github.com/libraz/libsonare
+            EXCLUDE_FROM_ALL
+            OPTIONS
+                "BUILD_TESTING OFF"
+                "BUILD_CLI OFF"
+                "BUILD_BENCH OFF"
+                "BUILD_MASTERING OFF"
+                "BUILD_MIXING OFF"
+                "BUILD_GRAPH OFF"
+                "BUILD_FX OFF"
+                "BUILD_ACOUSTIC_SIM OFF"
+                "BUILD_ARRANGEMENT OFF"
+                "BUILD_ASSIST OFF"
+                "SONARE_WITH_FFMPEG OFF"
+    )
+    # libsonare v1.7.2 omits this source from its analysis target.
+    if(TARGET sonare_core_objects)
+        target_sources(sonare_core_objects PRIVATE
+                "${libsonare_SOURCE_DIR}/src/rt/biquad_design.cpp"
+        )
+    endif()
+
+    if(DEFINED _UAPMD_MIR_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
+        set(BUILD_SHARED_LIBS "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}")
+    else()
+        unset(BUILD_SHARED_LIBS)
+    endif()
+
+endif()
+
+if(UAPMD_ENABLE_LIBROSA_CPP)
+
+    set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+    set(BUILD_SHARED_LIBS OFF)
+
+    # libsonare is enabled.
+    CPMAddPackage(
+            NAME           librosa_cpp
+            GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
+            GIT_REPOSITORY https://github.com/olilarkin/librosa.cpp
+            GIT_SUBMODULES "modules/eigen;modules/pocketfft"
+            EXCLUDE_FROM_ALL
+            OPTIONS
+                "LIBROSA_BUILD_TESTS OFF"
+                "LIBROSA_BUILD_EXAMPLES OFF"
+                "LIBROSA_BUILD_BENCHMARKS OFF"
+                "LIBROSA_BUILD_CROSSVAL_TESTS OFF"
+                "LIBROSA_BUILD_CLI OFF"
+                "LIBROSA_BUILD_WASM OFF"
+                "LIBROSA_BUILD_SWIFT_C_WRAPPER OFF"
+                "LIBROSA_FFT_BACKEND pocketfft"
+    )
+
+
+    if(DEFINED _UAPMD_MIR_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
+        set(BUILD_SHARED_LIBS "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}")
+    else()
+        unset(BUILD_SHARED_LIBS)
+    endif()
+
+endif()
+
+# The uapmd-mir library is a dynamically loaded addin, so it is built only where the
+# addin manager can load one; WebAssembly, Android and iOS use built-in addins only.
 if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
 
 # Header-only, and pinned to the same commit librosa.cpp vendors, so an
@@ -41,73 +140,6 @@ CPMAddPackage(
         DOWNLOAD_ONLY  YES
 )
 
-# The analysis addins have no backend without librosa.cpp, and enabling them without it
-# would otherwise fail later with a missing librosa::librosa target.
-if(UAPMD_ENABLE_MIR AND NOT UAPMD_ENABLE_LIBROSA_CPP)
-    message(FATAL_ERROR
-            "UAPMD_ENABLE_MIR requires UAPMD_ENABLE_LIBROSA_CPP: librosa.cpp is the "
-            "baseline analysis backend. Configure with -DUAPMD_ENABLE_LIBROSA_CPP=ON, "
-            "which also fetches Eigen (MPL-2.0).")
-endif()
-
-if(UAPMD_ENABLE_LIBROSA_CPP)
-
-    set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
-    set(BUILD_SHARED_LIBS OFF)
-
-    if(UAPMD_ENABLE_MIR AND UAPMD_ENABLE_LIBSONARE AND NOT WIN32 AND NOT IOS AND NOT EMSCRIPTEN)
-        CPMAddPackage(
-                NAME           libsonare
-                GIT_TAG        develop
-                GIT_REPOSITORY https://github.com/libraz/libsonare
-                EXCLUDE_FROM_ALL
-                OPTIONS
-                    "BUILD_TESTING OFF"
-                    "BUILD_CLI OFF"
-                    "BUILD_BENCH OFF"
-                    "BUILD_MASTERING OFF"
-                    "BUILD_MIXING OFF"
-                    "BUILD_GRAPH OFF"
-                    "BUILD_FX OFF"
-                    "BUILD_ACOUSTIC_SIM OFF"
-                    "BUILD_ARRANGEMENT OFF"
-                    "BUILD_ASSIST OFF"
-                    "SONARE_WITH_FFMPEG OFF"
-        )
-        # libsonare v1.7.2 omits this source from its analysis target.
-        if(TARGET sonare_core_objects)
-            target_sources(sonare_core_objects PRIVATE
-                    "${libsonare_SOURCE_DIR}/src/rt/biquad_design.cpp"
-            )
-        endif()
-    endif()
-
-    # Added after libsonare so both libraries reuse the same Eigen target when
-    # libsonare is enabled.
-    CPMAddPackage(
-            NAME           librosa_cpp
-            GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
-            GIT_REPOSITORY https://github.com/olilarkin/librosa.cpp
-            GIT_SUBMODULES "modules/eigen;modules/pocketfft"
-            EXCLUDE_FROM_ALL
-            OPTIONS
-                "LIBROSA_BUILD_TESTS OFF"
-                "LIBROSA_BUILD_EXAMPLES OFF"
-                "LIBROSA_BUILD_BENCHMARKS OFF"
-                "LIBROSA_BUILD_CROSSVAL_TESTS OFF"
-                "LIBROSA_BUILD_CLI OFF"
-                "LIBROSA_BUILD_WASM OFF"
-                "LIBROSA_BUILD_SWIFT_C_WRAPPER OFF"
-                "LIBROSA_FFT_BACKEND pocketfft"
-    )
-
-    if(DEFINED _UAPMD_MIR_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
-        set(BUILD_SHARED_LIBS "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}")
-    else()
-        unset(BUILD_SHARED_LIBS)
-    endif()
-
-endif()
 
 # The library, and the pitch transcription addin in it, exist regardless of
 # UAPMD_ENABLE_MIR. AddinEntry.cpp assembles whichever addins were compiled in.
@@ -632,6 +664,54 @@ if(UAPMD_ENABLE_BASIC_PITCH)
             src/basic-pitch/BasicPitchModel.cpp
             src/basic-pitch/BasicPitchTranscriber.cpp
             src/ClipTranscription.cpp
+    )
+
+endif()
+
+# ---------------------------------------------------------------------------
+# DrumScript drum transcription
+#
+# Basic Pitch is a pitch model and finds nothing in a drum stem, so percussion
+# needs a backend of its own. This one is a port of DrumScript's deterministic
+# classifier: no weights, no download, just spectral features and thresholds --
+# which is why it needs librosa.cpp and nothing else.
+#
+# A static built-in addin like the others here.
+# ---------------------------------------------------------------------------
+
+if(UAPMD_ENABLE_DRUMSCRIPT)
+
+    add_library(uapmd-drumscript STATIC
+            src/drumscript/DrumScriptClassifier.cpp
+    )
+    add_library(uapmd::drumscript ALIAS uapmd-drumscript)
+
+    target_compile_features(uapmd-drumscript PRIVATE cxx_std_23)
+
+    target_include_directories(uapmd-drumscript PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/drumscript
+    )
+
+    target_include_directories(uapmd-drumscript PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-engine/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+            ${midicci_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(uapmd-drumscript PRIVATE
+            uapmd::uapmd-addin-core
+            uapmd-data
+            librosa::librosa
+    )
+
+    # An STFT per onset over a whole drum take; -O0 makes that look hung.
+    uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-drumscript
+            src/drumscript/DrumScriptClassifier.cpp
     )
 
 endif()

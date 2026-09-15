@@ -49,6 +49,11 @@ option(UAPMD_ENABLE_DEMUCS_CPP "Build the Demucs stem separation addin (demucs.c
 # Apache-licensed is committed to this repository.
 option(UAPMD_ENABLE_BASIC_PITCH "Build the Basic Pitch polyphonic transcription addin (Apache-2.0, downloads model weights)" OFF)
 
+# DrumScript is Apache-2.0 like Basic Pitch, but nothing is downloaded or embedded: its
+# classifier is tuned thresholds rather than model weights, so enabling it is a build
+# decision only. It needs librosa.cpp for the spectral features.
+option(UAPMD_ENABLE_DRUMSCRIPT "Build the DrumScript drum transcription addin (Apache-2.0, requires UAPMD_ENABLE_LIBROSA_CPP)" OFF)
+
 # Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
 # to opt back into full Debug codegen when they need to inspect those features specifically.
 option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
