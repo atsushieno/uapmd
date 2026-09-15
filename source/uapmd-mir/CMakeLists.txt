@@ -85,9 +85,23 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
     # makes that lookup optional; librosa already tolerates a missing libsndfile
     # by deferring the failure to those two functions. Apple builds never reach
     # it at all, taking the AudioToolbox branch, which is why only Windows broke.
-    set(_UAPMD_LIBROSA_PATCH "${UAPMD_EXTERNAL_DIR}/patches/librosa-cpp-optional-pkgconfig.patch")
-    set(_UAPMD_LIBROSA_PATCH_EPOCH "1")
-    file(SHA1 "${_UAPMD_LIBROSA_PATCH}" _UAPMD_LIBROSA_PATCH_SHA1)
+    #
+    # The second patch is a separate Windows problem in the same dependency:
+    # librosa vendors incbeta, which returns 1.0/0.0 to signal an out-of-domain
+    # argument. GCC and Clang fold that to infinity; MSVC rejects a constant
+    # division by zero outright (C2124). INFINITY says the same thing portably,
+    # and <math.h> is already included there.
+    set(_UAPMD_LIBROSA_PATCHES
+            "${UAPMD_EXTERNAL_DIR}/patches/librosa-cpp-optional-pkgconfig.patch"
+            "${UAPMD_EXTERNAL_DIR}/patches/librosa-cpp-msvc-incbeta.patch")
+    set(_UAPMD_LIBROSA_PATCH_EPOCH "2")
+    set(_UAPMD_LIBROSA_PATCH_HASHES "")
+    foreach(_uapmd_librosa_patch IN LISTS _UAPMD_LIBROSA_PATCHES)
+        file(SHA1 "${_uapmd_librosa_patch}" _uapmd_librosa_patch_sha1)
+        string(APPEND _UAPMD_LIBROSA_PATCH_HASHES "${_uapmd_librosa_patch_sha1}")
+    endforeach()
+    # One key from every patch, so editing any of them re-extracts the source.
+    string(SHA1 _UAPMD_LIBROSA_PATCH_SHA1 "${_UAPMD_LIBROSA_PATCH_HASHES}")
 
     # Added after libsonare, which creates the Eigen3::Eigen target first when
     # it is enabled; whichever of the two comes second fails on the collision.
@@ -97,7 +111,7 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
             GIT_REPOSITORY https://github.com/olilarkin/librosa.cpp
             GIT_SUBMODULES "modules/eigen;modules/pocketfft"
             CUSTOM_CACHE_KEY "ce1db117fcc75d401c42a9ade63f4406777c2660-v${_UAPMD_LIBROSA_PATCH_EPOCH}-${_UAPMD_LIBROSA_PATCH_SHA1}"
-            PATCHES "${_UAPMD_LIBROSA_PATCH}"
+            PATCHES ${_UAPMD_LIBROSA_PATCHES}
             EXCLUDE_FROM_ALL
             OPTIONS
                 "LIBROSA_BUILD_TESTS OFF"
