@@ -331,6 +331,16 @@ uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
     return hash;
 }
 
+uint64_t pianoRollSourceFingerprint(const uapmd::MidiClipSourceNode& source) {
+    uint64_t hash = mixHash(1469598103934665603ull, source.tickResolution());
+    hash = mixHash(hash, std::bit_cast<uint64_t>(source.clipTempo()));
+    for (auto word : source.umpEvents())
+        hash = mixHash(hash, word);
+    for (auto tick : source.eventTimestampsTicks())
+        hash = mixHash(hash, tick);
+    return hash;
+}
+
 bool referencesThisClipEnd(const uapmd::ClipMarker& marker, std::string_view clipReferenceId) {
     if (marker.referenceType != uapmd::AudioWarpReferenceType::ClipEnd)
         return false;
@@ -1333,15 +1343,15 @@ void TimelineEditor::renderPianoRollFromClipEditor() {
         return applyPianoRollEdits(trackIndex, clipId,
                                    std::move(newEvents), std::move(newTicks), error);
     };
-    pianoCtx.reloadPreview = [](int32_t trackIndex, int32_t clipId) -> std::shared_ptr<ClipPreview> {
+    pianoCtx.clipDurationSeconds = [](int32_t trackIndex, int32_t clipId) {
         auto& appModel = uapmd_app::AppModel::instance();
         auto tracks = appModel.getTimelineTracks();
         if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
                 !tracks[trackIndex])
-            return nullptr;
-        auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-        if (!clip) return nullptr;
-        return createMidiClipPreview(trackIndex, *clip, 0.0);
+            return 0.0;
+        const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+        return clip ? static_cast<double>(clip->durationSamples) /
+            std::max(1.0, static_cast<double>(appModel.sampleRate())) : 0.0;
     };
     pianoCtx.previewNoteOn = [](int32_t trackIndex, int midiNote) {
         auto& seq = uapmd_app::AppModel::instance().sequencer();
@@ -2012,6 +2022,7 @@ void TimelineEditor::refreshAllSequenceEditorTracks() {
 }
 
 void TimelineEditor::refreshAfterHistoryMutation() {
+    lastPianoRollEditSource_.reset();
     refreshAllSequenceEditorTracks();
     reloadSelectedPianoRoll();
 }
@@ -2053,8 +2064,22 @@ void TimelineEditor::syncExternalTimelineChanges() {
         refreshSequenceEditorForTrack(i);
         refreshed = true;
     }
-    if (refreshed)
-        reloadSelectedPianoRoll();
+    if (!refreshed)
+        return;
+    if (lastPianoRollEditSource_ && selected_midi_clip_) {
+        const auto [editedTrack, editedClip, fingerprint] = *lastPianoRollEditSource_;
+        if (*selected_midi_clip_ == std::pair{editedTrack, editedClip} &&
+                editedTrack >= 0 && editedTrack < static_cast<int32_t>(tracks.size()) &&
+                tracks[editedTrack]) {
+            const auto* clip = tracks[editedTrack]->clipManager().getClip(editedClip);
+            auto node = clip ? tracks[editedTrack]->getSourceNode(clip->sourceNodeInstanceId) : nullptr;
+            auto midi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(node);
+            if (midi && pianoRollSourceFingerprint(*midi) == fingerprint)
+                return;
+        }
+    }
+    lastPianoRollEditSource_.reset();
+    reloadSelectedPianoRoll();
 }
 
 void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change) {
@@ -2609,6 +2634,7 @@ void TimelineEditor::showMasterMarkerEditor() {
 }
 
 void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
+    lastPianoRollEditSource_.reset();
     auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -3025,6 +3051,12 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
         return false;
     }
     refreshSequenceEditorForTrack(trackIndex);
+    auto refreshedTracks = appModel.getTimelineTracks();
+    const auto* clip = refreshedTracks[trackIndex]->clipManager().getClip(clipId);
+    auto node = clip ? refreshedTracks[trackIndex]->getSourceNode(clip->sourceNodeInstanceId) : nullptr;
+    auto midi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(node);
+    if (midi)
+        lastPianoRollEditSource_ = std::tuple{trackIndex, clipId, pianoRollSourceFingerprint(*midi)};
     return true;
 }
 

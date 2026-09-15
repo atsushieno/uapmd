@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -137,6 +139,7 @@ private:
     std::string masterTrackSignature_;
     bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
+    std::optional<std::tuple<int32_t, int32_t, uint64_t>> lastPianoRollEditSource_;
 
     // Tempo map for timeline unit conversion (seconds <-> beats)
     uapmd::TempoMap tempoMap_;

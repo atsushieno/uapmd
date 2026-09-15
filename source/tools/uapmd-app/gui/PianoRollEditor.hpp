@@ -60,9 +60,8 @@ public:
                            std::vector<uapmd_ump_t> newUmpEvents,
                            std::vector<uint64_t>    newTickTimestamps,
                            std::string&             error)> applyEdits;
-        // Called after a successful applyEdits to reload the preview from the engine.
-        std::function<std::shared_ptr<ClipPreview>(int32_t trackIndex,
-                                                    int32_t clipId)> reloadPreview;
+        // Returns the committed clip length for the grid after applyEdits succeeds.
+        std::function<double(int32_t trackIndex, int32_t clipId)> clipDurationSeconds;
         // Called when the user presses/slides on a piano key (for live note preview).
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOn;
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOff;
