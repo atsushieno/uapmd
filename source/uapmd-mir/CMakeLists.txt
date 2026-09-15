@@ -79,12 +79,25 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
     set(_UAPMD_MIR_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
     set(BUILD_SHARED_LIBS OFF)
 
-    # libsonare is enabled.
+    # Upstream requires PkgConfig unconditionally -- only to look for libsndfile
+    # behind its own load()/write(), which we never call, feeding it buffers read
+    # through uapmd-data instead. pkg-config is absent on Windows, so the patch
+    # makes that lookup optional; librosa already tolerates a missing libsndfile
+    # by deferring the failure to those two functions. Apple builds never reach
+    # it at all, taking the AudioToolbox branch, which is why only Windows broke.
+    set(_UAPMD_LIBROSA_PATCH "${UAPMD_EXTERNAL_DIR}/patches/librosa-cpp-optional-pkgconfig.patch")
+    set(_UAPMD_LIBROSA_PATCH_EPOCH "1")
+    file(SHA1 "${_UAPMD_LIBROSA_PATCH}" _UAPMD_LIBROSA_PATCH_SHA1)
+
+    # Added after libsonare, which creates the Eigen3::Eigen target first when
+    # it is enabled; whichever of the two comes second fails on the collision.
     CPMAddPackage(
             NAME           librosa_cpp
             GIT_TAG        ce1db117fcc75d401c42a9ade63f4406777c2660
             GIT_REPOSITORY https://github.com/olilarkin/librosa.cpp
             GIT_SUBMODULES "modules/eigen;modules/pocketfft"
+            CUSTOM_CACHE_KEY "ce1db117fcc75d401c42a9ade63f4406777c2660-v${_UAPMD_LIBROSA_PATCH_EPOCH}-${_UAPMD_LIBROSA_PATCH_SHA1}"
+            PATCHES "${_UAPMD_LIBROSA_PATCH}"
             EXCLUDE_FROM_ALL
             OPTIONS
                 "LIBROSA_BUILD_TESTS OFF"

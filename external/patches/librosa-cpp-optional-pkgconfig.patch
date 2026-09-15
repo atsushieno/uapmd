@@ -1,0 +1,16 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -53,8 +53,10 @@
+ if(LIBROSA_USE_AUDIOTOOLBOX)
+     message(STATUS "librosa audio I/O backend: Apple AudioToolbox")
+ else()
+-    find_package(PkgConfig REQUIRED)
+-    pkg_check_modules(SNDFILE sndfile)
++    find_package(PkgConfig)
++    if(PkgConfig_FOUND)
++        pkg_check_modules(SNDFILE sndfile)
++    endif()
+     if(NOT SNDFILE_FOUND)
+         message(STATUS "libsndfile not found; audio I/O (load/write) will throw at runtime")
+     endif()
