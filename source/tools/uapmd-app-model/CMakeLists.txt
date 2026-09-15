@@ -19,6 +19,7 @@ endif()
 # Wasm uses the browser's native WebSocket via a future Emscripten binding path)
 if(NOT UAPMD_BUILDING_WASM)
     CPMAddPackage(
+        EXCLUDE_FROM_ALL YES
         NAME ixwebsocket
         GIT_TAG v11.4.6
         GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
@@ -120,6 +121,7 @@ if(UAPMD_BUILDING_WASM)
     unset(_uapmd_resembed_host)
 endif()
 CPMAddPackage(
+    EXCLUDE_FROM_ALL YES
     NAME ResEmbed
     GIT_TAG 23ba82c
     GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed

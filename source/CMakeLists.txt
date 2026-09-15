@@ -153,9 +153,9 @@ if(UAPMD_ENABLE_ASAN)
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
-# Block all dependency install rules globally
-# This prevents third-party dependencies from polluting the installation
-install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY TRUE)" ALL_COMPONENTS)
+# Dependencies must use EXCLUDE_FROM_ALL YES in CPMAddPackage so their install
+# rules (including nested dependencies) stay out of the uapmd installation.
+# CPM expects an explicit value; a bare EXCLUDE_FROM_ALL does not enable it.
 
 if(UAPMD_ENABLE_CPPTRACE)
     set(_UAPMD_CPPTRACE_OPTIONS)
@@ -174,7 +174,7 @@ if(UAPMD_ENABLE_CPPTRACE)
             NAME           cpptrace
             GIT_TAG        v1.0.4
             GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-            EXCLUDE_FROM_ALL
+            EXCLUDE_FROM_ALL YES
             OPTIONS        ${_UAPMD_CPPTRACE_OPTIONS}
     )
     if(EMSCRIPTEN)
@@ -189,7 +189,7 @@ CPMAddPackage(
         NAME           readerwriterqueue
         GIT_TAG        v1.0.7
         GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
 )
 
 CPMAddPackage(
@@ -210,7 +210,7 @@ if (UAPMD_ENABLE_CPPLOCATE)
             NAME           cpplocate
             GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
             GIT_REPOSITORY https://github.com/cginternals/cpplocate
-            EXCLUDE_FROM_ALL
+            EXCLUDE_FROM_ALL YES
     )
     set (cpplocate_LIBRARIES cpplocate::cpplocate)
 endif ()
@@ -235,7 +235,7 @@ CPMAddPackage(midicci
         GIT_TAG         0.4.0
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
         OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
 )
 
 # Restore previous BUILD_SHARED_LIBS setting
@@ -295,9 +295,6 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
 )
-
-# Re-enable installation for uapmd components
-install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY FALSE)" ALL_COMPONENTS)
 
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")

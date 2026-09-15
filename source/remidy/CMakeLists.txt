@@ -74,7 +74,7 @@ CPMAddPackage(
         NAME rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
 )
 
 if(${REMIDY_SUPPORT_LV2})

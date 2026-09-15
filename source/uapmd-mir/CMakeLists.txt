@@ -45,7 +45,7 @@ if(UAPMD_ENABLE_MIR AND UAPMD_ENABLE_LIBSONARE
             NAME           libsonare
             GIT_TAG        develop
             GIT_REPOSITORY https://github.com/libraz/libsonare
-            EXCLUDE_FROM_ALL
+            EXCLUDE_FROM_ALL YES
             OPTIONS
                 "BUILD_TESTING OFF"
                 "BUILD_CLI OFF"
@@ -126,7 +126,7 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
             GIT_SUBMODULES "modules/eigen;modules/pocketfft"
             CUSTOM_CACHE_KEY "ce1db117fcc75d401c42a9ade63f4406777c2660-v${_UAPMD_LIBROSA_PATCH_EPOCH}-${_UAPMD_LIBROSA_PATCH_SHA1}"
             PATCHES ${_UAPMD_LIBROSA_PATCHES}
-            EXCLUDE_FROM_ALL
+            EXCLUDE_FROM_ALL YES
             OPTIONS
                 "LIBROSA_BUILD_TESTS OFF"
                 "LIBROSA_BUILD_EXAMPLES OFF"
@@ -503,7 +503,7 @@ CPMAddPackage(
         NAME           ggml
         GIT_TAG        v0.9.11
         GIT_REPOSITORY https://github.com/ggml-org/ggml
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
         OPTIONS
             "BUILD_SHARED_LIBS OFF"
             "GGML_BUILD_TESTS OFF"
@@ -520,7 +520,7 @@ CPMAddPackage(
         NAME           bsroformer
         GIT_TAG        a7b9625f0f4146cacf3c46080d1139833cd4d4c2
         GIT_REPOSITORY https://github.com/chenmozhijin/BSRoformer.cpp
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
         OPTIONS
             "GGML_CUDA OFF"
             "BSR_BUILD_CLI OFF"

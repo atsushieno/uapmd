@@ -9,7 +9,7 @@ if(NOT TARGET GTest::gtest OR NOT TARGET GTest::gtest_main)
         NAME googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG v1.14.0
-        EXCLUDE_FROM_ALL
+        EXCLUDE_FROM_ALL YES
     )
 endif()
 

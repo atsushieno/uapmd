@@ -227,6 +227,7 @@ endif()
 if(IOS AND NOT BACKEND_FOUND)
     message(STATUS "SDL3 not found for iOS; fetching from source via CPM")
     CPMAddPackage(
+        EXCLUDE_FROM_ALL YES
         NAME SDL3
         GIT_TAG release-3.2.10
         GIT_REPOSITORY https://github.com/libsdl-org/SDL
@@ -282,6 +283,7 @@ if(NOT _UAPMD_REQUIRE_SDL3)
             # Add GLFW via CPM as final fallback
             message(STATUS "No system GLFW found, adding via CPM")
             CPMAddPackage(
+                EXCLUDE_FROM_ALL YES
                 NAME glfw
                 GIT_TAG 3.4
                 GIT_REPOSITORY https://github.com/glfw/glfw
