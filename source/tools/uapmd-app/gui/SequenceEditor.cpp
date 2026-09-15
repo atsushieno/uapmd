@@ -184,7 +184,7 @@ void SequenceEditor::reset() {
     // Undo and redo arrive here as a Cleared track-layout change, as does removing a track:
     // all three edit the project the user is already looking at, so the zoom is theirs and has
     // to survive. It is carried as a plain value because this drops the Timeline object the
-    // rebuild would otherwise read it back from. Opening a project instead re-fits the zoom
+    // rebuild would otherwise read it back from. Opening a project instead sets its view
     // explicitly, through MainWindow's projectLoaded hook.
     const bool keepZoom = timeline_.hasExplicitZoom && timeline_.widget;
     const float keptScale = keepZoom ? timeline_.widget->GetScale() : -1.0f;
@@ -418,7 +418,7 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
         timeline_.lastVisibleWidthPixels = std::max(0.0f, clipAreaMaxX - clipAreaMinX);
         if (timeline_.hasPendingFit && timeline_.lastVisibleWidthPixels > 0.0f) {
             timeline_.hasPendingFit = false;
-            fitToContent(timeline_.pendingFitDurationSeconds, timeline_.lastVisibleWidthPixels, timeline_.pendingFitUiScale);
+            fitToSpan(timeline_.pendingFitSpanSeconds, timeline_.lastVisibleWidthPixels);
         }
 
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
@@ -877,25 +877,23 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
     ImGui::PopStyleVar();
 }
 
-void SequenceEditor::fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale) {
-    if (contentDurationSeconds <= 0.0)
+void SequenceEditor::fitToSpan(double spanSeconds, float visibleWidthPixels) {
+    if (spanSeconds <= 0.0)
         return;
     // No render has happened yet to know the real visible width (e.g. fitting right after a
     // project load, before the timeline widget's first frame) -- defer until renderTimeline
     // knows the actual width, rather than silently doing nothing.
     if (!timeline_.widget || visibleWidthPixels <= 0.0f) {
         timeline_.hasPendingFit = true;
-        timeline_.pendingFitDurationSeconds = contentDurationSeconds;
-        timeline_.pendingFitUiScale = uiScale;
+        timeline_.pendingFitSpanSeconds = spanSeconds;
         return;
     }
-    const double contentFrames =
-        static_cast<double>(axis_.frameFromSeconds(contentDurationSeconds));
-    if (contentFrames <= 0.0)
+    const double spanFrames =
+        static_cast<double>(axis_.frameFromSeconds(spanSeconds));
+    if (spanFrames <= 0.0)
         return;
-    const float defaultScale = axis_.defaultScale(uiScale);
-    const float idealScale = static_cast<float>(visibleWidthPixels / contentFrames);
-    const float fitted = std::clamp(idealScale, axis_.minScale(), defaultScale);
+    const float idealScale = static_cast<float>(visibleWidthPixels / spanFrames);
+    const float fitted = std::clamp(idealScale, axis_.minScale(), axis_.maxScale());
     timeline_.widget->SetScale(fitted);
     timeline_.hasExplicitZoom = true;
     timeline_.hasPendingFit = false;
@@ -1049,7 +1047,7 @@ void SequenceEditor::rebuildTimeline(const RenderContext& context) {
     if (maxFrame <= 0) maxFrame = axis_.frameFromSeconds(10.0);
     timeline_.widget->SetStartFrame(0);
     timeline_.widget->SetMaxFrame(maxFrame + axis_.trailingPadFrames());
-    // Once the user (or fitToContent) has set an explicit zoom, ordinary rebuilds (triggered by
+    // Once the user (or fitToSpan) has set an explicit zoom, ordinary rebuilds (triggered by
     // any clip add/move/remove) must not reset it back to the default -- carry the prior scale
     // forward onto the new Timeline object instead.
     if (preservedScale >= 0.0f)

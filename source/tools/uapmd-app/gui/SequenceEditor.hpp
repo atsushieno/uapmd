@@ -106,11 +106,9 @@ public:
     void renderTimeline(const RenderContext& context, float availableHeight);
     float getTimelineHeight(float uiScale) const;
 
-    // Zooms so the given content duration fits within visibleWidthPixels, clamped to never zoom
-    // in past the default. Marks the zoom as user-explicit so the next ordinary rebuild doesn't
-    // reset it. No-op if visibleWidthPixels or contentDurationSeconds is non-positive. Takes
-    // seconds in both modes; the axis converts.
-    void fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale);
+    // Sets the opening scale to show spanSeconds across visibleWidthPixels. Takes seconds
+    // in both modes; the axis converts them to the active ruler's frame domain.
+    void fitToSpan(double spanSeconds, float visibleWidthPixels);
     // Clip-area width in pixels, cached from the most recent render (0 before any render).
     float lastVisibleWidth() const { return timeline_.lastVisibleWidthPixels; }
 
@@ -149,9 +147,8 @@ private:
         bool hasExplicitZoom = false;  // once true, rebuildTimeline stops resetting scale
         float keptScale = -1.0f;  // explicit zoom held across reset(), which drops the Timeline
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
-        bool hasPendingFit = false;  // fitToContent was called before any width was known yet
-        double pendingFitDurationSeconds = 0.0;
-        float pendingFitUiScale = 1.0f;
+        bool hasPendingFit = false;  // fitToSpan was called before any width was known yet
+        double pendingFitSpanSeconds = 0.0;
     };
     TimelineState timeline_;
     TimelineAxis axis_;

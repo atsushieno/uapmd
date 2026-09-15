@@ -1956,15 +1956,11 @@ void TimelineEditor::refreshTempoMap() {
     tempoMap_ = uapmd_app::AppModel::instance().masterTempoMap();
 }
 
-void TimelineEditor::fitTimelineToContent(float uiScale) {
-    auto bounds = uapmd_app::AppModel::instance().timelineContentBounds();
-    if (!bounds.hasContent || bounds.durationSeconds <= 0.0)
-        return;
-
-    // tempoMap_ must already be built (e.g. via refreshAllSequenceEditorTracks, called just
-    // before this) -- it's cleared by invalidateMasterTrackSnapshot(), so this must run before
-    // that call, not after. The axis reads the map when it converts these seconds.
-    sequenceEditor_.fitToContent(bounds.durationSeconds, sequenceEditor_.lastVisibleWidth(), uiScale);
+void TimelineEditor::setInitialTimelineView() {
+    refreshTempoMap();
+    constexpr double kInitialBeats = 32.0;
+    const double spanSeconds = tempoMap_.beatsToSeconds(kInitialBeats);
+    sequenceEditor_.fitToSpan(spanSeconds, sequenceEditor_.lastVisibleWidth());
 }
 
 void TimelineEditor::invalidateMasterTrackSnapshot() {

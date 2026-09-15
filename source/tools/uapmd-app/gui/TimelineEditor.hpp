@@ -77,9 +77,8 @@ public:
     }
     void selectMidiClip(int32_t trackIndex, int32_t clipId);
 
-    // Zooms both editors so the entire loaded song's content fits within the visible area.
-    // Call after a project finishes loading.
-    void fitTimelineToContent(float uiScale);
+    // Shows the first 32 quarter-note beats after a project finishes loading.
+    void setInitialTimelineView();
 
     // Clip management
     void refreshSequenceEditorForTrack(int32_t trackIndex);

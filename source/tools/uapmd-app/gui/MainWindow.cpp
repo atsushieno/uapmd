@@ -305,9 +305,7 @@ MainWindow::MainWindow(GuiDefaults defaults)
     uapmd_app::AppModel::instance().projectLoaded.push_back(
         [this]() {
             timelineEditor_.refreshAllSequenceEditorTracks();
-            // Must run before invalidateMasterTrackSnapshot(), which clears the tempo map
-            // fitTimelineToContent needs for the beats view.
-            timelineEditor_.fitTimelineToContent(uiScale_);
+            timelineEditor_.setInitialTimelineView();
             timelineEditor_.invalidateMasterTrackSnapshot();
             trackList_.markDirty();
         });
@@ -1839,7 +1837,7 @@ void MainWindow::handleLoadProject() {
                                 platformError("Load Failed", result.error);
                                 return;
                             }
-                            // GUI refresh (including fitTimelineToContent) happens generically
+                            // GUI refresh (including the initial timeline view) happens generically
                             // via AppModel::projectLoaded, registered in the constructor -- fires
                             // for any successful load, GUI-initiated or scripted.
                         });
