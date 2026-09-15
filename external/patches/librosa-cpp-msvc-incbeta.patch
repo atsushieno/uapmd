@@ -1,0 +1,19 @@
+diff --git a/vendor/incbeta/incbeta.c b/vendor/incbeta/incbeta.c
+--- a/vendor/incbeta/incbeta.c
++++ b/vendor/incbeta/incbeta.c
+@@ -31,7 +31,7 @@
+ #define TINY 1.0e-30
+ 
+ double incbeta(double a, double b, double x) {
+-    if (x < 0.0 || x > 1.0) return 1.0/0.0;
++    if (x < 0.0 || x > 1.0) return INFINITY;
+ 
+     /*The continued fraction converges nicely for x < (a+1)/(a+b+2)*/
+     if (x > (a+1.0)/(a+b+2.0)) {
+@@ -75,5 +75,5 @@
+         }
+     }
+ 
+-    return 1.0/0.0; /*Needed more loops, did not converge.*/
++    return INFINITY; /*Needed more loops, did not converge.*/
+ }
