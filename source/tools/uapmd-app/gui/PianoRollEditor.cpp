@@ -263,8 +263,8 @@ void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
     const float itemW = 140.0f * uiScale;
 
     ImGui::SetNextItemWidth(itemW);
-    ImGui::SliderFloat("H Zoom##pr_h", &state.view.hZoom, 10.0f, 2000.0f,
-                       "%.0f px/s", ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Beats in View##pr_h", &state.view.visibleBeats, 1.0f, 512.0f,
+                       "%.1f beats", ImGuiSliderFlags_Logarithmic);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(itemW);
     ImGui::SliderFloat("V Zoom##pr_v", &state.view.vZoom, 4.0f, 48.0f, "%.0f px");
@@ -1415,16 +1415,8 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     ImGui::Separator();
 
     const float pianoW   = kPianoKeyWidth * uiScale;
-    const float noteH    = state.view.vZoom * uiScale;
-    const float pxPerSec = state.view.hZoom * uiScale;
-    const float rulerH   = kRulerHeight * uiScale;
-
-    double clipDuration = state.preview ? std::max(0.01, state.preview->clipDurationSeconds) : 10.0;
-    // Keep a modest tail after the clip so notes can be added just beyond its
-    // current end without making the scrollbar thumb unusably small.
-    const float totalNoteW = std::max(
-        static_cast<float>(clipDuration + std::max(4.0, clipDuration * 0.5)),
-        static_cast<float>(clipDuration)) * pxPerSec;
+    const float noteH  = state.view.vZoom * uiScale;
+    const float rulerH = kRulerHeight * uiScale;
 
     const float scrollbarSize  = ImGui::GetStyle().ScrollbarSize;
     const ImVec2 avail         = ImGui::GetContentRegionAvail();
@@ -1438,6 +1430,21 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     // on touch devices, where wheel input and dragging the note canvas are not
     // dependable navigation mechanisms.
     const float gridW = std::max(0.0f, avail.x - pianoW - scrollbarSize);
+    const double bpm = state.preview && state.preview->rawMidiData &&
+            state.preview->rawMidiData->clipTempo > 0.0
+        ? state.preview->rawMidiData->clipTempo : 120.0;
+    const float pxPerSec = std::max(1.0f, gridW) * static_cast<float>(bpm) /
+        (60.0f * state.view.visibleBeats);
+    if (state.view.lastPxPerSec > 0.0f)
+        state.view.hScrollPx *= pxPerSec / state.view.lastPxPerSec;
+    state.view.lastPxPerSec = pxPerSec;
+
+    double clipDuration = state.preview ? std::max(0.01, state.preview->clipDurationSeconds) : 10.0;
+    // Keep a modest tail after the clip so notes can be added just beyond its
+    // current end without making the scrollbar thumb unusably small.
+    const float totalNoteW = std::max(
+        static_cast<float>(clipDuration + std::max(4.0, clipDuration * 0.5)),
+        static_cast<float>(clipDuration)) * pxPerSec;
     const float maxHScrollPx = std::max(0.0f, totalNoteW - gridW);
     // Keep the horizontal scrollbar visible even when the whole timeline fits;
     // its full-width thumb communicates the current 0 position and preserves

@@ -67,9 +67,10 @@ public:
 
 private:
     struct ViewState {
-        float hZoom{100.0f};      // Pixels per second at uiScale=1
+        float visibleBeats{16.0f}; // Number of beats across the note grid
+        float lastPxPerSec{0.0f};  // Preserves the viewed time when the scale changes
         float vZoom{12.0f};       // Pixels per note row at uiScale=1
-        float hScrollPx{0.0f};   // Horizontal scroll in pixels
+        float hScrollPx{0.0f};    // Horizontal scroll in pixels
         float vScrollNote{0.0f};  // Vertical scroll in note-slot units (0=top/note127)
         bool  rowScrollbarDragging{false};
         float rowScrollbarDragOffset{0.0f};
