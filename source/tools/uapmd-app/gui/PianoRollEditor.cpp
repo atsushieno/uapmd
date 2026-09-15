@@ -150,225 +150,6 @@ const char* PianoRollEditor::automationTypeName(ClipPreview::AutomationEvent::Ty
     return "Unknown";
 }
 
-// ── automation parsing ────────────────────────────────────────────────────────
-
-void PianoRollEditor::parseAutomationFromRaw(
-        const ClipPreview::RawMidiData& raw,
-        std::vector<EditNote>&                      editNotes,
-        std::vector<ClipPreview::AutomationEvent>&  clipEvents) {
-    clipEvents.clear();
-    for (auto& n : editNotes)
-        n.automationEvents.clear();
-
-    const auto& events = raw.umpEvents;
-    const auto& ticks  = raw.tickTimestamps;
-    if (events.empty()) return;
-
-    const uint32_t tickRes  = raw.tickResolution > 0 ? raw.tickResolution : 480;
-    const double   bpm      = raw.clipTempo > 0.0 ? raw.clipTempo : 120.0;
-    const double   secPerTick = 60.0 / (static_cast<double>(tickRes) * bpm);
-
-    // Map from the first-word raw index of a NoteOn event back to its editNote slot.
-    std::unordered_map<size_t, size_t> wordIdxToNoteIdx;
-    wordIdxToNoteIdx.reserve(editNotes.size());
-    for (size_t ni = 0; ni < editNotes.size(); ++ni)
-        if (editNotes[ni].noteOnWordIdx != SIZE_MAX)
-            wordIdxToNoteIdx[editNotes[ni].noteOnWordIdx] = ni;
-
-    // (group<<12|ch<<7|note) → currently-active editNote index.
-    std::unordered_map<uint32_t, size_t> activeNoteIndices;
-    activeNoteIndices.reserve(64);
-
-    auto addPerNoteEvt = [&](uint32_t noteKey, ClipPreview::AutomationEvent evt) {
-        auto it = activeNoteIndices.find(noteKey);
-        if (it != activeNoteIndices.end())
-            editNotes[it->second].automationEvents.push_back(std::move(evt));
-    };
-
-    const size_t eventCount = std::min(events.size(), ticks.size());
-    size_t i = 0;
-    while (i < eventCount) {
-        umppi::Ump ump1(events[i]);
-        const int  wordCount = ump1.getSizeInInts();
-        const size_t safeCount = std::min(static_cast<size_t>(wordCount), eventCount - i);
-        umppi::Ump ump = (safeCount >= 2) ? umppi::Ump(events[i], events[i + 1]) : ump1;
-
-        const double t = static_cast<double>(ticks[i]) * secPerTick;
-        const auto msgType = ump.getMessageType();
-
-        if (msgType == umppi::MessageType::MIDI1) {
-            const uint8_t  status  = ump.getStatusCode();
-            const uint8_t  channel = ump.getChannelInGroup();
-            const uint8_t  group   = ump.getGroup();
-            const uint32_t baseKey = (static_cast<uint32_t>(group) << 12) |
-                                     (static_cast<uint32_t>(channel) << 7);
-
-            if (status == umppi::MidiChannelStatus::NOTE_ON) {
-                const uint8_t  note  = ump.getMidi1Note();
-                const uint8_t  vel   = ump.getMidi1Velocity();
-                const uint32_t nk    = baseKey | note;
-                if (vel > 0) {
-                    auto it = wordIdxToNoteIdx.find(i);
-                    if (it != wordIdxToNoteIdx.end()) activeNoteIndices[nk] = it->second;
-                } else {
-                    activeNoteIndices.erase(nk);
-                }
-            } else if (status == umppi::MidiChannelStatus::NOTE_OFF) {
-                activeNoteIndices.erase(baseKey | ump.getMidi1Note());
-            } else if (status == umppi::MidiChannelStatus::PAF) {
-                const uint8_t note = ump.getMidi1Msb();
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi1Lsb() / 127.0;
-                evt.type            = ClipPreview::AutomationEvent::Type::PolyPressure;
-                evt.channel         = channel;
-                evt.noteNumber      = note;
-                evt.rawEventIdx     = i;
-                addPerNoteEvt(baseKey | note, evt);
-            } else if (status == umppi::MidiChannelStatus::CC) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi1CCData() / 127.0;
-                evt.type            = ClipPreview::AutomationEvent::Type::ControlChange;
-                evt.channel         = channel;
-                evt.paramIndex      = ump.getMidi1CCIndex();
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::CAF) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi1Msb() / 127.0;
-                evt.type            = ClipPreview::AutomationEvent::Type::ChannelPressure;
-                evt.channel         = channel;
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::PITCH_BEND) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi1PitchBendData() / 16383.0;
-                evt.type            = ClipPreview::AutomationEvent::Type::PitchBend;
-                evt.channel         = channel;
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            }
-        } else if (msgType == umppi::MessageType::MIDI2) {
-            const uint8_t  status  = ump.getStatusCode();
-            const uint8_t  channel = ump.getChannelInGroup();
-            const uint8_t  group   = ump.getGroup();
-            const uint32_t baseKey = (static_cast<uint32_t>(group) << 12) |
-                                     (static_cast<uint32_t>(channel) << 7);
-
-            if (status == umppi::MidiChannelStatus::NOTE_ON) {
-                const uint8_t  note = ump.getMidi2Note();
-                const uint16_t vel  = ump.getMidi2Velocity16();
-                const uint32_t nk   = baseKey | note;
-                if (vel > 0) {
-                    auto it = wordIdxToNoteIdx.find(i);
-                    if (it != wordIdxToNoteIdx.end()) activeNoteIndices[nk] = it->second;
-                } else {
-                    activeNoteIndices.erase(nk);
-                }
-            } else if (status == umppi::MidiChannelStatus::NOTE_OFF) {
-                activeNoteIndices.erase(baseKey | ump.getMidi2Note());
-            } else if (status == umppi::MidiChannelStatus::PAF) {
-                const uint8_t note = ump.getMidi2Note();
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2PafData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::PolyPressure;
-                evt.channel         = channel;
-                evt.noteNumber      = note;
-                evt.rawEventIdx     = i;
-                addPerNoteEvt(baseKey | note, evt);
-            } else if (status == umppi::MidiChannelStatus::PER_NOTE_PITCH_BEND) {
-                const uint8_t note = ump.getMidi2Note();
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2PitchBendData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::PerNotePitchBend;
-                evt.channel         = channel;
-                evt.noteNumber      = note;
-                evt.rawEventIdx     = i;
-                addPerNoteEvt(baseKey | note, evt);
-            } else if (status == umppi::MidiChannelStatus::PER_NOTE_RCC ||
-                       status == umppi::MidiChannelStatus::PER_NOTE_ACC) {
-                const uint8_t note = ump.getMidi2Note();
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2CcData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::PerNoteParameter;
-                evt.channel         = channel;
-                evt.noteNumber      = note;
-                evt.paramIndex      = static_cast<uint16_t>(events[i] & 0xFF);
-                evt.rawEventIdx     = i;
-                addPerNoteEvt(baseKey | note, evt);
-            } else if (status == umppi::MidiChannelStatus::CC) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2CcData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::ControlChange;
-                evt.channel         = channel;
-                evt.paramIndex      = ump.getMidi2CcIndex();
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::RPN) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2RpnData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::RPN;
-                evt.channel         = channel;
-                evt.paramIndex      = static_cast<uint16_t>((ump.getMidi2RpnMsb() << 7) | ump.getMidi2RpnLsb());
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::NRPN) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2NrpnData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::NRPN;
-                evt.channel         = channel;
-                evt.umpGroup        = group;
-                evt.paramIndex      = static_cast<uint16_t>((ump.getMidi2NrpnMsb() << 7) | ump.getMidi2NrpnLsb());
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::CAF) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2CafData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::ChannelPressure;
-                evt.channel         = channel;
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            } else if (status == umppi::MidiChannelStatus::PITCH_BEND) {
-                ClipPreview::AutomationEvent evt{};
-                evt.timeSeconds     = t;
-                evt.normalizedValue = ump.getMidi2PitchBendData() / static_cast<double>(0xFFFFFFFFu);
-                evt.type            = ClipPreview::AutomationEvent::Type::PitchBend;
-                evt.channel         = channel;
-                evt.rawEventIdx     = i;
-                clipEvents.push_back(evt);
-            }
-        }
-
-        i += static_cast<size_t>(std::max(1, wordCount));
-    }
-}
-
-void PianoRollEditor::seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& raw,
-                                                std::vector<EditNote>& editNotes) {
-    for (auto& note : editNotes) {
-        note.attributeType = 0;
-        note.attributeValue = 0;
-        if (note.noteOnWordIdx >= raw.umpEvents.size() || note.noteOnWordIdx + 1 >= raw.umpEvents.size())
-            continue;
-        note.ump_group = static_cast<uint8_t>((raw.umpEvents[note.noteOnWordIdx] >> 24) & 0xFu);
-        note.channel = static_cast<uint8_t>((raw.umpEvents[note.noteOnWordIdx] >> 16) & 0xFu);
-        if (note.noteOffWordIdx < raw.umpEvents.size() && note.noteOffWordIdx + 1 < raw.umpEvents.size())
-            note.release_velocity = static_cast<uint16_t>(raw.umpEvents[note.noteOffWordIdx + 1] >> 16);
-        note.attributeType = static_cast<uint8_t>(raw.umpEvents[note.noteOnWordIdx] & 0xFFu);
-        note.attributeValue = static_cast<uint16_t>(raw.umpEvents[note.noteOnWordIdx + 1] & 0xFFFFu);
-    }
-}
-
 // ── public API ───────────────────────────────────────────────────────────────
 
 void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
@@ -381,29 +162,14 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
     state.clipName   = clipName;
     state.preview    = std::move(preview);
     state.visible    = true;
-
-    // (Re-)initialise editable notes from the freshly-loaded preview.
-    // Also reset any in-flight drag to avoid dangling note indices.
-    state.editNotes.clear();
-    state.editClipEvents.clear();
-    if (state.preview) {
-        state.editNotes.reserve(state.preview->midiNotes.size());
-        for (const auto& n : state.preview->midiNotes)
-            state.editNotes.emplace_back(n);
-        if (state.preview->rawMidiData) {
-            seedNoteAttributesFromRaw(*state.preview->rawMidiData, state.editNotes);
-            parseAutomationFromRaw(*state.preview->rawMidiData, state.editNotes, state.editClipEvents);
-        }
-    }
-    for (auto& note : state.editNotes)
-        note.edit_id = state.next_note_id++;
-    state.selected_notes.clear();
-    state.selectedNoteIdx = -1;
-    state.deletedRawIdxs.clear();
+    state.document = uapmd_app::AppModel::instance().openPianoRollSession(trackIndex, clipId);
+    if (!state.preview || !state.preview->rawMidiData ||
+            !state.document->matchesSource(*state.preview->rawMidiData))
+        state.document->loadNotes(
+            state.preview ? state.preview->midiNotes : std::vector<ClipPreview::MidiNote>{},
+            state.preview ? state.preview->rawMidiData : nullptr,
+            state.preview ? state.preview->clipDurationSeconds : 0.01);
     state.pending_action = NoteAction::None;
-    state.retry_available = false;
-    state.edit_error.clear();
-    state.dirtyAfterEdit = false;
     state.marquee_active = false;
     state.noteToDeleteIdx = -1;
     state.needsDeletePopup = false;
@@ -414,7 +180,7 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
     if (state.view.vScrollNote == 0.0f) {
         // Centre the view on the note range of the clip; fall back to C4 (60)
         // when the clip is empty so we don't open at note 127 / C9.
-        const float midNote = (!state.editNotes.empty())
+        const float midNote = (!state.document->editNotes.empty())
                               ? (state.preview->minNote + state.preview->maxNote) * 0.5f
                               : 60.0f;
         float midIdx = static_cast<float>(kNoteCount - 1) - midNote;
@@ -429,19 +195,9 @@ void PianoRollEditor::reloadClip(int32_t trackIndex, int32_t clipId,
     if (it == windows_.end() || !it->second.visible)
         return;
     auto& state = it->second;
-    if (state.preview && state.preview->rawMidiData && preview && preview->rawMidiData) {
-        const auto& current = *state.preview->rawMidiData;
-        const auto& incoming = *preview->rawMidiData;
-        // Timeline refreshes can report our own committed edit again. Keep the editable
-        // notes and their selection when the source content has not changed.
-        if (current.umpEvents == incoming.umpEvents &&
-            current.tickTimestamps == incoming.tickTimestamps &&
-            current.tickResolution == incoming.tickResolution &&
-            current.clipTempo == incoming.clipTempo) {
-            state.preview = std::move(preview);
-            return;
-        }
-    }
+    if (state.document && preview && preview->rawMidiData &&
+            state.document->matchesSource(*preview->rawMidiData))
+        return;
     showClip(trackIndex, clipId, state.clipName, std::move(preview));
 }
 
@@ -450,466 +206,38 @@ void PianoRollEditor::render(const RenderContext& ctx) {
         if (state.visible)
             renderWindow(state, ctx);
 
-    std::erase_if(windows_, [](const auto& p) { return !p.second.visible; });
+    std::erase_if(windows_, [](const auto& p) {
+        if (p.second.visible)
+            return false;
+        uapmd_app::AppModel::instance().closePianoRollSession(p.first.first, p.first.second);
+        return true;
+    });
 }
 
 // ── static helpers ────────────────────────────────────────────────────────────
 
-uint64_t PianoRollEditor::secondsToTicks(double seconds, uint32_t tickRes, double bpm) noexcept {
-    if (bpm <= 0.0 || tickRes == 0 || seconds < 0.0) return 0;
-    return static_cast<uint64_t>(std::round(seconds * static_cast<double>(tickRes) * bpm / 60.0));
-}
-
-void PianoRollEditor::sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
-                                         std::vector<uint64_t>&    ticks, std::vector<size_t>& wordOrder) {
-    // Group consecutive words that form a single UMP message, sort groups by
-    // tick, then flatten back to word-per-entry arrays.
-    struct Group {
-        uint64_t tick{0};
-        size_t original_index{0};
-        std::vector<uapmd_ump_t> words;
-    };
-
-    std::vector<Group> groups;
-    groups.reserve(events.size());
-
-    size_t i = 0;
-    while (i < events.size()) {
-        umppi::Ump ump(events[i]);
-        int wordCount = std::max(1, ump.getSizeInInts());
-        Group g;
-        g.original_index = i;
-        g.tick = (i < ticks.size()) ? ticks[i] : 0;
-        size_t end = std::min(i + static_cast<size_t>(wordCount), events.size());
-        for (size_t j = i; j < end; ++j)
-            g.words.push_back(events[j]);
-        groups.push_back(std::move(g));
-        i += static_cast<size_t>(wordCount);
-    }
-
-    std::stable_sort(groups.begin(), groups.end(), [](const Group& a, const Group& b) {
-        return a.tick < b.tick;
-    });
-
-    wordOrder.resize(events.size());
-    events.clear();
-    ticks.clear();
-    for (const auto& g : groups) {
-        size_t source = g.original_index;
-        for (auto w : g.words) {
-            wordOrder[source++] = events.size();
-            events.push_back(w);
-            ticks.push_back(g.tick);
-        }
-    }
-}
-
-// ── note write-back ───────────────────────────────────────────────────────────
-
 bool PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ctx) {
-    state.dirtyAfterEdit = false;
-    if (!ctx.applyEdits || !state.preview || !state.preview->rawMidiData) {
-        state.edit_error = "MIDI clip data is unavailable.";
+    if (!state.document->commit(uapmd_app::AppModel::instance()))
         return false;
-    }
-
-    const ClipPreview::RawMidiData& orig = *state.preview->rawMidiData;
-    const uint32_t tickRes = orig.tickResolution;
-    const double   bpm     = orig.clipTempo > 0.0 ? orig.clipTempo : 120.0;
-
-    // Fallback group for clip-level automation.
-    uint8_t defaultGroup = 0;
-    if (!state.preview->midiNotes.empty()) {
-        const size_t idx0 = state.preview->midiNotes[0].noteOnWordIdx;
-        if (idx0 < orig.umpEvents.size()) {
-            defaultGroup   = static_cast<uint8_t>((orig.umpEvents[idx0] >> 24) & 0xFu);
-        }
-    }
-
-    // Mark all raw-event indices owned by tracked notes so we can exclude them
-    // from the non-note pass.  We rebuild note events fresh from editNotes below.
-    std::vector<bool> skipIdx(orig.umpEvents.size(), false);
-    auto markSkip = [&](size_t start) {
-        if (start >= orig.umpEvents.size()) return;
-        umppi::Ump u(orig.umpEvents[start]);
-        int sz = std::max(1, u.getSizeInInts());
-        for (int w = 0; w < sz && start + w < orig.umpEvents.size(); ++w)
-            skipIdx[start + w] = true;
-    };
-    // Skip note ON/OFF raw events and their associated automation events so we
-    // can re-emit the edited copies below.  editNotes holds all original notes
-    // (including deleted ones), so all original raw indices are covered.
-    for (const auto& editNote : state.editNotes) {
-        markSkip(editNote.noteOnWordIdx);
-        markSkip(editNote.noteOffWordIdx);
-        for (const auto& ae : editNote.automationEvents)
-            markSkip(ae.rawEventIdx);
-    }
-    for (const auto& ae : state.editClipEvents)
-        markSkip(ae.rawEventIdx);
-    // Also skip raw events whose in-memory counterpart was deleted this frame.
-    for (size_t idx : state.deletedRawIdxs)
-        markSkip(idx);
-    // Begin the new event list with all non-note events (CC, pitch-bend, …).
-    std::vector<uapmd_ump_t> newEvents;
-    std::vector<uint64_t>    newTicks;
-    newEvents.reserve(orig.umpEvents.size());
-    newTicks.reserve(orig.tickTimestamps.size());
-    for (size_t i = 0; i < orig.umpEvents.size(); ++i) {
-        if (!skipIdx[i]) {
-            newEvents.push_back(orig.umpEvents[i]);
-            newTicks.push_back(i < orig.tickTimestamps.size() ? orig.tickTimestamps[i] : 0);
-        }
-    }
-
-    std::vector<std::pair<size_t, uint64_t>> emittedIds;
-    std::unordered_map<uint64_t, size_t> emittedOffWords;
-    std::unordered_map<uint64_t, std::vector<size_t>> emittedNoteAutomationWords;
-    std::vector<size_t> emittedClipAutomationWords;
-    const uint64_t primaryId = state.selectedNoteIdx >= 0 && state.selectedNoteIdx < static_cast<int>(state.editNotes.size())
-        ? state.editNotes[state.selectedNoteIdx].edit_id : 0;
-    // Emit NoteOn + NoteOff for each live (non-deleted) note.
-    for (const auto& editNote : state.editNotes) {
-        if (editNote.deleted) continue;
-
-        const uint64_t onTick  = secondsToTicks(editNote.startSeconds, tickRes, bpm);
-        const uint64_t offTick = secondsToTicks(
-            editNote.startSeconds + editNote.durationSeconds, tickRes, bpm);
-
-        const uint8_t grp = editNote.ump_group;
-        const uint8_t ch = editNote.channel;
-        emittedIds.emplace_back(newEvents.size(), editNote.edit_id);
-
-        const uint16_t vel16  = static_cast<uint16_t>(
-            std::round(std::clamp(editNote.velocity, 0.0f, 1.0f) * 65535.0f));
-        const uint64_t onUmp  = umppi::UmpFactory::midi2NoteOn(
-            grp, ch, editNote.note, editNote.attributeType, vel16, editNote.attributeValue);
-        newEvents.push_back(static_cast<uint32_t>(onUmp >> 32));
-        newTicks.push_back(onTick);
-        newEvents.push_back(static_cast<uint32_t>(onUmp & 0xFFFFFFFFu));
-        newTicks.push_back(onTick);
-
-        emittedOffWords.emplace(editNote.edit_id, newEvents.size());
-        const uint64_t offUmp = umppi::UmpFactory::midi2NoteOff(
-            grp, ch, editNote.note, editNote.attributeType, editNote.release_velocity, editNote.attributeValue);
-        newEvents.push_back(static_cast<uint32_t>(offUmp >> 32));
-        newTicks.push_back(offTick);
-        newEvents.push_back(static_cast<uint32_t>(offUmp & 0xFFFFFFFFu));
-        newTicks.push_back(offTick);
-
-        // Emit per-note automation events (edited or newly added).
-        for (const auto& ae : editNote.automationEvents) {
-            const size_t eventWord = newEvents.size();
-            const uint64_t aeTick = secondsToTicks(ae.timeSeconds, tickRes, bpm);
-            const double   v      = std::clamp(ae.normalizedValue, 0.0, 1.0);
-            switch (ae.type) {
-            case ClipPreview::AutomationEvent::Type::PitchBend: {
-                const auto d14 = static_cast<uint16_t>(std::round(v * 16383.0));
-                newEvents.push_back(umppi::UmpFactory::midi1PitchBendDirect(grp, ch, d14));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::PerNotePitchBend: {
-                const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2PerNotePitchBendDirect(
-                    grp, ch, editNote.note, d32);
-                newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-                newTicks.push_back(aeTick);
-                newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::ChannelPressure: {
-                const auto d7 = static_cast<uint8_t>(std::round(v * 127.0));
-                newEvents.push_back(umppi::UmpFactory::midi1CAf(grp, ch, d7));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::PolyPressure: {
-                const auto d7 = static_cast<uint8_t>(std::round(v * 127.0));
-                newEvents.push_back(umppi::UmpFactory::midi1PAf(grp, ch, editNote.note, d7));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::ControlChange: {
-                const auto cc  = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-                const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2CC(grp, ch, cc, d32);
-                newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-                newTicks.push_back(aeTick);
-                newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::RPN: {
-                const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
-                const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-                const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2RPN(grp, ch, msb, lsb, d32);
-                newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-                newTicks.push_back(aeTick);
-                newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::NRPN: {
-                const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
-                const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-                const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2NRPN(ae.umpGroup, ch, msb, lsb, d32);
-                newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-                newTicks.push_back(aeTick);
-                newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            case ClipPreview::AutomationEvent::Type::PerNoteParameter: {
-                const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2PerNoteRCC(
-                    grp, ch, editNote.note,
-                    static_cast<uint8_t>(ae.paramIndex & 0xFFu), d32);
-                newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-                newTicks.push_back(aeTick);
-                newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-                newTicks.push_back(aeTick);
-                break;
-            }
-            }
-            emittedNoteAutomationWords[editNote.edit_id].push_back(eventWord);
-        }
-    }
-
-    // Re-emit edited clip-level automation events.
-    // Per-note types can end up here when the user changes the type of a channel-level row:
-    // recover the note number by finding whichever editNote contains the event's time.
-    auto findNoteNum = [&](const ClipPreview::AutomationEvent& ae) -> uint8_t {
-        if (ae.noteNumber != 0) return ae.noteNumber; // still valid (not yet round-tripped)
-        for (const auto& en : state.editNotes) {
-            if (!en.deleted && ae.timeSeconds >= en.startSeconds &&
-                    ae.timeSeconds <= en.startSeconds + en.durationSeconds)
-                return en.note;
-        }
-        return 0; // fallback — note association unknown
-    };
-
-    for (const auto& ae : state.editClipEvents) {
-        const size_t eventWord = newEvents.size();
-        const uint64_t aeTick = secondsToTicks(ae.timeSeconds, tickRes, bpm);
-        const double   v      = std::clamp(ae.normalizedValue, 0.0, 1.0);
-        // Use defaultGroup; channel comes from the stored AutomationEvent::channel.
-        switch (ae.type) {
-        case ClipPreview::AutomationEvent::Type::PitchBend: {
-            const auto d14 = static_cast<uint16_t>(std::round(v * 16383.0));
-            newEvents.push_back(umppi::UmpFactory::midi1PitchBendDirect(defaultGroup, ae.channel, d14));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::ChannelPressure: {
-            const auto d7 = static_cast<uint8_t>(std::round(v * 127.0));
-            newEvents.push_back(umppi::UmpFactory::midi1CAf(defaultGroup, ae.channel, d7));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::ControlChange: {
-            const auto cc  = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-            const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2CC(defaultGroup, ae.channel, cc, d32);
-            newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-            newTicks.push_back(aeTick);
-            newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::RPN: {
-            const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
-            const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-            const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2RPN(defaultGroup, ae.channel, msb, lsb, d32);
-            newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-            newTicks.push_back(aeTick);
-            newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::NRPN: {
-            const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
-            const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
-            const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2NRPN(ae.umpGroup, ae.channel, msb, lsb, d32);
-            newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-            newTicks.push_back(aeTick);
-            newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        // Per-note types that migrated into editClipEvents after a channel-level round-trip.
-        // Emit the proper per-note MIDI message so the parser re-associates them with
-        // the parent note (via activeNoteIndices) on the next reload.
-        case ClipPreview::AutomationEvent::Type::PolyPressure: {
-            const uint8_t noteNum = findNoteNum(ae);
-            const auto d7 = static_cast<uint8_t>(std::round(v * 127.0));
-            newEvents.push_back(umppi::UmpFactory::midi1PAf(defaultGroup, ae.channel, noteNum, d7));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::PerNotePitchBend: {
-            const uint8_t noteNum = findNoteNum(ae);
-            const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2PerNotePitchBendDirect(
-                defaultGroup, ae.channel, noteNum, d32);
-            newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-            newTicks.push_back(aeTick);
-            newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        case ClipPreview::AutomationEvent::Type::PerNoteParameter: {
-            const uint8_t noteNum = findNoteNum(ae);
-            const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2PerNoteRCC(
-                defaultGroup, ae.channel, noteNum,
-                static_cast<uint8_t>(ae.paramIndex & 0xFFu), d32);
-            newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
-            newTicks.push_back(aeTick);
-            newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
-            newTicks.push_back(aeTick);
-            break;
-        }
-        default:
-            break;
-        }
-        emittedClipAutomationWords.push_back(
-            newEvents.size() > eventWord ? eventWord : SIZE_MAX);
-    }
-
-    std::vector<size_t> wordOrder;
-    sortRawMidiEvents(newEvents, newTicks, wordOrder);
-    std::vector<size_t> previewWordOffsets(newEvents.size(), SIZE_MAX);
-    auto committedRaw = std::make_shared<ClipPreview::RawMidiData>();
-    committedRaw->tickResolution = tickRes;
-    committedRaw->clipTempo = bpm;
-    for (size_t i = 0; i < newEvents.size();) {
-        umppi::Ump first(newEvents[i]);
-        const size_t messageWords = std::min(
-            static_cast<size_t>(std::max(1, first.getSizeInInts())), newEvents.size() - i);
-        umppi::Ump message = messageWords >= 2
-            ? umppi::Ump(newEvents[i], newEvents[i + 1]) : first;
-        previewWordOffsets[i] = committedRaw->umpEvents.size();
-        std::vector<umppi::Ump> translated;
-        std::vector<umppi::Ump> sourceMessage{message};
-        umppi::UmpTranslator::translateMidi1UmpToMidi2Ump(translated, sourceMessage);
-        for (const auto& ump : translated) {
-            const auto output = ump.toWords();
-            for (int word = 0; word < std::max(1, ump.getSizeInInts()); ++word) {
-                committedRaw->umpEvents.push_back(output[static_cast<size_t>(word)]);
-                committedRaw->tickTimestamps.push_back(newTicks[i]);
-            }
-        }
-        i += messageWords;
-    }
-    std::unordered_map<uint64_t, size_t> emittedOnWords;
-    for (const auto& [word, id] : emittedIds)
-        emittedOnWords.emplace(id, previewWordOffsets[wordOrder[word]]);
-
-    auto previewOffset = [&](size_t originalWord) {
-        return originalWord < wordOrder.size()
-            ? previewWordOffsets[wordOrder[originalWord]] : SIZE_MAX;
-    };
-
-    std::string error;
-    if (!ctx.applyEdits(state.trackIndex, state.clipId,
-                        std::move(newEvents), std::move(newTicks), error)) {
-        state.edit_error = error.empty() ? "Could not save note edits." : error;
-        state.retry_available = true;
-        return false;
-    }
-    state.edit_error.clear();
-    state.retry_available = false;
-    state.deletedRawIdxs.clear();
-
-    // The writer already knows the committed event order. Update its raw indices
-    // directly and keep the editable note objects, selection, and viewport intact.
-    std::erase_if(state.editNotes, [](const EditNote& note) { return note.deleted; });
-    state.selectedNoteIdx = -1;
-    std::unordered_set<uint64_t> liveIds;
+    state.preview->rawMidiData = state.document->rawMidiData;
     state.preview->midiNotes.clear();
-    uint8_t minNote = 127, maxNote = 0;
-    double noteEnd = 0.0;
-    for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i) {
-        auto& note = state.editNotes[i];
-        liveIds.insert(note.edit_id);
-        note.noteOnWordIdx = emittedOnWords.at(note.edit_id);
-        note.noteOffWordIdx = previewOffset(emittedOffWords.at(note.edit_id));
-        const auto& automationWords = emittedNoteAutomationWords[note.edit_id];
-        for (size_t event = 0; event < note.automationEvents.size(); ++event)
-            note.automationEvents[event].rawEventIdx = previewOffset(automationWords[event]);
-        if (note.edit_id == primaryId)
-            state.selectedNoteIdx = i;
-        minNote = std::min(minNote, note.note);
-        maxNote = std::max(maxNote, note.note);
-        noteEnd = std::max(noteEnd, note.startSeconds + note.durationSeconds);
+    for (const auto& note : state.document->editNotes)
         state.preview->midiNotes.push_back(static_cast<const ClipPreview::MidiNote&>(note));
-    }
-    for (size_t event = 0; event < state.editClipEvents.size(); ++event)
-        state.editClipEvents[event].rawEventIdx = previewOffset(emittedClipAutomationWords[event]);
-    std::erase_if(state.selected_notes, [&](uint64_t id) { return !liveIds.contains(id); });
-    state.preview->rawMidiData = std::move(committedRaw);
-    state.preview->minNote = state.editNotes.empty() ? 48 : minNote;
-    state.preview->maxNote = state.editNotes.empty() ? 72 : maxNote;
-    const double committedDuration = ctx.clipDurationSeconds
-        ? ctx.clipDurationSeconds(state.trackIndex, state.clipId) : noteEnd;
-    state.preview->clipDurationSeconds = std::max(0.01, committedDuration);
+    state.preview->minNote = state.document->minNote;
+    state.preview->maxNote = state.document->maxNote;
+    state.preview->clipDurationSeconds = state.document->clipDurationSeconds;
     state.drag = DragState{};
     state.noteToDeleteIdx = -1;
+    if (ctx.onCommitted)
+        ctx.onCommitted(state.trackIndex, state.clipId);
     return true;
 }
 
 // ── controls bar ─────────────────────────────────────────────────────────────
 
-void PianoRollEditor::moveDraggedNotes(WindowState& state, double timeDelta, int pitchDelta) {
-    double earliest = std::numeric_limits<double>::max();
-    int lowest = 127, highest = 0;
-    for (const auto& [index, original] : state.drag.notes) {
-        earliest = std::min(earliest, original.startSeconds);
-        for (const auto& event : original.automationEvents)
-            earliest = std::min(earliest, event.timeSeconds);
-        lowest = std::min(lowest, static_cast<int>(original.note));
-        highest = std::max(highest, static_cast<int>(original.note));
-    }
-    // Clamp the shared delta so notes keep their spacing and pitch intervals.
-    timeDelta = std::max(timeDelta, -earliest);
-    pitchDelta = std::clamp(pitchDelta, -lowest, 127 - highest);
-    for (const auto& [index, original] : state.drag.notes) {
-        auto& note = state.editNotes[index];
-        note.startSeconds = original.startSeconds + timeDelta;
-        note.note = static_cast<uint8_t>(original.note + pitchDelta);
-        for (size_t i = 0; i < note.automationEvents.size(); ++i) {
-            note.automationEvents[i].timeSeconds = original.automationEvents[i].timeSeconds + timeDelta;
-            note.automationEvents[i].noteNumber = note.note;
-        }
-    }
-}
-
-void PianoRollEditor::selectNote(WindowState& state, int index, bool additive, bool toggle) {
-    if (!additive)
-        state.selected_notes.clear();
-    if (index < 0 || index >= static_cast<int>(state.editNotes.size()) || state.editNotes[index].deleted) {
-        state.selectedNoteIdx = -1;
-        return;
-    }
-    const auto id = state.editNotes[index].edit_id;
-    if (toggle && state.selected_notes.contains(id)) {
-        state.selected_notes.erase(id);
-        state.selectedNoteIdx = -1;
-    } else {
-        state.selected_notes.insert(id);
-        state.selectedNoteIdx = index;
-    }
-}
-
 void PianoRollEditor::renderNoteActions(WindowState& state) {
-    ImGui::TextDisabled("%zu notes selected", state.selected_notes.size());
-    ImGui::BeginDisabled(state.selected_notes.empty());
+    ImGui::TextDisabled("%zu notes selected", state.document->selected_notes.size());
+    ImGui::BeginDisabled(state.document->selected_notes.empty());
     if (contextActionMenuItem("Cut"))
         state.pending_action = NoteAction::Cut;
     if (contextActionMenuItem("Copy"))
@@ -917,7 +245,7 @@ void PianoRollEditor::renderNoteActions(WindowState& state) {
     if (contextActionMenuItem("Delete"))
         state.pending_action = NoteAction::Delete;
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(state.clipboard.empty());
+    ImGui::BeginDisabled(state.document->clipboard.empty());
     if (contextActionMenuItem("Paste here"))
         state.pending_action = NoteAction::Paste;
     ImGui::EndDisabled();
@@ -928,56 +256,7 @@ void PianoRollEditor::renderNoteActions(WindowState& state) {
 
 void PianoRollEditor::performNoteAction(WindowState& state) {
     const auto action = std::exchange(state.pending_action, NoteAction::None);
-    if (action == NoteAction::SelectAll) {
-        state.selected_notes.clear();
-        state.selectedNoteIdx = -1;
-        for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i)
-            if (!state.editNotes[i].deleted)
-                selectNote(state, i, true);
-        return;
-    }
-    if (action == NoteAction::Copy || action == NoteAction::Cut) {
-        std::vector<EditNote> copied;
-        double firstTime = std::numeric_limits<double>::max();
-        for (const auto& note : state.editNotes)
-            if (!note.deleted && state.selected_notes.contains(note.edit_id)) {
-                copied.push_back(note);
-                firstTime = std::min(firstTime, note.startSeconds);
-            }
-        if (copied.empty())
-            return;
-        for (auto& note : copied) {
-            note.startSeconds -= firstTime;
-            note.edit_id = 0;
-            note.noteOnWordIdx = SIZE_MAX;
-            note.noteOffWordIdx = SIZE_MAX;
-            for (auto& event : note.automationEvents) {
-                event.timeSeconds -= firstTime;
-                event.rawEventIdx = SIZE_MAX;
-            }
-        }
-        state.clipboard = std::move(copied);
-    }
-    if (action == NoteAction::Cut || action == NoteAction::Delete) {
-        for (auto& note : state.editNotes)
-            if (!note.deleted && state.selected_notes.contains(note.edit_id)) {
-                note.deleted = true;
-                state.dirtyAfterEdit = true;
-            }
-        state.selected_notes.clear();
-        state.selectedNoteIdx = -1;
-    } else if (action == NoteAction::Paste && !state.clipboard.empty()) {
-        state.selected_notes.clear();
-        for (auto note : state.clipboard) {
-            note.edit_id = state.next_note_id++;
-            note.startSeconds += state.paste_seconds;
-            for (auto& event : note.automationEvents)
-                event.timeSeconds += state.paste_seconds;
-            state.editNotes.push_back(std::move(note));
-            selectNote(state, static_cast<int>(state.editNotes.size()) - 1, true);
-        }
-        state.dirtyAfterEdit = true;
-    }
+    state.document->performAction(action, state.paste_seconds);
 }
 
 void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
@@ -1002,8 +281,8 @@ void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
         ImGui::SameLine();
         ImGui::TextDisabled("  %.2fs  %d notes  %d clip events",
                             state.preview->clipDurationSeconds,
-                            static_cast<int>(state.editNotes.size()),
-                            static_cast<int>(state.editClipEvents.size()));
+                            static_cast<int>(state.document->editNotes.size()),
+                            static_cast<int>(state.document->editClipEvents.size()));
     }
 }
 
@@ -1146,8 +425,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     if (longPress || cancelDrag) {
         if (longPress)
             state.long_press_opened = true;
-        for (const auto& [index, original] : state.drag.notes)
-            state.editNotes[index] = original;
+        state.document->restoreNotes(state.drag.notes);
         state.drag = DragState{};
         state.marquee_active = false;
     }
@@ -1165,40 +443,32 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                                      ? static_cast<double>(snapBeats) * 60.0 / bpm : 0.0;
 
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && state.drag.noteIdx >= 0 &&
-                    state.drag.noteIdx < static_cast<int>(state.editNotes.size())) {
-                auto& n = state.editNotes[state.drag.noteIdx];
-
+                    state.drag.noteIdx < static_cast<int>(state.document->editNotes.size())) {
                 if (state.drag.mode == DragState::Mode::Move) {
                     double timeDelta = static_cast<double>(dx) / pxPerSec;
                     if (snapSec > 0.0 && dx != 0.0f)
                         timeDelta = std::round((state.drag.origStartSec + timeDelta) / snapSec) * snapSec - state.drag.origStartSec;
                     const int pitchDelta = -static_cast<int>(std::round(static_cast<double>(dy) / noteH));
-                    moveDraggedNotes(state, timeDelta, pitchDelta);
+                    state.document->moveNotes(state.drag.notes, timeDelta, pitchDelta);
                 } else if (state.drag.mode == DragState::Mode::ResizeRight) {
                     double newEnd = state.drag.origEndSec + static_cast<double>(dx) / pxPerSec;
                     if (snapSec > 0.0) newEnd = std::round(newEnd / snapSec) * snapSec;
-                    n.startSeconds    = state.drag.origStartSec;
-                    n.durationSeconds = std::max(kMinNoteDuration, newEnd - state.drag.origStartSec);
-                    n.note            = static_cast<uint8_t>(state.drag.origNoteNum);
+                    state.document->resizeNote(state.drag.noteIdx, state.drag.origStartSec,
+                        std::max(kMinNoteDuration, newEnd - state.drag.origStartSec),
+                        static_cast<uint8_t>(state.drag.origNoteNum));
                 } else { // ResizeLeft
                     double newStart = state.drag.origStartSec + static_cast<double>(dx) / pxPerSec;
                     if (snapSec > 0.0) newStart = std::round(newStart / snapSec) * snapSec;
                     newStart       = std::clamp(newStart, 0.0, state.drag.origEndSec - kMinNoteDuration);
-                    n.startSeconds    = newStart;
-                    n.durationSeconds = state.drag.origEndSec - newStart;
-                    n.note            = static_cast<uint8_t>(state.drag.origNoteNum);
+                    state.document->resizeNote(state.drag.noteIdx, newStart,
+                        state.drag.origEndSec - newStart,
+                        static_cast<uint8_t>(state.drag.origNoteNum));
                 }
             }
         } else {
             // Mouse released — finalise drag; schedule write-back if anything changed.
-            if (state.drag.noteIdx >= 0 &&
-                    state.drag.noteIdx < static_cast<int>(state.editNotes.size())) {
-                const auto& n = state.editNotes[state.drag.noteIdx];
-                if (n.startSeconds != state.drag.origStartSec ||
-                        n.startSeconds + n.durationSeconds != state.drag.origEndSec ||
-                        static_cast<int>(n.note) != state.drag.origNoteNum)
-                    state.dirtyAfterEdit = true;
-            }
+            state.document->finishNoteDrag(state.drag.noteIdx, state.drag.origStartSec,
+                state.drag.origEndSec, static_cast<uint8_t>(state.drag.origNoteNum));
             state.drag = DragState{};
         }
     }
@@ -1241,8 +511,8 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         bool   hoverNote  = false;
         bool   hoverEdge  = false;
 
-        for (int ni = 0; ni < static_cast<int>(state.editNotes.size()); ++ni) {
-            const auto& note = state.editNotes[ni];
+        for (int ni = 0; ni < static_cast<int>(state.document->editNotes.size()); ++ni) {
+            const auto& note = state.document->editNotes[ni];
             if (note.deleted) continue;
 
             int noteIdx = (kNoteCount - 1) - static_cast<int>(note.note);
@@ -1256,7 +526,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             if (x1 < origin.x || x0 > origin.x + width) continue;
             if (y1 < noteAreaY || y0 > noteAreaY + noteAreaH) continue;
 
-            const bool  selected = state.selected_notes.contains(note.edit_id);
+            const bool  selected = state.document->selected_notes.contains(note.edit_id);
             const bool  dragging = (state.drag.active && ni == state.drag.noteIdx);
             const float vel      = note.velocity; // already 0-1
 
@@ -1302,32 +572,32 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 const auto& io = ImGui::GetIO();
                 const bool toggle = io.KeyCtrl || io.KeySuper;
                 if (toggle || io.KeyShift || !selected)
-                    selectNote(state, ni, toggle || io.KeyShift, toggle);
+                    state.document->selectNote(ni, toggle || io.KeyShift, toggle);
                 else
-                    state.selectedNoteIdx = ni;
+                    state.document->selectedNoteIdx = ni;
                 state.drag.active = !toggle && !io.KeyShift;
                 state.drag.notes.clear();
                 if (state.drag.active)
-                    for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i)
-                        if (!state.editNotes[i].deleted && state.selected_notes.contains(state.editNotes[i].edit_id))
-                            state.drag.notes.emplace_back(i, state.editNotes[i]);
+                    for (int i = 0; i < static_cast<int>(state.document->editNotes.size()); ++i)
+                        if (!state.document->editNotes[i].deleted && state.document->selected_notes.contains(state.document->editNotes[i].edit_id))
+                            state.drag.notes.emplace_back(i, state.document->editNotes[i]);
                 state.drag.noteIdx      = ni;
                 state.drag.startMouseX  = ImGui::GetIO().MousePos.x;
                 state.drag.startMouseY  = ImGui::GetIO().MousePos.y;
                 state.drag.origStartSec = note.startSeconds;
                 state.drag.origEndSec   = note.startSeconds + note.durationSeconds;
                 state.drag.origNoteNum  = static_cast<int>(note.note);
-                if (state.selected_notes.size() > 1) state.drag.mode = DragState::Mode::Move;
+                if (state.document->selected_notes.size() > 1) state.drag.mode = DragState::Mode::Move;
                 else if (atRightEdge) state.drag.mode = DragState::Mode::ResizeRight;
                 else if (atLeftEdge)  state.drag.mode = DragState::Mode::ResizeLeft;
                 else                  state.drag.mode = DragState::Mode::Move;
                 mouseClick = false; // consume so only the top-most note is picked
             }
             if (mouseRightClick && overNote) {
-                if (!state.selected_notes.contains(note.edit_id))
-                    selectNote(state, ni);
+                if (!state.document->selected_notes.contains(note.edit_id))
+                    state.document->selectNote(ni);
                 else
-                    state.selectedNoteIdx = ni;
+                    state.document->selectedNoteIdx = ni;
                 ImGui::OpenPopup("##note_editor");
                 mouseRightClick = false;
             }
@@ -1337,13 +607,13 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             ImGui::OpenPopup("##note_editor");
         if (ImGui::BeginPopup("##note_editor")) {
             renderNoteActions(state);
-            const int idx = state.selectedNoteIdx;
-            if (idx < 0 || idx >= static_cast<int>(state.editNotes.size()) ||
-                    state.editNotes[idx].deleted) {
+            const int idx = state.document->selectedNoteIdx;
+            if (idx < 0 || idx >= static_cast<int>(state.document->editNotes.size()) ||
+                    state.document->editNotes[idx].deleted) {
                 ImGui::TextDisabled("No note selected.");
             } else {
-                auto& note = state.editNotes[idx];
-                if (state.selected_notes.size() > 1)
+                auto& note = state.document->editNotes[idx];
+                if (state.document->selected_notes.size() > 1)
                     ImGui::TextDisabled("Properties below apply to the primary note only.");
                 ImGui::Text("%s | %.3fs", fullNoteName(note.note).c_str(), note.startSeconds);
                 ImGui::Separator();
@@ -1392,7 +662,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 }
 
                 if (noteEdited)
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
             }
             ImGui::EndPopup();
         }
@@ -1413,22 +683,22 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 state.marquee_active = false;
             else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
                 if (!state.marquee_additive)
-                    selectNote(state, -1);
+                    state.document->selectNote(-1);
                 if (max.x - min.x >= 4.0f * uiScale || max.y - min.y >= 4.0f * uiScale)
-                    for (int i = 0; i < static_cast<int>(state.editNotes.size()); ++i) {
-                        const auto& note = state.editNotes[i];
+                    for (int i = 0; i < static_cast<int>(state.document->editNotes.size()); ++i) {
+                        const auto& note = state.document->editNotes[i];
                         if (note.deleted)
                             continue;
                         const float x = origin.x + note.startSeconds * pxPerSec - hScroll;
                         const float y = noteAreaY + (127 - note.note) * noteH - vScrollPx;
                         if (x < max.x && x + std::max(2.0f * uiScale, static_cast<float>(note.durationSeconds) * pxPerSec) > min.x &&
                                 y < max.y && y + noteH - 1.0f > min.y)
-                            selectNote(state, i, true);
+                            state.document->selectNote(i, true);
                     }
                 state.marquee_active = false;
             }
         } else if (!cancelDrag && ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Escape))
-            selectNote(state, -1);
+            state.document->selectNote(-1);
 
         // Cursor: EW-resize for edges, ResizeAll for body; same when drag is active.
         if (state.drag.active) {
@@ -1436,7 +706,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
             else
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-        } else if (hoverEdge && state.selected_notes.size() <= 1) {
+        } else if (hoverEdge && state.document->selected_notes.size() <= 1) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         } else if (hoverNote) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
@@ -1453,8 +723,8 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             state.marquee_active = false;
             // Find any existing, non-deleted note under the cursor.
             int hitIdx = -1;
-            for (int ni = 0; ni < static_cast<int>(state.editNotes.size()); ++ni) {
-                const auto& n = state.editNotes[ni];
+            for (int ni = 0; ni < static_cast<int>(state.document->editNotes.size()); ++ni) {
+                const auto& n = state.document->editNotes[ni];
                 if (n.deleted) continue;
                 int   nIdx = (kNoteCount - 1) - static_cast<int>(n.note);
                 float y0   = noteAreaY + nIdx * noteH - vScrollPx;
@@ -1489,21 +759,8 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 }
                 time = std::max(0.0, time);
 
-                EditNote newNote;
-                newNote.startSeconds    = time;
-                newNote.durationSeconds = noteDuration;
-                newNote.note            = static_cast<uint8_t>(std::clamp(midiNote, 0, 127));
-                newNote.velocity        = 0.787f; // ≈ 100/127
-                newNote.edit_id = state.next_note_id++;
-                newNote.channel = state.editNotes.empty() ? 0 : state.editNotes.front().channel;
-                newNote.ump_group = state.editNotes.empty() ? 0 : state.editNotes.front().ump_group;
-                newNote.attributeType   = 0;
-                newNote.attributeValue  = 0;
-                newNote.noteOnWordIdx   = SIZE_MAX; // marks as new — no backing raw event
-                newNote.noteOffWordIdx  = SIZE_MAX;
-                state.editNotes.push_back(std::move(newNote));
-                selectNote(state, static_cast<int>(state.editNotes.size()) - 1);
-                state.dirtyAfterEdit  = true;
+                state.document->createNote(time, noteDuration,
+                    static_cast<uint8_t>(std::clamp(midiNote, 0, 127)), 0.787f);
             }
         }
     }
@@ -1638,15 +895,15 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
         return;
     }
 
-    const bool hasSelection = state.selectedNoteIdx >= 0 &&
-        state.selectedNoteIdx < static_cast<int>(state.editNotes.size());
+    const bool hasSelection = state.document->selectedNoteIdx >= 0 &&
+        state.document->selectedNoteIdx < static_cast<int>(state.document->editNotes.size());
 
     if (!hasSelection) {
         // Show clip-level automation events
         ImGui::TextDisabled("No note selected — showing %d clip-level automation events.",
-                            static_cast<int>(state.editClipEvents.size()));
+                            static_cast<int>(state.document->editClipEvents.size()));
 
-        if (state.editClipEvents.empty()) return;
+        if (state.document->editClipEvents.empty()) return;
 
         if (ImGui::BeginTable("##clipAuto", 4,
                 ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
@@ -1660,9 +917,9 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::TableSetupColumn("Value",     ImGuiTableColumnFlags_WidthFixed,  300.0f * uiScale);
             ImGui::TableHeadersRow();
 
-            const int evtCount = static_cast<int>(state.editClipEvents.size());
+            const int evtCount = static_cast<int>(state.document->editClipEvents.size());
             for (int ci = 0; ci < evtCount; ++ci) {
-                const auto& evt = state.editClipEvents[ci];
+                const auto& evt = state.document->editClipEvents[ci];
                 ImGui::PushID(ci);
                 ImGui::TableNextRow();
 
@@ -1675,12 +932,12 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                     ImVec2(0, ImGui::GetTextLineHeight()));
                 if (rowClicked) {
                     // Find the note whose time-range contains this event and select it.
-                    for (int ni = 0; ni < static_cast<int>(state.editNotes.size()); ++ni) {
-                        const auto& n = state.editNotes[ni];
+                    for (int ni = 0; ni < static_cast<int>(state.document->editNotes.size()); ++ni) {
+                        const auto& n = state.document->editNotes[ni];
                         if (!n.deleted &&
                                 evt.timeSeconds >= n.startSeconds &&
                                 evt.timeSeconds <= n.startSeconds + n.durationSeconds) {
-                            selectNote(state, ni);
+                            state.document->selectNote(ni);
                             // Scroll the piano-roll vertically to show the note.
                             const float targetIdx = static_cast<float>(kNoteCount - 1) -
                                                     static_cast<float>(n.note);
@@ -1709,7 +966,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
         return;
     }
 
-    auto& note = state.editNotes[state.selectedNoteIdx];
+    auto& note = state.document->editNotes[state.document->selectedNoteIdx];
     ImGui::Text("Note: %s (MIDI %u)  Ch: %u  %.4fs  dur: %.4fs  — %d per-note events",
                 fullNoteName(note.note).c_str(),
                 static_cast<unsigned>(note.note),
@@ -1723,7 +980,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
     ImGui::SliderFloat("Velocity##pr_vel", &vel, 0.0f, 1.0f, "%.3f");
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         note.velocity = std::clamp(vel, 0.0f, 1.0f);
-        state.dirtyAfterEdit = true;
+        state.document->dirtyAfterEdit = true;
     } else if (ImGui::IsItemActive()) {
         note.velocity = std::clamp(vel, 0.0f, 1.0f); // live preview in panel
     }
@@ -1798,7 +1055,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 ae.timeSeconds = std::clamp(t, note.startSeconds,
                                             note.startSeconds + note.durationSeconds);
             if (ImGui::IsItemDeactivatedAfterEdit())
-                state.dirtyAfterEdit = true;
+                state.document->dirtyAfterEdit = true;
 
             // Type
             ImGui::TableSetColumnIndex(2);
@@ -1806,7 +1063,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::Combo("##type", &typeIdx, kAutoTypeNames, kAutoTypeCount)) {
                 ae.type = static_cast<ClipPreview::AutomationEvent::Type>(typeIdx);
-                state.dirtyAfterEdit = true;
+                state.document->dirtyAfterEdit = true;
             }
 
             // Param
@@ -1819,7 +1076,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::InputInt("##param", &p, 0, 0))
                     ae.paramIndex = static_cast<uint16_t>(std::clamp(p, 0, pMax));
                 if (ImGui::IsItemDeactivatedAfterEdit())
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
             } else if (ae.type == T::RPN || ae.type == T::NRPN) {
                 // For NRPN, fetch plugin entries for bound-name display and picker.
                 std::vector<PluginParamEntry> nrpnEntries;
@@ -1862,7 +1119,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
 
                 // [−] decrement
                 if (ImGui::Button("-##dec", ImVec2(frameH, frameH)))
-                    if (ae.paramIndex > 0) { --ae.paramIndex; state.dirtyAfterEdit = true; }
+                    if (ae.paramIndex > 0) { --ae.paramIndex; state.document->dirtyAfterEdit = true; }
                 ImGui::SameLine();
 
                 // Slider (0 – 16383 combined NRPN index)
@@ -1870,13 +1127,13 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 ImGui::SetNextItemWidth(sliderW);
                 if (ImGui::SliderInt("##nrpn", &combined, 0, 16383, sliderLabel)) {
                     ae.paramIndex = static_cast<uint16_t>(combined);
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
                 }
                 ImGui::SameLine();
 
                 // [+] increment
                 if (ImGui::Button("+##inc", ImVec2(frameH, frameH)))
-                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.dirtyAfterEdit = true; }
+                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.document->dirtyAfterEdit = true; }
 
                 // [▼] picker arrow (NRPN only, when entries are available)
                 if (hasPickerBtn) {
@@ -1885,7 +1142,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                         ImGui::OpenPopup("##nrpnpicker");
                     if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))
-                        state.dirtyAfterEdit = true;
+                        state.document->dirtyAfterEdit = true;
                 }
             } else {
                 ImGui::TextDisabled("—");
@@ -1900,7 +1157,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 ImGui::SetNextItemWidth(-1.0f);
                 if (ImGui::Combo("##val", &onOff, "Off\0On\0")) {
                     ae.normalizedValue = onOff ? 1.0 : 0.0;
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
                 }
             } else {
                 float v = static_cast<float>(ae.normalizedValue);
@@ -1908,15 +1165,15 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::SliderFloat("##val", &v, 0.0f, 1.0f, "%.4f"))
                     ae.normalizedValue = static_cast<double>(v);
                 if (ImGui::IsItemDeactivatedAfterEdit())
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
             }
 
             ImGui::PopID();
         }
 
         // Channel-level events that overlap with this note's active time window (editable)
-        for (int ci = 0; ci < static_cast<int>(state.editClipEvents.size()); ++ci) {
-            auto& ae = state.editClipEvents[ci];
+        for (int ci = 0; ci < static_cast<int>(state.document->editClipEvents.size()); ++ci) {
+            auto& ae = state.document->editClipEvents[ci];
             if (ae.timeSeconds < note.startSeconds) continue;
             if (ae.timeSeconds > note.startSeconds + note.durationSeconds) continue;
 
@@ -1951,7 +1208,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             if (ImGui::InputDouble("##t", &t, 0.0, 0.0, "%.4f"))
                 ae.timeSeconds = std::max(0.0, t);
             if (ImGui::IsItemDeactivatedAfterEdit())
-                state.dirtyAfterEdit = true;
+                state.document->dirtyAfterEdit = true;
 
             // Type
             ImGui::TableSetColumnIndex(2);
@@ -1959,7 +1216,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::Combo("##type", &typeIdx, kAutoTypeNames, kAutoTypeCount)) {
                 ae.type = static_cast<ClipPreview::AutomationEvent::Type>(typeIdx);
-                state.dirtyAfterEdit = true;
+                state.document->dirtyAfterEdit = true;
             }
 
             // Param
@@ -1972,7 +1229,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::InputInt("##param", &p, 0, 0))
                     ae.paramIndex = static_cast<uint16_t>(std::clamp(p, 0, pMax));
                 if (ImGui::IsItemDeactivatedAfterEdit())
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
             } else if (ae.type == T::RPN || ae.type == T::NRPN) {
                 // For NRPN, fetch plugin entries for bound-name display and picker.
                 std::vector<PluginParamEntry> nrpnEntries;
@@ -2015,7 +1272,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
 
                 // [−] decrement
                 if (ImGui::Button("-##dec", ImVec2(frameH, frameH)))
-                    if (ae.paramIndex > 0) { --ae.paramIndex; state.dirtyAfterEdit = true; }
+                    if (ae.paramIndex > 0) { --ae.paramIndex; state.document->dirtyAfterEdit = true; }
                 ImGui::SameLine();
 
                 // Slider (0 – 16383 combined NRPN index)
@@ -2023,13 +1280,13 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 ImGui::SetNextItemWidth(sliderW);
                 if (ImGui::SliderInt("##nrpn", &combined, 0, 16383, sliderLabel)) {
                     ae.paramIndex = static_cast<uint16_t>(combined);
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
                 }
                 ImGui::SameLine();
 
                 // [+] increment
                 if (ImGui::Button("+##inc", ImVec2(frameH, frameH)))
-                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.dirtyAfterEdit = true; }
+                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.document->dirtyAfterEdit = true; }
 
                 // [▼] picker arrow (NRPN only, when entries are available)
                 if (hasPickerBtn) {
@@ -2038,7 +1295,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                         ImGui::OpenPopup("##nrpnpicker");
                     if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))
-                        state.dirtyAfterEdit = true;
+                        state.document->dirtyAfterEdit = true;
                 }
             } else {
                 ImGui::TextDisabled("—");
@@ -2052,7 +1309,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 ImGui::SetNextItemWidth(-1.0f);
                 if (ImGui::Combo("##val", &onOff, "Off\0On\0")) {
                     ae.normalizedValue = onOff ? 1.0 : 0.0;
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
                 }
             } else {
                 float v = static_cast<float>(ae.normalizedValue);
@@ -2060,7 +1317,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::SliderFloat("##val", &v, 0.0f, 1.0f, "%.4f"))
                     ae.normalizedValue = static_cast<double>(v);
                 if (ImGui::IsItemDeactivatedAfterEdit())
-                    state.dirtyAfterEdit = true;
+                    state.document->dirtyAfterEdit = true;
             }
 
             ImGui::PopStyleColor();
@@ -2084,16 +1341,16 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
         newEvt.rawEventIdx     = SIZE_MAX; // synthetic — no original raw event
         note.automationEvents.insert(
             note.automationEvents.begin() + pendingInsertNote, std::move(newEvt));
-        state.dirtyAfterEdit = true;
+        state.document->dirtyAfterEdit = true;
     }
     if (pendingDelete >= 0) {
-        state.deletedRawIdxs.push_back(note.automationEvents[pendingDelete].rawEventIdx);
+        state.document->deletedRawIdxs.push_back(note.automationEvents[pendingDelete].rawEventIdx);
         note.automationEvents.erase(note.automationEvents.begin() + pendingDelete);
-        state.dirtyAfterEdit = true;
+        state.document->dirtyAfterEdit = true;
     }
     if (pendingInsertClip >= 0 &&
-            pendingInsertClip <= static_cast<int>(state.editClipEvents.size())) {
-        const auto& ref = state.editClipEvents[pendingInsertClip];
+            pendingInsertClip <= static_cast<int>(state.document->editClipEvents.size())) {
+        const auto& ref = state.document->editClipEvents[pendingInsertClip];
         ClipPreview::AutomationEvent newEvt{};
         newEvt.timeSeconds     = ref.timeSeconds;
         newEvt.normalizedValue = 0.0;
@@ -2101,14 +1358,14 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
         newEvt.channel         = ref.channel;
         newEvt.umpGroup        = ref.umpGroup;
         newEvt.rawEventIdx     = SIZE_MAX; // synthetic — no original raw event
-        state.editClipEvents.insert(
-            state.editClipEvents.begin() + pendingInsertClip, std::move(newEvt));
-        state.dirtyAfterEdit = true;
+        state.document->editClipEvents.insert(
+            state.document->editClipEvents.begin() + pendingInsertClip, std::move(newEvt));
+        state.document->dirtyAfterEdit = true;
     }
     if (pendingDeleteClip >= 0) {
-        state.deletedRawIdxs.push_back(state.editClipEvents[pendingDeleteClip].rawEventIdx);
-        state.editClipEvents.erase(state.editClipEvents.begin() + pendingDeleteClip);
-        state.dirtyAfterEdit = true;
+        state.document->deletedRawIdxs.push_back(state.document->editClipEvents[pendingDeleteClip].rawEventIdx);
+        state.document->editClipEvents.erase(state.document->editClipEvents.begin() + pendingDeleteClip);
+        state.document->dirtyAfterEdit = true;
     }
 
 }
@@ -2148,12 +1405,12 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     }
 
     renderControls(state, uiScale);
-    if (!state.edit_error.empty()) {
-        ImGui::TextWrapped("Edits were not saved: %s", state.edit_error.c_str());
-        if (state.retry_available && ImGui::Button("Retry saving"))
-            state.dirtyAfterEdit = true;
+    if (!state.document->edit_error.empty()) {
+        ImGui::TextWrapped("Edits were not saved: %s", state.document->edit_error.c_str());
+        if (state.document->retry_available && ImGui::Button("Retry saving"))
+            state.document->dirtyAfterEdit = true;
         if (ImGui::Button("Dismiss error"))
-            state.edit_error.clear();
+            state.document->edit_error.clear();
     }
     ImGui::Separator();
 
@@ -2447,12 +1704,7 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
         ImGui::Spacing();
         if (ImGui::Button("Delete", {120.0f * uiScale, 0.0f})) {
             const int idx = state.noteToDeleteIdx;
-            if (idx >= 0 && idx < static_cast<int>(state.editNotes.size())) {
-                state.editNotes[idx].deleted = true;
-                state.selected_notes.erase(state.editNotes[idx].edit_id);
-                if (state.selectedNoteIdx == idx) state.selectedNoteIdx = -1;
-                state.dirtyAfterEdit = true;
-            }
+            state.document->deleteNote(idx);
             state.noteToDeleteIdx = -1;
             ImGui::CloseCurrentPopup();
         }
@@ -2467,15 +1719,15 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     // Apply clipboard commands after drawing, when no widgets reference note storage.
     const bool batchEdit = state.pending_action == NoteAction::Cut || state.pending_action == NoteAction::Paste ||
         state.pending_action == NoteAction::Delete;
-    const auto beforeNotes = batchEdit ? state.editNotes : std::vector<EditNote>{};
-    const auto beforeSelection = batchEdit ? state.selected_notes : std::unordered_set<uint64_t>{};
-    const int beforePrimary = state.selectedNoteIdx;
+    const auto beforeNotes = batchEdit ? state.document->editNotes : std::vector<EditNote>{};
+    const auto beforeSelection = batchEdit ? state.document->selected_notes : std::unordered_set<uint64_t>{};
+    const int beforePrimary = state.document->selectedNoteIdx;
     performNoteAction(state);
-    if (state.dirtyAfterEdit && !applyNoteEdits(state, ctx) && batchEdit) {
-        state.editNotes = beforeNotes;
-        state.selected_notes = beforeSelection;
-        state.selectedNoteIdx = beforePrimary;
-        state.retry_available = false;
+    if (state.document->dirtyAfterEdit && !applyNoteEdits(state, ctx) && batchEdit) {
+        state.document->editNotes = beforeNotes;
+        state.document->selected_notes = beforeSelection;
+        state.document->selectedNoteIdx = beforePrimary;
+        state.document->retry_available = false;
     }
 
     // Store bounds so the next frame can hit-test before Begin().

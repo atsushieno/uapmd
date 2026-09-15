@@ -19,16 +19,7 @@ namespace uapmd_app_gui {
 // Inherits all display fields from ClipPreview::MidiNote and adds the
 // per-note automation event list, which is populated by the editor itself
 // from rawMidiData (ClipPreview no longer stores automation events).
-struct EditNote : ClipPreview::MidiNote {
-    EditNote() = default;
-    explicit EditNote(const ClipPreview::MidiNote& base) : ClipPreview::MidiNote(base) {}
-    uint64_t edit_id{0};
-    uint8_t ump_group{0};
-    uint16_t release_velocity{0};
-    uint8_t attributeType{0};
-    uint16_t attributeValue{0};
-    std::vector<ClipPreview::AutomationEvent> automationEvents;
-};
+using EditNote = uapmd_app::PianoRollEditNote;
 
 // Editable piano roll view for a MIDI clip.
 // Opens like MidiDumpWindow — one window per (trackIndex, clipId) pair.
@@ -54,14 +45,7 @@ public:
     // Passed each frame to render(); carries per-frame scale and write-back callbacks.
     struct RenderContext {
         float uiScale{1.0f};
-        // Called on drag-end / velocity edit to commit note changes to the engine.
-        // Receives sorted, word-per-entry UMP event + tick arrays.
-        std::function<bool(int32_t trackIndex, int32_t clipId,
-                           std::vector<uapmd_ump_t> newUmpEvents,
-                           std::vector<uint64_t>    newTickTimestamps,
-                           std::string&             error)> applyEdits;
-        // Returns the committed clip length for the grid after applyEdits succeeds.
-        std::function<double(int32_t trackIndex, int32_t clipId)> clipDurationSeconds;
+        std::function<void(int32_t trackIndex, int32_t clipId)> onCommitted;
         // Called when the user presses/slides on a piano key (for live note preview).
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOn;
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOff;
@@ -108,7 +92,7 @@ private:
         std::vector<std::pair<int, EditNote>> notes;
     };
 
-    enum class NoteAction { None, Copy, Cut, Paste, Delete, SelectAll };
+    using NoteAction = uapmd_app::PianoRollSession::Action;
 
     struct WindowState {
         int32_t trackIndex{-1};
@@ -116,24 +100,15 @@ private:
         std::string clipName;
         bool visible{false};
         std::shared_ptr<ClipPreview> preview;
+        std::shared_ptr<uapmd_app::PianoRollSession> document;
         ViewState view;
-        int selectedNoteIdx{-1}; // Primary note for the property and automation panels.
-        uint64_t next_note_id{1};
-        std::unordered_set<uint64_t> selected_notes;
-        std::vector<EditNote> clipboard;
         NoteAction pending_action{NoteAction::None};
-        bool retry_available{false};
         double paste_seconds{0.0};
         bool marquee_active{false};
         bool marquee_additive{false};
         ImVec2 marquee_anchor;
         bool long_press_opened{false};
-        std::string edit_error;
-        std::vector<EditNote>                        editNotes;      // mutable working copy of notes
-        std::vector<ClipPreview::AutomationEvent>    editClipEvents; // mutable working copy of clip-level automation
         DragState drag;
-        bool dirtyAfterEdit{false}; // set when edits should be written back to the engine
-        std::vector<size_t> deletedRawIdxs; // rawEventIdx values erased this frame; skipped by applyNoteEdits
         int  previewNote{-1};       // MIDI note currently sounding via piano-key click (-1 = none)
         // Delete-note confirmation state
         int  noteToDeleteIdx{-1};   // index into editNotes of the note awaiting confirmation
@@ -154,8 +129,6 @@ private:
     void renderWindow(WindowState& state, const RenderContext& ctx);
     void renderControls(WindowState& state, float uiScale);
     bool applyNoteEdits(WindowState& state, const RenderContext& ctx);
-    static void moveDraggedNotes(WindowState& state, double timeDelta, int pitchDelta);
-    static void selectNote(WindowState& state, int index, bool additive = false, bool toggle = false);
     static void renderNoteActions(WindowState& state);
     static void performNoteAction(WindowState& state);
 
@@ -176,12 +149,6 @@ private:
     // Parses automation events (CC, RPN, NRPN, pitch-bend, pressure, per-note
     // controllers) from rawMidiData into editNotes[*].automationEvents and
     // clipEvents.  Called by showClip and after a write-back reload.
-    static void parseAutomationFromRaw(const ClipPreview::RawMidiData& raw,
-                                       std::vector<EditNote>& editNotes,
-                                       std::vector<ClipPreview::AutomationEvent>& clipEvents);
-
-    static void seedNoteAttributesFromRaw(const ClipPreview::RawMidiData& raw,
-                                          std::vector<EditNote>& editNotes);
 
     // Two-pane NRPN parameter picker popup (no trigger button — caller must call
     // ImGui::OpenPopup(popupId) before this). Left pane shows plugin names (with
@@ -198,9 +165,6 @@ private:
     static const char* noteNameCStr(int midiNote) noexcept;
     static std::string fullNoteName(int midiNote);
     static const char* automationTypeName(ClipPreview::AutomationEvent::Type t) noexcept;
-    static void sortRawMidiEvents(std::vector<uapmd_ump_t>& events,
-                                   std::vector<uint64_t>&    ticks, std::vector<size_t>& wordOrder);
-    static uint64_t secondsToTicks(double seconds, uint32_t tickRes, double bpm) noexcept;
 };
 
 } // namespace uapmd_app_gui

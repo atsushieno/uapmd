@@ -1,5 +1,6 @@
 add_library(uapmd-app-model STATIC
         src/AppModel.cpp
+        src/PianoRollSession.cpp
         src/UapmdJSRuntime.cpp
         src/McpServer.cpp
 )

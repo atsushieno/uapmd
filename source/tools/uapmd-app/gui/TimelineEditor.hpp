@@ -72,7 +72,9 @@ public:
 
     const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();
-    std::optional<std::pair<int32_t, int32_t>> selectedMidiClip() const { return selected_midi_clip_; }
+    std::optional<std::pair<int32_t, int32_t>> selectedMidiClip() const {
+        return uapmd_app::AppModel::instance().selectedTimelineMidiClip();
+    }
     void selectMidiClip(int32_t trackIndex, int32_t clipId);
 
     // Zooms both editors so the entire loaded song's content fits within the visible area.
@@ -139,7 +141,6 @@ private:
     std::string masterTrackSignature_;
     bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
-    std::optional<std::tuple<int32_t, int32_t, uint64_t>> lastPianoRollEditSource_;
 
     // Tempo map for timeline unit conversion (seconds <-> beats)
     uapmd::TempoMap tempoMap_;
@@ -152,16 +153,6 @@ private:
     std::function<void(const std::string&)> updateChildWindowSizeState_;
 
     float currentUiScale_ = 1.0f;
-    std::optional<std::pair<int32_t, int32_t>> selected_midi_clip_;
-    std::vector<std::string> selected_clip_references_;
-    struct ClipboardClip {
-        uapmd::ProjectClipFragment fragment;
-        int32_t track_offset;
-        std::string source_track_reference;
-        int32_t source_track_index;
-        double time_offset;
-    };
-    std::vector<ClipboardClip> clip_clipboard_;
     std::function<void()> pending_clip_edit_;
 
     TimelineClipActions buildClipActions();
@@ -206,10 +197,7 @@ private:
     bool applyAudioClipEdits(const AudioEventListEditor::EditPayload& payload, std::string& error);
 
     // Piano roll write-back
-    bool applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
-                              std::vector<uapmd_ump_t> newUmpEvents,
-                              std::vector<uint64_t>    newTickTimestamps,
-                              std::string&             error);
+    void onPianoRollCommitted(int32_t trackIndex, int32_t clipId);
     bool applyStepSequencerEdits(int32_t trackIndex, int32_t clipId,
                                  std::vector<uapmd_ump_t> newUmpEvents,
                                  std::vector<uint64_t> newTickTimestamps,

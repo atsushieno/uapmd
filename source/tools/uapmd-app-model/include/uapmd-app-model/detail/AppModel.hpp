@@ -6,9 +6,11 @@
 #include <thread>
 #include <string>
 #include <functional>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <optional>
+#include <tuple>
 #include <set>
 #include <mutex>
 #include <memory>
@@ -26,6 +28,8 @@ namespace uapmd_app {
     struct ScopedTempDir;
     // Forward declarations
     class AppModel;
+    struct PianoRollSession;
+    struct PianoRollClipSnapshot;
     class ClipEnablementSerializationExtension;
 
     class TransportController {
@@ -111,6 +115,19 @@ namespace uapmd_app {
             int32_t trackIndex{-1};
         };
 
+        struct TimelineClipTarget {
+            int32_t track_index{-1};
+            int32_t clip_id{-1};
+        };
+
+        struct TimelineClipboardClip {
+            uapmd::ProjectClipFragment fragment;
+            int32_t track_offset{0};
+            std::string source_track_reference;
+            int32_t source_track_index{-1};
+            double time_offset{0.0};
+        };
+
         struct SlowScanProgressState {
             bool running{false};
             uint32_t processedBundles{0};
@@ -148,6 +165,11 @@ namespace uapmd_app {
         std::unique_ptr<uapmd::IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
+        std::vector<std::string> selected_clip_references_;
+        std::optional<std::pair<int32_t, int32_t>> selected_midi_clip_;
+        std::vector<TimelineClipboardClip> timeline_clipboard_;
+        std::map<std::pair<int32_t, int32_t>, std::shared_ptr<PianoRollSession>> piano_roll_sessions_;
+        std::optional<std::tuple<int32_t, int32_t, uint64_t>> last_piano_roll_edit_source_;
         std::shared_ptr<PluginStateChangeDispatch> plugin_state_change_dispatch_{
             std::make_shared<PluginStateChangeDispatch>()};
         remidy::EventListenerId plugin_state_change_listener_id_{0};
@@ -188,6 +210,32 @@ namespace uapmd_app {
         ~AppModel() override;
 
         uapmd::RealtimeSequencer& sequencer() { return sequencer_; }
+        std::shared_ptr<PianoRollSession> openPianoRollSession(int32_t trackIndex, int32_t clipId);
+        PianoRollSession* findPianoRollSession(int32_t trackIndex, int32_t clipId);
+        void closePianoRollSession(int32_t trackIndex, int32_t clipId);
+        PianoRollClipSnapshot pianoRollClipSnapshot(int32_t trackIndex,
+                                                     const uapmd::ClipData& clip,
+                                                     double fallbackDurationSeconds);
+        void recordPianoRollCommitSource(int32_t trackIndex, int32_t clipId);
+        bool pianoRollSourceMatchesLastEdit();
+        void clearPianoRollCommitSource() { last_piano_roll_edit_source_.reset(); }
+        bool isTimelineClipSelected(int32_t trackIndex, int32_t clipId);
+        bool selectTimelineMidiClip(int32_t trackIndex, int32_t clipId);
+        std::optional<std::pair<int32_t, int32_t>> selectedTimelineMidiClip() const {
+            return selected_midi_clip_;
+        }
+        std::vector<TimelineClipTarget> selectedTimelineClips();
+        void selectTimelineClips(const std::vector<TimelineClipTarget>& clips, bool additive, bool toggle);
+        void clearTimelineClipSelection();
+        const std::vector<TimelineClipboardClip>& timelineClipboard() const { return timeline_clipboard_; }
+        void clearTimelineClipboard() { timeline_clipboard_.clear(); }
+        bool copySelectedTimelineClips(std::string& error);
+        bool deleteSelectedTimelineClips(bool cut, std::string& error,
+                                         std::vector<int32_t>& changedTracks);
+        std::vector<int32_t> timelinePasteDestinations(int32_t trackIndex, bool originalTracks,
+                                                       std::string& error);
+        bool pasteTimelineClips(int32_t trackIndex, double positionSeconds, bool originalTracks,
+                                std::vector<TimelineClipTarget>& pasted, std::string& error);
         std::vector<uapmd::MidiPortInfo> getMidiInputPorts() const;
         std::vector<uapmd::MidiPortInfo> getMidiOutputPorts() const;
         uapmd_plugin_hosting::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }

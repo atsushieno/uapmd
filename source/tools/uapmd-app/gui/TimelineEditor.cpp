@@ -331,16 +331,6 @@ uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
     return hash;
 }
 
-uint64_t pianoRollSourceFingerprint(const uapmd::MidiClipSourceNode& source) {
-    uint64_t hash = mixHash(1469598103934665603ull, source.tickResolution());
-    hash = mixHash(hash, std::bit_cast<uint64_t>(source.clipTempo()));
-    for (auto word : source.umpEvents())
-        hash = mixHash(hash, word);
-    for (auto tick : source.eventTimestampsTicks())
-        hash = mixHash(hash, tick);
-    return hash;
-}
-
 bool referencesThisClipEnd(const uapmd::ClipMarker& marker, std::string_view clipReferenceId) {
     if (marker.referenceType != uapmd::AudioWarpReferenceType::ClipEnd)
         return false;
@@ -764,19 +754,10 @@ void TimelineEditor::setTimelineAxisMode() {
 }
 
 void TimelineEditor::selectMidiClip(int32_t trackIndex, int32_t clipId) {
-    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
-        selected_midi_clip_.reset();
+    if (!uapmd_app::AppModel::instance().selectTimelineMidiClip(trackIndex, clipId)) {
         clipEditorHost_.setActiveClip(std::nullopt);
         return;
     }
-    const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-    if (!clip || clip->clipType != uapmd::ClipType::Midi) {
-        selected_midi_clip_.reset();
-        clipEditorHost_.setActiveClip(std::nullopt);
-        return;
-    }
-    selected_midi_clip_ = std::pair{trackIndex, clipId};
     clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{
         trackIndex, clipId, true, false});
 }
@@ -913,12 +894,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
 TimelineClipActions TimelineEditor::buildClipActions() {
     return {
         .isSelected = [this](int32_t trackIndex, int32_t clipId) {
-            const auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-            if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
-                return false;
-            const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-            return clip && std::find(selected_clip_references_.begin(), selected_clip_references_.end(),
-                clip->referenceId) != selected_clip_references_.end();
+            return uapmd_app::AppModel::instance().isTimelineClipSelected(trackIndex, clipId);
         },
         .select = [this](const auto& clips, bool additive, bool toggle) {
             selectClips(clips, additive, toggle);
@@ -931,31 +907,16 @@ TimelineClipActions TimelineEditor::buildClipActions() {
 
 std::vector<TimelineClipTarget> TimelineEditor::selectedClips() const {
     std::vector<TimelineClipTarget> result;
-    const auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i)
-        for (const auto& clip : tracks[i]->clipManager().getAllClips())
-            if (std::find(selected_clip_references_.begin(), selected_clip_references_.end(),
-                    clip.referenceId) != selected_clip_references_.end())
-                result.push_back({i, clip.clipId});
+    for (const auto& clip : uapmd_app::AppModel::instance().selectedTimelineClips())
+        result.push_back({clip.track_index, clip.clip_id});
     return result;
 }
 
 void TimelineEditor::selectClips(const std::vector<TimelineClipTarget>& clips, bool additive, bool toggle) {
-    if (!additive)
-        selected_clip_references_.clear();
-    const auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-    for (const auto& target : clips) {
-        if (target.track_index < 0 || target.track_index >= static_cast<int32_t>(tracks.size()))
-            continue;
-        const auto* clip = tracks[target.track_index]->clipManager().getClip(target.clip_id);
-        if (!clip)
-            continue;
-        const auto it = std::find(selected_clip_references_.begin(), selected_clip_references_.end(), clip->referenceId);
-        if (it == selected_clip_references_.end())
-            selected_clip_references_.push_back(clip->referenceId);
-        else if (toggle)
-            selected_clip_references_.erase(it);
-    }
+    std::vector<uapmd_app::AppModel::TimelineClipTarget> targets;
+    for (const auto& clip : clips)
+        targets.push_back({clip.track_index, clip.clip_id});
+    uapmd_app::AppModel::instance().selectTimelineClips(targets, additive, toggle);
     if (!clips.empty())
         selectMidiClip(clips.back().track_index, clips.back().clip_id);
 }
@@ -978,8 +939,9 @@ void TimelineEditor::renderClipEditMenu(int32_t trackIndex, int32_t clipId, doub
     if (contextActionMenuItem("Delete"))
         pending_clip_edit_ = [this] { deleteSelectedClips(false); };
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(clip_clipboard_.empty() || busy);
-    const bool multipleTracks = std::any_of(clip_clipboard_.begin(), clip_clipboard_.end(),
+    const auto& clipboard = uapmd_app::AppModel::instance().timelineClipboard();
+    ImGui::BeginDisabled(clipboard.empty() || busy);
+    const bool multipleTracks = std::any_of(clipboard.begin(), clipboard.end(),
         [](const auto& entry) { return entry.track_offset != 0; });
     if (multipleTracks) {
         if (ImGui::BeginMenu("Paste here")) {
@@ -1004,62 +966,22 @@ void TimelineEditor::renderClipEditMenu(int32_t trackIndex, int32_t clipId, doub
 
 bool TimelineEditor::copySelectedClips() {
     auto& app = uapmd_app::AppModel::instance();
-    auto& timeline = app.sequencer().engine()->timeline();
-    const auto targets = selectedClips();
-    if (targets.empty())
-        return false;
-    // Capture outside a document transaction: extension archives (including ARA)
-    // cannot be read while their document is being edited.
-    std::vector<ClipboardClip> captured;
-    double firstSeconds = std::numeric_limits<double>::max();
-    const int32_t firstTrack = targets.front().track_index;
-    const auto tracks = app.getTimelineTracks();
-    for (const auto& target : targets) {
-        auto fragment = timeline.captureClipFragment(target.track_index, target.clip_id);
-        if (!fragment) {
-            platformError("Copy Clips Failed", "Could not capture all selected clips. The clipboard was kept unchanged.");
-            return false;
-        }
-        const double seconds = fragment->clip.position.toSeconds(app.sampleRate());
-        firstSeconds = std::min(firstSeconds, seconds);
-        captured.push_back({std::move(*fragment), target.track_index - firstTrack,
-            tracks[target.track_index]->referenceId(), target.track_index, seconds});
-    }
-    for (auto& entry : captured)
-        entry.time_offset -= firstSeconds;
-    clip_clipboard_ = std::move(captured);
-    return true;
+    std::string error;
+    const bool copied = app.copySelectedTimelineClips(error);
+    if (!error.empty())
+        platformError("Copy Clips Failed", error);
+    return copied;
 }
 
 void TimelineEditor::deleteSelectedClips(bool cut) {
     auto& app = uapmd_app::AppModel::instance();
-    auto* engine = app.sequencer().engine();
-    const auto targets = selectedClips();
-    if (targets.empty() || (cut && !copySelectedClips()))
+    std::string error;
+    std::vector<int32_t> changedTracks;
+    app.deleteSelectedTimelineClips(cut, error, changedTracks);
+    if (!error.empty())
+        platformError("Delete Clips Failed", error);
+    if (changedTracks.empty())
         return;
-    bool success = true;
-    {
-        // Per-command event batching allows each deletion to capture its undo
-        // snapshot before opening a document transaction.
-        uapmd::ScopedCommandStep step(engine->commands().history(), cut ? "Cut clips" : "Delete clips");
-        if (!step.opened()) {
-            platformError("Delete Clips Failed", step.error());
-            return;
-        }
-        for (const auto& target : targets)
-            if (!engine->timeline().removeClipFromTrack(target.track_index, target.clip_id)) {
-                success = false;
-                break;
-            }
-        if (success)
-            step.commit();
-    }
-    if (success)
-        selected_clip_references_.clear();
-    else
-        platformError("Delete Clips Failed", "Could not delete all selected clips; the edit was cancelled.");
-    for (const auto& target : targets)
-        engine->markTrackDirty(target.track_index);
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
@@ -1067,37 +989,15 @@ void TimelineEditor::deleteSelectedClips(bool cut) {
 
 std::vector<int32_t> TimelineEditor::pasteDestinations(
         int32_t trackIndex, bool originalTracks, std::string& error) const {
-    auto& app = uapmd_app::AppModel::instance();
-    const auto tracks = app.getTimelineTracks();
-    std::vector<int32_t> destinations;
-    for (const auto& entry : clip_clipboard_) {
-        int32_t destination = -1;
-        if (originalTracks) {
-            for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i)
-                if (tracks[i]->referenceId() == entry.source_track_reference) {
-                    destination = i;
-                    break;
-                }
-        } else if (trackIndex >= 0)
-            destination = trackIndex + entry.track_offset;
-        if (destination < 0 || destination >= static_cast<int32_t>(tracks.size())) {
-            error = originalTracks ? "An original track no longer exists. No clips were pasted."
-                : "There are not enough destination tracks. No clips were pasted.";
-            return {};
-        }
-        if (app.isTrackHidden(destination)) {
-            error = "A destination track is hidden. No clips were pasted.";
-            return {};
-        }
-        destinations.push_back(destination);
-    }
-    return destinations;
+    return uapmd_app::AppModel::instance().timelinePasteDestinations(
+        trackIndex, originalTracks, error);
 }
 
 void TimelineEditor::renderPastePreview(int32_t trackIndex, double positionSeconds) {
+    const auto& clipboard = uapmd_app::AppModel::instance().timelineClipboard();
     std::string error;
     const auto destinations = pasteDestinations(trackIndex, false, error);
-    ImGui::Text("Paste %zu clips at %.3f s", clip_clipboard_.size(), std::max(0.0, positionSeconds));
+    ImGui::Text("Paste %zu clips at %.3f s", clipboard.size(), std::max(0.0, positionSeconds));
     ImGui::TextDisabled("Source track numbers are from the time of copying.");
     ImGui::Separator();
     if (!error.empty())
@@ -1106,12 +1006,12 @@ void TimelineEditor::renderPastePreview(int32_t trackIndex, double positionSecon
         auto& app = uapmd_app::AppModel::instance();
         const auto tracks = app.sequencer().engine()->tracks();
         int32_t previousOffset = -1;
-        for (size_t i = 0; i < clip_clipboard_.size(); ++i) {
-            const auto& entry = clip_clipboard_[i];
+        for (size_t i = 0; i < clipboard.size(); ++i) {
+            const auto& entry = clipboard[i];
             if (entry.track_offset == previousOffset)
                 continue;
             previousOffset = entry.track_offset;
-            const auto count = std::count_if(clip_clipboard_.begin(), clip_clipboard_.end(),
+            const auto count = std::count_if(clipboard.begin(), clipboard.end(),
                 [&](const auto& candidate) { return candidate.track_offset == entry.track_offset; });
             std::string plugins;
             for (const auto id : tracks[destinations[i]]->orderedInstanceIds())
@@ -1134,48 +1034,15 @@ void TimelineEditor::renderPastePreview(int32_t trackIndex, double positionSecon
 
 void TimelineEditor::pasteClips(int32_t trackIndex, double positionSeconds, bool originalTracks) {
     auto& app = uapmd_app::AppModel::instance();
-    auto* engine = app.sequencer().engine();
-    if (clip_clipboard_.empty())
-        return;
-    std::string destinationError;
-    const auto destinations = pasteDestinations(trackIndex, originalTracks, destinationError);
-    if (!destinationError.empty()) {
-        platformError("Paste Clips Failed", destinationError);
-        return;
-    }
-    std::vector<TimelineClipTarget> pasted;
+    std::vector<uapmd_app::AppModel::TimelineClipTarget> pasted;
     std::string error;
-    {
-        uapmd::ScopedCommandStep step(engine->commands().history(), "Paste clips");
-        if (!step.opened()) {
-            platformError("Paste Clips Failed", step.error());
-            return;
-        }
-        for (size_t i = 0; i < clip_clipboard_.size(); ++i) {
-            const auto& entry = clip_clipboard_[i];
-            auto fragment = entry.fragment;
-            const double seconds = std::max(0.0, positionSeconds) + entry.time_offset;
-            // Paste uses resolved positions, so copied clips do not remain anchored
-            // to the source clips or move twice when those sources are also selected.
-            fragment.clip.position = uapmd::TimelinePosition::fromSeconds(seconds, app.sampleRate());
-            fragment.clip.setTimeReference(uapmd::TimeReference::fromContainerStart({}, seconds), app.sampleRate());
-            const int32_t destination = destinations[i];
-            const auto result = engine->timeline().pasteClipFragment(destination, fragment);
-            if (!result.success) {
-                error = result.error.empty() ? "Could not paste the selected clips" : result.error;
-                break;
-            }
-            pasted.push_back({destination, result.clipId});
-        }
-        if (error.empty())
-            step.commit();
-    }
-    if (error.empty())
-        selectClips(pasted, false, false);
-    else
+    if (app.pasteTimelineClips(trackIndex, positionSeconds, originalTracks, pasted, error) &&
+            !pasted.empty())
+        selectMidiClip(pasted.back().track_index, pasted.back().clip_id);
+    if (!error.empty())
         platformError("Paste Clips Failed", error);
-    for (const auto& target : pasted)
-        engine->markTrackDirty(target.track_index);
+    if (pasted.empty())
+        return;
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
@@ -1336,22 +1203,8 @@ void TimelineEditor::renderMidiDumpFromClipEditor() {
 void TimelineEditor::renderPianoRollFromClipEditor() {
     PianoRollEditor::RenderContext pianoCtx;
     pianoCtx.uiScale = currentUiScale_;
-    pianoCtx.applyEdits = [this](int32_t trackIndex, int32_t clipId,
-                                  std::vector<uapmd_ump_t> newEvents,
-                                  std::vector<uint64_t>    newTicks,
-                                  std::string&             error) -> bool {
-        return applyPianoRollEdits(trackIndex, clipId,
-                                   std::move(newEvents), std::move(newTicks), error);
-    };
-    pianoCtx.clipDurationSeconds = [](int32_t trackIndex, int32_t clipId) {
-        auto& appModel = uapmd_app::AppModel::instance();
-        auto tracks = appModel.getTimelineTracks();
-        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
-                !tracks[trackIndex])
-            return 0.0;
-        const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-        return clip ? static_cast<double>(clip->durationSamples) /
-            std::max(1.0, static_cast<double>(appModel.sampleRate())) : 0.0;
+    pianoCtx.onCommitted = [this](int32_t trackIndex, int32_t clipId) {
+        onPianoRollCommitted(trackIndex, clipId);
     };
     pianoCtx.previewNoteOn = [](int32_t trackIndex, int midiNote) {
         auto& seq = uapmd_app::AppModel::instance().sequencer();
@@ -2022,16 +1875,17 @@ void TimelineEditor::refreshAllSequenceEditorTracks() {
 }
 
 void TimelineEditor::refreshAfterHistoryMutation() {
-    lastPianoRollEditSource_.reset();
+    uapmd_app::AppModel::instance().clearPianoRollCommitSource();
     refreshAllSequenceEditorTracks();
     reloadSelectedPianoRoll();
 }
 
 void TimelineEditor::reloadSelectedPianoRoll() {
-    if (!selected_midi_clip_)
+    const auto selected = uapmd_app::AppModel::instance().selectedTimelineMidiClip();
+    if (!selected)
         return;
 
-    const auto [trackIndex, clipId] = *selected_midi_clip_;
+    const auto [trackIndex, clipId] = *selected;
     auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
         return;
@@ -2066,19 +1920,9 @@ void TimelineEditor::syncExternalTimelineChanges() {
     }
     if (!refreshed)
         return;
-    if (lastPianoRollEditSource_ && selected_midi_clip_) {
-        const auto [editedTrack, editedClip, fingerprint] = *lastPianoRollEditSource_;
-        if (*selected_midi_clip_ == std::pair{editedTrack, editedClip} &&
-                editedTrack >= 0 && editedTrack < static_cast<int32_t>(tracks.size()) &&
-                tracks[editedTrack]) {
-            const auto* clip = tracks[editedTrack]->clipManager().getClip(editedClip);
-            auto node = clip ? tracks[editedTrack]->getSourceNode(clip->sourceNodeInstanceId) : nullptr;
-            auto midi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(node);
-            if (midi && pianoRollSourceFingerprint(*midi) == fingerprint)
-                return;
-        }
-    }
-    lastPianoRollEditSource_.reset();
+    if (appModel.pianoRollSourceMatchesLastEdit())
+        return;
+    appModel.clearPianoRollCommitSource();
     reloadSelectedPianoRoll();
 }
 
@@ -2094,8 +1938,8 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLay
             pendingFullReset_ = true;
             break;
         case uapmd_app::AppModel::TrackLayoutChange::Type::Cleared:
-            selected_clip_references_.clear();
-            clip_clipboard_.clear();
+            uapmd_app::AppModel::instance().clearTimelineClipSelection();
+            uapmd_app::AppModel::instance().clearTimelineClipboard();
             pending_clip_edit_ = {};
             sequenceEditor_.reset();
             trackContentSignatures_.clear();
@@ -2634,7 +2478,7 @@ void TimelineEditor::showMasterMarkerEditor() {
 }
 
 void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
-    lastPianoRollEditSource_.reset();
+    uapmd_app::AppModel::instance().clearPianoRollCommitSource();
     auto& appModel = uapmd_app::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
@@ -2654,7 +2498,7 @@ void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
     auto preview = createMidiClipPreview(trackIndex, *clipData, fallbackDuration);
     std::string clipName = clipData->name.empty()
         ? std::format("Clip {}", clipId) : clipData->name;
-    selected_midi_clip_ = std::pair{trackIndex, clipId};
+    appModel.selectTimelineMidiClip(trackIndex, clipId);
     clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{trackIndex, clipId, true, false});
     pianoRollEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
 }
@@ -2669,7 +2513,7 @@ void TimelineEditor::showStepSequencer(int32_t trackIndex, int32_t clipId) {
         return;
     auto preview = createMidiClipPreview(trackIndex, *clip, 0.0);
     const auto clipName = clip->name.empty() ? std::format("Clip {}", clipId) : clip->name;
-    selected_midi_clip_ = std::pair{trackIndex, clipId};
+    appModel.selectTimelineMidiClip(trackIndex, clipId);
     clipEditorHost_.setActiveClip(uapmd_addin::ClipEditorClip{trackIndex, clipId, true, false});
     stepSequencerEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
 }
@@ -3034,30 +2878,10 @@ bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload
     return true;
 }
 
-bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
-                                          std::vector<uapmd_ump_t> newUmpEvents,
-                                          std::vector<uint64_t>    newTickTimestamps,
-                                          std::string&             error) {
+void TimelineEditor::onPianoRollCommitted(int32_t trackIndex, int32_t clipId) {
     auto& appModel = uapmd_app::AppModel::instance();
-    auto tracks = appModel.getTimelineTracks();
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
-            !tracks[trackIndex]) {
-        error = "Track unavailable.";
-        return false;
-    }
-    if (!appModel.sequencer().engine()->timeline().replaceMidiClipContent(
-            trackIndex, clipId, std::move(newUmpEvents), std::move(newTickTimestamps))) {
-        error = "Failed to replace MIDI clip data.";
-        return false;
-    }
     refreshSequenceEditorForTrack(trackIndex);
-    auto refreshedTracks = appModel.getTimelineTracks();
-    const auto* clip = refreshedTracks[trackIndex]->clipManager().getClip(clipId);
-    auto node = clip ? refreshedTracks[trackIndex]->getSourceNode(clip->sourceNodeInstanceId) : nullptr;
-    auto midi = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(node);
-    if (midi)
-        lastPianoRollEditSource_ = std::tuple{trackIndex, clipId, pianoRollSourceFingerprint(*midi)};
-    return true;
+    appModel.recordPianoRollCommitSource(trackIndex, clipId);
 }
 
 bool TimelineEditor::applyStepSequencerEdits(int32_t trackIndex, int32_t clipId,

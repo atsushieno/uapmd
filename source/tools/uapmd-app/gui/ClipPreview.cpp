@@ -29,41 +29,6 @@ constexpr double kMinimumNoteDuration = 0.01;
 constexpr ImU32 kMarkerColor = IM_COL32(255, 222, 89, 220);
 constexpr ImU32 kWarpColor = IM_COL32(255, 120, 120, 230);
 
-template<typename Timestamp>
-void translateTimestampedMidi1UmpToMidi2(const std::vector<uapmd_ump_t>& sourceEvents,
-                                         const std::vector<Timestamp>& sourceTimestamps,
-                                         std::vector<uapmd_ump_t>& translatedEvents,
-                                         std::vector<Timestamp>& translatedTimestamps) {
-    translatedEvents.clear();
-    translatedTimestamps.clear();
-    translatedEvents.reserve(sourceEvents.size() * 2);
-    translatedTimestamps.reserve(sourceTimestamps.size() * 2);
-
-    const size_t eventCount = std::min(sourceEvents.size(), sourceTimestamps.size());
-    size_t i = 0;
-    while (i < eventCount) {
-        umppi::Ump ump1(sourceEvents[i]);
-        const int wordCount = std::max(1, ump1.getSizeInInts());
-        const size_t safeCount = std::min(static_cast<size_t>(wordCount), eventCount - i);
-        umppi::Ump ump = (safeCount >= 2) ? umppi::Ump(sourceEvents[i], sourceEvents[i + 1]) : ump1;
-        const auto timestamp = sourceTimestamps[i];
-
-        std::vector<umppi::Ump> translated;
-        std::vector<umppi::Ump> sourceMessage{ump};
-        umppi::UmpTranslator::translateMidi1UmpToMidi2Ump(translated, sourceMessage);
-        for (const auto& translatedUmp : translated) {
-            const int translatedWordCount = std::max(1, translatedUmp.getSizeInInts());
-            const auto translatedWords = translatedUmp.toWords();
-            for (int word = 0; word < translatedWordCount; ++word) {
-                translatedEvents.push_back(translatedWords[static_cast<size_t>(word)]);
-                translatedTimestamps.push_back(timestamp);
-            }
-        }
-
-        i += static_cast<size_t>(wordCount);
-    }
-}
-
 ImVec4 withAlpha(const ImVec4& color, float alpha) {
     return ImVec4(color.x, color.y, color.z, alpha);
 }
@@ -600,143 +565,19 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
 }
 
 std::shared_ptr<ClipPreview> createMidiClipPreview(
-    int32_t trackIndex,
-    const uapmd::ClipData& clipData,
-    double fallbackDurationSeconds
-) {
+    int32_t trackIndex, const uapmd::ClipData& clipData, double fallbackDurationSeconds) {
+    const auto snapshot = uapmd_app::AppModel::instance().pianoRollClipSnapshot(
+        trackIndex, clipData, fallbackDurationSeconds);
     auto preview = std::make_shared<ClipPreview>();
     preview->isMidiClip = true;
-
-    double durationSeconds = computeDurationFromClip(&clipData);
-    if (durationSeconds <= 0.0) {
-        durationSeconds = fallbackDurationSeconds;
-    }
-    preview->clipDurationSeconds = std::max(0.01, durationSeconds);
-
-    auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
-        preview->hasError = true;
-        preview->errorMessage = "Track unavailable";
-        return preview;
-    }
-
-    auto* track = tracks[trackIndex];
-    if (!track) {
-        preview->hasError = true;
-        preview->errorMessage = "Track unavailable";
-        return preview;
-    }
-
-    auto sourceNode = track->getSourceNode(clipData.sourceNodeInstanceId);
-    auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
-    if (!midiSource) {
-        preview->hasError = true;
-        preview->errorMessage = "Missing MIDI source";
-        return preview;
-    }
-
-    std::vector<uapmd_ump_t> normalizedTickEvents;
-    std::vector<uint64_t> normalizedTickTimestamps;
-    translateTimestampedMidi1UmpToMidi2(
-        midiSource->umpEvents(), midiSource->eventTimestampsTicks(),
-        normalizedTickEvents, normalizedTickTimestamps);
-
-    std::vector<uapmd_ump_t> normalizedSampleEvents;
-    std::vector<uint64_t> normalizedSampleTimestamps;
-    translateTimestampedMidi1UmpToMidi2(
-        midiSource->umpEvents(), midiSource->eventTimestampsSamples(),
-        normalizedSampleEvents, normalizedSampleTimestamps);
-
-    // Capture normalized UMP data for piano-roll write-back before parsing into notes.
-    auto rawData = std::make_shared<ClipPreview::RawMidiData>();
-    rawData->umpEvents       = normalizedTickEvents;
-    rawData->tickTimestamps  = normalizedTickTimestamps;
-    rawData->tickResolution  = clipData.tickResolution > 0
-                               ? clipData.tickResolution
-                               : midiSource->tickResolution();
-    rawData->clipTempo       = midiSource->clipTempo();
-    preview->rawMidiData = rawData;
-
-    const auto& events = normalizedSampleEvents;
-    const auto& timestamps = normalizedSampleTimestamps;
-    if (events.empty() || timestamps.empty()) {
-        preview->ready = true;
-        return preview;
-    }
-
-    const double safeSampleRate = std::max(1.0, static_cast<double>(uapmd_app::AppModel::instance().sampleRate()));
-    const size_t eventCount = std::min(events.size(), timestamps.size());
-    // Maps (group<<12|channel<<7|note) -> index in preview->midiNotes for in-flight notes.
-    std::unordered_map<uint32_t, size_t> activeNoteIndices;
-    activeNoteIndices.reserve(64);
-
-    // Iterate messages, advancing by getSizeInInts() to handle multi-word MIDI2 messages.
-    // Only NoteOn/NoteOff are processed here; automation events are parsed on-demand
-    // by the piano-roll editor directly from rawMidiData.
-    size_t i = 0;
-    while (i < eventCount) {
-        umppi::Ump ump1(events[i]);
-        const int wordCount = ump1.getSizeInInts();
-        const size_t safeCount = std::min(static_cast<size_t>(wordCount), eventCount - i);
-        umppi::Ump ump = (safeCount >= 2) ? umppi::Ump(events[i], events[i + 1]) : ump1;
-
-        const double eventSeconds = static_cast<double>(timestamps[i]) / safeSampleRate;
-        const auto msgType = ump.getMessageType();
-
-        if (msgType == umppi::MessageType::MIDI2) {
-            const uint8_t status = ump.getStatusCode();
-            const uint8_t channel = ump.getChannelInGroup();
-            const uint8_t group = ump.getGroup();
-
-            if (status == umppi::MidiChannelStatus::NOTE_ON || status == umppi::MidiChannelStatus::NOTE_OFF) {
-                const uint8_t  noteNum = ump.getMidi2Note();
-                const uint16_t vel16   = ump.getMidi2Velocity16();
-                const uint32_t key = (static_cast<uint32_t>(group) << 12) |
-                                     (static_cast<uint32_t>(channel) << 7) | noteNum;
-                const bool isNoteOn = (status == umppi::MidiChannelStatus::NOTE_ON) && vel16 > 0;
-                if (isNoteOn) {
-                    ClipPreview::MidiNote note{};
-                    note.startSeconds  = eventSeconds;
-                    note.note          = noteNum;
-                    note.velocity      = vel16 / 65535.0f;
-                    note.channel       = channel;
-                    note.noteOnWordIdx = i;
-                    activeNoteIndices[key] = preview->midiNotes.size();
-                    preview->midiNotes.push_back(std::move(note));
-                } else {
-                    auto it = activeNoteIndices.find(key);
-                    if (it != activeNoteIndices.end()) {
-                        auto& n = preview->midiNotes[it->second];
-                        n.durationSeconds = std::max(kMinimumNoteDuration, eventSeconds - n.startSeconds);
-                        n.noteOffWordIdx  = i;
-                        activeNoteIndices.erase(it);
-                    }
-                }
-            }
-        }
-
-        i += static_cast<size_t>(std::max(1, wordCount));
-    }
-
-    // Finalize any notes that had no matching NoteOff.
-    for (auto& [key, idx] : activeNoteIndices) {
-        auto& n = preview->midiNotes[idx];
-        n.durationSeconds = std::max(kMinimumNoteDuration, preview->clipDurationSeconds - n.startSeconds);
-    }
-
-    uint8_t minNote = 127;
-    uint8_t maxNote = 0;
-    for (const auto& note : preview->midiNotes) {
-        minNote = std::min(minNote, note.note);
-        maxNote = std::max(maxNote, note.note);
-    }
-
-    if (!preview->midiNotes.empty()) {
-        preview->minNote = minNote;
-        preview->maxNote = maxNote;
-    }
-
-    preview->ready = true;
+    preview->ready = snapshot.ready;
+    preview->hasError = !snapshot.error.empty();
+    preview->errorMessage = snapshot.error;
+    preview->clipDurationSeconds = snapshot.durationSeconds;
+    preview->rawMidiData = snapshot.rawMidiData;
+    preview->midiNotes = snapshot.notes;
+    preview->minNote = snapshot.minNote;
+    preview->maxNote = snapshot.maxNote;
     return preview;
 }
 
