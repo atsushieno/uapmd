@@ -124,6 +124,15 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
                 "LIBROSA_FFT_BACKEND pocketfft"
     )
 
+    # M_PI is a POSIX extension rather than standard C or C++: MSVC only defines
+    # it when _USE_MATH_DEFINES precedes <math.h>, and librosa uses it in ten
+    # places across its own sources. Set on the command line, so it is in force
+    # before any header is read. PRIVATE is enough -- every use is under src/,
+    # none in the public headers our own translation units include.
+    if(MSVC AND TARGET librosa)
+        target_compile_definitions(librosa PRIVATE _USE_MATH_DEFINES)
+    endif()
+
 
     if(DEFINED _UAPMD_MIR_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
         set(BUILD_SHARED_LIBS "${_UAPMD_MIR_OLD_BUILD_SHARED_LIBS}")
