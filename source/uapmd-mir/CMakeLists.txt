@@ -103,6 +103,20 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
     # One key from every patch, so editing any of them re-extracts the source.
     string(SHA1 _UAPMD_LIBROSA_PATCH_SHA1 "${_UAPMD_LIBROSA_PATCH_HASHES}")
 
+    # librosa looks for libsndfile only to back its own load()/write(). We never
+    # call those -- audio reaches librosa as buffers already read through
+    # uapmd-data -- but when the lookup succeeds it links the result PUBLIC, so
+    # every binary that links librosa inherits it. Cross-compiling makes that
+    # actively wrong: pkg-config on the build host answers with the host's
+    # library, and the target linker rejects it as a foreign object file.
+    #
+    # Disabling the lookup puts every platform on the same path Windows already
+    # takes, where librosa defers the failure to load()/write(). It works
+    # because the patch above drops REQUIRED from that find_package:
+    # CMAKE_DISABLE_FIND_PACKAGE_<name> applies only to non-REQUIRED calls.
+    set(_UAPMD_OLD_DISABLE_PKGCONFIG "${CMAKE_DISABLE_FIND_PACKAGE_PkgConfig}")
+    set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+
     # Added after libsonare, which creates the Eigen3::Eigen target first when
     # it is enabled; whichever of the two comes second fails on the collision.
     CPMAddPackage(
@@ -123,6 +137,8 @@ if(UAPMD_ENABLE_LIBROSA_CPP)
                 "LIBROSA_BUILD_SWIFT_C_WRAPPER OFF"
                 "LIBROSA_FFT_BACKEND pocketfft"
     )
+
+    set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig "${_UAPMD_OLD_DISABLE_PKGCONFIG}")
 
     # M_PI is a POSIX extension rather than standard C or C++: MSVC only defines
     # it when _USE_MATH_DEFINES precedes <math.h>, and librosa uses it in ten
