@@ -526,6 +526,53 @@ uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-bsroformer
 )
 
 # ---------------------------------------------------------------------------
+# Shared transcription support
+#
+# Finding audio clips, reading and resampling them, and writing the resulting
+# notes back as a MIDI 2.0 clip is identical for every transcription backend.
+# It used to be compiled into each one, which was safe while the backends ended
+# up in separate binaries -- but Basic Pitch and DrumScript are both static
+# built-ins linked WHOLE_ARCHIVE into the same executable, so a copy in each
+# collides at link time. Same reasoning as uapmd-stem-support above.
+#
+# uapmd-mir builds its own copy still: it is a separate shared library, and the
+# pitch transcription addin inside it is loaded rather than linked.
+# ---------------------------------------------------------------------------
+
+if(UAPMD_ENABLE_BASIC_PITCH OR UAPMD_ENABLE_DRUMSCRIPT)
+
+    add_library(uapmd-transcription-support STATIC
+            src/ClipTranscription.cpp
+            src/NoteClipWriter.cpp
+    )
+
+    target_compile_features(uapmd-transcription-support PRIVATE cxx_std_23)
+
+    target_include_directories(uapmd-transcription-support
+            PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-engine/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-data/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-graph/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-midi-service/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../remidy/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../uapmd-plugin-hosting/include
+            ${midicci_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(uapmd-transcription-support PRIVATE
+            uapmd::uapmd-addin-core
+            uapmd-data
+    )
+
+    uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-transcription-support
+            src/ClipTranscription.cpp
+    )
+
+endif()
+
+# ---------------------------------------------------------------------------
 # Basic Pitch polyphonic transcription
 #
 # Opt-in, and unlike everything else here the option guards a *download*: the
@@ -629,8 +676,6 @@ if(UAPMD_ENABLE_BASIC_PITCH)
             src/basic-pitch/BasicPitchModel.cpp
             src/basic-pitch/BasicPitchTranscriber.cpp
             src/basic-pitch/BasicPitchAddin.cpp
-            src/ClipTranscription.cpp
-            src/NoteClipWriter.cpp
             "${_uapmd_bp_source}"
     )
     add_library(uapmd::basic-pitch ALIAS uapmd-basic-pitch)
@@ -655,6 +700,7 @@ if(UAPMD_ENABLE_BASIC_PITCH)
     target_link_libraries(uapmd-basic-pitch PRIVATE
             uapmd::uapmd-addin-core
             uapmd-data
+            uapmd-transcription-support
     )
 
     # The convolutions are plain loops, checked against reference activations
@@ -663,7 +709,6 @@ if(UAPMD_ENABLE_BASIC_PITCH)
     uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-basic-pitch
             src/basic-pitch/BasicPitchModel.cpp
             src/basic-pitch/BasicPitchTranscriber.cpp
-            src/ClipTranscription.cpp
     )
 
 endif()
@@ -683,6 +728,8 @@ if(UAPMD_ENABLE_DRUMSCRIPT)
 
     add_library(uapmd-drumscript STATIC
             src/drumscript/DrumScriptClassifier.cpp
+            src/drumscript/DrumScriptTranscriber.cpp
+            src/drumscript/DrumScriptAddin.cpp
     )
     add_library(uapmd::drumscript ALIAS uapmd-drumscript)
 
@@ -706,12 +753,14 @@ if(UAPMD_ENABLE_DRUMSCRIPT)
     target_link_libraries(uapmd-drumscript PRIVATE
             uapmd::uapmd-addin-core
             uapmd-data
+            uapmd-transcription-support
             librosa::librosa
     )
 
     # An STFT per onset over a whole drum take; -O0 makes that look hung.
     uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-drumscript
             src/drumscript/DrumScriptClassifier.cpp
+            src/drumscript/DrumScriptTranscriber.cpp
     )
 
 endif()

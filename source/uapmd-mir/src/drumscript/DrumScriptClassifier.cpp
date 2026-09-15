@@ -101,6 +101,14 @@ DrumPhysics measure(std::span<const float> short_slice,
     // Decay is measured on the long slice, and -- as in DrumScript -- with
     // librosa's default 512-sample rms hop rather than the 128 used for the
     // spectrum above. Every decay threshold is calibrated against that hop.
+    //
+    // DrumScript measures this by scanning for a 20 dB drop and reporting how
+    // long it took. That works on the isolated samples its thresholds were
+    // derived from, where the window holds one hit and then silence. In a
+    // performance the next hit lands first, the level never falls, and every
+    // decay saturates at the window length -- which reads as a cymbal no matter
+    // what was struck. So when the window runs out first, the remaining time is
+    // extrapolated from the slope actually observed instead.
     if (!long_slice.empty()) {
         const librosa::ArrayXXr rmsFrames =
             librosa::feature::rms(toArray(long_slice), kFftSize, kRmsHopSamples);
@@ -110,12 +118,30 @@ DrumPhysics measure(std::span<const float> short_slice,
             const double peakRms = rms.maxCoeff(&peakRmsIndex);
             const double threshold = peakRms * 0.1; // -20 dB
             Eigen::Index decayFrames = 0;
+            bool reachedThreshold = false;
             for (Eigen::Index i = peakRmsIndex; i < rms.size(); ++i) {
-                if (rms[i] < threshold)
+                if (rms[i] < threshold) {
+                    reachedThreshold = true;
                     break;
+                }
                 ++decayFrames;
             }
-            physics.decay = static_cast<double>(decayFrames) * kRmsHopSamples / sample_rate;
+            double decaySeconds = static_cast<double>(decayFrames) * kRmsHopSamples / sample_rate;
+
+            if (!reachedThreshold && decayFrames > 1 && peakRms > 0.0) {
+                // Percussion decays exponentially, so the drop is linear in dB:
+                // a hit that fell 5 dB in 150 ms reaches -20 dB at 600 ms.
+                const double lastRms = std::max(
+                    static_cast<double>(rms[peakRmsIndex + decayFrames - 1]), 1e-12);
+                const double droppedDb = 20.0 * std::log10(peakRms / lastRms);
+                // Below this the hit is sustaining rather than decaying, and
+                // extrapolating from it would divide by almost nothing.
+                constexpr double kMinimumMeasurableDropDb = 0.5;
+                decaySeconds = droppedDb >= kMinimumMeasurableDropDb
+                    ? decaySeconds * (20.0 / droppedDb)
+                    : kLongSliceSeconds;
+            }
+            physics.decay = decaySeconds;
         }
     }
 
