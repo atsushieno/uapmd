@@ -553,10 +553,8 @@ namespace uapmd_app {
         bool isTrackMuted(int32_t trackIndex) const;
         bool isTrackSolo(int32_t trackIndex) const;
         bool setTrackMuted(int32_t trackIndex, bool muted);
-        // Enabling solo clears other solos unless additive is requested.
-        // Disabling solo leaves other tracks unchanged. Exclusive selection
-        // is one undoable edit and one document notification batch.
-        bool setTrackSolo(int32_t trackIndex, bool solo, bool additive = false);
+        // Changes only this track's solo state; other soloed tracks stay soloed.
+        bool setTrackSolo(int32_t trackIndex, bool solo);
         using TrackMutationCallback = std::function<void(int32_t trackIndex, std::string error)>;
         using TrackClearCallback = std::function<void(std::string error)>;
         void addTrack(TrackMutationCallback callback);

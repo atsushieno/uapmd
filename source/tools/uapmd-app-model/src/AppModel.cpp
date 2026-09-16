@@ -3202,36 +3202,14 @@ bool uapmd_app::AppModel::setTrackMuted(int32_t trackIndex, bool muted) {
     return true;
 }
 
-bool uapmd_app::AppModel::setTrackSolo(int32_t trackIndex, bool solo, bool additive) {
+bool uapmd_app::AppModel::setTrackSolo(int32_t trackIndex, bool solo) {
     auto* engine = sequencer_.engine();
     const auto& tracks = engine->tracks();
-    // Validate before clearing another track's solo state.
     if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[trackIndex])
         return false;
-
-    auto& commands = engine->commands();
-    auto& undo = commands.history();
-    uapmd::ScopedDocumentTransaction transaction(engine->timeline());
-    std::optional<uapmd::ScopedCommandStep> step;
-    if (!additive && !undo.state().compoundOpen) {
-        step.emplace(undo, solo ? "Solo track" : "Unsolo track");
-        if (!step->opened())
-            return false;
-    }
-
-    if (solo && !additive)
-        for (size_t i = 0; i < tracks.size(); ++i)
-            if (tracks[i] && static_cast<int32_t>(i) != trackIndex && tracks[i]->solo()) {
-                const auto otherTrackIndex = static_cast<int32_t>(i);
-                if (!commands.setTrackSolo(otherTrackIndex, false))
-                    return false;
-                engine->markTrackDirty(otherTrackIndex);
-            }
-    if (!commands.setTrackSolo(trackIndex, solo))
+    if (!engine->commands().setTrackSolo(trackIndex, solo))
         return false;
     engine->markTrackDirty(trackIndex);
-    if (step)
-        step->commit();
     return true;
 }
 

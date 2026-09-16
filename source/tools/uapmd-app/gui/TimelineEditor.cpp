@@ -1579,10 +1579,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             }
             if (contextActionButton(
                     std::format("S##LegSolo{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    solo ? "Track soloed (click to clear)" : "Solo track")) {
-                const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
-                model.setTrackSolo(trackIndex, !solo, additive);
-            }
+                    solo ? "Track soloed (click to clear)" : "Solo track"))
+                model.setTrackSolo(trackIndex, !solo);
             if (solo)
                 ImGui::PopStyleColor(3);
         }
