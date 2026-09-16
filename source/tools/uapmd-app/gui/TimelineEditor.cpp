@@ -1556,7 +1556,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
         if (trackIndex != uapmd::kMasterTrackIndex) {
             ImGui::SameLine();
-            const bool muted = track->muted();
+            auto& model = uapmd_app::AppModel::instance();
+            const bool muted = model.isTrackMuted(trackIndex);
             if (muted) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.16f, 0.16f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.22f, 0.22f, 1.0f));
@@ -1564,15 +1565,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             }
             if (contextActionButton(
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    muted ? "Track muted (click to unmute)" : "Mute track")) {
-                if (sequencer.engine()->commands().setTrackMuted(trackIndex, !muted))
-                    uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
-            }
+                    muted ? "Track muted (click to unmute)" : "Mute track"))
+                model.setTrackMuted(trackIndex, !muted);
             if (muted)
                 ImGui::PopStyleColor(3);
 
             ImGui::SameLine();
-            const bool solo = track->solo();
+            const bool solo = model.isTrackSolo(trackIndex);
             if (solo) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.82f, 0.52f, 0.08f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.96f, 0.66f, 0.12f, 1.0f));
@@ -1582,41 +1581,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     std::format("S##LegSolo{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
                     solo ? "Track soloed (click to clear)" : "Solo track")) {
                 const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
-                const bool enableSolo = !solo;
-                const bool ownsStep = !additive && !undo.state().compoundOpen;
-                bool compoundOpened = false;
-                bool documentTransactionOpened = false;
-                if (ownsStep) {
-                    compoundOpened = undo.beginStep(
-                        enableSolo ? "Solo track" : "Unsolo track").succeeded();
-                    if (compoundOpened) {
-                        sequencer.engine()->timeline().beginDocumentTransaction();
-                        documentTransactionOpened = true;
-                    }
-                }
-                bool succeeded = true;
-                if (enableSolo && !additive) {
-                    for (size_t i = 0; i < tracksRef.size(); ++i)
-                        if (tracksRef[i] && static_cast<int32_t>(i) != trackIndex && tracksRef[i]->solo()) {
-                            const auto otherTrackIndex = static_cast<int32_t>(i);
-                            if (sequencer.engine()->commands().setTrackSolo(otherTrackIndex, false))
-                                uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(otherTrackIndex);
-                            else
-                                succeeded = false;
-                        }
-                }
-                if (succeeded && sequencer.engine()->commands().setTrackSolo(trackIndex, enableSolo))
-                    uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
-                else
-                    succeeded = false;
-                if (compoundOpened) {
-                    if (succeeded)
-                        undo.endStep();
-                    else
-                        undo.cancelStep();
-                }
-                if (documentTransactionOpened)
-                    sequencer.engine()->timeline().endDocumentTransaction();
+                model.setTrackSolo(trackIndex, !solo, additive);
             }
             if (solo)
                 ImGui::PopStyleColor(3);

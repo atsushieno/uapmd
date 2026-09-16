@@ -3179,6 +3179,62 @@ void uapmd_app::AppModel::addTrack(TrackMutationCallback callback) {
         });
 }
 
+bool uapmd_app::AppModel::isTrackMuted(int32_t trackIndex) const {
+    const auto& tracks = sequencer_.engine()->tracks();
+    return trackIndex >= 0 && static_cast<size_t>(trackIndex) < tracks.size()
+        && tracks[trackIndex] && tracks[trackIndex]->muted();
+}
+
+bool uapmd_app::AppModel::isTrackSolo(int32_t trackIndex) const {
+    const auto& tracks = sequencer_.engine()->tracks();
+    return trackIndex >= 0 && static_cast<size_t>(trackIndex) < tracks.size()
+        && tracks[trackIndex] && tracks[trackIndex]->solo();
+}
+
+bool uapmd_app::AppModel::setTrackMuted(int32_t trackIndex, bool muted) {
+    auto* engine = sequencer_.engine();
+    const auto& tracks = engine->tracks();
+    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[trackIndex])
+        return false;
+    if (!engine->commands().setTrackMuted(trackIndex, muted))
+        return false;
+    engine->markTrackDirty(trackIndex);
+    return true;
+}
+
+bool uapmd_app::AppModel::setTrackSolo(int32_t trackIndex, bool solo, bool additive) {
+    auto* engine = sequencer_.engine();
+    const auto& tracks = engine->tracks();
+    // Validate before clearing another track's solo state.
+    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[trackIndex])
+        return false;
+
+    auto& commands = engine->commands();
+    auto& undo = commands.history();
+    uapmd::ScopedDocumentTransaction transaction(engine->timeline());
+    std::optional<uapmd::ScopedCommandStep> step;
+    if (!additive && !undo.state().compoundOpen) {
+        step.emplace(undo, solo ? "Solo track" : "Unsolo track");
+        if (!step->opened())
+            return false;
+    }
+
+    if (solo && !additive)
+        for (size_t i = 0; i < tracks.size(); ++i)
+            if (tracks[i] && static_cast<int32_t>(i) != trackIndex && tracks[i]->solo()) {
+                const auto otherTrackIndex = static_cast<int32_t>(i);
+                if (!commands.setTrackSolo(otherTrackIndex, false))
+                    return false;
+                engine->markTrackDirty(otherTrackIndex);
+            }
+    if (!commands.setTrackSolo(trackIndex, solo))
+        return false;
+    engine->markTrackDirty(trackIndex);
+    if (step)
+        step->commit();
+    return true;
+}
+
 void uapmd_app::AppModel::removeTrack(
     int32_t trackIndex,
     TrackMutationCallback callback) {

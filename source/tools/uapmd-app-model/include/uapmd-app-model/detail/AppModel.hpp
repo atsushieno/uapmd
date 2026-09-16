@@ -548,6 +548,15 @@ namespace uapmd_app {
         size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
         // Track management
+        // Model-thread operations for regular tracks. Views read these values
+        // on refresh, including after undo/redo and project replacement.
+        bool isTrackMuted(int32_t trackIndex) const;
+        bool isTrackSolo(int32_t trackIndex) const;
+        bool setTrackMuted(int32_t trackIndex, bool muted);
+        // Enabling solo clears other solos unless additive is requested.
+        // Disabling solo leaves other tracks unchanged. Exclusive selection
+        // is one undoable edit and one document notification batch.
+        bool setTrackSolo(int32_t trackIndex, bool solo, bool additive = false);
         using TrackMutationCallback = std::function<void(int32_t trackIndex, std::string error)>;
         using TrackClearCallback = std::function<void(std::string error)>;
         void addTrack(TrackMutationCallback callback);
