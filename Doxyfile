@@ -952,12 +952,15 @@ WARN_LOGFILE           =
 INPUT                  = \
 	source/remidy/include \
 	source/remidy-gui/include \
+	source/uapmd-addin-core/include \
 	source/uapmd-plugin-hosting/include \
 	source/uapmd-midi-service/include \
 	source/uapmd-graph/include \
 	source/uapmd-file/include \
 	source/uapmd-data/include \
 	source/uapmd-engine/include \
+	source/uapmd-ara/include \
+	source/uapmd-mir/include \
 	source/tools/uapmd-app-model/include
 
 # This tag can be used to specify the character encoding of the source files
