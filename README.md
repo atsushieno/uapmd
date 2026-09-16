@@ -18,6 +18,8 @@ UAPMD (Ubiquitous Audio Plugin MIDI Device) is a music sequencer engine (library
 
 It comes with a proof-of-concept application `uapmd-app` which runs as a desktop app, Android app, iOS app, or a webpage (app).
 
+We also have Kotlin Multiplatform bindings and port of uapmd-app to Compose Multiplatform: see [atsushieno/uapmd-kmp](https://github.com/atsushieno/uapmd-kmp).
+
 ### UAPMD as a virtual MIDI 2.0 device host
 
 UAPMD can expose audio plugins' control points as platform virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
