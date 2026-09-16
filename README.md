@@ -231,7 +231,7 @@ These libraries drag in libraries that are released under the MPL (opt-in featur
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
   - [libeigen/eigen](https://gitlab.com/libeigen/eigen) - MPL
 - [olilarkin/librosa.cpp](https://github.com/olilarkin/librosa.cpp) - ISC
-  - libeigen/eiggen (ditto)
+  - libeigen/eigen (mentioned above)
 
 For opt-in features, they have to be enabled using CMake options for each.
 
