@@ -24,12 +24,39 @@ using namespace uapmd;
 
 namespace uapmd_app {
 
+struct UapmdJSRuntime::Impl {
+    choc::javascript::Context context;
+};
+
+static choc::value::Value toChocValue(const AppModel::MidiClipUmpEvents& clip_events)
+{
+    auto result = choc::value::createObject("");
+    result.setMember("tickResolution", static_cast<int32_t>(clip_events.tick_resolution));
+    result.setMember("bpm", clip_events.bpm);
+    auto events = choc::value::createEmptyArray();
+    for (const auto& event : clip_events.events) {
+        auto value = choc::value::createObject("");
+        value.setMember("eventIndex", event.event_index);
+        value.setMember("tick", choc::value::createInt64(static_cast<int64_t>(event.tick)));
+        auto words = choc::value::createEmptyArray();
+        for (auto word : event.words)
+            words.addArrayElement(choc::value::createInt64(static_cast<int64_t>(word)));
+        value.setMember("words", words);
+        events.addArrayElement(value);
+    }
+    result.setMember("events", events);
+    return result;
+}
+
 UapmdJSRuntime::UapmdJSRuntime()
+    : impl_(std::make_unique<Impl>())
 {
     reinitialize();
     registerAllParameterListeners();
     registerAllMetadataListeners();
 }
+
+UapmdJSRuntime::~UapmdJSRuntime() = default;
 
 std::shared_ptr<UapmdJSRuntime::MutationJob> UapmdJSRuntime::createMutationJob()
 {
@@ -40,7 +67,7 @@ std::shared_ptr<UapmdJSRuntime::MutationJob> UapmdJSRuntime::createMutationJob()
     return job;
 }
 
-choc::value::Value UapmdJSRuntime::mutationJobValue(
+auto UapmdJSRuntime::mutationJobValue(
     const std::shared_ptr<MutationJob>& job)
 {
     auto result = choc::value::createObject("MutationJob");
@@ -54,9 +81,10 @@ choc::value::Value UapmdJSRuntime::mutationJobValue(
     return result;
 }
 
+template <typename Value>
 void UapmdJSRuntime::completeMutationJob(
     const std::shared_ptr<MutationJob>& job,
-    choc::value::Value result,
+    Value result,
     std::string error)
 {
     if (!job)
@@ -69,7 +97,7 @@ void UapmdJSRuntime::completeMutationJob(
 
 void UapmdJSRuntime::reinitialize()
 {
-    jsContext_ = choc::javascript::createQuickJSContext();
+    impl_->context = choc::javascript::createQuickJSContext();
     apiBootstrapped_ = false;
 
     registerConsoleFunctions();
@@ -96,7 +124,7 @@ void UapmdJSRuntime::ensureApiBootstrapped()
         throw std::runtime_error ("Embedded AppJsLib/uapmd-api.js was not found");
 
     std::string src (reinterpret_cast<const char*> (data.data()), data.size());
-    jsContext_.evaluateExpression (src);
+    impl_->context.evaluateExpression (src);
     apiBootstrapped_ = true;
 }
 
@@ -105,13 +133,13 @@ std::string UapmdJSRuntime::evaluateScript(const std::string& code,
 {
     if (code.find ("import") == std::string::npos)
     {
-        auto result = jsContext_.evaluateExpression (code);
+        auto result = impl_->context.evaluateExpression (code);
         return result.isVoid() ? std::string ("undefined") : choc::json::toString (result);
     }
 
     std::string error;
     std::string output ("undefined");
-    jsContext_.runModule (code,
+    impl_->context.runModule (code,
         [&fallbackModuleResolver] (std::string_view modulePath) -> std::optional<std::string>
         {
             auto name = std::string (modulePath);
@@ -137,7 +165,7 @@ std::string UapmdJSRuntime::evaluateScript(const std::string& code,
 void UapmdJSRuntime::registerConsoleFunctions()
 {
     // Register console.log for debugging
-    jsContext_.registerFunction ("log", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("log", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         std::string output;
 
@@ -156,12 +184,12 @@ void UapmdJSRuntime::registerConsoleFunctions()
         std::cout << "[JS] " << output << std::endl;
         return choc::value::Value();
     });
-    jsContext_.evaluateExpression ("globalThis.console = globalThis.console || {}; globalThis.console.log = log;");
+    impl_->context.evaluateExpression ("globalThis.console = globalThis.console || {}; globalThis.console.log = log;");
 }
 
 void UapmdJSRuntime::registerProjectAPI()
 {
-    jsContext_.registerFunction ("__remidy_project_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_project_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto filepath = args.get<std::string> (0, "");
         auto result = choc::value::createObject ("ProjectResult");
@@ -178,7 +206,7 @@ void UapmdJSRuntime::registerProjectAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_project_load", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_project_load", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto filepath = args.get<std::string> (0, "");
         auto result = choc::value::createObject ("ProjectResult");
@@ -209,7 +237,7 @@ void UapmdJSRuntime::registerProjectAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_project_load_handle", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_project_load_handle", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto token = args.get<std::string> (0, "");
         auto result = choc::value::createObject ("ProjectResult");
@@ -229,14 +257,14 @@ void UapmdJSRuntime::registerProjectAPI()
 
 void UapmdJSRuntime::registerPluginCatalogAPI()
 {
-    jsContext_.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         const auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         const auto plugins = sequencer.engine()->pluginHost()->pluginCatalogEntries();
         return choc::value::createInt32 (static_cast<int32_t>(plugins.size()));
     });
 
-    jsContext_.registerFunction ("__remidy_catalog_get_plugin_at", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_catalog_get_plugin_at", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto index = args.get<int32_t> (0, -1);
         if (index < 0)
@@ -262,7 +290,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_catalog_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_catalog_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto pathStr = args.get<std::string> (0, "");
         if (pathStr.empty())
@@ -277,13 +305,13 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
 
 void UapmdJSRuntime::registerPluginScanToolAPI()
 {
-    jsContext_.registerFunction ("__remidy_scan_tool_perform_scanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_scan_tool_perform_scanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         uapmd_app::AppModel::instance().performPluginScanning (false);
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_scan_tool_get_formats", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_scan_tool_get_formats", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& scanTool = uapmd_app::AppModel::instance().pluginScanTool();
         auto formats = scanTool.formats();
@@ -296,7 +324,7 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_scan_tool_save_cache", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_scan_tool_save_cache", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto pathStr = args.get<std::string> (0, "");
         if (! pathStr.empty())
@@ -308,7 +336,7 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_scan_tool_set_cache_file", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_scan_tool_set_cache_file", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto pathStr = args.get<std::string> (0, "");
         if (! pathStr.empty())
@@ -322,7 +350,7 @@ void UapmdJSRuntime::registerPluginScanToolAPI()
 
 void UapmdJSRuntime::registerPluginInstanceAPI()
 {
-    jsContext_.registerFunction ("__remidy_instance_create", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_create", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto formatName = args.get<std::string> (0, "");
         auto pluginId = args.get<std::string> (1, "");
@@ -381,7 +409,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::createInt32 (resultInstanceId.load());
     });
 
-    jsContext_.registerFunction ("__remidy_instance_get_parameters", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_get_parameters", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -412,7 +440,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_instance_get_parameter_value", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_get_parameter_value", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto paramId = args.get<int32_t> (1, -1);
@@ -430,7 +458,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::createFloat64 (value);
     });
 
-    jsContext_.registerFunction ("__remidy_instance_set_parameter_value", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_set_parameter_value", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto paramId = args.get<int32_t> (1, -1);
@@ -446,7 +474,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_dispose", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_dispose", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId >= 0)
@@ -456,25 +484,25 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_configure", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_configure", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         // Placeholder for configuration
         return choc::value::createBool (true);
     });
 
-    jsContext_.registerFunction ("__remidy_instance_start_processing", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_start_processing", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         // Placeholder
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_stop_processing", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_stop_processing", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         // Placeholder
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_enable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_enable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto deviceName = args.get<std::string> (1, "");
@@ -486,7 +514,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_disable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_disable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
 
@@ -497,7 +525,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_show_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_show_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
 
@@ -508,7 +536,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_hide_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_hide_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
 
@@ -519,7 +547,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_show_details", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_show_details", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId >= 0)
@@ -527,7 +555,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_instance_save_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_save_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto filepath = args.get<std::string> (1, "");
@@ -550,7 +578,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_instance_load_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_load_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto filepath = args.get<std::string> (1, "");
@@ -573,7 +601,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_instance_get_presets", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_get_presets", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -600,7 +628,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_instance_load_preset", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_instance_load_preset", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto presetIndex = args.get<int32_t> (1, -1);
@@ -630,7 +658,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
 void UapmdJSRuntime::registerSequencerMidiAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_sendNoteOn", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_sendNoteOn", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto note = args.get<int32_t> (1, 60);
@@ -643,7 +671,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_sendNoteOff", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_sendNoteOff", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto note = args.get<int32_t> (1, 60);
@@ -656,7 +684,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_setParameterValue", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_setParameterValue", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto paramIndex = args.get<int32_t> (1, -1);
@@ -674,42 +702,42 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
 
 void UapmdJSRuntime::registerSequencerTransportAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_startPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_startPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->startPlayback();
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_stopPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_stopPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->stopPlayback();
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_pausePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_pausePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->pausePlayback();
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_resumePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_resumePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         sequencer.engine()->resumePlayback();
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getPlaybackPosition", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getPlaybackPosition", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto position = sequencer.engine()->playbackPosition();
         return choc::value::createInt64 (position);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_jumpPlayback", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_jumpPlayback", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         uapmd_app::AppModel::instance().transport().jump (args.get<double> (0, std::numeric_limits<double>::quiet_NaN()));
         return choc::value::Value();
@@ -718,7 +746,7 @@ void UapmdJSRuntime::registerSequencerTransportAPI()
 
 void UapmdJSRuntime::registerSequencerInstanceAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_getInstanceIds", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getInstanceIds", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto instanceIds = sequencer.engine()->pluginHost()->instanceIds();
@@ -731,7 +759,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getPluginName", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getPluginName", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -742,7 +770,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::createString (instance->displayName());
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getPluginFormat", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getPluginFormat", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -753,7 +781,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::createString (format);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_isPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_isPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -764,7 +792,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::createBool (instance ? instance->bypassed() : false);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_setPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_setPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         auto bypassed = args.get<bool> (1, false);
@@ -778,7 +806,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_get_history_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_get_history_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         const auto state = uapmd_app::AppModel::instance().historyState();
         auto result = choc::value::createObject("HistoryState");
@@ -802,7 +830,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_begin_compound", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_begin_compound", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         const auto description = args.get<std::string> (0, "");
         auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->commands().history();
@@ -813,7 +841,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return value;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_end_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_end_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->commands().history();
@@ -825,7 +853,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_cancel_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_cancel_compound", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         auto& undo = uapmd_app::AppModel::instance().sequencer().engine()->commands().history();
@@ -837,7 +865,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_undo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_undo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         uapmd_app::AppModel::instance().undo(
@@ -849,7 +877,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_redo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_redo", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         uapmd_app::AppModel::instance().redo(
@@ -861,7 +889,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto tracks = sequencer.engine()->tracks();
@@ -905,7 +933,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_mutation_job_get", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_mutation_job_get", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         const auto jobId = args.get<int32_t> (0, -1);
         std::shared_ptr<MutationJob> job;
@@ -918,7 +946,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_mutation_job_clear", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_mutation_job_clear", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         const auto jobId = args.get<int32_t> (0, -1);
         bool removed = false;
@@ -929,7 +957,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return choc::value::createBool(removed);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_add_track", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_add_track", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         uapmd_app::AppModel::instance().addTrack(
@@ -941,7 +969,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_remove_track", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_remove_track", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         const auto trackIndex = args.get<int32_t> (0, -1);
         auto job = createMutationJob();
@@ -962,7 +990,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [this] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_clear_tracks", [this] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto job = createMutationJob();
         uapmd_app::AppModel::instance().removeAllTracks(
@@ -974,7 +1002,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getParameterUpdates", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
@@ -1001,7 +1029,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_consumeParameterMetadataRefresh", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_consumeParameterMetadataRefresh", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         bool refreshed = false;
@@ -1020,7 +1048,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
 void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_getInputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getInputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto numBars = args.get<int32_t> (0, 32);
         if (numBars <= 0 || numBars > 256)
@@ -1039,7 +1067,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getOutputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getOutputTimeDomainData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto numBars = args.get<int32_t> (0, 32);
         if (numBars <= 0 || numBars > 256)
@@ -1058,7 +1086,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getInputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getInputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto binCount = args.get<int32_t> (0, 128);
         if (binCount <= 0 || binCount > 2048)
@@ -1072,7 +1100,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getOutputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getOutputFrequencyData", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto binCount = args.get<int32_t> (0, 128);
         if (binCount <= 0 || binCount > 2048)
@@ -1089,14 +1117,14 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 
 void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
 {
-    jsContext_.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();
         auto sampleRate = sequencer.sampleRate();
         return choc::value::createInt32 (sampleRate);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_setSampleRate", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_setSampleRate", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto sampleRate = args.get<int32_t> (0, 48000);
         if (sampleRate <= 0)
@@ -1107,7 +1135,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         return choc::value::createBool (success);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_reconfigureAudioDevice", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_reconfigureAudioDevice", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto inputIndex = args.get<int32_t> (0, -1);
         auto outputIndex = args.get<int32_t> (1, -1);
@@ -1125,7 +1153,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         return choc::value::createBool (true);
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_isScanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_sequencer_isScanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto isScanning = uapmd_app::AppModel::instance().isScanning();
         return choc::value::createBool (isScanning);
@@ -1134,14 +1162,14 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
     // Audio engine on/off. Disabling it frees the realtime render thread, which is
     // essential for heavy operations (e.g. loading a large project with many plugins)
     // that would otherwise compete with the live engine for CPU.
-    jsContext_.registerFunction ("__remidy_set_audio_engine_enabled", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_set_audio_engine_enabled", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto enabled = args.get<bool> (0, true);
         uapmd_app::AppModel::instance().setAudioEngineEnabled (enabled);
         return choc::value::createBool (uapmd_app::AppModel::instance().isAudioEngineEnabled());
     });
 
-    jsContext_.registerFunction ("__remidy_is_audio_engine_enabled", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_is_audio_engine_enabled", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         return choc::value::createBool (uapmd_app::AppModel::instance().isAudioEngineEnabled());
     });
@@ -1612,7 +1640,7 @@ choc::value::Value serializeLatencyCompensationDebugState(uapmd::LatencyCompensa
 
 void UapmdJSRuntime::registerTimelineAPI()
 {
-    jsContext_.registerFunction ("__remidy_timeline_get_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         const auto& state = uapmd_app::AppModel::instance().timeline();
         auto obj = choc::value::createObject ("TimelineState");
@@ -1627,7 +1655,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_latency_compensation_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
@@ -1637,7 +1665,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return serializeLatencyCompensationState(*engine->latencyCompensationManager(), trackCount);
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_set_latency_compensation_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_set_latency_compensation_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto result = choc::value::createObject("LatencyCompensationMutation");
         if (args.size() < 1 || args[0] == nullptr || !args[0]->isObject()) {
@@ -1725,7 +1753,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_debug_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_latency_compensation_debug_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& appModel = uapmd_app::AppModel::instance();
         auto* engine = appModel.sequencer().engine();
@@ -1734,7 +1762,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return serializeLatencyCompensationDebugState(*engine->latencyCompensationManager());
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_set_latency_compensation_debug_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_set_latency_compensation_debug_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto result = choc::value::createObject("LatencyCompensationDebugMutation");
         if (args.size() < 1 || args[0] == nullptr || !args[0]->isObject()) {
@@ -1768,7 +1796,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_set_tempo", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_set_tempo", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto bpm = args.get<double> (0, 120.0);
         if (bpm > 0.0)
@@ -1776,7 +1804,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto& appModel = uapmd_app::AppModel::instance();
@@ -1814,26 +1842,26 @@ void UapmdJSRuntime::registerTimelineAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_ensure_dag_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_ensure_dag_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         return choc::value::createBool(uapmd_app::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_show_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_show_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         uapmd_app::AppModel::instance().requestShowTrackGraph(trackIndex);
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         return choc::value::createBool(uapmd_app::AppModel::instance().revertTrackToSimpleGraph(trackIndex));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         std::vector<AudioPluginGraphConnection> connections;
@@ -1857,7 +1885,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_connect_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_connect_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t>(0, -1);
         auto busTypeText = args.get<std::string>(1, "");
@@ -1896,7 +1924,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_disconnect_track_graph_connection", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_disconnect_track_graph_connection", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t>(0, -1);
         auto connectionId = args.get<int64_t>(1, 0);
@@ -1908,7 +1936,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto clipId = args.get<int32_t> (1, -1);
@@ -1944,7 +1972,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_set_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_set_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto clipId = args.get<int32_t> (1, -1);
@@ -1980,7 +2008,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_master_markers", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_master_markers", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto array = choc::value::createEmptyArray();
         for (const auto& marker : uapmd_app::AppModel::instance().sequencer().engine()->masterTrackMarkers())
@@ -1988,7 +2016,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return array;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_set_master_markers", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_set_master_markers", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto result = choc::value::createObject ("MasterMarkerSetResult");
         std::vector<uapmd::ClipMarker> markers;
@@ -2004,7 +2032,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return result;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_add_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_add_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto positionSamples = args.get<int64_t> (1, 0);
@@ -2033,7 +2061,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_import_midi_tracks", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_import_midi_tracks", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto filepath = args.get<std::string> (0, "");
         auto job = createMutationJob();
@@ -2075,7 +2103,7 @@ void UapmdJSRuntime::registerTimelineAPI()
         return mutationJobValue(job);
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_remove_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_remove_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto clipId = args.get<int32_t> (1, -1);
@@ -2084,16 +2112,16 @@ void UapmdJSRuntime::registerTimelineAPI()
         return choc::value::createBool (uapmd_app::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_get_clip_ump_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_get_clip_ump_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto clipId     = args.get<int32_t> (1, -1);
         if (trackIndex < 0 || clipId < 0)
             return choc::value::createObject ("");
-        return uapmd_app::AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
+        return toChocValue(uapmd_app::AppModel::instance().getMidiClipUmpEvents(trackIndex, clipId));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_add_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_add_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         auto clipId     = args.get<int32_t> (1, -1);
@@ -2114,7 +2142,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             uapmd_app::AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_remove_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_remove_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex  = args.get<int32_t> (0, -1);
         auto clipId      = args.get<int32_t> (1, -1);
@@ -2126,7 +2154,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             uapmd_app::AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error));
     });
 
-    jsContext_.registerFunction ("__remidy_timeline_create_empty_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_timeline_create_empty_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex      = args.get<int32_t> (0, -1);
         if (trackIndex < 0) return choc::value::createInt32 (-1);
@@ -2141,7 +2169,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
 void UapmdJSRuntime::registerRenderAPI()
 {
-    jsContext_.registerFunction ("__remidy_render_start", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_render_start", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto outputPath = args.get<std::string> (0, "");
         if (outputPath.empty())
@@ -2166,7 +2194,7 @@ void UapmdJSRuntime::registerRenderAPI()
         return choc::value::createBool (uapmd_app::AppModel::instance().startRenderToFile (settings));
     });
 
-    jsContext_.registerFunction ("__remidy_render_get_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_render_get_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto status = uapmd_app::AppModel::instance().getRenderToFileStatus();
         auto obj = choc::value::createObject ("RenderToFileStatus");
@@ -2180,13 +2208,13 @@ void UapmdJSRuntime::registerRenderAPI()
         return obj;
     });
 
-    jsContext_.registerFunction ("__remidy_render_clear_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_render_clear_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         uapmd_app::AppModel::instance().clearCompletedRenderStatus();
         return choc::value::Value();
     });
 
-    jsContext_.registerFunction ("__remidy_render_cancel", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    impl_->context.registerFunction ("__remidy_render_cancel", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         uapmd_app::AppModel::instance().cancelRenderToFile();
         return choc::value::Value();

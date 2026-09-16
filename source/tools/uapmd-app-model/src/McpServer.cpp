@@ -1232,13 +1232,33 @@ static choc::value::Value toolRemoveClip(const choc::value::Value& args)
     return result;
 }
 
+static choc::value::Value toChocValue(const AppModel::MidiClipUmpEvents& clip_events)
+{
+    auto result = choc::value::createObject("");
+    result.setMember("tickResolution", static_cast<int32_t>(clip_events.tick_resolution));
+    result.setMember("bpm", clip_events.bpm);
+    auto events = choc::value::createEmptyArray();
+    for (const auto& event : clip_events.events) {
+        auto value = choc::value::createObject("");
+        value.setMember("eventIndex", event.event_index);
+        value.setMember("tick", choc::value::createInt64(static_cast<int64_t>(event.tick)));
+        auto words = choc::value::createEmptyArray();
+        for (auto word : event.words)
+            words.addArrayElement(choc::value::createInt64(static_cast<int64_t>(word)));
+        value.setMember("words", words);
+        events.addArrayElement(value);
+    }
+    result.setMember("events", events);
+    return result;
+}
+
 static choc::value::Value toolGetClipUmpEvents(const choc::value::Value& args)
 {
     auto trackIndex = getIntArg (args, "trackIndex");
     auto clipId     = getIntArg (args, "clipId");
     if (trackIndex < 0 || clipId < 0)
         throw std::invalid_argument ("trackIndex and clipId are required");
-    return AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
+    return toChocValue(AppModel::instance().getMidiClipUmpEvents(trackIndex, clipId));
 }
 
 static choc::value::Value toolAddUmpEvent(const choc::value::Value& args)

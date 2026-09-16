@@ -16,8 +16,6 @@
 #include <memory>
 #undef None
 #undef PropertyNotify
-#include <choc/containers/choc_Value.h>
-#include <midicci/midicci.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-data/uapmd-data.hpp>
@@ -66,6 +64,18 @@ namespace uapmd_app {
             std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
 
     public:
+        struct MidiClipUmpEvent {
+            int32_t event_index{};
+            uint64_t tick{};
+            std::vector<uint32_t> words;
+        };
+
+        struct MidiClipUmpEvents {
+            uint32_t tick_resolution{};
+            double bpm{};
+            std::vector<MidiClipUmpEvent> events;
+        };
+
         enum class PluginScanRequest {
             InProcess,
             RemoteProcess
@@ -483,7 +493,7 @@ namespace uapmd_app {
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
 
         // UMP-level clip editing
-        choc::value::Value getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId);
+        MidiClipUmpEvents getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId);
         bool addUmpEventToClip(int32_t trackIndex, int32_t clipId,
                                uint64_t tick, std::vector<uint32_t> words,
                                std::string& error);

@@ -21,7 +21,7 @@ namespace remidy {
     // Implement (derive from) this class and call `instance(EventLoop)` to use it.
     // Make sure to do this before invoking `initializeOnUIThread()` (or any other functions).
     //
-    // The default implementation (exists) is based on choc (`choc::gui::MessageLoop`).
+    // The default implementation uses an internal message-loop backend.
     class EventLoop {
     protected:
         virtual void initializeOnUIThreadImpl() = 0;

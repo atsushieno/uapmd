@@ -2656,7 +2656,7 @@ static bool modifyMidiClipUmp(
     return true;
 }
 
-choc::value::Value uapmd_app::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId)
+uapmd_app::AppModel::MidiClipUmpEvents uapmd_app::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId)
 {
     auto tracks = getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
@@ -2667,32 +2667,28 @@ choc::value::Value uapmd_app::AppModel::getMidiClipUmpEvents(int32_t trackIndex,
     auto midiNode   = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
     if (!midiNode)  throw std::invalid_argument("Not a MIDI clip");
 
-    auto result = choc::value::createObject("");
-    result.setMember("tickResolution", static_cast<int32_t>(midiNode->tickResolution()));
-    result.setMember("bpm", midiNode->clipTempo());
+    MidiClipUmpEvents result {
+        .tick_resolution = midiNode->tickResolution(),
+        .bpm = midiNode->clipTempo(),
+    };
 
     const auto& words = midiNode->umpEvents();
     const auto& ticks = midiNode->eventTimestampsTicks();
-    auto eventsArr = choc::value::createEmptyArray();
     size_t i = 0;
-    int32_t evtIdx = 0;
+    int32_t event_index = 0;
     while (i < words.size()) {
         umppi::Ump u(words[i]);
         int sz = std::max(1, u.getSizeInInts());
-        auto evt = choc::value::createObject("");
-        evt.setMember("eventIndex", evtIdx);
-        evt.setMember("tick", choc::value::createInt64(
-            static_cast<int64_t>(i < ticks.size() ? ticks[i] : 0)));
-        auto wordsArr = choc::value::createEmptyArray();
+        MidiClipUmpEvent event {
+            .event_index = event_index,
+            .tick = i < ticks.size() ? ticks[i] : 0,
+        };
         for (int w = 0; w < sz && i + static_cast<size_t>(w) < words.size(); ++w)
-            wordsArr.addArrayElement(choc::value::createInt64(
-                static_cast<int64_t>(static_cast<uint64_t>(words[i + static_cast<size_t>(w)]))));
-        evt.setMember("words", wordsArr);
-        eventsArr.addArrayElement(evt);
+            event.words.push_back(words[i + static_cast<size_t>(w)]);
+        result.events.push_back(std::move(event));
         i += static_cast<size_t>(sz);
-        ++evtIdx;
+        ++event_index;
     }
-    result.setMember("events", eventsArr);
     return result;
 }
 
