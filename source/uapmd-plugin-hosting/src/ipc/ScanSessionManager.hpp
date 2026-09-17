@@ -3,16 +3,13 @@
 #include <filesystem>
 #include <vector>
 
-namespace remidy {
-    class PluginFormat;
-}
-
 namespace uapmd_plugin_hosting {
+    class AudioPluginFormat;
     class PluginScanTool;
     struct PluginScanObserver;
 
     struct SlowScanEntry {
-        remidy::PluginFormat* format{nullptr};
+        AudioPluginFormat* format{nullptr};
         std::vector<std::filesystem::path> bundles;
     };
 

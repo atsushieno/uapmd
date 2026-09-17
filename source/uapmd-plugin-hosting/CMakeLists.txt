@@ -55,6 +55,9 @@ target_sources(uapmd-plugin-hosting PRIVATE
         src/ipc/TcpSocket.cpp
         src/ipc/RemoteScanSessionManager.cpp
         src/ipc/RemoteScannerServer.cpp
+        src/plugin-api/AudioPluginCatalog.cpp
+        src/plugin-api/RemidyPluginFormat.cpp
+        src/plugin-api/RemidyAudioPluginInstance.cpp
         src/plugin-api/RemidyAudioPluginHost.cpp
 )
 

@@ -698,9 +698,9 @@ namespace uapmd::timeline_detail {
             return;
 
         auto* pluginHost = engine_.pluginHost();
-        std::vector<remidy::PluginCatalogEntry> catalogEntries;
+        std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> catalogEntries;
         bool catalogLoaded = false;
-        auto ensureCatalogLoaded = [&]() -> std::vector<remidy::PluginCatalogEntry>& {
+        auto ensureCatalogLoaded = [&]() -> std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& {
             if (!catalogLoaded && pluginHost) {
                 catalogEntries = pluginHost->pluginCatalogEntries();
                 catalogLoaded = true;
@@ -714,7 +714,7 @@ namespace uapmd::timeline_detail {
                 return false;
             auto& entries = ensureCatalogLoaded();
             return std::any_of(entries.begin(), entries.end(),
-                [&](remidy::PluginCatalogEntry& entry) {
+                [&](uapmd_plugin_hosting::AudioPluginCatalogEntry& entry) {
                     return entry.format() == format && entry.pluginId() == pluginId;
                 });
         };

@@ -61,7 +61,7 @@ namespace uapmd_plugin_hosting {
         virtual void bypassed(bool value) = 0;
         virtual uapmd_status_t startProcessing() = 0;
         virtual uapmd_status_t stopProcessing() = 0;
-        virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
+        virtual uapmd_status_t processAudio(remidy::AudioProcessContext &process) = 0;
         virtual uint32_t latencyInSamples() const = 0;
         virtual double tailLengthInSeconds() const = 0;
         virtual bool requiresReplacingProcess() const = 0;

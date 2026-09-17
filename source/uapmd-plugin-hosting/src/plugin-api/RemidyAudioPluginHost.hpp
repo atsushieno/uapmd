@@ -10,7 +10,9 @@ namespace uapmd_plugin_hosting {
 
     class RemidyAudioPluginHost : public uapmd_plugin_hosting::AudioPluginHostingAPI {
         std::unique_ptr<uapmd_plugin_hosting::PluginScanTool> scanning;
-        std::map<int32_t,std::unique_ptr<uapmd_plugin_hosting::AudioPluginInstanceAPI>> instances{};
+        // The PluginInstancing owns the instance and tears it down in order, so the map
+        // holds on to it rather than to the AudioPluginInstanceAPI directly.
+        std::map<int32_t,std::shared_ptr<uapmd_plugin_hosting::PluginInstancing>> instances{};
         remidy::ParameterEventBase<void, int32_t> plugin_state_change_event_{};
 #if _WIN32
         bool comInitialized{false};
@@ -20,7 +22,7 @@ namespace uapmd_plugin_hosting {
         RemidyAudioPluginHost();
         ~RemidyAudioPluginHost() override;
 
-        std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override;
+        std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> pluginCatalogEntries() override;
         void savePluginCatalogToFile(std::filesystem::path path) override;
         void performPluginScanning(bool rescan) override;
         void reloadPluginCatalogFromCache() override;
@@ -33,6 +35,8 @@ namespace uapmd_plugin_hosting {
                                   std::string &pluginId,
                                   std::function<void(int32_t instanceId, std::string error)>&& callback) override;
         void deletePluginInstance(int32_t instanceId) override;
+        void addPluginFormat(uapmd_plugin_hosting::AudioPluginFormat* format) override;
+        std::vector<uapmd_plugin_hosting::AudioPluginFormat*> pluginFormats() override;
         std::vector<int32_t> instanceIds() override;
         remidy::EventListenerId addPluginStateChangeListener(std::function<void(int32_t)> listener) override;
         void removePluginStateChangeListener(remidy::EventListenerId listenerId) override;

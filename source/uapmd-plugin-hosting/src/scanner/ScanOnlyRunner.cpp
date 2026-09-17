@@ -137,15 +137,15 @@ ScanVerificationReport runFullVerification(uapmd_plugin_hosting::PluginScanTool&
                             memcpy(ctx.getFloatOutBuffer(i, ch), (void*) "02468ACE13579BDF", 16);
                     }
 
-                    auto code = instance->process(ctx);
-                    if (code == remidy::StatusCode::OK)
+                    auto code = instance->processAudio(ctx);
+                    if (code == 0)
                         successful = true;
                     else {
                         report.failures.push_back(ScanVerificationFailure{
                             format->name(),
                             info->pluginId(),
                             info->displayName(),
-                            std::format("process() failed with status {}", static_cast<int32_t>(code))
+                            std::format("processAudio() failed with status {}", code)
                         });
                     }
 

@@ -63,17 +63,17 @@ class PluginScanToolImpl final : public PluginScanTool {
 public:
     PluginScanToolImpl();
 
-    PluginCatalog& catalog() override { return catalog_; }
-    const PluginCatalog& catalog() const override { return catalog_; }
+    AudioPluginCatalog& catalog() override { return catalog_; }
+    const AudioPluginCatalog& catalog() const override { return catalog_; }
 
-    std::vector<PluginCatalogEntry*> filterByFormat(std::vector<PluginCatalogEntry*> entries,
+    std::vector<AudioPluginCatalogEntry*> filterByFormat(std::vector<AudioPluginCatalogEntry*> entries,
                                                     std::string format) override {
-        erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
+        erase_if(entries, [format](AudioPluginCatalogEntry* entry) { return entry->format() != format; });
         return entries;
     }
 
-    std::vector<PluginFormat*> formats() override { return formatManager_.formats(); }
-    void addFormat(PluginFormat* item) override { formatManager_.addFormat(item); }
+    std::vector<AudioPluginFormat*> formats() override { return formatManager_.formats(); }
+    void addFormat(AudioPluginFormat* item) override { formatManager_.addFormat(item); }
 
     std::filesystem::path& pluginListCacheFile() override { return plugin_list_cache_file; }
     void performPluginScanning(bool requireFastScanning,
@@ -91,7 +91,7 @@ public:
     void savePluginListCache(std::filesystem::path& fileToSave) override {
         if (fileToSave.empty())
             return;
-        PluginCatalog cacheCatalog;
+        AudioPluginCatalog cacheCatalog;
         for (auto* entry : catalog_.getPlugins()) {
             if (shouldStoreInPluginListCache(*entry))
                 cacheCatalog.add(*entry);
@@ -106,12 +106,12 @@ public:
     void clearBlocklist() override;
     void addToBlocklist(const std::string& formatName, const std::string& pluginId, const std::string& reason) override;
     std::string lastScanError() const override;
-    bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry) override;
-    bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry) override;
+    bool safeToInstantiate(AudioPluginFormat* format, AudioPluginCatalogEntry* entry) override;
+    bool shouldCreateInstanceOnUIThread(AudioPluginFormat* format, AudioPluginCatalogEntry* entry) override;
     bool isBundleBlocklisted(const std::string& formatName, const std::filesystem::path& bundlePath) const override;
 
 protected:
-    void mergeScanResults(std::vector<PluginCatalogEntry> results) override;
+    void mergeScanResults(std::vector<AudioPluginCatalogEntry> results) override;
     std::string makeBlocklistId(const std::string& formatName, const std::string& pluginId) const;
     bool isBlocklisted(const std::string& formatName, const std::string& pluginId) const;
     ScanSessionManager& ensureRemoteSessionManager();
@@ -119,7 +119,7 @@ protected:
     void loadBlocklistFromDisk();
     void saveBlocklistToDisk() const;
     bool canPersistBlocklist() const;
-    bool shouldStoreInPluginListCache(const PluginCatalogEntry& entry) const;
+    bool shouldStoreInPluginListCache(const AudioPluginCatalogEntry& entry) const;
     void setLastScanError(std::string message);
     void notifyBundleScanStarted(const std::filesystem::path& bundlePath,
                                  PluginScanObserver* observer) const override;
@@ -131,14 +131,14 @@ protected:
     bool isScanCancellationRequested(PluginScanObserver* observer) const override;
 
 private:
-    SlowScanCatalog prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
+    SlowScanCatalog prepareSlowScanCatalog(const std::vector<AudioPluginFormat*>& formats,
                                            bool requireFastScanning,
                                            std::filesystem::path& pluginListCacheFile,
                                            bool forceRescan,
                                            double bundleTimeoutSeconds,
                                            std::string& slowScanReportText);
     void executeSlowScanCatalog(const SlowScanCatalog& catalog,
-                                const std::vector<PluginFormat*>& formats,
+                                const std::vector<AudioPluginFormat*>& formats,
                                 bool requireFastScanning,
                                 std::filesystem::path& pluginListCacheFile,
                                 ScanMode mode,
@@ -148,7 +148,7 @@ private:
 
     std::filesystem::path plugin_list_cache_file{};
     PluginFormatManager formatManager_{};
-    PluginCatalog catalog_{};
+    AudioPluginCatalog catalog_{};
     mutable std::mutex stateMutex_{};
     std::vector<BlocklistEntry> blocklistEntries_{};
     std::filesystem::path blocklist_file_{};
@@ -268,7 +268,7 @@ void PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
                            observer);
 }
 
-uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
+uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<AudioPluginFormat*>& formats,
                                                                                        bool requireFastScanning,
                                                                                        std::filesystem::path& pluginListCacheFile,
                                                                                        bool forceRescan,
@@ -280,9 +280,9 @@ uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog
     if (forceRescan)
         catalog_.clear();
     else if (!pluginListCacheFile.empty() && std::filesystem::exists(pluginListCacheFile)) {
-        PluginCatalog cachedCatalog;
+        AudioPluginCatalog cachedCatalog;
         cachedCatalog.load(pluginListCacheFile);
-        std::vector<PluginCatalogEntry> cachedSlowEntries;
+        std::vector<AudioPluginCatalogEntry> cachedSlowEntries;
         for (auto* entry : cachedCatalog.getPlugins()) {
             if (shouldStoreInPluginListCache(*entry))
                 cachedSlowEntries.emplace_back(*entry);
@@ -301,7 +301,7 @@ uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog
         auto scanning = format->scanning();
         if (!scanning)
             continue;
-        auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
+        auto fileScanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(scanning);
 
         auto fastResults = scanning->getAllFastScannablePlugins();
         if (!fastResults.empty()) {
@@ -317,7 +317,7 @@ uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog
             continue;
 
         if (!fileScanning) {
-            notifyScanError(std::format("Format {} reports slow scanning but does not implement FileOrUrlBasedPluginScanning.", format->name()), nullptr);
+            notifyScanError(std::format("Format {} reports slow scanning but does not implement AudioPluginFileOrUrlScanning.", format->name()), nullptr);
             continue;
         }
 
@@ -363,7 +363,7 @@ uapmd_plugin_hosting::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog
 }
 
 void PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPlan,
-                                                const std::vector<PluginFormat*>& /*formats*/,
+                                                const std::vector<AudioPluginFormat*>& /*formats*/,
                                                 bool requireFastScanning,
                                                 std::filesystem::path& pluginListCacheFile,
                                                 ScanMode mode,
@@ -401,7 +401,7 @@ void PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPl
     notifySlowScanCompleted(observer);
 }
 
-void PluginScanToolImpl::mergeScanResults(std::vector<PluginCatalogEntry> results) {
+void PluginScanToolImpl::mergeScanResults(std::vector<AudioPluginCatalogEntry> results) {
     for (auto& entry : results) {
         if (!catalog_.contains(entry.format(), entry.pluginId()))
             catalog_.add(std::move(entry));
@@ -409,7 +409,7 @@ void PluginScanToolImpl::mergeScanResults(std::vector<PluginCatalogEntry> result
 }
 
 
-bool PluginScanToolImpl::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
+bool PluginScanToolImpl::safeToInstantiate(AudioPluginFormat* format, AudioPluginCatalogEntry *entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool skip = false;
@@ -452,7 +452,7 @@ bool PluginScanToolImpl::safeToInstantiate(PluginFormat* format, PluginCatalogEn
     return !skip;
 }
 
-bool PluginScanToolImpl::shouldCreateInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
+bool PluginScanToolImpl::shouldCreateInstanceOnUIThread(AudioPluginFormat *format, AudioPluginCatalogEntry* entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =
@@ -496,7 +496,7 @@ bool PluginScanToolImpl::shouldCreateInstanceOnUIThread(PluginFormat *format, Pl
         // (It may not be everything from Tracktion, but there are too many #T* plugins.)
         || format->name() == "AU" && vendor == "Tracktion"
     ;
-    return forceMainThread || format->requiresUIThreadOn(entry) != PluginUIThreadRequirement::None;
+    return forceMainThread || format->requiresUIThreadOn(entry) != UIThreadNotRequired;
 }
 
 std::vector<uapmd_plugin_hosting::BlocklistEntry> PluginScanToolImpl::blocklistEntries() const {
@@ -684,9 +684,9 @@ bool PluginScanToolImpl::canPersistBlocklist() const {
     return !blocklist_file_.empty();
 }
 
-bool PluginScanToolImpl::shouldStoreInPluginListCache(const PluginCatalogEntry& entry) const {
+bool PluginScanToolImpl::shouldStoreInPluginListCache(const AudioPluginCatalogEntry& entry) const {
     auto formats = formatManager_.formats();
-    auto it = std::find_if(formats.begin(), formats.end(), [&](PluginFormat* format) {
+    auto it = std::find_if(formats.begin(), formats.end(), [&](AudioPluginFormat* format) {
         return format && format->name() == entry.format();
     });
     if (it == formats.end())
@@ -696,7 +696,7 @@ bool PluginScanToolImpl::shouldStoreInPluginListCache(const PluginCatalogEntry& 
     if (!scanning || !scanning->scanningMayBeSlow())
         return false;
 
-    auto* fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
+    auto* fileScanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(scanning);
     if (!fileScanning)
         return true;
 

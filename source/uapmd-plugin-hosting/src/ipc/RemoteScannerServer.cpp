@@ -96,7 +96,7 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
     SlowScanCatalog slowCatalog;
     slowCatalog.reserve(planValue.isArray() ? planValue.size() : 0);
 
-    std::unordered_map<std::string, remidy::PluginFormat*> formatLookup;
+    std::unordered_map<std::string, AudioPluginFormat*> formatLookup;
     for (auto* format : scanner->formats()) {
         if (format)
             formatLookup.emplace(format->name(), format);
@@ -214,7 +214,7 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
         if (!entry.format)
             continue;
         auto scanning = entry.format->scanning();
-        auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
+        auto fileScanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(scanning);
         if (!fileScanning)
             continue;
         auto formatName = entry.format->name();
@@ -230,9 +230,9 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
             std::condition_variable bundleCondition;
             bool bundleCompleted = false;
             std::string bundleError;
-            std::vector<PluginCatalogEntry> bundleResults;
+            std::vector<AudioPluginCatalogEntry> bundleResults;
             fileScanning->scanBundle(bundlePath, requireFast, timeoutSeconds,
-                                     [&](PluginCatalogEntry plugin) {
+                                     [&](AudioPluginCatalogEntry plugin) {
                                          std::lock_guard<std::mutex> lock(bundleMutex);
                                          bundleResults.emplace_back(std::move(plugin));
                                      },

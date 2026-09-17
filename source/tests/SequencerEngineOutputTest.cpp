@@ -426,7 +426,9 @@ public:
           defer_state_load_(deferStateLoad) {
     }
 
-    std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override { return {}; }
+    std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> pluginCatalogEntries() override { return {}; }
+    void addPluginFormat(uapmd_plugin_hosting::AudioPluginFormat*) override {}
+    std::vector<uapmd_plugin_hosting::AudioPluginFormat*> pluginFormats() override { return {}; }
     void savePluginCatalogToFile(std::filesystem::path) override {}
     void performPluginScanning(bool) override {}
     void reloadPluginCatalogFromCache() override {}

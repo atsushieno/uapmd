@@ -22,7 +22,7 @@ void InProcessScanSessionManager::runScan(PluginScanTool& tool,
         auto scanning = format->scanning();
         if (!scanning)
             continue;
-        auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
+        auto fileScanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(scanning);
         if (!fileScanning)
             continue;
         auto formatName = format->name();
@@ -39,9 +39,9 @@ void InProcessScanSessionManager::runScan(PluginScanTool& tool,
             std::condition_variable condition;
             bool completed = false;
             std::string error;
-            std::vector<PluginCatalogEntry> results;
+            std::vector<AudioPluginCatalogEntry> results;
             fileScanning->scanBundle(bundlePath, requireFastScanning, bundleTimeoutSeconds,
-                                     [&](PluginCatalogEntry result) {
+                                     [&](AudioPluginCatalogEntry result) {
                                          std::lock_guard<std::mutex> lock(mutex);
                                          results.emplace_back(std::move(result));
                                      },

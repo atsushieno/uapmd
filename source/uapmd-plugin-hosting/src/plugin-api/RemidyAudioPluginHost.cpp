@@ -1,5 +1,5 @@
-
 #include "RemidyAudioPluginHost.hpp"
+#include "RemidyAudioPluginInstance.hpp"
 #include <functional>
 #include <ranges>
 #if ANDROID
@@ -12,501 +12,9 @@
 #include "../../../remidy/src/webclap/PluginFormatWebCLAP.hpp"
 #endif
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
-#ifdef UAPMD_HAS_ARA
-#include <uapmd-ara/ara-plugin-instance-handles.hpp>
-#endif
 
 namespace uapmd_plugin_hosting {
     int32_t instanceIdSerial{0};
-
-    namespace {
-        void notifyTimingInfoChangeIfNeeded(
-            remidy::PluginInstance& instance,
-            uint32_t previousLatency,
-            double previousTail) {
-            const auto currentLatency = instance.latencyInSamples();
-            const auto currentTail = instance.tailLengthInSeconds();
-            if (currentLatency == previousLatency && currentTail == previousTail)
-                return;
-            instance.timingInfoChangeEvent().notify({
-                .latency_changed = currentLatency != previousLatency,
-                .tail_changed = currentTail != previousTail,
-            });
-        }
-    }
-
-    static remidy::PluginStateSupport::StateContextType toRemidyStateContextType(StateContextType type) {
-        switch (type) {
-            case StateContextType::Remember:
-                return remidy::PluginStateSupport::StateContextType::Remember;
-            case StateContextType::Copyable:
-                return remidy::PluginStateSupport::StateContextType::Copyable;
-            case StateContextType::Preset:
-                return remidy::PluginStateSupport::StateContextType::Preset;
-            case StateContextType::Project:
-                return remidy::PluginStateSupport::StateContextType::Project;
-        }
-    }
-
-    class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
-#ifdef UAPMD_HAS_ARA
-        class AraHandleExtensionAdapter final
-            : public AudioPluginInstanceExtension
-            , public uapmd::ara::AraPluginInstanceHandleExtension {
-            RemidyAudioPluginInstance& owner;
-
-        public:
-            explicit AraHandleExtensionAdapter(RemidyAudioPluginInstance& owner)
-                : owner(owner) {
-            }
-
-            std::string_view extensionId() const override {
-                return uapmd::ara::kAraPluginInstanceHandleExtensionId;
-            }
-
-            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
-                if (!owner.instance)
-                    return nullptr;
-                auto* extension = dynamic_cast<uapmd::ara::AraPluginInstanceHandleExtension*>(
-                    owner.instance->getExtensibility(uapmd::ara::kAraPluginInstanceHandleExtensionId));
-                if (!extension)
-                    return nullptr;
-                return extension->nativeHandle(kind);
-            }
-        };
-#endif
-
-        class AapUiHostDetailsExtensionAdapter final : public AapUiHostDetailsExtension {
-            RemidyAudioPluginInstance& owner;
-
-        public:
-            explicit AapUiHostDetailsExtensionAdapter(RemidyAudioPluginInstance& owner)
-                : owner(owner) {
-            }
-
-            remidy::PluginInstanceAAPExt* aapExtensibility() const override {
-                if (!owner.instance)
-                    return nullptr;
-                return dynamic_cast<remidy::PluginInstanceAAPExt*>(
-                    owner.instance->getExtensibility(remidy::kAAPPluginInstanceExtensionId));
-            }
-        };
-
-        bool bypassed_{true};
-        remidy::EventListenerId plugin_state_change_listener_id_{0};
-        std::function<void()> on_plugin_state_changed_{};
-        std::shared_ptr<uapmd_plugin_hosting::PluginInstancing> instancing{};
-        remidy::PluginInstance* instance{};
-#ifdef UAPMD_HAS_ARA
-        AraHandleExtensionAdapter ara_handle_extension{*this};
-#endif
-
-        AapUiHostDetailsExtensionAdapter aap_ui_host_details_extension{*this};
-        remidy::PluginUISupport* ui_support{nullptr};
-        bool uiCreated{false};
-        bool uiVisible{false};
-        bool uiFloating{true};
-
-        remidy::PluginUISupport* ensureUISupport() {
-            if (!instance)
-                return nullptr;
-            if (!ui_support)
-                ui_support = instance->ui();
-            return ui_support;
-        }
-
-    public:
-        explicit RemidyAudioPluginInstance(const std::shared_ptr<uapmd_plugin_hosting::PluginInstancing>& instancing, remidy::PluginInstance* instance, std::function<void()> onPluginStateChanged)
-          : instancing(instancing), instance(instance), on_plugin_state_changed_(std::move(onPluginStateChanged)) {
-            bypassed_ = false;
-            if (instance)
-                plugin_state_change_listener_id_ = instance->pluginStateChangeEvent().addListener([this] {
-                    if (on_plugin_state_changed_)
-                        on_plugin_state_changed_();
-                });
-        }
-        ~RemidyAudioPluginInstance() override {
-            if (instance && plugin_state_change_listener_id_ != 0)
-                instance->pluginStateChangeEvent().removeListener(plugin_state_change_listener_id_);
-            bypassed_ = true;
-            if (ui_support) {
-                if (uiVisible)
-                    ui_support->hide();
-                if (uiCreated)
-                    ui_support->destroy();
-                uiVisible = false;
-                uiCreated = false;
-                uiFloating = true;
-            }
-        }
-
-        bool bypassed() const override { return bypassed_; }
-        void bypassed(bool value) override {
-            bypassed_ = value;
-            // For WebCLAP the actual DSP runs in the AudioWorklet thread and is
-            // gated by info.active, which is not touched by the C++ bypassed_ flag.
-            // Relay the state change so the worklet stops/resumes generating audio.
-            if (instance && instance->info() && instance->info()->format() == "WebCLAP") {
-                if (value)
-                    instance->stopProcessing();
-                else
-                    instance->startProcessing();
-            }
-        }
-
-        uapmd_status_t startProcessing() override {
-            if (!instance)
-                return -1;
-            return static_cast<uapmd_status_t>(instance->startProcessing());
-        }
-
-        uapmd_status_t stopProcessing() override {
-            if (!instance)
-                return -1;
-            return static_cast<uapmd_status_t>(instance->stopProcessing());
-        }
-
-        uapmd_status_t processAudio(AudioProcessContext &process) override {
-            if (bypassed_)
-                return 0;
-
-            const bool replacing = instance && instance->requiresReplacingProcess();
-            if (replacing) {
-                process.copyInputsToOutputs();
-                process.enableReplacingIO();
-            }
-
-            // FIXME: define error codes
-            uapmd_status_t status = 0;
-            if (const auto p = instance)
-                status = static_cast<uapmd_status_t>(p->process(process));
-
-            if (replacing)
-                process.disableReplacingIO();
-            return status;
-        }
-
-#ifdef __EMSCRIPTEN__
-        bool trySendWebClapInputEvents(const uapmd_ump_t* events, size_t sizeInBytes) {
-            if (auto* webclap = dynamic_cast<remidy::PluginInstanceWebCLAP*>(instance))
-                return webclap->sendUmpInputEvents(events, sizeInBytes);
-            return false;
-        }
-#endif
-
-        uint32_t latencyInSamples() const override {
-            return instance ? instance->latencyInSamples() : 0;
-        }
-
-        double tailLengthInSeconds() const override {
-            return instance ? instance->tailLengthInSeconds() : 0.0;
-        }
-
-        std::vector<ParameterMetadata> parameterMetadataList() override {
-            std::vector<ParameterMetadata> ret{};
-            auto pl = instance->parameters();
-            for (auto p : pl->parameters()) {
-                std::vector<ParameterNamedValue> enums{};
-                for (auto e : p->enums())
-                    enums.emplace_back(ParameterNamedValue{
-                        .value = e.value,
-                        .name = e.label
-                    });
-                ret.emplace_back(ParameterMetadata{
-                        .index = p->index(),
-                        .stableId = p->stableId(),
-                        .name = p->name(),
-                        .path = p->path(),
-                        .defaultPlainValue = p->defaultPlainValue(),
-                        .minPlainValue = p->minPlainValue(),
-                        .maxPlainValue = p->maxPlainValue(),
-                        .automatable = p->automatable(),
-                        .hidden = p->hidden(),
-                        .discrete = p->discrete(),
-                        .namedValues = std::vector(enums)
-                });
-            }
-            return ret;
-        }
-        std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) override {
-            if (contextType != remidy::PER_NOTE_CONTROLLER_PER_NOTE)
-                return {};
-            std::vector<ParameterMetadata> ret{};
-            auto pl = instance->parameters();
-            for (auto p : pl->perNoteControllers(contextType, { .note = context })) {
-                std::vector<ParameterNamedValue> enums{};
-                for (auto e : p->enums())
-                    enums.emplace_back(ParameterNamedValue{
-                        .value = e.value,
-                        .name = e.label
-                    });
-                ret.emplace_back(ParameterMetadata{
-                        .index = p->index(),
-                        .stableId = p->stableId(),
-                        .name = p->name(),
-                        .path = p->path(),
-                        .defaultPlainValue = p->defaultPlainValue(),
-                        .minPlainValue = p->minPlainValue(),
-                        .maxPlainValue = p->maxPlainValue(),
-                        .automatable = p->automatable(),
-                        .hidden = p->hidden(),
-                        .discrete = p->discrete(),
-                        .namedValues = std::vector(enums)
-                });
-            }
-            return ret;
-        }
-        std::vector<PresetsMetadata> presetMetadataList() override {
-            std::vector<PresetsMetadata> ret{};
-            auto pl = instance->presets();
-            for (int32_t p = 0, n = pl->getPresetCount(); p < n; p++) {
-                auto info = pl->getPresetInfo(p);
-                ret.emplace_back(PresetsMetadata {
-                    .bank = static_cast<uint8_t>(info.bank()),
-                    .index = static_cast<uint32_t>(info.index()),
-                    .stableId = info.id(),
-                    .name = info.name(),
-                    .path = "" // FIXME: implement
-                });
-            }
-            return ret;
-        }
-
-        std::string& displayName() const override { return instance->info()->displayName(); }
-        std::string& formatName() const override { return instance->info()->format(); }
-        std::string& pluginId() const override { return instance->info()->pluginId(); }
-
-        void loadPreset(int32_t presetIndex) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->presets()->loadPreset(presetIndex);
-            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-        }
-
-        void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->presets()->loadPreset(presetIndex, [this, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
-                if (error.empty())
-                    notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-                if (error.empty())
-                if (completed)
-                    completed(std::move(error), callbackContext);
-            });
-        }
-
-        std::vector<uint8_t> saveStateSync() override {
-            return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
-        }
-
-        void loadStateSync(std::vector<uint8_t> &state) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->states()->setState(state, remidy::PluginStateSupport::StateContextType::Project, false);
-            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-        }
-
-        void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
-                          std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override {
-            instance->states()->requestState(toRemidyStateContextType(stateContextType), includeUiState, callbackContext, std::move(receiver));
-        }
-
-        void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
-                       std::function<void(std::string error, void* callbackContext)> completed) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->states()->loadState(
-                std::move(state),
-                toRemidyStateContextType(stateContextType),
-                includeUiState,
-                callbackContext,
-                [this, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
-                    if (error.empty())
-                        notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-                    if (completed)
-                        completed(std::move(error), callbackContext);
-                });
-        }
-
-        double getParameterValue(int32_t index) override {
-            double value = 0.0;
-            instance->parameters()->getParameter(index, &value);
-            return value;
-        }
-
-        void setParameterValue(int32_t index, double value) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->parameters()->setParameter(index, value);
-            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-        }
-
-        void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) override {
-            instance->parameters()->enqueueParameterRT(index, value, timestamp);
-        }
-
-        std::string getParameterValueString(int32_t index, double value) override {
-            return instance->parameters()->valueToString(index, value);
-        }
-
-        void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
-            const auto previousLatency = instance->latencyInSamples();
-            const auto previousTail = instance->tailLengthInSeconds();
-            instance->parameters()->setPerNoteController({.note = note }, index, value);
-            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-        }
-
-        bool getPerNoteControllerValue(uint8_t note, uint8_t index, double* value) override {
-            if (!value)
-                return false;
-            return instance->parameters()->getPerNoteController(
-                       {.note = note},
-                       index,
-                       value)
-                == remidy::StatusCode::OK;
-        }
-
-        void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
-            instance->parameters()->enqueuePerNoteControllerRT({.note = note }, index, value, timestamp);
-        }
-
-        std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) override {
-            return instance->parameters()->valueToStringPerNote({ .note = note }, index, value);
-        }
-
-        remidy::PluginInstance* rawInstance() const { return instance; }
-
-        bool hasUISupport() override {
-            auto ui = ensureUISupport();
-            if (!ui)
-                return false;
-            return ui->hasUI();
-        }
-
-        bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override {
-            auto ui = ensureUISupport();
-            if (!ui)
-                return false;
-
-            // UI must not be created twice - call destroyUI() first
-            if (uiCreated)
-                return false;
-
-            // Pass parent and resize handler to create() - they're immutable
-            if (!ui->create(isFloating, parentHandle, resizeHandler))
-                return false;
-
-            uiCreated = true;
-            uiFloating = isFloating;
-            return true;
-        }
-
-        void destroyUI() override {
-            if (!uiCreated)
-                return;
-
-            auto ui = ensureUISupport();
-            if (!ui)
-                return;
-
-            if (uiVisible)
-                ui->hide();
-            ui->destroy();
-            uiCreated = false;
-            uiVisible = false;
-        }
-
-        bool showUI() override {
-            auto ui = ensureUISupport();
-            if (!ui)
-                return false;
-            // UI must be created first via createUI() - don't create here
-            if (!uiCreated)
-                return false;
-            if (uiVisible)
-                return true;
-            if (!ui->show())
-                return false;
-            uiVisible = true;
-            return true;
-        }
-
-        void hideUI() override {
-            if (!ui_support || !uiVisible)
-                return;
-            ui_support->hide();
-            uiVisible = false;
-        }
-
-        bool isUIVisible() const override {
-            return uiVisible;
-        }
-
-        bool setUISize(uint32_t width, uint32_t height) override {
-            auto ui = ensureUISupport();
-            if (!ui || !uiCreated)
-                return false;
-            return ui->setSize(width, height);
-        }
-
-        bool getUISize(uint32_t &width, uint32_t &height) override {
-            auto ui = ensureUISupport();
-            if (!ui)
-                return false;
-            return ui->getSize(width, height);
-        }
-
-        bool canUIResize() override {
-            auto ui = ensureUISupport();
-            if (!ui || !uiCreated)
-                return false;
-            return ui->canResize();
-        }
-
-
-        remidy::PluginParameterSupport* parameterSupport() override {
-            if (!instance)
-                return nullptr;
-            return instance->parameters();
-        }
-
-        remidy::PluginAudioBuses* audioBuses() override {
-            if (!instance)
-                return nullptr;
-            return instance->audioBuses();
-        }
-
-        remidy::EventListenerId addTimingInfoChangeListener(
-            std::function<void(remidy::PluginTimingInfoChange)> listener) override {
-            if (!instance)
-                return 0;
-            return instance->timingInfoChangeEvent().addListener(std::move(listener));
-        }
-
-        void removeTimingInfoChangeListener(remidy::EventListenerId listenerId) override {
-            if (instance)
-                instance->timingInfoChangeEvent().removeListener(listenerId);
-        }
-
-        bool requiresReplacingProcess() const override {
-            return instance && instance->requiresReplacingProcess();
-        }
-
-        AudioPluginInstanceExtension* extension(std::string_view extensionId) override {
-            if (!instance)
-                return nullptr;
-#ifdef UAPMD_HAS_ARA
-            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
-                return &ara_handle_extension;
-#endif
-            if (extensionId == kAapUiHostDetailsExtensionId)
-                return &aap_ui_host_details_extension;
-            auto* remidyExtension = instance->getExtensibility(extensionId);
-            if (!remidyExtension)
-                return nullptr;
-            return dynamic_cast<AudioPluginInstanceExtension*>(remidyExtension);
-        }
-    };
 
 #ifdef __EMSCRIPTEN__
     bool trySendWebClapInputEvents(AudioPluginInstanceAPI* instance, const uapmd_ump_t* events, size_t sizeInBytes) {
@@ -546,8 +54,8 @@ uapmd_plugin_hosting::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
 #endif
 }
 
-std::vector<remidy::PluginCatalogEntry> uapmd_plugin_hosting::RemidyAudioPluginHost::pluginCatalogEntries() {
-    std::vector<remidy::PluginCatalogEntry> ret{};
+std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> uapmd_plugin_hosting::RemidyAudioPluginHost::pluginCatalogEntries() {
+    std::vector<AudioPluginCatalogEntry> ret{};
     for (const auto e : scanning->catalog().getPlugins())
         ret.emplace_back(*e);
     return ret;
@@ -555,6 +63,14 @@ std::vector<remidy::PluginCatalogEntry> uapmd_plugin_hosting::RemidyAudioPluginH
 
 void uapmd_plugin_hosting::RemidyAudioPluginHost::savePluginCatalogToFile(std::filesystem::path path) {
     scanning->catalog().save(path);
+}
+
+void uapmd_plugin_hosting::RemidyAudioPluginHost::addPluginFormat(AudioPluginFormat* format) {
+    scanning->addFormat(format);
+}
+
+std::vector<uapmd_plugin_hosting::AudioPluginFormat*> uapmd_plugin_hosting::RemidyAudioPluginHost::pluginFormats() {
+    return scanning->formats();
 }
 
 std::filesystem::path empty_path{""};
@@ -583,7 +99,13 @@ void uapmd_plugin_hosting::RemidyAudioPluginHost::createPluginInstance(uint32_t 
                                                         std::string &formatName,
                                                         std::string &pluginId,
                                                         std::function<void(int32_t instanceId, std::string error)>&& callback) {
-    auto format = *(scanning->formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
+    auto formats = scanning->formats();
+    auto formatIt = std::ranges::find_if(formats, [&formatName](auto f) { return f->name() == formatName; });
+    if (formatIt == formats.end()) {
+        callback(-1, "Plugin format not found: " + formatName);
+        return;
+    }
+    auto format = *formatIt;
     auto plugins = scanning->catalog().getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
         return e->format() == formatName && e->pluginId() == pluginId;
@@ -601,12 +123,17 @@ void uapmd_plugin_hosting::RemidyAudioPluginHost::createPluginInstance(uint32_t 
         auto cb = std::move(callback);
         instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
-                instancing->withInstance([this,instancing,cb](remidy::PluginInstance* instance) {
+                instancing->withInstance([this,instancing,cb](AudioPluginInstanceAPI* instance) {
                     auto instanceId = instanceIdSerial++;
-                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance, [this, instanceId] {
-                        plugin_state_change_event_.notify(instanceId);
-                    });
-                    instances[instanceId] = std::move(api);
+                    // Only formats whose plugins can change their own state register this.
+                    if (auto* stateChange = dynamic_cast<PluginStateChangeExtension*>(
+                            instance->extension(kPluginStateChangeExtensionId)))
+                        stateChange->onPluginStateChanged([this, instanceId] {
+                            plugin_state_change_event_.notify(instanceId);
+                        });
+                    // The instance stays owned by the PluginInstancing that drives its
+                    // lifecycle, which is kept alive by this entry in the instance map.
+                    instances[instanceId] = instancing;
                     cb(instanceId, "");
                 });
             else {
@@ -627,8 +154,8 @@ std::vector<int32_t> uapmd_plugin_hosting::RemidyAudioPluginHost::instanceIds() 
 }
 
 uapmd_plugin_hosting::AudioPluginInstanceAPI * uapmd_plugin_hosting::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
-    const auto &i = instances[instanceId];
-    return i ? i.get() : nullptr;
+    auto it = instances.find(instanceId);
+    return it == instances.end() || !it->second ? nullptr : it->second->instance();
 }
 
 remidy::EventListenerId uapmd_plugin_hosting::RemidyAudioPluginHost::addPluginStateChangeListener(std::function<void(int32_t)> listener) {
@@ -644,7 +171,7 @@ void uapmd_plugin_hosting::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t 
     auto it = instances.find(instanceId);
     if (it == instances.end() || !it->second)
         return;
-    auto* remidy_instance = dynamic_cast<RemidyAudioPluginInstance*>(it->second.get());
+    auto* remidy_instance = dynamic_cast<RemidyAudioPluginInstance*>(it->second->instance());
     if (!remidy_instance)
         return;
     auto* webclap_instance = dynamic_cast<remidy::PluginInstanceWebCLAP*>(remidy_instance->rawInstance());

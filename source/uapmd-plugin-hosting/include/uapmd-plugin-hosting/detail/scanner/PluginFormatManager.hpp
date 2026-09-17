@@ -1,45 +1,29 @@
 #pragma once
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-
 #include <memory>
-#include <string>
 #include <vector>
 
-#include "remidy/remidy.hpp"
+#include "../plugin-api/AudioPluginFormat.hpp"
 
 namespace uapmd_plugin_hosting {
 
+// Holds the plugin formats this host knows about.
+//
+// The formats that are available on the current platform are created and owned here; an
+// application adds one of its own with addFormat(), which does not take ownership.
 class PluginFormatManager {
-    std::vector<std::string> vst3SearchPaths_{};
-    std::vector<std::string> lv2SearchPaths_{};
-    std::vector<std::string> clapSearchPaths_{};
-
-#if ANDROID
-    std::unique_ptr<remidy::PluginFormatAAP> aap_;
-#elif defined(__EMSCRIPTEN__)
-    std::unique_ptr<remidy::PluginFormatWebCLAP> webclap_;
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
-    std::unique_ptr<remidy::PluginFormatAU> au_;
-#else
-    std::unique_ptr<remidy::PluginFormatVST3> vst3_;
-    std::unique_ptr<remidy::PluginFormatLV2> lv2_;
-    std::unique_ptr<remidy::PluginFormatCLAP> clap_;
-#if __APPLE__
-    std::unique_ptr<remidy::PluginFormatAU> au_;
-#endif
-#endif
-
-    std::vector<remidy::PluginFormat*> formats_{};
+    class Impl;
+    std::unique_ptr<Impl> impl_;
 
 public:
     PluginFormatManager();
+    ~PluginFormatManager();
 
-    std::vector<remidy::PluginFormat*> formats() const;
-    const std::vector<remidy::PluginFormat*>& formatView() const { return formats_; }
-    void addFormat(remidy::PluginFormat* format);
+    std::vector<AudioPluginFormat*> formats() const;
+    const std::vector<AudioPluginFormat*>& formatView() const;
+    // Adds an application-provided format. The caller keeps ownership and must keep the
+    // format alive for as long as this manager is used.
+    void addFormat(AudioPluginFormat* format);
 };
 
 } // namespace uapmd_plugin_hosting

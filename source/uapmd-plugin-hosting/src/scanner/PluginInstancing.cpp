@@ -3,48 +3,46 @@
 #include <iostream>
 #include <format>
 
-void uapmd_plugin_hosting::PluginInstancing::setupInstance(remidy::PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
+void uapmd_plugin_hosting::PluginInstancing::setupInstance(AudioPluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
     Logger::global()->logInfo("  instantiating %s %s", format->name().c_str(), displayName.c_str());
     instancing_state = PluginInstancingState::Preparing;
 
-    auto cb = [this,callback](std::unique_ptr<PluginInstance> newInstance, std::string error) {
+    auto options = config;
+    options.uiThreadRequirement = uiThreadRequirement;
+
+    auto cb = [this,callback](std::unique_ptr<AudioPluginInstanceAPI> newInstance, std::string error) {
         if (!error.empty()) {
             instancing_state = PluginInstancingState::Error;
-            callback(error);
+            callback(std::format("  {}: {} : {}", format->name(), displayName, error));
             return;
         }
         setCurrentThreadNameIfPossible(std::format("uapmd-scan.{}:{}", format->name(), entry->displayName()));
-        instance = std::move(newInstance);
-        if (!instance)
-            error = std::format("  {}: Could not instantiate plugin {}. Details: {}", format->name(), displayName, error);
+        instance_ = std::move(newInstance);
+        if (!instance_)
+            error = std::format("  {}: Could not instantiate plugin {}.", format->name(), displayName);
         else {
-            auto code = instance->configure(config);
-            if (code != StatusCode::OK)
-                error = std::format("  {}: {} : configure() failed. Error code {}", format->name(), displayName, (int32_t) code);
+            auto code = instance_->startProcessing();
+            if (code != 0)
+                error = std::format("  {}: {} : startProcessing() failed. Error code {}", format->name(), displayName, code);
             else {
-                auto code = instance->startProcessing();
-                if (code != StatusCode::OK)
-                    error = std::format("  {}: {} : startProcessing() failed. Error code {}", format->name(), displayName, (int32_t) code);
-                else {
-                    instancing_state = PluginInstancingState::Ready;
-                    callback("");
-                    return;
-                }
+                instancing_state = PluginInstancingState::Ready;
+                callback("");
+                return;
             }
         }
         callback(error);
         instancing_state = PluginInstancingState::Error;
     };
-    format->createInstance(entry, remidy::PluginFormat::PluginInstantiationOptions{uiThreadRequirement}, cb);
+    format->createInstance(entry, options, cb);
 }
 
-remidy::PluginFormat* findFormat(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format) {
+uapmd_plugin_hosting::AudioPluginFormat* findFormat(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format) {
     for (auto f : scanner.formats())
         if (f->name() == format)
             return f;
     return nullptr;
 }
-remidy::PluginCatalogEntry* findPlugin(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId) {
+uapmd_plugin_hosting::AudioPluginCatalogEntry* findPlugin(uapmd_plugin_hosting::PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId) {
     for (auto e : scanner.catalog().getPlugins())
         if (e->format() == format && e->pluginId() == pluginId)
             return e;
@@ -57,7 +55,7 @@ uapmd_plugin_hosting::PluginInstancing::PluginInstancing(uapmd_plugin_hosting::P
         displayName = entry->displayName();
 }
 
-uapmd_plugin_hosting::PluginInstancing::PluginInstancing(PluginScanTool& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
+uapmd_plugin_hosting::PluginInstancing::PluginInstancing(PluginScanTool& scanner, AudioPluginFormat* format, AudioPluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();
 }
@@ -70,34 +68,27 @@ uapmd_plugin_hosting::PluginInstancing::~PluginInstancing() {
                                     format->name().c_str(), displayName.c_str());
         instancing_state = PluginInstancingState::Error;
     }
-    if (!instance)
+    if (!instance_)
         return;
+    // Tear the editor down before processing stops: a plugin editor may still talk to its
+    // processor, and this is the order the plugin formats expect.
+    instance_->destroyUI();
     if (instancing_state == PluginInstancingState::Ready) {
         instancing_state = PluginInstancingState::Terminating;
-        auto code = instance->stopProcessing();
-        if (code != StatusCode::OK)
-            std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
+        auto code = instance_->stopProcessing();
+        if (code != 0)
+            std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << code << std::endl;
     }
-    auto uiReq = format->requiresUIThreadOn(instance->info());
-    if (uiReq & PluginUIThreadRequirement::InstanceControl) {
-        if (EventLoop::runningOnMainThread()) {
-            instance.reset();
-        } else {
-            // At shutdown, the UI loop may be gone; tear down synchronously to avoid dangling threads
-            instance.reset();
-        }
-    } else {
-        instance.reset();
-    }
+    instance_.reset();
     instancing_state = PluginInstancingState::Terminated;
 }
 
 void uapmd_plugin_hosting::PluginInstancing::makeAlive(std::function<void(std::string error)> callback) {
     if (scanner.shouldCreateInstanceOnUIThread(format, entry)) {
         EventLoop::runTaskOnMainThread([this,callback] {
-            setupInstance(remidy::PluginUIThreadRequirement::AllNonAudioOperation, callback);
+            setupInstance(UIThreadForAllNonAudioOperation, callback);
         });
     }
     else
-        setupInstance(remidy::PluginUIThreadRequirement::None, callback);
+        setupInstance(UIThreadNotRequired, callback);
 }
