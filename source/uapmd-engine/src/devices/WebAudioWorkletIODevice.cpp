@@ -578,6 +578,7 @@ namespace uapmd {
                         });
                     }).catch(function(err) {
                         console.warn('[uapmd] parameter inspection failed:', err);
+                        throw err;
                     });
                 },
                 inspectDescriptors(base, tarFiles) {
@@ -648,10 +649,15 @@ namespace uapmd {
                         function handleTarFiles(tarFiles) {
                             if (base.type === 'webclap-scan')
                                 return bridge.inspectDescriptors(base, tarFiles);
-                            bridge.inspectParameters(base, tarFiles);
                             if (!bridge.node && typeof Module._uapmd_debug_enable_audio_engine === 'function')
                                 Module._uapmd_debug_enable_audio_engine(1);
-                            return bridge.instantiatePlugin(base, tarFiles);
+                            // Creation immediately captures state for undo history.
+                            // Publish capabilities and parameters first; otherwise
+                            // a fast worklet reports ready while hasState still has
+                            // its default false value on the host instance.
+                            return bridge.inspectParameters(base, tarFiles).then(function() {
+                                return bridge.instantiatePlugin(base, tarFiles);
+                            });
                         }
                         if (response.headers.get('Content-Type') === 'application/wasm') {
                             return response.arrayBuffer().then(function(bytes) {
