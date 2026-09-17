@@ -1081,8 +1081,15 @@ void PluginInstanceWebCLAP::StateSupportWebCLAP::requestState(
                                       finish({}, "instance destroyed");
                                       return;
                                   }
-                                  if (!owner_ || !owner_->hasStateSupport()) {
-                                      finish({}, "State is not supported");
+                                  if (!owner_) {
+                                      finish({}, "instance destroyed");
+                                      return;
+                                  }
+                                  if (!owner_->hasStateSupport()) {
+                                      // State is optional in CLAP. Match native CLAP's
+                                      // empty snapshot so lifecycle undo and project
+                                      // saving also work for stateless plug-ins.
+                                      finish({}, "");
                                       return;
                                   }
 
@@ -1116,8 +1123,14 @@ void PluginInstanceWebCLAP::StateSupportWebCLAP::loadState(
                                    finish("instance destroyed");
                                    return;
                                }
-                               if (!owner_ || !owner_->hasStateSupport()) {
-                                   finish("State is not supported");
+                               if (!owner_) {
+                                   finish("instance destroyed");
+                                   return;
+                               }
+                               if (!owner_->hasStateSupport()) {
+                                   // An empty snapshot has nothing to restore, but
+                                   // do not silently discard supplied state data.
+                                   finish(state.empty() ? "" : "State is not supported");
                                    return;
                                }
 
