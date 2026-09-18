@@ -7,6 +7,10 @@
 #include <imgui.h>
 #include <cstdio>
 
+#if UAPMD_HAS_JSFX
+#include <uapmd-format-jsfx/uapmd-format-jsfx.hpp>
+#endif
+
 
 namespace uapmd_app_gui {
 
@@ -72,6 +76,13 @@ void ensureApplicationFont() {
     io.FontDefault = nullptr;
 
     auto fontData = ResEmbed::get("Roboto-SemiBold.ttf", "AppFonts");
+#if UAPMD_HAS_JSFX
+    // JSFX editors draw their own text on platforms with no system font stack to borrow.
+    // The face the application already ships serves for that too, so nothing extra is
+    // embedded. Where the platform's fonts are in use this does nothing.
+    if (fontData && uapmd_jsfx::jsfxUsesOwnFontBackend())
+        uapmd_jsfx::setJsfxEditorFontData(fontData.data(), fontData.size());
+#endif
     if (fontData) {
         ImFontConfig config;
         config.OversampleH = 2;

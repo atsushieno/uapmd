@@ -800,6 +800,45 @@ void MainWindow::render(void* window) {
 
     scriptEditor_.render();
 
+#if UAPMD_HAS_JSFX
+    uapmd_app::JsfxEditorPanel::collectRetiredTextures();
+    // Editors that are a pixel buffer rather than a native view are drawn here, with the
+    // rest of the application's own windows. Closing one leaves the plugin alone; it is
+    // the editor that goes away, which is why the instance is only told to hide.
+    {
+        // Iterating by key rather than by iterator: hidePluginUI() below runs the
+        // application's hide callbacks synchronously, and drawing a panel can open or
+        // close another, so the map can be added to or erased from while this loop is
+        // running. An iterator into an unordered_map does not survive that.
+        std::vector<int32_t> panelIds;
+        panelIds.reserve(framebufferPanels_.size());
+        for (auto& entry : framebufferPanels_)
+            panelIds.emplace_back(entry.first);
+
+        auto& panelSequencer = uapmd_app::AppModel::instance().sequencer();
+        for (const int32_t instanceId : panelIds) {
+            auto it = framebufferPanels_.find(instanceId);
+            if (it == framebufferPanels_.end())
+                continue;   // closed while this loop was running
+
+            // A plugin can be deleted while its editor is open, and the editor only
+            // borrows a pointer into it. Checking here as well as in refreshInstances()
+            // closes the frames in between.
+            if (!panelSequencer.engine()->getPluginInstance(instanceId)) {
+                it->second->forgetPlugin();
+                framebufferPanels_.erase(it);
+                continue;
+            }
+
+            if (it->second->render())
+                continue;
+
+            framebufferPanels_.erase(it);
+            uapmd_app::AppModel::instance().hidePluginUI(instanceId);
+        }
+    }
+#endif
+
     uiScaleDirty_ = false;
 }
 
@@ -1523,6 +1562,17 @@ void MainWindow::refreshInstances() {
             ++it;
         }
     }
+#if UAPMD_HAS_JSFX
+    for (auto it = framebufferPanels_.begin(); it != framebufferPanels_.end();) {
+        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
+            // The plugin is already gone, so the editor must not call back into it.
+            it->second->forgetPlugin();
+            it = framebufferPanels_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+#endif
     for (auto it = pluginWindowEmbedded_.begin(); it != pluginWindowEmbedded_.end();) {
         if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
             it = pluginWindowEmbedded_.erase(it);
@@ -1657,6 +1707,24 @@ void MainWindow::handleShowUI(int32_t instanceId) {
 
     std::string pluginName = instance->displayName();
     std::string pluginFormat = instance->formatName();
+
+#if UAPMD_HAS_JSFX
+    // A plugin whose editor is a pixel buffer has no view to put inside a container
+    // window, so it gets one of our own windows instead.
+    if (auto* framebufferUI = dynamic_cast<uapmd_plugin_hosting::PluginFramebufferUIExtension*>(
+            instance->extension(uapmd_plugin_hosting::kPluginFramebufferUIExtensionId))) {
+        if (framebufferPanels_.find(instanceId) == framebufferPanels_.end()) {
+            std::string windowTitle = pluginName + " (" + pluginFormat + ")###jsfx-editor-" +
+                                      std::to_string(instanceId);
+            framebufferPanels_[instanceId] =
+                    std::make_unique<uapmd_app::JsfxEditorPanel>(instanceId, windowTitle, framebufferUI);
+        }
+        instance->createUI(false, nullptr, {});
+        instance->showUI();
+        return;
+    }
+#endif
+
     // Create container window if needed
     auto windowIt = pluginWindows_.find(instanceId);
     remidy::gui::ContainerWindow* container = nullptr;

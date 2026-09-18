@@ -35,6 +35,7 @@ endif()
 # GUI/application shell sources.
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
+        gui/JsfxEditorPanel.cpp
         gui/MainWindow.cpp
         gui/MixerMonitorWindow.cpp
         gui/PluginList.cpp

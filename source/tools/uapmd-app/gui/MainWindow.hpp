@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include "JsfxEditorPanel.hpp"
 #include <unordered_set>
 #include <chrono>
 #include <optional>
@@ -110,6 +111,11 @@ class MainWindow {
         // Device state structures moved to AppModel - use AppModel::DeviceState, etc.
 
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
+#if UAPMD_HAS_JSFX
+        // Editors that draw into a pixel buffer rather than a native view. They are our
+        // own windows, so they live here rather than among the container windows.
+        std::unordered_map<int32_t, std::unique_ptr<uapmd_app::JsfxEditorPanel>> framebufferPanels_;
+#endif
         std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
         std::unordered_map<int32_t, bool> pluginWindowVisible_;  // Track which plugin UIs are currently visible
         std::unordered_map<int32_t, remidy::gui::Bounds> pluginWindowBounds_;

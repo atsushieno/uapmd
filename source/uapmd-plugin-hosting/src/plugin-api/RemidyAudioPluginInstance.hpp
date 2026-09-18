@@ -179,7 +179,7 @@ namespace uapmd_plugin_hosting {
 
 #ifdef __EMSCRIPTEN__
         bool trySendWebClapInputEvents(const uapmd_ump_t* events, size_t sizeInBytes) {
-            if (auto* webclap = dynamic_cast<remidy::PluginInstanceWebCLAP*>(instance))
+            if (auto* webclap = dynamic_cast<remidy::PluginInstanceWebCLAPControl*>(instance))
                 return webclap->sendUmpInputEvents(events, sizeInBytes);
             return false;
         }

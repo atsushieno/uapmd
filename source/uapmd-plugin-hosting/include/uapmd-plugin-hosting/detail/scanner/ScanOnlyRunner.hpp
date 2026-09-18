@@ -8,11 +8,18 @@
 
 namespace uapmd_plugin_hosting {
 
+class AudioPluginFormat;
+
 struct ScanOnlyOptions {
     bool forceRescan = false;
     bool fullVerification = false;
     bool useRemoteScanner = false;
     double bundleTimeoutSeconds = 0.0;
+    // Plugin formats the application provides, which this runner would otherwise not know
+    // about: it builds its own scan tool, so the formats registered with the application's
+    // plugin host are not in scope here. The caller keeps ownership and must keep them
+    // alive for the duration of the call.
+    std::vector<AudioPluginFormat*> additionalFormats{};
 };
 
 struct ScannedPluginEntry {

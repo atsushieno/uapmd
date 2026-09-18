@@ -213,6 +213,15 @@ target_compile_features(uapmd-app-model PUBLIC cxx_std_23)
 # Both are PUBLIC so uapmd-app (which still contains the GUI's MCP status UI)
 # sees them transitively through its link to this target.
 target_compile_definitions(uapmd-app-model PUBLIC UAPMD_HAS_MCP_SERVER=1)
+
+# JSFX is registered by the application rather than by uapmd-plugin-hosting, so the link
+# and the feature macro live here. PUBLIC because AppModel.hpp names the format type.
+if(UAPMD_ENABLE_JSFX)
+    target_link_libraries(uapmd-app-model PUBLIC uapmd::uapmd-format-jsfx)
+    target_compile_definitions(uapmd-app-model PUBLIC UAPMD_HAS_JSFX=1)
+else()
+    target_compile_definitions(uapmd-app-model PUBLIC UAPMD_HAS_JSFX=0)
+endif()
 if(NOT UAPMD_BUILDING_WASM)
     target_link_libraries(uapmd-app-model PRIVATE ixwebsocket)
     if(NOT IOS AND NOT ANDROID)

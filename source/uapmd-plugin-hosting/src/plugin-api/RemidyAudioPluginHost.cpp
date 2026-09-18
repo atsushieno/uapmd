@@ -174,7 +174,7 @@ void uapmd_plugin_hosting::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t 
     auto* remidy_instance = dynamic_cast<RemidyAudioPluginInstance*>(it->second->instance());
     if (!remidy_instance)
         return;
-    auto* webclap_instance = dynamic_cast<remidy::PluginInstanceWebCLAP*>(remidy_instance->rawInstance());
+    auto* webclap_instance = dynamic_cast<remidy::PluginInstanceWebCLAPControl*>(remidy_instance->rawInstance());
     if (!webclap_instance)
         return;
     webclap_instance->attachToTrackGraph(trackIndex, isMasterTrack, order);

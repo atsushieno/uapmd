@@ -23,6 +23,21 @@ function(uapmd_optimize_heavy_audio_feature_sources_in_debug target_name)
         return()
     endif()
 
+    # Xcode rejects per-source compile options that vary by configuration, so the
+    # condition cannot be expressed there. These sources are third-party DSP that every
+    # configuration wants optimized anyway -- Release already compiles them this way, and
+    # Debug is the case this function exists for -- so applying it unconditionally keeps
+    # the intent rather than dropping it on that generator.
+    if(CMAKE_GENERATOR STREQUAL "Xcode")
+        set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_DEFINITIONS "NDEBUG")
+        if(MSVC)
+            set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_OPTIONS "/O2")
+        else()
+            set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_OPTIONS "-O3")
+        endif()
+        return()
+    endif()
+
     set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_DEFINITIONS
             "$<$<CONFIG:Debug>:NDEBUG>"
     )

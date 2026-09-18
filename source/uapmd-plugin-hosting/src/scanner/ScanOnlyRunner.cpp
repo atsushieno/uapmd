@@ -201,6 +201,10 @@ int runScanOnlyMode(const ScanOnlyOptions& options, ScanOnlyReport* outReport) {
     remidy::EventLoop::initializeOnUIThread();
 
     auto scanner = uapmd_plugin_hosting::PluginScanTool::create();
+    // Registered before scanning, so the first pass picks them up.
+    for (auto* format : options.additionalFormats)
+        if (format)
+            scanner->addFormat(format);
     auto scanMode = options.useRemoteScanner
         ? uapmd_plugin_hosting::ScanMode::Remote
         : uapmd_plugin_hosting::ScanMode::InProcess;

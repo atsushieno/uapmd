@@ -2,6 +2,9 @@
 
 #include <atomic>
 #include <format>
+#if UAPMD_HAS_JSFX
+#include "uapmd-format-jsfx/uapmd-format-jsfx.hpp"
+#endif
 #include <filesystem>
 #include <thread>
 #include <string>
@@ -156,6 +159,12 @@ namespace uapmd_app {
         size_t ump_buffer_size_in_bytes_;
         uapmd::RealtimeSequencer sequencer_;
         std::unique_ptr<uapmd_plugin_hosting::PluginScanTool> pluginScanTool_;
+#if UAPMD_HAS_JSFX
+        // JSFX is an application-provided plugin format rather than one uapmd-plugin-hosting
+        // knows about, so the application owns it and has to outlive every plugin host it
+        // was registered with. It is declared before anything that scans or instantiates.
+        std::unique_ptr<uapmd_jsfx::JsfxPluginFormat> jsfxPluginFormat_;
+#endif
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};

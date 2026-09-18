@@ -19,7 +19,10 @@ if(APPLE)
     target_sources(uapmd-ara PRIVATE src/AraAudioUnit.cpp)
 endif()
 
-if(NOT ANDROID AND NOT EMSCRIPTEN)
+# The VST3 and CLAP bridges only make sense where remidy hosts those formats, and the
+# ARA headers they include pull in the VST3 SDK, which is not fetched otherwise. This
+# condition has to match REMIDY_SUPPORT_VST3/CLAP in remidy's CMakeLists.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT IOS)
     target_sources(uapmd-ara PRIVATE
             src/AraVst3.cpp
             src/AraClap.cpp

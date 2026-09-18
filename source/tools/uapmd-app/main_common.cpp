@@ -158,6 +158,12 @@ int runMainLoop(int argc, char** argv) {
             .forceRescan = cliOptions.forceRescan,
             .fullVerification = cliOptions.fullVerification
         };
+#if UAPMD_HAS_JSFX
+        // The scan-only path builds its own scan tool rather than going through AppModel,
+        // so the application's own formats have to be handed to it explicitly.
+        uapmd_jsfx::JsfxPluginFormat jsfxFormat{};
+        options.additionalFormats.emplace_back(&jsfxFormat);
+#endif
         return uapmd_plugin_hosting::runScanOnlyMode(options);
     }
 #endif

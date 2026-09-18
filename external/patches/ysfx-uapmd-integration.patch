@@ -1,0 +1,138 @@
+diff -ruN a/cmake/BuildType.cmake b/cmake/BuildType.cmake
+--- a/cmake/BuildType.cmake	2026-09-18 11:10:02
++++ b/cmake/BuildType.cmake	2026-09-18 11:10:02
+@@ -13,5 +13,10 @@
+ endif()
+ 
+ # Set the possible values of build type for cmake-gui
+-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
+-    "MinSizeRel" "RelWithDebInfo")
++# uapmd: only a single-configuration generator has CMAKE_BUILD_TYPE in the cache. Under
++# Xcode or Visual Studio the block above deliberately leaves it unset, and setting a
++# property on a cache variable that was never created is an error.
++if(NOT CMAKE_CONFIGURATION_TYPES)
++    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
++        "MinSizeRel" "RelWithDebInfo")
++endif()
+diff -ruN a/cmake.deps.txt b/cmake.deps.txt
+--- a/cmake.deps.txt	2026-09-18 10:33:52
++++ b/cmake.deps.txt	2026-09-18 10:33:52
+@@ -68,18 +68,30 @@
+ 
+ # dr_libs
+ # ------------------------------------------------------------------------------
+-add_library(dr_libs INTERFACE)
+-target_include_directories(dr_libs INTERFACE "thirdparty/dr_libs")
++# uapmd: these are generic target names and collide with other dependencies in a
++# larger build. Reuse whatever already provides them.
++if(NOT TARGET dr_libs)
++    add_library(dr_libs INTERFACE)
++    target_include_directories(dr_libs INTERFACE "thirdparty/dr_libs")
++endif()
+ 
+ # stb
+ # ------------------------------------------------------------------------------
+-add_library(stb INTERFACE)
+-target_include_directories(stb INTERFACE "thirdparty/stb")
++# uapmd: these are generic target names and collide with other dependencies in a
++# larger build. Reuse whatever already provides them.
++if(NOT TARGET stb)
++    add_library(stb INTERFACE)
++    target_include_directories(stb INTERFACE "thirdparty/stb")
++endif()
+ 
+ # json
+ # ------------------------------------------------------------------------------
+-add_library(json INTERFACE)
+-target_include_directories(json INTERFACE "thirdparty/json")
++# uapmd: these are generic target names and collide with other dependencies in a
++# larger build. Reuse whatever already provides them.
++if(NOT TARGET json)
++    add_library(json INTERFACE)
++    target_include_directories(json INTERFACE "thirdparty/json")
++endif()
+ 
+ # fts
+ # ------------------------------------------------------------------------------
+diff -ruN a/cmake.wdl.txt b/cmake.wdl.txt
+--- a/cmake.wdl.txt	2026-09-18 10:33:52
++++ b/cmake.wdl.txt	2026-09-18 10:38:07
+@@ -53,8 +53,16 @@
+             "thirdparty/WDL/source/WDL/lice/lice_line.cpp"
+             "thirdparty/WDL/source/WDL/lice/lice_palette.cpp"
+             "thirdparty/WDL/source/WDL/lice/lice_texgen.cpp"
+-            "thirdparty/WDL/source/WDL/lice/lice_text.cpp"
+-            "thirdparty/WDL/source/WDL/lice/lice_textnew.cpp")
++            "thirdparty/WDL/source/WDL/lice/lice_text.cpp")
++    # uapmd: lice_textnew.cpp is LICE_CachedFont, which rasterises glyphs through a
++    # device context and is the only reason the graphics stack needs SWELL. A host that
++    # supplies its own LICE_IFont does not need it, and leaving it out is what lets the
++    # editor build on platforms SWELL does not reach.
++    if(NOT YSFX_EXTERNAL_FONT)
++        target_sources(lice PRIVATE "thirdparty/WDL/source/WDL/lice/lice_textnew.cpp")
++    else()
++        target_compile_definitions(lice PUBLIC "YSFX_EXTERNAL_FONT" "_LICE_NO_SYSBITMAPS_")
++    endif()
+     target_compile_definitions(lice PRIVATE "${YSFX_FILE_OFFSET_BITS_GENEXP}")
+     target_link_libraries(lice
+         PUBLIC
+@@ -77,7 +85,10 @@
+     target_link_libraries(lice PRIVATE stb)
+ 
+     # SWELL
+-    if(NOT WIN32)
++    # uapmd: SWELL is here only for LICE's font rendering and its device-context bitmap.
++    # A host supplying its own LICE_IFont needs neither, and leaving SWELL out is what
++    # lets this build on platforms it does not reach.
++    if(NOT WIN32 AND NOT YSFX_EXTERNAL_FONT)
+         target_sources(lice
+             PRIVATE
+                 "thirdparty/WDL/source/WDL/swell/swell-ini.cpp"
+diff -ruN a/cmake.ysfx.txt b/cmake.ysfx.txt
+--- a/cmake.ysfx.txt	2026-09-18 11:29:15
++++ b/cmake.ysfx.txt	2026-09-18 11:29:15
+@@ -104,7 +104,7 @@
+ #    A ysfx target which gives access to the public interface.
+ #    This target is adequate for normal use.
+ # ------------------------------------------------------------------------------
+-add_library(ysfx STATIC)
++add_library(ysfx STATIC "sources/ysfx_uapmd_placeholder.cpp")
+ target_include_directories(ysfx PUBLIC "include")
+ target_link_libraries(ysfx PRIVATE
+     ysfx-private
+diff -ruN a/sources/ysfx_api_gfx_lice.hpp b/sources/ysfx_api_gfx_lice.hpp
+--- a/sources/ysfx_api_gfx_lice.hpp	2026-09-18 10:33:52
++++ b/sources/ysfx_api_gfx_lice.hpp	2026-09-18 10:33:52
+@@ -96,10 +96,21 @@
+ }
+ 
+ 
++#ifdef YSFX_EXTERNAL_FONT
++// uapmd: the host supplies the font implementation. Returning null is allowed and makes
++// ysfx fall back to LICE's built-in bitmap font, so a host with no font data still draws
++// text rather than nothing.
++LICE_IFont *ysfx_create_external_lice_font();
+ static LICE_IFont *LICE_CreateFont()
+ {
++  return ysfx_create_external_lice_font();
++}
++#else
++static LICE_IFont *LICE_CreateFont()
++{
+   return new LICE_CachedFont();
+ }
++#endif
+ static void LICE__DestroyFont(LICE_IFont *bm)
+ {
+   delete bm;
+diff -ruN a/sources/ysfx_uapmd_placeholder.cpp b/sources/ysfx_uapmd_placeholder.cpp
+--- a/sources/ysfx_uapmd_placeholder.cpp	1970-01-01 09:00:00
++++ b/sources/ysfx_uapmd_placeholder.cpp	2026-09-18 11:29:14
+@@ -0,0 +1,7 @@
++// uapmd: the ysfx library target has no sources of its own -- everything in it comes from
++// the object libraries it links. Ninja and Make are happy to archive those into a static
++// library on their own, but Xcode produces no product at all for a target with no source
++// files, so linking against it fails with a missing libysfx.a. This gives it one.
++namespace {
++    [[maybe_unused]] int ysfx_uapmd_placeholder = 0;
++}

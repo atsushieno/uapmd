@@ -397,6 +397,20 @@ uapmd_app::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSi
         sample_rate_(sampleRate),
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
         auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
+#if UAPMD_HAS_JSFX
+    // Registered before anything scans, so that the first scan picks JSFX up. Both the
+    // plugin host and this model's own scan tool need it: the host instantiates, and the
+    // scan tool is what fills the plugin list the UI shows.
+    jsfxPluginFormat_ = std::make_unique<uapmd_jsfx::JsfxPluginFormat>();
+    if (auto* host = sequencer_.engine()->pluginHost())
+        host->addPluginFormat(jsfxPluginFormat_.get());
+    pluginScanTool_->addFormat(jsfxPluginFormat_.get());
+#endif
+
+    // After every format is registered and before anything scans: a format reads its
+    // search paths when it enumerates, so applying them later would need a rescan.
+    pluginScanTool_->loadSearchPathSettings();
+
     clip_enablement_extension_ = std::make_unique<ClipEnablementSerializationExtension>(*this);
     sequencer_.engine()->timeline().addProjectSerializationExtension(*clip_enablement_extension_);
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);

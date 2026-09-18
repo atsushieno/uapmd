@@ -51,6 +51,17 @@ namespace uapmd_plugin_hosting {
         virtual void addFormat(AudioPluginFormat* item) = 0;
 
         virtual std::filesystem::path& pluginListCacheFile() = 0;
+
+        // Where the user's plugin search paths are kept, beside the plugin list cache and
+        // the blocklist. It is empty on platforms with no writable location of their own.
+        virtual std::filesystem::path& searchPathSettingsFile() = 0;
+        // Applies the stored search paths to every format that has any. Call it after the
+        // formats are registered and before the first scan, because a format reads its
+        // search paths when it enumerates.
+        virtual void loadSearchPathSettings() = 0;
+        // Records the search paths every format currently has. Changing them afterwards
+        // needs a rescan: dropping a location has to drop its plugins from the catalog.
+        virtual void saveSearchPathSettings() = 0;
         virtual void performPluginScanning(bool requireFastScanning,
                                            ScanMode mode = ScanMode::InProcess,
                                            bool forceRescan = false,

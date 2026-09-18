@@ -76,6 +76,9 @@ public:
     void addFormat(AudioPluginFormat* item) override { formatManager_.addFormat(item); }
 
     std::filesystem::path& pluginListCacheFile() override { return plugin_list_cache_file; }
+    std::filesystem::path& searchPathSettingsFile() override { return search_path_settings_file_; }
+    void loadSearchPathSettings() override;
+    void saveSearchPathSettings() override;
     void performPluginScanning(bool requireFastScanning,
                                ScanMode mode,
                                bool forceRescan,
@@ -117,6 +120,7 @@ protected:
     ScanSessionManager& ensureRemoteSessionManager();
     ScanSessionManager& ensureInProcessSessionManager();
     void loadBlocklistFromDisk();
+    std::filesystem::path search_path_settings_file_{};
     void saveBlocklistToDisk() const;
     bool canPersistBlocklist() const;
     bool shouldStoreInPluginListCache(const AudioPluginCatalogEntry& entry) const;
@@ -229,6 +233,7 @@ PluginScanToolImpl::PluginScanToolImpl() {
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
     blocklist_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-blocklist.json");
+    search_path_settings_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-search-paths.json");
     loadBlocklistFromDisk();
 
 }
@@ -750,3 +755,110 @@ std::unique_ptr<PluginScanTool> PluginScanTool::create() {
 }
 
 } // namespace uapmd_plugin_hosting
+
+// Search path settings
+//
+// The file is shared by every format rather than being per-format, so that one place
+// describes where this installation looks for plugins:
+//
+//   { "version": 1,
+//     "formats": { "JSFX": { "useDefaults": true, "paths": ["/Users/me/jsfx"] } } }
+//
+// A format that is absent from the file keeps whatever it was constructed with, so adding
+// a format later does not need the file to be rewritten.
+void uapmd_plugin_hosting::PluginScanToolImpl::loadSearchPathSettings() {
+    if (search_path_settings_file_.empty())
+        return;
+    std::error_code ec;
+    if (!std::filesystem::exists(search_path_settings_file_, ec))
+        return;
+
+    std::ifstream ifs{search_path_settings_file_};
+    if (!ifs)
+        return;
+    std::ostringstream ss;
+    ss << ifs.rdbuf();
+    const auto content = ss.str();
+    if (content.empty())
+        return;
+
+    try {
+        auto json = choc::json::parse(content);
+        auto view = json.getView();
+        if (!view.isObject() || !view.hasObjectMember("formats"))
+            return;
+        auto formatsView = view["formats"];
+        if (!formatsView.isObject())
+            return;
+
+        for (auto* format : formatManager_.formats()) {
+            if (!format)
+                continue;
+            auto* scanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(format->scanning());
+            if (!scanning)
+                continue;
+            const auto name = format->name();
+            if (!formatsView.hasObjectMember(name))
+                continue;
+            auto entry = formatsView[name];
+            if (!entry.isObject())
+                continue;
+
+            if (entry.hasObjectMember("useDefaults")) {
+                auto useDefaults = entry["useDefaults"];
+                if (useDefaults.isBool())
+                    scanning->useDefaultSearchPaths(useDefaults.getBool());
+            }
+            std::vector<std::string> paths;
+            if (entry.hasObjectMember("paths")) {
+                auto pathsView = entry["paths"];
+                if (pathsView.isArray()) {
+                    paths.reserve(pathsView.size());
+                    for (auto path : pathsView)
+                        if (path.isString())
+                            paths.emplace_back(path.getString());
+                }
+            }
+            scanning->setOverrideSearchPaths(std::move(paths));
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to read plugin search paths: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Failed to read plugin search paths: unknown error" << std::endl;
+    }
+}
+
+void uapmd_plugin_hosting::PluginScanToolImpl::saveSearchPathSettings() {
+    if (search_path_settings_file_.empty())
+        return;
+
+    auto formats = choc::value::createObject("formats");
+    for (auto* format : formatManager_.formats()) {
+        if (!format)
+            continue;
+        auto* scanning = dynamic_cast<AudioPluginFileOrUrlScanning*>(format->scanning());
+        if (!scanning)
+            continue;
+        std::vector<choc::value::Value> paths;
+        for (const auto& path : scanning->getOverrideSearchPaths())
+            paths.emplace_back(choc::value::createString(path));
+        formats.setMember(format->name(),
+                          choc::value::createObject("SearchPaths",
+                                                    "useDefaults", scanning->useDefaultSearchPaths(),
+                                                    "paths", choc::value::createArray(paths)));
+    }
+
+    auto json = choc::value::createObject("PluginSearchPaths",
+                                          "version", static_cast<int64_t>(1),
+                                          "formats", formats);
+
+    auto parent = search_path_settings_file_.parent_path();
+    if (!parent.empty() && !std::filesystem::exists(parent))
+        std::filesystem::create_directories(parent);
+    std::ofstream ofs{search_path_settings_file_};
+    if (!ofs)
+        return;
+    ofs << choc::json::toString(json, true);
+    ofs.close();
+    syncBrowserFsAsync(search_path_settings_file_, "plugin search paths");
+}

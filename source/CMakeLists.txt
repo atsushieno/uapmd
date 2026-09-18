@@ -36,6 +36,11 @@ option(UAPMD_ENABLE_LIBROSA_CPP "Build against librosa.cpp (ISC, fetches MPL-2.0
 option(UAPMD_ENABLE_MIR "Build the music-analysis addins in uapmd-mir (tempo, meter, chords)" OFF)
 option(UAPMD_ENABLE_LIBSONARE "Build the libsonare MIR backend (requires UAPMD_ENABLE_MIR)" ON)
 
+# iOS and the web run EEL2's interpreter rather than its JIT (see UAPMD_JSFX_PORTABLE in
+# the module); Android and desktop use the JIT.
+set(_UAPMD_ENABLE_JSFX_DEFAULT ON)
+option(UAPMD_ENABLE_JSFX "Build the JSFX plugin format (Apache-2.0 ysfx, zlib-licensed WDL/EEL2)" ${_UAPMD_ENABLE_JSFX_DEFAULT})
+
 # demucs.cpp is MIT, but it vendors Eigen, which is MPL-2.0 -- a third licence category
 # beside the MIT/ISC default build and the Apache-2.0 opt-ins, so a default build carries
 # neither. BS-Roformer runs on GGML (MIT) and stays unconditional, so stem separation is
@@ -326,6 +331,9 @@ add_subdirectory(remidy)
 add_subdirectory(remidy-gui)
 add_subdirectory(uapmd-addin-core)
 add_subdirectory(uapmd-plugin-hosting)
+if(UAPMD_ENABLE_JSFX)
+    add_subdirectory(uapmd-format-jsfx)
+endif()
 add_subdirectory(uapmd-midi-service)
 add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)

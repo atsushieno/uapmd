@@ -65,6 +65,7 @@ namespace uapmd_plugin_hosting {
     // application with it.
     class AudioPluginFileOrUrlScanning : public AudioPluginScanning {
         std::vector<std::string> override_search_paths_{};
+        bool use_default_search_paths_{true};
 
     public:
         // Indicates that plugins are looked up in search paths, rather than at fixed locations.
@@ -74,6 +75,21 @@ namespace uapmd_plugin_hosting {
 
         std::vector<std::string>& getOverrideSearchPaths() { return override_search_paths_; }
         void addSearchPath(const std::string& path) { override_search_paths_.emplace_back(path); }
+        // Replaces the whole set, which is what an editable list of locations needs.
+        // addSearchPath() only ever appends, and mutating the returned reference is not an
+        // obvious thing for a caller to be allowed to do.
+        void setOverrideSearchPaths(std::vector<std::string> paths) {
+            override_search_paths_ = std::move(paths);
+        }
+
+        // Whether the platform's conventional locations are searched as well as the
+        // override paths. Someone who keeps plugins somewhere else entirely turns this
+        // off; the default locations are a separate list and cannot be edited away.
+        //
+        // A format decides for itself whether to honour this -- it only means anything to
+        // one that consults getDefaultSearchPaths() in the first place.
+        bool useDefaultSearchPaths() const { return use_default_search_paths_; }
+        void useDefaultSearchPaths(bool value) { use_default_search_paths_ = value; }
 
         // Returns every bundle that is worth scanning. When `requireFastScanning` is set,
         // bundles that can only be scanned slowly may be left out.
