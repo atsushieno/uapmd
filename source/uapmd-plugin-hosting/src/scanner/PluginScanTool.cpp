@@ -244,7 +244,10 @@ PluginScanToolImpl::PluginScanToolImpl() {
     // No filesystem-based plugin cache path on iOS (sandboxed app bundle).
     std::filesystem::path dir{};
 #else
-    auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
+    // cpplocate answers with a string, and every other branch here deals in paths. Kept
+    // a path so that `dir` has one type on every platform: as a string this assigns from
+    // a path just below, which compiles only where path::value_type is char.
+    std::filesystem::path dir{cpplocate::localDir(TOOLING_DIR_NAME)};
 #endif
     // An application that knows better -- because only it can, on a sandboxed platform --
     // has the last word.
@@ -253,10 +256,9 @@ PluginScanToolImpl::PluginScanToolImpl() {
     else if (!dir.empty())
         applicationDataDirectory(dir);
 
-    plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
-            "plugin-list-cache.json");
-    blocklist_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-blocklist.json");
-    search_path_settings_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-search-paths.json");
+    plugin_list_cache_file = dir.empty() ? std::filesystem::path{} : dir / "plugin-list-cache.json";
+    blocklist_file_ = dir.empty() ? std::filesystem::path{} : dir / "plugin-blocklist.json";
+    search_path_settings_file_ = dir.empty() ? std::filesystem::path{} : dir / "plugin-search-paths.json";
     loadBlocklistFromDisk();
 
 }
