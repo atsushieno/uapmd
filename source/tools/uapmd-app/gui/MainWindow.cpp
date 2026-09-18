@@ -864,6 +864,16 @@ void MainWindow::shutdown() {
     // Editor instances may contain code from dynamically loaded addins.
     timelineEditor_.setClipEditorRegistry(nullptr);
     addinRuntime_.shutdown();
+
+#if UAPMD_HAS_JSFX
+    // Framebuffer editors have to go while both the plugins and ImGui are still here:
+    // each one detaches itself from its plugin as its UI host, and hands its texture
+    // back to ImGui. This window outlives both -- it is a local in runMainLoop, so
+    // ~MainWindow runs after ImGui::DestroyContext() and after AppModel::cleanupInstance()
+    // -- and destroying the panels there calls into freed plugins.
+    framebufferPanels_.clear();
+    uapmd_app::JsfxEditorPanel::collectRetiredTextures();
+#endif
 }
 
 void MainWindow::renderUnsavedProjectDialog() {
