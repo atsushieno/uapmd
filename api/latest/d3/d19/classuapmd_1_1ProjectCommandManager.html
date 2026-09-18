@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -118,21 +118,30 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>redo</b> (ProjectComm
 <tr class="memitem:aa28e7d406cb741e31ad143f79f513c3c" id="r_aa28e7d406cb741e31ad143f79f513c3c"><td class="memItemLeft" align="right" valign="top"><a id="aa28e7d406cb741e31ad143f79f513c3c" name="aa28e7d406cb741e31ad143f79f513c3c"></a>
 <a class="el" href="../../d0/dbf/structuapmd_1_1ProjectUndoState.html">ProjectUndoState</a>&#160;</td><td class="memItemRight" valign="bottom"><b>state</b> () const</td></tr>
 <tr class="separator:aa28e7d406cb741e31ad143f79f513c3c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa8824b4a651012939b7d0c347e27e0cc" id="r_aa8824b4a651012939b7d0c347e27e0cc"><td class="memItemLeft" align="right" valign="top"><a id="aa8824b4a651012939b7d0c347e27e0cc" name="aa8824b4a651012939b7d0c347e27e0cc"></a>
-<a class="el" href="../../d2/dc3/classuapmd_1_1ProjectUndoEngine.html">ProjectUndoEngine</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>history</b> ()</td></tr>
-<tr class="separator:aa8824b4a651012939b7d0c347e27e0cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ada2def369b49e71c1492dca1a2283cf0" id="r_ada2def369b49e71c1492dca1a2283cf0"><td class="memItemLeft" align="right" valign="top"><a id="ada2def369b49e71c1492dca1a2283cf0" name="ada2def369b49e71c1492dca1a2283cf0"></a>
-<a class="el" href="../../d0/d40/structuapmd_1_1ProjectUndoResult.html">ProjectUndoResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>beginStep</b> (std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User)</td></tr>
-<tr class="separator:ada2def369b49e71c1492dca1a2283cf0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a26ff1aefa8eb9fbe0bf4216ae01f4d85" id="r_a26ff1aefa8eb9fbe0bf4216ae01f4d85"><td class="memItemLeft" align="right" valign="top"><a id="a26ff1aefa8eb9fbe0bf4216ae01f4d85" name="a26ff1aefa8eb9fbe0bf4216ae01f4d85"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>markSaved</b> ()</td></tr>
+<tr class="separator:a26ff1aefa8eb9fbe0bf4216ae01f4d85"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a65cad70663d80c2fb9a87afc062daff8" id="r_a65cad70663d80c2fb9a87afc062daff8"><td class="memItemLeft" align="right" valign="top"><a id="a65cad70663d80c2fb9a87afc062daff8" name="a65cad70663d80c2fb9a87afc062daff8"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>markStateSaved</b> (uint64_t stateId)</td></tr>
+<tr class="separator:a65cad70663d80c2fb9a87afc062daff8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6205c9097ea2580277974c8019d0c995" id="r_a6205c9097ea2580277974c8019d0c995"><td class="memItemLeft" align="right" valign="top"><a id="a6205c9097ea2580277974c8019d0c995" name="a6205c9097ea2580277974c8019d0c995"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>clear</b> (bool markCurrentStateSaved=true)</td></tr>
+<tr class="separator:a6205c9097ea2580277974c8019d0c995"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a09fb2ecb8bec99dc0fd268bfa54e8747" id="r_a09fb2ecb8bec99dc0fd268bfa54e8747"><td class="memItemLeft" align="right" valign="top"><a id="a09fb2ecb8bec99dc0fd268bfa54e8747" name="a09fb2ecb8bec99dc0fd268bfa54e8747"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setMaximumHistorySizeInBytes</b> (size_t value)</td></tr>
+<tr class="separator:a09fb2ecb8bec99dc0fd268bfa54e8747"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a13455f7380a9a102f6e71806ee31fc45" id="r_a13455f7380a9a102f6e71806ee31fc45"><td class="memItemLeft" align="right" valign="top"><a id="a13455f7380a9a102f6e71806ee31fc45" name="a13455f7380a9a102f6e71806ee31fc45"></a>
+<a class="el" href="../../d0/d40/structuapmd_1_1ProjectUndoResult.html">ProjectUndoResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>beginStep</b> (std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User, ProjectStepEventBatching batching=ProjectStepEventBatching::PerCommand)</td></tr>
+<tr class="separator:a13455f7380a9a102f6e71806ee31fc45"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7e91aa3ed1c5e73908131e376c6fec9c" id="r_a7e91aa3ed1c5e73908131e376c6fec9c"><td class="memItemLeft" align="right" valign="top"><a id="a7e91aa3ed1c5e73908131e376c6fec9c" name="a7e91aa3ed1c5e73908131e376c6fec9c"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>endStep</b> (ProjectCommandCompletion completion={})</td></tr>
 <tr class="separator:a7e91aa3ed1c5e73908131e376c6fec9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac19184b318f7f4e84600ea70ee96af34" id="r_ac19184b318f7f4e84600ea70ee96af34"><td class="memItemLeft" align="right" valign="top"><a id="ac19184b318f7f4e84600ea70ee96af34" name="ac19184b318f7f4e84600ea70ee96af34"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>cancelStep</b> (ProjectCommandCompletion completion={})</td></tr>
 <tr class="separator:ac19184b318f7f4e84600ea70ee96af34"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:adc923cacd02891ebecaff70b17113521" id="r_adc923cacd02891ebecaff70b17113521"><td class="memItemLeft" align="right" valign="top"><a id="adc923cacd02891ebecaff70b17113521" name="adc923cacd02891ebecaff70b17113521"></a>
-<a class="el" href="../../d0/d40/structuapmd_1_1ProjectUndoResult.html">ProjectUndoResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>beginGesture</b> (std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User)</td></tr>
-<tr class="separator:adc923cacd02891ebecaff70b17113521"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac00e2a0b2586c68285086d43c58e49b6" id="r_ac00e2a0b2586c68285086d43c58e49b6"><td class="memItemLeft" align="right" valign="top"><a id="ac00e2a0b2586c68285086d43c58e49b6" name="ac00e2a0b2586c68285086d43c58e49b6"></a>
+<a class="el" href="../../d0/d40/structuapmd_1_1ProjectUndoResult.html">ProjectUndoResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>beginGesture</b> (std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User, ProjectStepEventBatching batching=ProjectStepEventBatching::PerCommand)</td></tr>
+<tr class="separator:ac00e2a0b2586c68285086d43c58e49b6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5c99d4ef50daf374ef76b3670f90c9fa" id="r_a5c99d4ef50daf374ef76b3670f90c9fa"><td class="memItemLeft" align="right" valign="top"><a id="a5c99d4ef50daf374ef76b3670f90c9fa" name="a5c99d4ef50daf374ef76b3670f90c9fa"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>endGesture</b> (ProjectCommandCompletion completion={})</td></tr>
 <tr class="separator:a5c99d4ef50daf374ef76b3670f90c9fa"><td class="memSeparator" colspan="2">&#160;</td></tr>

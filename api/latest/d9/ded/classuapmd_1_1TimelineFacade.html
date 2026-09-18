@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -163,6 +163,9 @@ virtual std::optional&lt; <a class="el" href="../../de/d5e/structuapmd_1_1Projec
 <tr class="memitem:a1885b0e076820c3027196ae07f7918cf" id="r_a1885b0e076820c3027196ae07f7918cf"><td class="memItemLeft" align="right" valign="top"><a id="a1885b0e076820c3027196ae07f7918cf" name="a1885b0e076820c3027196ae07f7918cf"></a>
 virtual <a class="el" href="../../dc/d61/structuapmd_1_1TimelineFacade_1_1ClipAddResult.html">ClipAddResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>attachClipFragment</b> (int32_t trackIndex, const <a class="el" href="../../de/d5e/structuapmd_1_1ProjectClipFragment.html">ProjectClipFragment</a> &amp;fragment, ProjectObjectIdPolicy idPolicy)=0</td></tr>
 <tr class="separator:a1885b0e076820c3027196ae07f7918cf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5d2490f03ab4f29a75ca2bb16dd26872" id="r_a5d2490f03ab4f29a75ca2bb16dd26872"><td class="memItemLeft" align="right" valign="top"><a id="a5d2490f03ab4f29a75ca2bb16dd26872" name="a5d2490f03ab4f29a75ca2bb16dd26872"></a>
+virtual <a class="el" href="../../dc/d61/structuapmd_1_1TimelineFacade_1_1ClipAddResult.html">ClipAddResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>pasteClipFragment</b> (int32_t trackIndex, const <a class="el" href="../../de/d5e/structuapmd_1_1ProjectClipFragment.html">ProjectClipFragment</a> &amp;fragment)=0</td></tr>
+<tr class="separator:a5d2490f03ab4f29a75ca2bb16dd26872"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2ecf26dfe2d75bacadf9a5bca76be172" id="r_a2ecf26dfe2d75bacadf9a5bca76be172"><td class="memItemLeft" align="right" valign="top"><a id="a2ecf26dfe2d75bacadf9a5bca76be172" name="a2ecf26dfe2d75bacadf9a5bca76be172"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>captureTrackFragment</b> (int32_t trackIndex, TrackFragmentCallback callback)=0</td></tr>
 <tr class="separator:a2ecf26dfe2d75bacadf9a5bca76be172"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -178,18 +181,6 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>recordTrackAd
 <tr class="memitem:ab0f862937956e107be9def344e6e61a2" id="r_ab0f862937956e107be9def344e6e61a2"><td class="memItemLeft" align="right" valign="top"><a id="ab0f862937956e107be9def344e6e61a2" name="ab0f862937956e107be9def344e6e61a2"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removeTrack</b> (int32_t trackIndex, ProjectMutationOrigin origin, TrackAttachCallback callback)=0</td></tr>
 <tr class="separator:ab0f862937956e107be9def344e6e61a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8f01fa9ec4139f0297fea30ccdf21563" id="r_a8f01fa9ec4139f0297fea30ccdf21563"><td class="memItemLeft" align="right" valign="top"><a id="a8f01fa9ec4139f0297fea30ccdf21563" name="a8f01fa9ec4139f0297fea30ccdf21563"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setLatencyCompensationSettings</b> (const <a class="el" href="../../d3/dd6/structuapmd_1_1LatencyCompensationProjectSettings.html">LatencyCompensationProjectSettings</a> &amp;settings, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a8f01fa9ec4139f0297fea30ccdf21563"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a46aeea7acb7e44d1bb60a236c6ec01ca" id="r_a46aeea7acb7e44d1bb60a236c6ec01ca"><td class="memItemLeft" align="right" valign="top"><a id="a46aeea7acb7e44d1bb60a236c6ec01ca" name="a46aeea7acb7e44d1bb60a236c6ec01ca"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>addDeviceInputToTrack</b> (int32_t trackIndex, int32_t sourceNodeId, const std::vector&lt; uint32_t &gt; &amp;channelIndices, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a46aeea7acb7e44d1bb60a236c6ec01ca"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a33a7338a84393f37e7a8e2245ab4285c" id="r_a33a7338a84393f37e7a8e2245ab4285c"><td class="memItemLeft" align="right" valign="top"><a id="a33a7338a84393f37e7a8e2245ab4285c" name="a33a7338a84393f37e7a8e2245ab4285c"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setDeviceInputChannels</b> (int32_t trackIndex, int32_t sourceNodeId, const std::vector&lt; uint32_t &gt; &amp;channelIndices, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a33a7338a84393f37e7a8e2245ab4285c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa4d7e82797f6cdd197149f651655b330" id="r_aa4d7e82797f6cdd197149f651655b330"><td class="memItemLeft" align="right" valign="top"><a id="aa4d7e82797f6cdd197149f651655b330" name="aa4d7e82797f6cdd197149f651655b330"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removeDeviceInputFromTrack</b> (int32_t trackIndex, int32_t sourceNodeId, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:aa4d7e82797f6cdd197149f651655b330"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a95d5aa242eec2bc26bbb38849f5300a2" id="r_a95d5aa242eec2bc26bbb38849f5300a2"><td class="memItemLeft" align="right" valign="top"><a id="a95d5aa242eec2bc26bbb38849f5300a2" name="a95d5aa242eec2bc26bbb38849f5300a2"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPluginState</b> (int32_t instanceId, std::vector&lt; uint8_t &gt; state, ProjectMutationOrigin origin, ProjectUndoCompletion completion)=0</td></tr>
 <tr class="separator:a95d5aa242eec2bc26bbb38849f5300a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -205,12 +196,6 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removePluginI
 <tr class="memitem:aa39a68dad87fdf06ec9352519ec626dc" id="r_aa39a68dad87fdf06ec9352519ec626dc"><td class="memItemLeft" align="right" valign="top"><a id="aa39a68dad87fdf06ec9352519ec626dc" name="aa39a68dad87fdf06ec9352519ec626dc"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>hasPendingPluginMutations</b> () const =0</td></tr>
 <tr class="separator:aa39a68dad87fdf06ec9352519ec626dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a63be976450270007d448094372dbe685" id="r_a63be976450270007d448094372dbe685"><td class="memItemLeft" align="right" valign="top"><a id="a63be976450270007d448094372dbe685" name="a63be976450270007d448094372dbe685"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>connectTrackGraph</b> (int32_t trackIndex, const <a class="el" href="../../dd/d8b/structuapmd__graph_1_1AudioPluginGraphConnection.html">uapmd_graph::AudioPluginGraphConnection</a> &amp;connection, std::string &amp;error, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a63be976450270007d448094372dbe685"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a039d8338d88d1d2d73e2781dd0e7e54f" id="r_a039d8338d88d1d2d73e2781dd0e7e54f"><td class="memItemLeft" align="right" valign="top"><a id="a039d8338d88d1d2d73e2781dd0e7e54f" name="a039d8338d88d1d2d73e2781dd0e7e54f"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>disconnectTrackGraphConnection</b> (int32_t trackIndex, int64_t connectionId, std::string &amp;error, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a039d8338d88d1d2d73e2781dd0e7e54f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e46af889a0b695b6f19f40c583afff9" id="r_a3e46af889a0b695b6f19f40c583afff9"><td class="memItemLeft" align="right" valign="top"><a id="a3e46af889a0b695b6f19f40c583afff9" name="a3e46af889a0b695b6f19f40c583afff9"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>appendMidiEventsToClip</b> (int32_t trackIndex, int32_t clipId, std::vector&lt; uapmd_ump_t &gt; words, std::vector&lt; uint64_t &gt; ticks)=0</td></tr>
 <tr class="separator:a3e46af889a0b695b6f19f40c583afff9"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -220,6 +205,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>saveProject</
 <tr class="memitem:a4371af15bd20c6b8df9e5073bf83e32d" id="r_a4371af15bd20c6b8df9e5073bf83e32d"><td class="memItemLeft" align="right" valign="top"><a id="a4371af15bd20c6b8df9e5073bf83e32d" name="a4371af15bd20c6b8df9e5073bf83e32d"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadProject</b> (const std::filesystem::path &amp;file, ProjectLoadCallback callback)=0</td></tr>
 <tr class="separator:a4371af15bd20c6b8df9e5073bf83e32d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abdb1e18344453e18802f33bbfb4ed544" id="r_abdb1e18344453e18802f33bbfb4ed544"><td class="memItemLeft" align="right" valign="top"><a id="abdb1e18344453e18802f33bbfb4ed544" name="abdb1e18344453e18802f33bbfb4ed544"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>newProject</b> (ProjectLoadCallback callback)=0</td></tr>
+<tr class="separator:abdb1e18344453e18802f33bbfb4ed544"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1194288c193ee4c749b212715140591e" id="r_a1194288c193ee4c749b212715140591e"><td class="memItemLeft" align="right" valign="top"><a id="a1194288c193ee4c749b212715140591e" name="a1194288c193ee4c749b212715140591e"></a>
 virtual <a class="el" href="../../dd/dd3/classuapmd_1_1AudioGraphProviderRegistry.html">AudioGraphProviderRegistry</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>audioGraphProviderRegistry</b> ()=0</td></tr>
 <tr class="separator:a1194288c193ee4c749b212715140591e"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -244,18 +232,12 @@ virtual <a class="el" href="../../dd/dc9/classuapmd_1_1ProjectAddressBook.html">
 <tr class="memitem:ac76917c908a3d704ee0fe2255f8fb16c" id="r_ac76917c908a3d704ee0fe2255f8fb16c"><td class="memItemLeft" align="right" valign="top"><a id="ac76917c908a3d704ee0fe2255f8fb16c" name="ac76917c908a3d704ee0fe2255f8fb16c"></a>
 virtual <a class="el" href="../../d9/d70/classuapmd_1_1ProjectCommands.html">ProjectCommands</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>commands</b> ()=0</td></tr>
 <tr class="separator:ac76917c908a3d704ee0fe2255f8fb16c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a687e9c364daf8acd7dd12ec8b8cadba4" id="r_a687e9c364daf8acd7dd12ec8b8cadba4"><td class="memItemLeft" align="right" valign="top"><a id="a687e9c364daf8acd7dd12ec8b8cadba4" name="a687e9c364daf8acd7dd12ec8b8cadba4"></a>
-virtual <a class="el" href="../../d2/dc3/classuapmd_1_1ProjectUndoEngine.html">ProjectUndoEngine</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>undoEngine</b> ()=0</td></tr>
-<tr class="separator:a687e9c364daf8acd7dd12ec8b8cadba4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a25825891a1d4e041c67d0f1a40359a03" id="r_a25825891a1d4e041c67d0f1a40359a03"><td class="memItemLeft" align="right" valign="top"><a id="a25825891a1d4e041c67d0f1a40359a03" name="a25825891a1d4e041c67d0f1a40359a03"></a>
 virtual <a class="el" href="../../d5/dfa/classuapmd_1_1AudioSourceRepository.html">AudioSourceRepository</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>audioSourceRepository</b> ()=0</td></tr>
 <tr class="separator:a25825891a1d4e041c67d0f1a40359a03"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a10375ed9f02690e3318c99f1dfed0b00" id="r_a10375ed9f02690e3318c99f1dfed0b00"><td class="memItemLeft" align="right" valign="top"><a id="a10375ed9f02690e3318c99f1dfed0b00" name="a10375ed9f02690e3318c99f1dfed0b00"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioSourceRepository</b> (std::shared_ptr&lt; <a class="el" href="../../d5/dfa/classuapmd_1_1AudioSourceRepository.html">AudioSourceRepository</a> &gt; repository)=0</td></tr>
 <tr class="separator:a10375ed9f02690e3318c99f1dfed0b00"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ab40dc474adc4242031461ce28e12ddbd" id="r_ab40dc474adc4242031461ce28e12ddbd"><td class="memItemLeft" align="right" valign="top"><a id="ab40dc474adc4242031461ce28e12ddbd" name="ab40dc474adc4242031461ce28e12ddbd"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceTrackGraphType</b> (int32_t trackIndex, const std::string &amp;graphTypeId, size_t eventBufferSizeInBytes, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:ab40dc474adc4242031461ce28e12ddbd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af22883402656ee90a049c7f0a701865a" id="r_af22883402656ee90a049c7f0a701865a"><td class="memItemLeft" align="right" valign="top"><a id="af22883402656ee90a049c7f0a701865a" name="af22883402656ee90a049c7f0a701865a"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>materializeProjectGraph</b> (<a class="el" href="../../da/d1e/classuapmd_1_1UapmdProjectTrackData.html">UapmdProjectTrackData</a> *projectTrack, <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> *sequencerTrack, size_t eventBufferSizeInBytes)=0</td></tr>
 <tr class="separator:af22883402656ee90a049c7f0a701865a"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -283,6 +265,9 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectEx
 <tr class="memitem:a3190e9c0be9436a4476784a1bf1bcf3f" id="r_a3190e9c0be9436a4476784a1bf1bcf3f"><td class="memItemLeft" align="right" valign="top"><a id="a3190e9c0be9436a4476784a1bf1bcf3f" name="a3190e9c0be9436a4476784a1bf1bcf3f"></a>
 virtual <a class="el" href="../../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html">MasterTrackSnapshot</a>&#160;</td><td class="memItemRight" valign="bottom"><b>buildMasterTrackSnapshot</b> ()=0</td></tr>
 <tr class="separator:a3190e9c0be9436a4476784a1bf1bcf3f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a02a114d331cf7edc4f699fdbeb85d9ec" id="r_a02a114d331cf7edc4f699fdbeb85d9ec"><td class="memItemLeft" align="right" valign="top"><a id="a02a114d331cf7edc4f699fdbeb85d9ec" name="a02a114d331cf7edc4f699fdbeb85d9ec"></a>
+virtual const <a class="el" href="../../d8/df0/classuapmd_1_1TempoMap.html">uapmd::TempoMap</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>masterTempoMap</b> () const =0</td></tr>
+<tr class="separator:a02a114d331cf7edc4f699fdbeb85d9ec"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6b54848f054f4caa7dcbfc473fed1a06" id="r_a6b54848f054f4caa7dcbfc473fed1a06"><td class="memItemLeft" align="right" valign="top"><a id="a6b54848f054f4caa7dcbfc473fed1a06" name="a6b54848f054f4caa7dcbfc473fed1a06"></a>
 virtual <a class="el" href="../../d7/d7f/structuapmd_1_1TimelineFacade_1_1ContentBounds.html">ContentBounds</a>&#160;</td><td class="memItemRight" valign="bottom"><b>calculateContentBounds</b> () const =0</td></tr>
 <tr class="separator:a6b54848f054f4caa7dcbfc473fed1a06"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -322,9 +307,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>onTrackGraphC
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:a0e542ef4c119da510883040d0b688075" id="r_a0e542ef4c119da510883040d0b688075"><td class="memItemLeft" align="right" valign="top"><a id="a0e542ef4c119da510883040d0b688075" name="a0e542ef4c119da510883040d0b688075"></a>
-static std::unique_ptr&lt; <a class="el" href="../../d9/ded/classuapmd_1_1TimelineFacade.html">TimelineFacade</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (<a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &amp;engine)</td></tr>
-<tr class="separator:a0e542ef4c119da510883040d0b688075"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a94f0b6235c35959eeef8a154df59e9dd" id="r_a94f0b6235c35959eeef8a154df59e9dd"><td class="memItemLeft" align="right" valign="top"><a id="a94f0b6235c35959eeef8a154df59e9dd" name="a94f0b6235c35959eeef8a154df59e9dd"></a>
+static std::unique_ptr&lt; <a class="el" href="../../d9/ded/classuapmd_1_1TimelineFacade.html">TimelineFacade</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (<a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &amp;engine, ProjectHistoryFactory historyFactory={})</td></tr>
+<tr class="separator:a94f0b6235c35959eeef8a154df59e9dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../d7/def/TimelineFacade_8hpp_source.html">TimelineFacade.hpp</a></li>

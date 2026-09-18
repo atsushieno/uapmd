@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -135,16 +135,18 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> saveTo(std::map&lt;std::string, std::string&gt;&amp; entries) = 0;</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> loadFrom(<span class="keyword">const</span> std::map&lt;std::string, std::string&gt;&amp; entries) = 0;</div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="keyword">static</span> std::unique_ptr&lt;AudioPluginGraph&gt; create(<span class="keywordtype">size_t</span> eventBufferSizeInBytes);</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> migrate(<a class="code hl_class" href="../../d1/da0/classuapmd__graph_1_1AudioPluginGraph.html">AudioPluginGraph</a>&amp; to, <a class="code hl_class" href="../../d1/da0/classuapmd__graph_1_1AudioPluginGraph.html">AudioPluginGraph</a>&amp; from);</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keyword">private</span>:</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>        <span class="keyword">virtual</span> std::vector&lt;std::shared_ptr&lt;AudioGraphNode&gt;&gt; releaseNodesForMigration() = 0;</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> adoptNodesFromMigration(std::vector&lt;std::shared_ptr&lt;AudioGraphNode&gt;&gt;&amp;&amp; nodes) = 0;</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    };</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="comment">// `providerId` is stamped onto the graph so that whoever created it can</span></div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        <span class="comment">// be identified again later without guessing from the graph&#39;s shape.</span></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        <span class="keyword">static</span> std::unique_ptr&lt;AudioPluginGraph&gt; create(<span class="keywordtype">size_t</span> eventBufferSizeInBytes, std::string providerId = {});</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> migrate(<a class="code hl_class" href="../../d1/da0/classuapmd__graph_1_1AudioPluginGraph.html">AudioPluginGraph</a>&amp; to, <a class="code hl_class" href="../../d1/da0/classuapmd__graph_1_1AudioPluginGraph.html">AudioPluginGraph</a>&amp; from);</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="keyword">private</span>:</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>        <span class="keyword">virtual</span> std::vector&lt;std::shared_ptr&lt;AudioGraphNode&gt;&gt; releaseNodesForMigration() = 0;</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> adoptNodesFromMigration(std::vector&lt;std::shared_ptr&lt;AudioGraphNode&gt;&gt;&amp;&amp; nodes) = 0;</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    };</div>
 </div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>}</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>}</div>
 <div class="ttc" id="aclassuapmd__graph_1_1AudioGraph_html"><div class="ttname"><a href="../../d8/d5b/classuapmd__graph_1_1AudioGraph.html">uapmd_graph::AudioGraph</a></div><div class="ttdef"><b>Definition</b> AudioGraph.hpp:14</div></div>
 <div class="ttc" id="aclassuapmd__graph_1_1AudioPluginGraph_html"><div class="ttname"><a href="../../d1/da0/classuapmd__graph_1_1AudioPluginGraph.html">uapmd_graph::AudioPluginGraph</a></div><div class="ttdef"><b>Definition</b> AudioPluginGraph.hpp:30</div></div>
 <div class="ttc" id="aclassuapmd__graph_1_1AudioPluginNode_html"><div class="ttname"><a href="../../d6/daa/classuapmd__graph_1_1AudioPluginNode.html">uapmd_graph::AudioPluginNode</a></div><div class="ttdef"><b>Definition</b> AudioPluginNode.hpp:7</div></div>

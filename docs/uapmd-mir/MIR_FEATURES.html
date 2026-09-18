@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1
+id="uapmd-mir-music-information-retrieval-features-ai-slop">uapmd-mir:
+music information retrieval features (AI slop)</h1>
+<p><code>uapmd-mir</code> is an addin package that analyzes the audio
+clips in the current project and writes the result back as
+<strong>master-track MIDI clips</strong> carrying tempo, time-signature
+and chord meta events. It ships two independent analysis backends that
+produce the same kind of output through the same writer:</p>
+<p>Other features are built from <code>source/uapmd-mir/</code> without
+being part of this package or its build gate: <a
+href="PITCH_TRANSCRIPTION.html">pitch transcription</a> and the stem
+separation addins.</p>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th>libsonare backend</th>
+<th>librosa.cpp backend</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>command</td>
+<td><code>src/MirAddin.cpp</code></td>
+<td><code>src/MirLibrosaAddin.cpp</code></td>
+</tr>
+<tr class="even">
+<td>analysis</td>
+<td><code>src/MirTempoAnalysis.cpp</code> +
+<code>src/MirRhythmAnalysis.cpp</code>
+(<code>uapmd_mir::sonare</code>)</td>
+<td><code>src/MirLibrosaAnalysis.cpp</code>
+(<code>uapmd_mir::librosa_cpp</code>)</td>
+</tr>
+<tr class="odd">
+<td>addin id</td>
+<td><code>/uapmd/mir</code> / <code>analysis</code></td>
+<td><code>/uapmd/mir</code> / <code>librosa</code></td>
+</tr>
+<tr class="even">
+<td>command id</td>
+<td><code>uapmd-mir.analyze-project</code></td>
+<td><code>uapmd-mir.populate-master-librosa</code></td>
+</tr>
+<tr class="odd">
+<td>command title</td>
+<td>"Populate master track (libsonare)"</td>
+<td>"Populate master track (librosa.cpp)"</td>
+</tr>
+<tr class="even">
+<td>command order</td>
+<td>1000</td>
+<td>1001</td>
+</tr>
+<tr class="odd">
+<td>built when</td>
+<td><code>UAPMD_ENABLE_MIR</code> <strong>and</strong>
+<code>UAPMD_ENABLE_LIBSONARE</code></td>
+<td><code>UAPMD_ENABLE_MIR</code></td>
+</tr>
+</tbody>
+</table>
+<p>Both addins register on the <code>/uapmd/app/command/v1</code>
+extension point and obtain the engine from
+<code>/uapmd/engine/v1</code>. They are added to the library's exported
+<code>AddinEntry</code> by <code>src/AddinEntry.cpp</code>, which owns
+<code>uapmd_addin_entry</code> and includes them only under
+<code>UAPMD_ENABLE_MIR_ANALYSIS</code>; the library exists, and carries
+<a href="PITCH_TRANSCRIPTION.html">pitch transcription</a>, either
+way.</p>
+<p>The two backends are deliberately structured the same way. Everything
+that is not a call into libsonare or librosa lives in shared code that
+both use:</p>
+<table>
+<thead>
+<tr class="header">
+<th>shared unit</th>
+<th>what it owns</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>src/MirTempoMap.{hpp,cpp}</code></td>
+<td>analysis-window scheduling, octave/short-run resolution, run
+grouping, transition refinement, <code>tempoMapTimeToTicks</code></td>
+</tr>
+<tr class="even">
+<td><code>src/MirMeterMap.{hpp,cpp}</code></td>
+<td>per-beat accent strengths, the meter-segmentation DP, the candidate
+meter table</td>
+</tr>
+<tr class="odd">
+<td><code>src/MirDiagnostics.hpp</code></td>
+<td>the buffered raw-value diagnostic log</td>
+</tr>
+</tbody>
+</table>
+<p>A backend supplies only primitives: a per-window tempo estimate
+(<code>TempoWindowEstimate</code>: BPM, confidence, and scored
+candidates), an onset strength envelope (<code>OnsetEnvelope</code>), a
+beat grid, and chord labels. Both then feed the same writer.</p>
+<p>This document describes what each backend actually computes, what
+contract the result has to satisfy for the timeline to display it
+correctly, and where the two implementations diverge. It is written
+because the analysis results are known to be wrong (see <a
+href="#where-the-timing-goes-wrong">Where the timing goes wrong</a>) and
+the reason is spread across three layers.</p>
+<h2 id="build-configuration">Build configuration</h2>
+<p><strong>The whole module is off by default.</strong> The analysis
+results are not trustworthy yet — see <a
+href="#where-the-timing-goes-wrong">Where the timing goes wrong</a> — so
+<code>source/CMakeLists.txt</code> declares
+<code>option(UAPMD_ENABLE_MIR ... OFF)</code> and only calls
+<code>add_subdirectory(uapmd-mir)</code> when it is set:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cmake</span> <span class="at">-B</span> cmake-build-debug <span class="at">-G</span> Ninja <span class="at">-DCPM_SOURCE_CACHE</span><span class="op">=</span>~/.cache/CPM/uapmd <span class="at">-DUAPMD_ENABLE_MIR</span><span class="op">=</span>ON</span></code></pre></div>
+<p>Both CPM declarations live inside
+<code>source/uapmd-mir/CMakeLists.txt</code>, so a build without
+<code>UAPMD_ENABLE_MIR</code> neither fetches nor compiles librosa.cpp
+or libsonare. The module's own CMakeLists starts with a
+<code>FATAL_ERROR</code> guard so it cannot be pulled in by
+accident.</p>
+<p>Within an MIR-enabled build:</p>
+<ul>
+<li><strong>librosa.cpp</strong> (pinned by commit) is mandatory — it is
+the baseline backend, so the module always compiles with
+<code>UAPMD_ENABLE_LIBROSA=1</code>.</li>
+<li><strong>libsonare</strong> <code>v1.7.2</code> is selected by
+<code>option(UAPMD_ENABLE_LIBSONARE ... ON)</code>, and is skipped on
+Windows, iOS and Emscripten regardless. When it is unavailable,
+<code>MirAddin.cpp</code> compiles down to an addin whose
+<code>initialize()</code> succeeds and registers nothing, and
+<code>MirTempoAnalysis.cpp</code> / <code>MirRhythmAnalysis.cpp</code>
+are not compiled at all. <code>UAPMD_ENABLE_LIBSONARE</code> has no
+effect on its own.</li>
+</ul>
+<p><code>uapmd-mir</code> is a <code>SHARED</code> library deployed
+through <code>add_uapmd_addin_library()</code> /
+<code>deploy_uapmd_addin_library()</code>, i.e. it is loaded as an
+external addin, not linked into the app. A build with the module
+disabled simply has no such addin to load.</p>
+<h2 id="shared-pipeline">Shared pipeline</h2>
+<p>Both commands run the same eight steps on a detached
+<code>std::thread</code> owned by the <code>Command</code> object. The
+command's <code>title()</code> doubles as a progress readout while
+<code>running_</code> is set, and <code>enabled()</code> returns false
+during a run.</p>
+<pre><code>audio source (whole file)
+  -&gt; mono downmix
+  -&gt; backend analysis            (tempo map / beat grid / meter map / chords)
+  -&gt; AnalysisResult              (times in SECONDS, relative to the audio source)
+  -&gt; seconds -&gt; ticks conversion (shared tempo-map integration)
+  -&gt; makeMasterClip()            (UMP stream + absolute tick timestamps)
+  -&gt; TimelineFacade::addMasterMidiClip()
+  -&gt; MidiClipSourceNode          (ticks -&gt; samples, using the same tempo map)
+  -&gt; MasterTrackSnapshot         (samples -&gt; seconds, plus clip start offset)
+  -&gt; uapmd::TempoMap             (seconds -&gt; quarter-note beats)
+  -&gt; TimelineAxis                (beats -&gt; bar/beat lines)</code></pre>
+<h3 id="1-source-selection">1. Source selection</h3>
+<p>Both walk <code>view.audioSourceIds()</code>. A source is skipped
+when it has no frames, no channels or no sample rate, when its owning
+clip cannot be resolved, or when its clip <strong>overlaps any MIDI clip
+on any track</strong> (<code>intervalsOverlap</code>). The intent is "do
+not analyze regions that already have authored MIDI".</p>
+<h3 id="2-reading-samples">2. Reading samples</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>view<span class="op">.</span>readAudioSourceSamples<span class="op">(</span>sourceId<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> source<span class="op">-&gt;</span>frameCount<span class="op">,</span> destinations<span class="op">.</span>data<span class="op">(),</span> source<span class="op">-&gt;</span>channelCount<span class="op">);</span></span></code></pre></div>
+<p>This reads the <strong>entire audio file from frame 0</strong>, in
+the <em>file's</em> channel count and <em>file's</em> sample rate —
+<code>ProjectAudioSourceSnapshot::sampleRate</code> /
+<code>frameCount</code> come straight from the file header via
+<code>FileAudioSourceRepository::getAudioSourceInfo()</code>. It is not
+the resampled, warped, or clip-trimmed material the timeline plays.</p>
+<p>Channels are then averaged into a mono
+<code>std::vector&lt;float&gt;</code>. Both analysis entry points take
+<code>std::span&lt;const float&gt;</code>; the librosa.cpp side converts
+to <code>librosa::ArrayXr</code> (double) internally.</p>
+<h3 id="3-analysisresult">3. <code>AnalysisResult</code></h3>
+<p>Each command file declares its own private copy of the same struct —
+they are not shared, but they are field-for-field identical:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> AnalysisResult <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    uapmd<span class="op">::</span>TimelinePosition position<span class="op">;</span>       <span class="co">// clip start on the timeline</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">uint32_t</span> tick_resolution<span class="op">;</span>               <span class="co">// TPQN</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int64_t</span> duration_samples<span class="op">;</span>               <span class="co">// clip duration, TIMELINE sample-rate domain</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span> sample_rate<span class="op">;</span>                     <span class="co">// FILE sample rate</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span> bpm<span class="op">;</span>                             <span class="co">// &quot;the&quot; tempo, used as fallback</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">uint8_t</span> time_signature_numerator<span class="op">/</span>denominator<span class="op">;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>vector<span class="op">&lt;</span><span class="bu">std::</span>tuple<span class="op">&lt;</span><span class="dt">double</span><span class="op">,</span> <span class="dt">uint8_t</span><span class="op">,</span> <span class="dt">uint8_t</span><span class="op">&gt;&gt;</span> time_signatures<span class="op">;</span>  <span class="co">// (seconds, num, den)</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>vector<span class="op">&lt;</span><span class="bu">std::</span>pair<span class="op">&lt;</span><span class="dt">double</span><span class="op">,</span> <span class="dt">double</span><span class="op">&gt;&gt;</span> tempo_points<span class="op">;</span>                <span class="co">// (seconds, bpm)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>vector<span class="op">&lt;</span><span class="bu">std::</span>pair<span class="op">&lt;</span><span class="dt">double</span><span class="op">,</span> <span class="bu">std::</span>string<span class="op">&gt;&gt;</span> chords<span class="op">;</span>                 <span class="co">// (seconds, label)</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>Every time inside it is <strong>seconds from the start of the audio
+source</strong>, and the whole result is anchored to the timeline by
+<code>position</code> alone.</p>
+<h3 id="4-tick-resolution">4. Tick resolution</h3>
+<p>libsonare searches for a usable TPQN:
+<code>timeline.state().projectTickResolution</code> first, then the tick
+resolution of any non-MIR MIDI clip on the master track, then on any
+track, then 480. librosa.cpp only checks
+<code>timeline.state().projectTickResolution</code> and otherwise uses
+480. In practice
+<code>TimelineFacadeImpl::addMidiClipToTimelineTrack()</code> rescales
+incoming ticks to the project resolution anyway
+(<code>MidiClipReader::rescaleTicks</code>), so the difference is
+cosmetic.</p>
+<h3 id="5-seconds--ticks">5. Seconds → ticks</h3>
+<p>Both backends call <code>analysisTimeToTicks</code> →
+<code>uapmd_mir::tempoMapTimeToTicks</code>, which integrates the
+piecewise-constant tempo map:</p>
+<pre><code>ticks(t) = Σ_segments (segment length in seconds) * bpm_segment / 60 * TPQN</code></pre>
+<p><code>MidiClipSourceNode::computeSampleTimeline()</code> is the exact
+inverse of this, so the seconds → ticks → samples round trip is
+consistent.</p>
+<h3 id="6-makemasterclip">6. <code>makeMasterClip()</code></h3>
+<p>Both build the same UMP stream: <code>deltaClockstamp(0)</code>,
+<code>dctpq(tickResolution)</code>, <code>deltaClockstamp(0)</code>,
+<code>startOfClip()</code>, then a tick-sorted, priority-sorted event
+list —</p>
+<table>
+<thead>
+<tr class="header">
+<th>priority</th>
+<th>event</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td><code>UmpFactory::tempo(group 0, channel 0, 10ns-per-quarter)</code></td>
+</tr>
+<tr class="even">
+<td>1</td>
+<td><code>UmpFactory::timeSignatureDirect(group 0, channel 0, numerator, denominator, 0)</code></td>
+</tr>
+<tr class="odd">
+<td>2</td>
+<td><code>UmpFactory::metadataText(... "MIR chord &lt;label&gt;")</code></td>
+</tr>
+<tr class="even">
+<td>3</td>
+<td><code>endOfClip()</code> at the clip-duration tick</td>
+</tr>
+</tbody>
+</table>
+<p>each preceded by a <code>deltaClockstamp</code> delta. The
+<code>denominator</code> passed here is the literal value (4, 8), which
+matches both the Flex Data time-signature encoding and
+<code>uapmd::MidiTimeSignatureChange::denominator</code> — that
+convention is correct.</p>
+<p>Note that the hand-written delta clockstamps largely do not matter.
+Scheduling uses the parallel <em>absolute</em> tick array passed as
+<code>umpTickTimestamps</code>, and project save re-derives the whole
+delta stream in
+<code>ProjectSerialization.cpp: buildSmf2ClipFromMidiNode()</code>. The
+20-bit clamp in <code>appendDelta</code>
+(<code>std::min&lt;uint64_t&gt;(delta, 0xFFFFFu)</code>) therefore never
+reaches disk. It is dead weight, not a live bug.</p>
+<h3 id="7-writing-to-the-master-track">7. Writing to the master
+track</h3>
+<p>Results are inserted in <code>position.samples</code> order, skipping
+any result that starts before the previous one ended. Existing master
+clips are left in place, and clips are named
+<code>"MIR: libsonare &lt;position&gt;"</code> /
+<code>"MIR: librosa &lt;position&gt;"</code> after the backend that
+produced them. Each insertion is a separate
+<code>ProjectMutationOrigin::User</code> mutation so undo history
+captures clip fragments outside a document transaction —
+<code>MirAddin.cpp</code> has a comment explaining this;
+<code>MirLibrosaAddin.cpp</code> does the same without the comment.</p>
+<p>Clips are added with <code>needsFileSave = false</code> and an empty
+filepath, so on save <code>ProjectSerialization</code> re-exports them
+to a fresh <code>.midi2</code> file anyway (<code>needsExport</code> is
+true when the path is empty).</p>
+<h2 id="backend-a-libsonare">Backend A: libsonare</h2>
+<p><code>MirAddin.cpp</code> orchestrates;
+<code>MirTempoAnalysis.cpp</code> and <code>MirRhythmAnalysis.cpp</code>
+supply libsonare's primitives to the shared tempo/meter code, in
+namespace <code>uapmd_mir::sonare</code>.</p>
+<h3 id="tempo-map--uapmd_mirsonaredetecttempomap">Tempo map —
+<code>uapmd_mir::sonare::detectTempoMap()</code></h3>
+<p>This is a <strong>sliding-window re-estimation</strong>, not a tempo
+tracker.</p>
+<ol type="1">
+<li><code>buildTempoMap()</code> schedules windows of
+<code>kTempoWindowSeconds = 12.0</code> s at
+<code>kTempoWindowHopSeconds = 3.0</code> s hop, with
+<code>kMinimumTempoWindowSeconds = 8.0</code> s required to emit a
+window. Steps 3-7 below are shared with librosa.cpp.</li>
+<li>Each window is passed to
+<code>sonare_analyze_bpm(..., bpm_min 40, bpm_max 240, start_bpm = fallback, n_fft 4096, hop 512, max_candidates 10, ...)</code>.
+The window's primary BPM and its candidate list (bpm + confidence)
+become one <code>TempoObservation</code> whose <code>center</code> is
+the window midpoint.</li>
+<li><code>selectTailHalfTempo()</code> handles one specific failure: on
+the final window (<code>window_end &gt;= duration - 2.0</code>) with low
+confidence (<code>&lt; 0.6</code>), if a candidate at roughly half the
+primary BPM scores within 85 % of the best, that candidate is selected
+instead. This is an anti-octave-error rule for fade-outs. A backend that
+already resolves octave errors per window must report a confidence that
+reflects that, or this rule will undo the decision — see the librosa.cpp
+notes below.</li>
+<li><code>resolveShortAmbiguousRuns()</code> looks at runs of ≤ 3
+consecutive observations that disagree with their neighbours and
+re-picks, from the observation's own candidate list, whichever candidate
+(scoring ≥ 75 % of the best) is closest in log-BPM to the surrounding
+tempo. Runs at index 0 and the final run are not considered.</li>
+<li>Consecutive observations are grouped into runs by
+<code>sameTempo()</code>, a <strong>5 % relative tolerance</strong>.
+Each run contributes one tempo point whose BPM is the <em>median of the
+selected BPMs in that run</em> (<code>medianSelectedBpm</code>).</li>
+<li>The <strong>time</strong> of a tempo point is initially the midpoint
+between the last window centre of the previous run and the first window
+centre of this run — or <code>window_start</code> when the tail-half
+rule fired. The first point is forced to <code>t = 0</code>.</li>
+<li><code>refineTempoTransition()</code> then snaps that time, using the
+backend's onset envelope (libsonare:
+<code>sonare_onset_strength(..., n_fft 2048, hop 512, n_mels 128)</code>).
+For each frame in a ±6 s search band computes
+<code>localPeriodicity(onset, frame, ±2 s, lag_next) - localPeriodicity(..., lag_prev)</code>,
+smooths it over ±0.25 s, and takes the zero crossing nearest the coarse
+time. Points that came from the tail-half rule are skipped.</li>
+</ol>
+<p>Output: <code>vector&lt;pair&lt;seconds, bpm&gt;&gt;</code>, first
+entry always at 0.</p>
+<h3 id="beat-grid--detecttempoawarebeats">Beat grid —
+<code>detectTempoAwareBeats()</code></h3>
+<p>For each tempo segment
+<code>[tempoPoints[i].first, tempoPoints[i+1].first)</code> the sub-span
+of audio is passed to <code>sonare_detect_beats()</code> and the
+returned segment-local times are offset by the segment start. Beats
+closer than 50 ms to the previous kept beat, or at/after the segment
+end, are dropped.</p>
+<p>Because beat tracking is restarted per segment, <strong>beat phase is
+re-derived independently in each segment</strong>; nothing forces
+continuity across a tempo change.</p>
+<h3 id="meter-map--uapmd_mirestimatemetermap-shared">Meter map —
+<code>uapmd_mir::estimateMeterMap()</code> (shared)</h3>
+<ol type="1">
+<li>Candidate meters are enumerated by <code>meterCandidates()</code>:
+numerators <code>{3,4,5,6,7,8,9,11,12,13}</code>, each with a fixed set
+of accent groupings (e.g. 7 → <code>{3,2,2}</code>,
+<code>{2,3,2}</code>, <code>{2,2,3}</code>).</li>
+<li><strong>The denominator is a hard-coded function of the
+numerator:</strong>
+<code>numerator &gt;= 5 &amp;&amp; numerator != 12 ? 8 : 4</code>. There
+is no analysis behind it.</li>
+<li>Per-beat "strength" (<code>uapmd_mir::beatStrengths()</code>) is the
+max of the onset envelope over ±2 frames around the beat, min-max
+normalized across the whole track.</li>
+<li>A DP over beat indices segments the beat sequence. A segment may be
+at most <code>maxSegmentBeats = 96</code> beats, must be a whole number
+of bars (<code>length % numerator == 0</code>) and at least two bars
+long. Each candidate is scored by <code>scoreCandidate()</code>:
+<ul>
+<li><code>mean(downbeat) - mean(weak)</code></li>
+<li><code>+ 0.55 * (mean(secondary) - mean(weak))</code> where
+"secondary" are the group-start positions</li>
+<li><code>+ 0.35 * (1 - mean bar-pattern deviation)</code></li>
+<li><code>+ 0.25 * (1 - beat-interval coefficient of variation)</code>
+times the segment length, minus a flat
+<code>transitionPenalty = 1.15</code> per non-initial segment.</li>
+</ul></li>
+<li>Segments with identical numerator/denominator/grouping are merged;
+the reported time is <code>beats[start]</code>, i.e. the <strong>first
+beat of the segment</strong>, which is thereby <em>asserted</em> to be a
+downbeat. The first segment's time is forced to 0.</li>
+</ol>
+<p>There is no downbeat detection anywhere in this. The DP chooses the
+bar phase implicitly by choosing where segments begin.</p>
+<h3 id="chords">Chords</h3>
+<p><code>sonare_detect_chords_ex()</code> with
+<code>min_duration 0.25</code>, <code>smoothing_window 0.5</code>,
+<code>threshold 0.35</code>, <code>n_fft 4096</code>,
+<code>hop 512</code>, beat-sync on, HMM on (beam 8), inversions on,
+<code>chroma_method 1</code>. Root/quality are mapped to a label by
+<code>chordLabel()</code>; only <code>chord.start</code> is kept.</p>
+<h3 id="diagnostics">Diagnostics</h3>
+<p><code>MirDiagnosticLog</code> (in <code>MirDiagnostics.hpp</code>,
+used by both backends) buffers every raw analyzer value in memory (1 MB
+of bytes, 16k records reserved) and flushes at the end of the run,
+grouped by kind (<code>Calls</code>, <code>Tempo</code>,
+<code>Beats</code>, <code>Onsets</code>, <code>Meter</code>,
+<code>Chords</code>, <code>Other</code>) with a 25 ms sleep every 32
+lines so the logger is not swamped. Every libsonare call is logged with
+its arguments and every returned value with full precision, including
+the per-frame onset envelope. This is the intended way to compare a
+backend's raw output against its post-processed output.</p>
+<p>The librosa.cpp backend logs the same categories, with one deliberate
+omission: it does not dump the onset envelope frame by frame. That dump
+is tens of thousands of lines for a normal track, and
+<code>flush()</code> sleeps 25 ms every 32 lines, so reproducing it
+would add roughly twenty seconds to every run.</p>
+<h2 id="backend-b-librosacpp">Backend B: librosa.cpp</h2>
+<p><code>MirLibrosaAddin.cpp</code> orchestrates;
+<code>MirLibrosaAnalysis.cpp</code> supplies librosa's primitives to the
+same shared code, in namespace <code>uapmd_mir::librosa_cpp</code>. It
+exposes the same three entry points the libsonare backend does
+(<code>detectTempoMap</code>, <code>detectRhythmMap</code>,
+<code>detectChords</code>), so the probe tool can run either.</p>
+<h3 id="tempo-map">Tempo map</h3>
+<p>There is no librosa call that returns tempo candidates:
+<code>librosa::beat::tempo()</code> computes a scored lag axis and
+returns only its argmax. <code>analyzeTempoWindow()</code> therefore
+reproduces that objective and keeps the whole peak list.</p>
+<ol type="1">
+<li>One onset envelope for the whole source
+(<code>onset_strength(mono, sr, n_fft 2048, hop 512)</code>).</li>
+<li>Per window, one autocorrelation over exactly that window:
+<code>tempogram(window, sr, hop, win_length = window frames, center = false)</code>.
+The analysis window <em>is</em> the correlation window, so there is
+nothing to average over and no ramp padding inside it.</li>
+<li>Score each lag the way <code>tempo()</code> does —
+<code>log1p(1e6 * correlation(lag))</code> plus a log-normal prior
+<code>-0.5 * ((log2(bpm) - log2(priorBpm)) / 1.0)^2</code> — restricted
+to 40–240 BPM, the band the libsonare backend asks for.</li>
+<li>Keep local maxima only (adjacent lags are the same tempo) and
+<strong>parabolically interpolate</strong> each peak across its
+neighbouring lags. Without this the BPM is quantized to the lag grid,
+which near 120 BPM is about 2.7 BPM wide — enough on its own to drift
+the beat grid off the audio within a minute.</li>
+<li>Sort by score, keep the top 10, and convert scores to
+<code>exp(score - best)</code> so they read as likelihoods relative to
+the best peak, matching how the shared code's ratio tests treat
+libsonare's confidences.</li>
+<li><code>selectPrimaryCandidate()</code> picks the reported BPM: among
+candidates scoring within 10 % of the best, the one nearest the prior
+tempo. This is the step libsonare performs internally — its own
+candidate list shows the same inversion (for a 150 BPM window it ranks
+74.5 above 150.0) while <code>SonareBpmAnalysisResult::bpm</code> still
+comes back as 150. The prior is already in the score, but log1p
+compression flattens the peaks too much for it to decide alone.</li>
+<li><code>windowConfidence()</code> reports doubt from the best
+candidate that is <em>not</em> octave-related to the primary, and only
+when it is a near-tie. Reporting octave rivals as doubt would let the
+shared <code>selectTailHalfTempo()</code> rule flip the octave decision
+step 6 just made.</li>
+</ol>
+<p>The window scheduling, run grouping, short-run resolution and
+transition refinement are then the shared
+<code>buildTempoMap()</code>.</p>
+<h3 id="beat-grid">Beat grid</h3>
+<p><code>detectTempoAwareBeats()</code> runs <code>beat_track</code>
+<strong>per tempo-map segment</strong>, over that segment's slice of the
+onset envelope, with the segment's BPM as <code>start_bpm</code> and
+<code>tightness = 100</code>, <code>trim = false</code>. Frame indices
+are offset by the segment's first frame; the same 50 ms de-duplication
+and end-of-segment trim as the libsonare backend apply.</p>
+<p><code>restoreLeadingBeats()</code> then back-extrapolates the grid at
+the opening tempo down to t≈0. librosa's tracker can lock on well into
+the file, and the meter estimator treats the first beat of its opening
+segment as a downbeat at t=0.</p>
+<h3 id="meter">Meter</h3>
+<p>Shared: <code>beatStrengths()</code> +
+<code>estimateMeterMap()</code>. The librosa backend previously had a
+near-copy of the DP that omitted the beat-interval regularity term and
+the ±2-frame strength smoothing; that copy is gone.</p>
+<h3 id="chords-1">Chords</h3>
+<p><code>chroma_stft(mono, sr, 4096, hop)</code>, then a 24-way
+major/minor template match with weights
+<code>root/fifth 1.0, third 0.8, "wrong" third 0.2, everything else -0.2</code>.
+Chroma is averaged over a <code>kChordSmoothingSeconds = 0.5</code> s
+window before the argmax, and runs shorter than
+<code>kChordMinimumSeconds = 0.25</code> s are absorbed into the chord
+they interrupted — the same two knobs the libsonare chord detector is
+configured with. Previously the argmax ran per frame with no smoothing,
+emitting a chord change as often as every ~12 ms.</p>
+<p>There is still no HMM and no inversion detection; librosa.cpp has no
+equivalent of <code>sonare_detect_chords_ex</code>.</p>
+<h3 id="side-by-side">Side-by-side</h3>
+<table>
+<thead>
+<tr class="header">
+<th>aspect</th>
+<th>libsonare</th>
+<th>librosa.cpp</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>tempo model</td>
+<td>piecewise-constant map from 12 s / 3 s sliding windows</td>
+<td>same (shared <code>buildTempoMap</code>)</td>
+</tr>
+<tr class="even">
+<td>per-window estimate</td>
+<td><code>sonare_analyze_bpm</code></td>
+<td><code>tempogram</code> + <code>tempo()</code>'s objective, peaks
+parabolically interpolated</td>
+</tr>
+<tr class="odd">
+<td>octave-error handling</td>
+<td>inside libsonare, plus the shared tail-half rule</td>
+<td><code>selectPrimaryCandidate</code>, plus the shared tail-half
+rule</td>
+</tr>
+<tr class="even">
+<td>BPM precision</td>
+<td>continuous</td>
+<td>continuous (parabolic interpolation)</td>
+</tr>
+<tr class="odd">
+<td>beat tracking</td>
+<td>per tempo segment (<code>sonare_detect_beats</code>)</td>
+<td>per tempo segment (<code>beat_track</code>)</td>
+</tr>
+<tr class="even">
+<td>beat grid before first detected beat</td>
+<td>none</td>
+<td>back-extrapolated</td>
+</tr>
+<tr class="odd">
+<td>beat strength / meter DP</td>
+<td>shared</td>
+<td>shared</td>
+</tr>
+<tr class="even">
+<td>denominator</td>
+<td><code>n&gt;=5 &amp;&amp; n!=12 ? 8 : 4</code> (shared)</td>
+<td>identical</td>
+</tr>
+<tr class="odd">
+<td>chords</td>
+<td>libsonare HMM detector, inversions</td>
+<td>template match, 0.5 s smoothing, 0.25 s minimum</td>
+</tr>
+<tr class="even">
+<td>seconds→ticks</td>
+<td>shared <code>tempoMapTimeToTicks</code></td>
+<td>same</td>
+</tr>
+<tr class="odd">
+<td>diagnostics</td>
+<td>full raw-value dump</td>
+<td>same, minus the per-frame onset dump</td>
+</tr>
+</tbody>
+</table>
+<h3 id="measured-behaviour">Measured behaviour</h3>
+<p>Against synthetic click tracks through
+<code>uapmd-mir-tempo-probe</code>:</p>
+<table>
+<thead>
+<tr class="header">
+<th>case</th>
+<th>truth</th>
+<th>libsonare</th>
+<th>librosa.cpp</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>constant tempo, 3/4, 60 s</td>
+<td>100.000 BPM</td>
+<td>99.806</td>
+<td>99.974</td>
+</tr>
+<tr class="even">
+<td>two-part track, first half</td>
+<td>120.000 BPM</td>
+<td>120.082</td>
+<td>120.026</td>
+</tr>
+<tr class="odd">
+<td>two-part track, second half</td>
+<td>150.000 BPM</td>
+<td>150.218</td>
+<td>150.001</td>
+</tr>
+<tr class="even">
+<td>tempo-change time</td>
+<td>40.000 s</td>
+<td>40.147 s</td>
+<td>40.147 s</td>
+</tr>
+</tbody>
+</table>
+<p>Both now find the tempo change, and both place it at the same time —
+that error is in the shared window scheduling, item 4 below. The BPM
+values are where librosa.cpp is now the more accurate of the two,
+because of the parabolic peak interpolation.</p>
+<h2 id="what-actually-determines-displayed-timing">What actually
+determines displayed timing</h2>
+<p>The analysis result is not what the ruler draws. Four more
+conversions happen:</p>
+<ol type="1">
+<li><code>MidiClipSourceNode::computeSampleTimeline()</code> converts
+the tick positions back to samples using the clip's own
+<code>tempo_changes</code> — this is the exact inverse of
+<code>tempoMapTimeToTicks()</code>, so <strong>the seconds → ticks →
+samples round trip is consistent</strong> and is not itself a source of
+error.</li>
+<li><code>TimelineFacadeImpl::appendMidiNodeMetaToSnapshot()</code>
+converts those samples back to seconds and adds the clip's start sample,
+producing the timeline-absolute
+<code>MasterTrackSnapshot::tempoPoints</code> /
+<code>timeSignaturePoints</code>.</li>
+<li><code>uapmd::TempoMap::rebuild()</code> integrates the tempo points
+into quarter-note beats and stores each time signature's
+<code>startBeat = secondsToBeats(t)</code> — a
+<strong>fractional</strong> beat position.</li>
+<li><code>TimelineAxis::drawBeatsRuler()</code> starts each region's
+bars at its own <code>startBeat</code>, stepping by
+<code>signatureBeatLength = 4.0 / denominator</code> quarter notes and
+drawing a bar line every <code>numerator</code> steps.
+<code>TempoMap::rebuild()</code> drops meta events that restate the
+meter already in force, so only an actual change re-phases the
+grid.</li>
+</ol>
+<p>Two properties of that chain matter:</p>
+<ul>
+<li><strong>There is no downbeat anchor.</strong> Beat 0 is <em>clip
+start</em>, full stop. A time signature's bar phase is whatever
+<code>startBeat</code> happens to be.</li>
+<li><strong>The bar length is <code>numerator * 4 / denominator</code>
+quarter notes.</strong> A meter reported as 7/8 produces 3.5-quarter
+bars, whether or not the beats that were counted were quarters.</li>
+</ul>
+<h2 id="where-the-timing-goes-wrong">Where the timing goes wrong</h2>
+<p>These are ordered by how much they can move an event, largest
+first.</p>
+<h3 id="1-the-tempo-map-and-the-beatmeter-map-are-never-reconciled">1.
+The tempo map and the beat/meter map are never reconciled</h3>
+<p>This is the structural defect. The tempo map is estimated by
+autocorrelation over 12 s windows; the beat grid is estimated separately
+by a beat tracker; the meter map is a segmentation <em>of the beat
+grid</em>. The final tick position of a time-signature change is then
+computed by integrating the <strong>tempo map</strong> up to a time that
+came from the <strong>beat grid</strong>.</p>
+<p>Those two grids only agree if the tempo map's piecewise-constant BPM
+exactly reproduces the tracked beat times, which it does not —
+<code>medianSelectedBpm()</code> emits raw analyzer output such as
+123.047 BPM with no snapping and no phase. The beat implied by the tempo
+map drifts against the audible beat, and the drift accumulates:
+<strong>0.5 BPM of error at 120 BPM is 1.5 beats of drift after three
+minutes.</strong> Every time-signature change lands progressively
+further from the downbeat it was measured at, and so does every bar line
+the region generates.</p>
+<p>The parabolic peak interpolation in the librosa.cpp backend shrinks
+this by roughly an order of magnitude (measured 0.026 BPM error against
+a true 100 BPM, versus libsonare's 0.194) but does not remove it: 0.026
+BPM is still a quarter of a beat after ten minutes, and nothing ties the
+map's phase to a tracked beat.</p>
+<p>A tempo map that is meant to drive a bar ruler has to be fitted
+<em>to</em> the beat grid (each segment's BPM chosen so the segment
+spans a whole number of beats between two tracked beats), not estimated
+independently of it.</p>
+<h3 id="2-nothing-establishes-bar-phase">2. Nothing establishes bar
+phase</h3>
+<p>Both backends force their first meter segment to <code>t = 0</code>
+and both let <code>TempoMap</code> put beat 0 at clip start. Any pickup
+bar, count-in, or leading silence shifts every bar line by that amount
+for the whole project. Tracking beats per tempo segment — which both
+backends now do — compounds this: bar phase after a tempo change is
+whatever the tracker happened to lock onto for that sub-span.</p>
+<p>libsonare exposes <code>sonare_detect_downbeats()</code>. Neither
+backend calls it.</p>
+<h3 id="3-the-denominator-heuristic-halves-the-bar">3. The denominator
+heuristic halves the bar</h3>
+<p><code>numerator &gt;= 5 &amp;&amp; numerator != 12 ? 8 : 4</code>, in
+the shared <code>meterCandidates()</code>, so it applies to both
+backends. The beats being counted are what the beat tracker found —
+quarter-note level pulses under a quarter-note BPM. Labelling a 7-beat
+bar as 7/8 tells <code>drawBarLines()</code> the bar is 3.5 quarter
+notes long, i.e. <strong>half the length the analysis actually
+measured</strong>. Anything detected with numerator 5, 6, 7, 8, 9, 11 or
+13 is wrong by a factor of two, and each such region's bar lines are
+wrong from its very first bar rather than drifting into error.</p>
+<p>libsonare's <code>sonare_analyze_rhythm()</code> returns a
+<code>SonareTimeSignature</code> with both numerator and denominator
+plus a confidence, and <code>SonareAnalysisResult</code> carries
+time-signature candidates. Neither is used; the meter estimator is
+hand-rolled and shared.</p>
+<h3 id="4-tempo-change-times-are-quantized-to-the-window-grid">4.
+Tempo-change times are quantized to the window grid</h3>
+<p>The coarse time of a tempo change is the midpoint between two window
+centres, so it is quantized to
+<code>kTempoWindowHopSeconds / 2 = 1.5 s</code> and biased by up to half
+the 12 s window. <code>refineTempoTransition()</code> searches ±6 s
+around it for a zero crossing of a smoothed periodicity difference —
+that is the right idea, but the smoothing radius (±0.25 s) and the ±2 s
+periodicity window mean it cannot resolve better than roughly a second,
+and if the true transition is more than 6 s from the coarse estimate it
+is not reachable at all. Additionally, the 5 % <code>sameTempo</code>
+tolerance means a genuine 120 → 125 BPM change is not detected as a
+change at all. Both backends measured the same 40.147 s for a change
+that truly occurs at 40.000 s, which is this rule and the window grid,
+not the backend.</p>
+<h3
+id="5-analysis-coordinates-are-source-file-coordinates-not-clip-coordinates">5.
+Analysis coordinates are source-file coordinates, not clip
+coordinates</h3>
+<p><code>readAudioSourceSamples(sourceId, 0, source-&gt;frameCount, ...)</code>
+reads the whole file from frame 0, while the result is anchored at
+<code>sourceClip-&gt;position</code>. Any clip that does not start at
+source frame 0, and any clip with <code>audioWarps</code>, has its
+analysis times offset or stretched relative to what the timeline plays.
+<code>AudioFileSourceNode</code> renders warped material and reports
+<code>totalLength()</code> in the warped/resampled domain; the analysis
+sees none of that.</p>
+<h3 id="6-sample-rate-domain-mix-up-in-the-clip-duration">6. Sample-rate
+domain mix-up in the clip duration</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>duration_samples <span class="op">=</span> sourceClip<span class="op">-&gt;</span>durationSamples<span class="op">;</span>  <span class="co">// TIMELINE sample rate</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>sample_rate      <span class="op">=</span> source<span class="op">-&gt;</span>sampleRate<span class="op">;</span>           <span class="co">// FILE sample rate</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="op">...</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>durationSeconds <span class="op">=</span> duration_samples <span class="op">/</span> sample_rate<span class="op">;</span></span></code></pre></div>
+<p><code>ClipData::durationSamples</code> comes from
+<code>AudioFileSourceNode::totalLength()</code>, which is explicitly
+documented as being in the <em>target</em> (engine) sample-rate domain,
+while <code>source-&gt;sampleRate</code> is the file header's rate. A
+44.1 kHz file in a 48 kHz engine makes <code>durationSeconds</code> 8.8
+% too long. This only affects the <code>endOfClip</code> tick and hence
+the master clip's reported length — it does not move tempo or
+time-signature events — but it is the same class of error and worth
+fixing alongside them.</p>
+<h3 id="fixed-since-the-first-draft-of-this-document">Fixed since the
+first draft of this document</h3>
+<p>Two items no longer apply and are recorded here only so the history
+is legible:</p>
+<ul>
+<li>librosa.cpp used to hard-code
+<code>tempo_points = {{0.0, bpm}}</code> and convert seconds to ticks
+with that single BPM, so it could not represent a tempo change at all.
+It now builds a real tempo map through the shared code.</li>
+<li><code>detectChords()</code> used to emit an event at every chroma
+frame whose argmax differed from the previous frame's — up to ~86 events
+per second at <code>hop = 512, sr = 44100</code>. It now smooths over
+0.5 s and drops runs under 0.25 s.</li>
+</ul>
+<h2 id="diagnostics-and-the-probe-tool">Diagnostics and the probe
+tool</h2>
+<p>When <code>UAPMD_ENABLE_MIR</code>,
+<code>UAPMD_ENABLE_LIBSONARE</code> and <code>UAPMD_BUILD_TESTS</code>
+are on (and not Android/iOS/Emscripten), CMake builds
+<code>uapmd-mir-tempo-probe</code> from
+<code>tests/TempoMapProbe.cpp</code>. It links the analysis translation
+units plus <code>sonare_core</code> and <code>librosa::librosa</code> —
+no engine, no app — and runs the tempo and meter estimators of
+<strong>either backend</strong> against a WAV file:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cmake-build-debug/source/uapmd-mir/uapmd-mir-tempo-probe</span> input.wav librosa</span></code></pre></div>
+<p>The second argument is <code>libsonare</code> (the default) or
+<code>librosa</code>. Running both over the same file is the cheapest
+way to tell a backend-specific problem from one in the shared code.</p>
+<p>It accepts <strong>little-endian 32-bit float WAV only</strong>
+(<code>fmt</code> tag 3 or extensible with subformat 3), downmixes to
+mono itself, and prints:</p>
+<pre><code>backend    &lt;name&gt;
+tempo
+&lt;seconds&gt;  &lt;bpm&gt;            &lt;tick&gt;
+end        &lt;duration&gt;       &lt;tick&gt;
+meter
+&lt;seconds&gt;  &lt;num&gt;/&lt;den&gt;      &lt;tick&gt;</code></pre>
+<p>The tick column is <code>tempoMapTimeToTicks()</code> at TPQN 480, so
+the probe exercises exactly the seconds → ticks step that
+<code>MirAddin.cpp</code> uses. This is the fastest way to reproduce
+items 1–4 above without the GUI.</p>
+<p>For the in-app path, <code>MirDiagnosticLog</code> output is the
+reference: it prints <code>uapmd calling &lt;backend&gt; ...</code>
+before each call, <code>&lt;backend&gt; raw ...</code> for each returned
+value, and <code>uapmd tempo-map output ...</code> /
+<code>uapmd meter-map output ...</code> for the post-processed result,
+so raw and derived values can be diffed directly. Both backends now emit
+this; only the per-frame onset dump is libsonare-only.</p>
+<h2 id="unused-upstream-capability">Unused upstream capability</h2>
+<p>Worth recording, because a good deal of <code>uapmd-mir</code>
+reimplements things the dependencies already provide:</p>
+<ul>
+<li>libsonare: <code>sonare_detect_downbeats()</code>,
+<code>sonare_analyze_rhythm()</code> (returns
+<code>SonareRhythmResult</code> with <code>time_signature</code>,
+<code>tempo_stability</code>, <code>pattern_regularity</code>,
+<code>beat_intervals</code>), <code>sonare_tempogram()</code>,
+<code>sonare_cyclic_tempogram()</code>, <code>sonare_plp()</code>, and —
+subject to which libsonare subsystems our CPM option set actually builds
+— <code>sonare_project_analyze_tempo()</code> and the project-level
+time-signature segment API.</li>
+<li>librosa.cpp:
+<code>librosa::beat::tempo(..., aggregate = false)</code> and
+<code>librosa::beat::tempo_frames()</code> for a per-frame tempo curve,
+<code>librosa::beat::plp()</code> for predominant local pulse — the
+natural source of a beat <em>phase</em>, which is what item 2 above is
+missing.</li>
+</ul>
+<p>The shared meter estimator, and the sliding-window tempo map both
+backends now use, predate any use of these.</p>
+    </main>
+</div>
+</body>
+</html>

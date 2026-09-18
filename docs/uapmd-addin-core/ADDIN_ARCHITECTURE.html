@@ -85,12 +85,122 @@ again.</p>
 code loading or unloading there. Its current enable/disable controls
 invoke the built-in lifecycle immediately; a restart-only policy is not
 yet implemented.</p>
-<p>ARA support is a built-in addin when <code>UAPMD_ENABLE_ARA</code> is
-enabled. It uses the engine's plugin-instance lifecycle extension point.
+<p>The stem separation backends for audio import are built-in addins:
+BS-Roformer is always present, and Demucs is built when
+<code>UAPMD_ENABLE_DEMUCS_CPP</code> is set, as is the Basic Pitch
+polyphonic transcription addin (<code>/uapmd/basic-pitch</code>) when
+<code>UAPMD_ENABLE_BASIC_PITCH</code> is set. ARA support is a built-in
+addin when <code>UAPMD_ENABLE_ARA</code> is enabled. It uses the
+engine's plugin-instance lifecycle extension point.
 <code>UAPMD_HAS_ARA</code> remains the build-time availability and
-license-compliance gate. ARA is disabled by default for WebAssembly
-because the current ARA SDK rejects <code>wasm32</code>: it has no
-packing/alignment definition for that architecture.</p>
+license-compliance gate. ARA is off by default on every platform, and is
+excluded from WebAssembly builds regardless of the option because the
+current ARA SDK rejects <code>wasm32</code>: it has no packing/alignment
+definition for that architecture.</p>
+<h2 id="extension-points">Extension points</h2>
+<p><code>/uapmd/engine/v1</code> exposes the
+<code>uapmd::SequencerEngine</code> an addin runs against.</p>
+<p><code>/uapmd/app/command/v1</code> exposes the
+<code>uapmd_addin::CommandRegistry</code>, for actions that apply to the
+application as a whole. An addin registers a
+<code>uapmd_addin::Command</code> and must unregister it during
+<code>cleanup()</code>. The host decides where commands appear; the
+application lists them at the foot of its Command menu.
+<code>title()</code> is read every frame, so a command that starts a
+long-running job reports its progress by returning a different title
+while it runs, and refuses re-entry through <code>enabled()</code>.</p>
+<p><code>/uapmd/app/clip-command/v1</code> exposes the
+<code>uapmd_addin::ClipCommandRegistry</code>, for actions that apply to
+a single clip. It follows the same contribute-and-remove rule, with
+<code>uapmd_addin::ClipCommand</code> adding a
+<code>uapmd_addin::ClipCommandTarget</code> argument naming the clip.
+The host asks <code>appliesTo()</code> before drawing anything, so a
+command that only makes sense for one kind of clip is invisible on the
+others rather than greyed out; <code>enabled()</code> then greys out a
+command that applies but cannot run right now. The target carries only
+the identifiers the host's own clip APIs take, plus enough to answer
+<code>appliesTo()</code> -- an addin resolves the clip itself through
+<code>/uapmd/engine/v1</code>. A host with nowhere to present per-clip
+actions leaves this point unregistered, which addins must tolerate. The
+application offers these in the clip context menu of both timeline
+views.</p>
+<p><code>/uapmd/app/timeline/clip-editor/v1</code> exposes the
+<code>uapmd_addin::ClipEditorRegistry</code>. Clip editor addins are
+registered application-wide, but <code>ClipEditorHost</code> instances
+belong to a project/timeline editor. The host creates editors from the
+active <code>ClipEditorContext</code>, which carries the project,
+timeline, active clip, selection, undo, transport, clipboard, and
+command-routing handles. Those handles are opaque at addin-core level so
+applications can supply their own service types. Hosts must destroy
+these instances before unloading an addin.</p>
+<p><code>/uapmd/audio-graph/provider/v1</code> exposes the
+<code>uapmd::AudioGraphProviderRegistry</code>. Providers are
+<em>contributed</em>, not replaced: an addin adds its own audio graph
+implementation alongside the built-in simple linear and full DAG
+providers, and must <code>remove()</code> whatever it added during
+<code>cleanup()</code>.</p>
+<p>A provider writes a graph type id into project data, but that id does
+not decide who loads the graph back. <strong>Loadability is decided by
+asking providers to load it.</strong> A graph written by one provider is
+often loadable by another -- a linear chain is a degenerate DAG -- and
+the provider that wrote it may not exist in the build that opens it. The
+recorded type is tried first; if it is absent or its loader fails, the
+remaining providers are tried in turn, and the one that succeeds is
+recorded as the graph's type from then on.</p>
+<p>This puts one requirement on providers:</p>
+<ul>
+<li><strong>A loader must fail when it cannot represent its
+input.</strong> Accepting a graph and quietly dropping what it cannot
+express would make it the answer to every query and destroy the data on
+the next save. The built-in simple linear provider refuses a graph
+carrying explicit connections for exactly this reason.</li>
+</ul>
+<p>When no provider can load a graph, the track runs a substitute graph
+and the original graph file is carried through the next save byte for
+byte, under its original graph type -- so a build that does have the
+provider still opens the project intact. Replacing the track's graph
+type discards it, since that is the user choosing a different graph.</p>
+<p>The graph type id remains an exact identity elsewhere: creating a
+graph of a requested type, undo snapshots, and recording what a saved
+graph is. Only loading is decided by result.</p>
+<p>Graphs offer capabilities through
+<code>uapmd_graph::AudioGraphExtension</code>, retrieved with
+<code>AudioGraph::getExtension&lt;T&gt;()</code>. Edge editing lives
+behind <code>GraphConnectionExtension</code>; nothing outside a provider
+names a concrete graph class.</p>
+<p><code>/uapmd/audio-import/stem-separator/v1</code> exposes the
+<code>uapmd::import::StemSeparatorRegistry</code>. Like graph providers,
+stem separation backends are <em>contributed</em>: an addin adds a
+<code>uapmd::import::StemSeparator</code> alongside whatever else is
+registered, and must <code>remove()</code> it during
+<code>cleanup()</code>. Nothing in <code>uapmd-data</code> separates
+stems on its own, so audio import is unavailable -- and the application
+hides it -- when no addin contributed a separator. Two backends ship:
+Demucs (demucs.cpp) and BS-Roformer (BSRoformer.cpp, on GGML). Both live
+in <code>uapmd-mir</code>, alongside the analysis addins but built
+separately from them, and both are built-in addins. BS-Roformer is
+always present and can only be turned off at runtime; Demucs is built
+only when <code>UAPMD_ENABLE_DEMUCS_CPP</code> is set, because
+demucs.cpp vendors MPL-2.0 Eigen. Each is its own package
+(<code>/uapmd/demucs</code>, <code>/uapmd/bs-roformer</code>), so
+enabling one says nothing about the other.</p>
+<p>A separation run takes minutes and happens on a worker thread, while
+the addin that owns the separator can be disabled at any moment from the
+Addin Manager. The registry therefore hands out
+<code>StemSeparatorRegistry::Lease</code> rather than a bare
+pointer:</p>
+<ul>
+<li>a run holds a lease for its whole duration, and
+<code>remove()</code> blocks until every lease is released, so the code
+behind the separator is never unloaded while it is executing;</li>
+<li><code>Lease::withdrawn()</code> turns true the moment
+<code>remove()</code> starts, and a run is required to poll it through
+its cancellation callback -- otherwise the wait in <code>remove()</code>
+would last as long as the whole separation.</li>
+</ul>
+<p>Everything else about a separator (its name, its model file spec, the
+list of registered separators) is read on the thread that also drives
+addin enablement, and needs no lease.</p>
 <h2 id="roadmap">Roadmap</h2>
 <h3 id="v1-source-integrated-addins">v1: source-integrated addins</h3>
 <p>Addins may live in other repositories but are incorporated into the

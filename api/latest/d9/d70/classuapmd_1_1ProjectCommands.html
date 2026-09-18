@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -145,9 +145,30 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setPluginPerN
 <tr class="memitem:a418e4a48c0c55975a85c13b7f28e453f" id="r_a418e4a48c0c55975a85c13b7f28e453f"><td class="memItemLeft" align="right" valign="top"><a id="a418e4a48c0c55975a85c13b7f28e453f" name="a418e4a48c0c55975a85c13b7f28e453f"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setPluginGroup</b> (int32_t instanceId, uint8_t group, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:a418e4a48c0c55975a85c13b7f28e453f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4549488d2c1c34e804b1cb8ba96672e2" id="r_a4549488d2c1c34e804b1cb8ba96672e2"><td class="memItemLeft" align="right" valign="top"><a id="a4549488d2c1c34e804b1cb8ba96672e2" name="a4549488d2c1c34e804b1cb8ba96672e2"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>addDeviceInputToTrack</b> (int32_t trackIndex, int32_t sourceNodeId, const std::vector&lt; uint32_t &gt; &amp;channelIndices, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:a4549488d2c1c34e804b1cb8ba96672e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acf221ed4eabe673f97eb2d451007be57" id="r_acf221ed4eabe673f97eb2d451007be57"><td class="memItemLeft" align="right" valign="top"><a id="acf221ed4eabe673f97eb2d451007be57" name="acf221ed4eabe673f97eb2d451007be57"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setDeviceInputChannels</b> (int32_t trackIndex, int32_t sourceNodeId, const std::vector&lt; uint32_t &gt; &amp;channelIndices, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:acf221ed4eabe673f97eb2d451007be57"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af55db3f71cb13e00c736e8da4d9c90a9" id="r_af55db3f71cb13e00c736e8da4d9c90a9"><td class="memItemLeft" align="right" valign="top"><a id="af55db3f71cb13e00c736e8da4d9c90a9" name="af55db3f71cb13e00c736e8da4d9c90a9"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removeDeviceInputFromTrack</b> (int32_t trackIndex, int32_t sourceNodeId, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:af55db3f71cb13e00c736e8da4d9c90a9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1bdce43980f479f1383533af2bff8b7b" id="r_a1bdce43980f479f1383533af2bff8b7b"><td class="memItemLeft" align="right" valign="top"><a id="a1bdce43980f479f1383533af2bff8b7b" name="a1bdce43980f479f1383533af2bff8b7b"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>connectTrackGraph</b> (int32_t trackIndex, const <a class="el" href="../../dd/d8b/structuapmd__graph_1_1AudioPluginGraphConnection.html">uapmd_graph::AudioPluginGraphConnection</a> &amp;connection, std::string &amp;error, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:a1bdce43980f479f1383533af2bff8b7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4c53825a34690b663eff5be95ace89b9" id="r_a4c53825a34690b663eff5be95ace89b9"><td class="memItemLeft" align="right" valign="top"><a id="a4c53825a34690b663eff5be95ace89b9" name="a4c53825a34690b663eff5be95ace89b9"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>disconnectTrackGraphConnection</b> (int32_t trackIndex, int64_t connectionId, std::string &amp;error, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:a4c53825a34690b663eff5be95ace89b9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6884bab9d554f2aae3d439b3f3193a96" id="r_a6884bab9d554f2aae3d439b3f3193a96"><td class="memItemLeft" align="right" valign="top"><a id="a6884bab9d554f2aae3d439b3f3193a96" name="a6884bab9d554f2aae3d439b3f3193a96"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceTrackGraphType</b> (int32_t trackIndex, const std::string &amp;graphTypeId, size_t eventBufferSizeInBytes, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:a6884bab9d554f2aae3d439b3f3193a96"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa39ab1384d6a99193e1691c087b08d1b" id="r_aa39ab1384d6a99193e1691c087b08d1b"><td class="memItemLeft" align="right" valign="top"><a id="aa39ab1384d6a99193e1691c087b08d1b" name="aa39ab1384d6a99193e1691c087b08d1b"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setMasterTrackMarkers</b> (std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt; markers, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:aa39ab1384d6a99193e1691c087b08d1b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aac06d7089054f8941a0e8391dc42df7f" id="r_aac06d7089054f8941a0e8391dc42df7f"><td class="memItemLeft" align="right" valign="top"><a id="aac06d7089054f8941a0e8391dc42df7f" name="aac06d7089054f8941a0e8391dc42df7f"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setLatencyCompensationSettings</b> (const <a class="el" href="../../d3/dd6/structuapmd_1_1LatencyCompensationProjectSettings.html">LatencyCompensationProjectSettings</a> &amp;settings, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:aac06d7089054f8941a0e8391dc42df7f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a79ac403eb82fa32f2ac1a6a1e0059e72" id="r_a79ac403eb82fa32f2ac1a6a1e0059e72"><td class="memItemLeft" align="right" valign="top"><a id="a79ac403eb82fa32f2ac1a6a1e0059e72" name="a79ac403eb82fa32f2ac1a6a1e0059e72"></a>
 virtual <a class="el" href="../../d3/d19/classuapmd_1_1ProjectCommandManager.html">ProjectCommandManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>history</b> ()=0</td></tr>
 <tr class="separator:a79ac403eb82fa32f2ac1a6a1e0059e72"><td class="memSeparator" colspan="2">&#160;</td></tr>

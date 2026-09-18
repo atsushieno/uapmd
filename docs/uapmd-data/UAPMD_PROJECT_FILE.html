@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="uapmd-project-file-format-documentation-ai-slop">UAPMD Project
+File Format Documentation (AI slop)</h1>
+<h2 id="overview">Overview</h2>
+<p>UAPMD project files are JSON-based documents that define a
+timeline-based audio/MIDI project structure. The format supports
+multiple tracks, each containing clips (audio or MIDI) and optional
+audio graph state.</p>
+<p>This document describes the project structure and its references to
+graph files. The graph payload is specified separately in the <a
+href="AUDIO_GRAPH_FILE.html">Audio Graph File Format Specification</a>,
+which describes the currently implemented graph format.</p>
+<p>The currently implemented format has these important properties:</p>
+<ul>
+<li><code>track.volume</code> persists the implicit track/master fader
+even when no audio graph exists;</li>
+<li><code>track.graph</code> is optional and may be omitted
+entirely;</li>
+<li>when a graph is saved, the current writer emits
+<code>track.graph</code> only as a reference to an external graph file;
+an inline <code>plugins[]</code> array is still read, but is no longer
+written;</li>
+<li>tracks, clips and plugin nodes carry persistent identity
+(<code>id</code>, and <code>node_id</code> for plugin nodes), and
+readers mint positional identifiers for projects written before that
+identity existed;</li>
+<li>the default runtime fader node <code>builtin:track_gain</code> is
+not serialized in <code>graph.nodes[]</code>;</li>
+<li>external DAG graph data uses <code>node_id</code> endpoint
+identifiers when newly written;</li>
+<li>older DAG graph data that still uses <code>plugin_index</code>
+remains readable for backward compatibility.</li>
+</ul>
+<h2 id="file-structure">File Structure</h2>
+<p>The project file is a JSON object with the following top-level
+structure:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;settings&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="er">/*</span> <span class="er">project-level</span> <span class="er">settings</span> <span class="er">*/</span> <span class="fu">},</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;tracks&quot;</span><span class="fu">:</span> <span class="ot">[</span> <span class="er">/*</span> <span class="er">array</span> <span class="er">of</span> <span class="er">track</span> <span class="er">objects</span> <span class="er">*/</span> <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;master_track&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="er">/*</span> <span class="er">single</span> <span class="er">track</span> <span class="er">object</span> <span class="er">*/</span> <span class="fu">}</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="fields">Fields</h3>
+<ul>
+<li><strong><code>settings</code></strong> (object, optional):
+Project-level settings
+<ul>
+<li>Each member is one named setting. Values are stored as parsed JSON
+rather than as strings, so a setting value may be of any JSON type</li>
+<li>Written only when the project has at least one setting</li>
+</ul></li>
+<li><strong><code>tracks</code></strong> (array, optional): Ordinary
+tracks, written only when the project has at least one</li>
+<li><strong><code>master_track</code></strong> (object, optional): The
+master track; see Master Track</li>
+</ul>
+<h2 id="track-object">Track Object</h2>
+<p>Each track represents an independent timeline with its own clips and
+optional audio graph state.</p>
+<h3 id="schema">Schema</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0&quot;</span><span class="fu">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;volume&quot;</span><span class="fu">:</span> <span class="fl">1.0</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;muted&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;solo&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;graph&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="er">/*</span> <span class="er">graph</span> <span class="er">object</span> <span class="er">*/</span> <span class="fu">},</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;markers&quot;</span><span class="fu">:</span> <span class="ot">[</span> <span class="er">/*</span> <span class="er">array</span> <span class="er">of</span> <span class="er">marker</span> <span class="er">objects</span> <span class="er">*/</span> <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;clips&quot;</span><span class="fu">:</span> <span class="ot">[</span> <span class="er">/*</span> <span class="er">array</span> <span class="er">of</span> <span class="er">clip</span> <span class="er">objects</span> <span class="er">*/</span> <span class="ot">]</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="fields-1">Fields</h3>
+<ul>
+<li><strong><code>id</code></strong> (string, optional): Stable identity
+for this track
+<ul>
+<li>Preserved across save/load so that the track can be addressed by
+identity rather than by its position in the <code>tracks</code>
+array</li>
+<li>Omitted by writers that predate persistent identity. Readers mint
+<code>"track_N"</code> (or <code>"master_track"</code>) for tracks that
+lack it, matching the positional identifier those writers used</li>
+<li>Distinct from the anchor identifiers described under Clip Object,
+which address objects only within a single file</li>
+</ul></li>
+<li><strong><code>volume</code></strong> (number, optional):
+Track/master fader gain as a linear scalar
+<ul>
+<li>Default is <code>1.0</code></li>
+<li>Recommended UAPMD-supported range is <code>0.0 .. 8.0</code></li>
+<li>This is the persisted source of truth for the implicit
+per-track/master fader</li>
+</ul></li>
+<li><strong><code>muted</code></strong> (boolean, optional): Track mute
+state
+<ul>
+<li>Written only when the track is muted, so an absent field means not
+muted</li>
+</ul></li>
+<li><strong><code>solo</code></strong> (boolean, optional): Track solo
+state
+<ul>
+<li>Written only when the track is soloed, so an absent field means not
+soloed</li>
+</ul></li>
+<li><strong><code>graph</code></strong> (object, optional): Defines the
+audio graph for this track
+<ul>
+<li>The field may be omitted when the track does not need explicit graph
+topology or plugin state</li>
+<li>The current writer emits it only when the graph carries an external
+file reference, which is how the application saves every graph; see <a
+href="#graph-reference-object">Graph Reference Object</a></li>
+</ul></li>
+<li><strong><code>markers</code></strong> (array, optional): Track-level
+markers
+<ul>
+<li>Uses the same marker object as clip <code>markers</code>; see Marker
+Object</li>
+</ul></li>
+<li><strong><code>clips</code></strong> (array, optional): List of audio
+or MIDI clips on this track's timeline</li>
+</ul>
+<h3 id="track-volume-persistence">Track Volume Persistence</h3>
+<p>The implicit per-track and master-track fader is stored only in the
+top-level track object's <code>volume</code> field.</p>
+<p>It is intentionally not serialized as a graph node in
+<code>graph.nodes[]</code>, even though the runtime currently realizes
+that fader using an internal <code>webaudio:GainNode</code> with node id
+<code>builtin:track_gain</code>.</p>
+<p><code>graph.nodes[]</code> is reserved for graph-authored nodes that
+are part of the authored topology rather than the default track/master
+fader.</p>
+<h3 id="current-graph-persistence-behavior">Current Graph Persistence
+Behavior</h3>
+<p>Today a track can persist audio processing state in one of these
+ways:</p>
+<ul>
+<li>no <code>graph</code> field at all
+<ul>
+<li>valid when only <code>volume</code> and clips are needed</li>
+</ul></li>
+<li>an external graph file referenced through
+<code>graph.external_file</code>
+<ul>
+<li>this is what the current writer produces whenever a graph is saved,
+for linear chains as well as DAG topologies</li>
+<li>the external graph payload may contain <code>plugins[]</code>,
+generic authored <code>nodes[]</code>, and DAG
+<code>connections[]</code></li>
+</ul></li>
+<li>a simple inline graph object with <code>plugins[]</code>
+<ul>
+<li>still accepted by the reader, but no longer written: it appears in
+projects that were saved before graphs were always externalized</li>
+</ul></li>
+</ul>
+<p>When DAG <code>connections[]</code> are written by current code,
+endpoint objects use <code>node_id</code>. Readers still accept
+deprecated <code>plugin_index</code> endpoint data from older project
+files.</p>
+<h3 id="graph-reference-object">Graph Reference Object</h3>
+<p>The current writer stores this project-level reference in
+<code>track.graph</code> (also applicable to
+<code>master_track.graph</code>):</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;graph_type&quot;</span><span class="fu">:</span> <span class="st">&quot;&quot;</span><span class="fu">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;external_file&quot;</span><span class="fu">:</span> <span class="st">&quot;graphs/track_0.graph.json&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<ul>
+<li><code>graph_type</code> identifies the graph provider; see the
+standalone specification's <a
+href="AUDIO_GRAPH_FILE.html#current-implemented-format">Current
+Implemented Format</a>.</li>
+<li><code>external_file</code> locates the graph payload. Relative paths
+are resolved against the project directory, as are plugin state paths
+inside that payload.</li>
+</ul>
+<p>The referenced file follows the <a href="AUDIO_GRAPH_FILE.html">Audio
+Graph File Format Specification</a>. The reference object and the
+track's <code>volume</code> are part of this project format, not fields
+that other enclosing formats must adopt. Legacy inline
+<code>plugins[]</code> records use the plugin fields described in that
+specification.</p>
+<h2 id="clip-object">Clip Object</h2>
+<p>Clips represent either audio files or MIDI data positioned on the
+timeline.</p>
+<h3 id="schema-1">Schema</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0_clip_0&quot;</span><span class="fu">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;anchor&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0&quot;</span><span class="fu">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;position_samples&quot;</span><span class="fu">:</span> <span class="dv">48000</span><span class="fu">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;duration_samples&quot;</span><span class="fu">:</span> <span class="dv">192000</span><span class="fu">,</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;file&quot;</span><span class="fu">:</span> <span class="st">&quot;/path/to/audio.wav&quot;</span><span class="fu">,</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;mime_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio/wav&quot;</span><span class="fu">,</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;clip_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span><span class="fu">,</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;markers&quot;</span><span class="fu">:</span> <span class="ot">[</span> <span class="er">/*</span> <span class="er">array</span> <span class="er">of</span> <span class="er">marker</span> <span class="er">objects</span> <span class="er">*/</span> <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;audio_warps&quot;</span><span class="fu">:</span> <span class="ot">[</span> <span class="er">/*</span> <span class="er">array</span> <span class="er">of</span> <span class="er">warp</span> <span class="er">point</span> <span class="er">objects</span> <span class="er">*/</span> <span class="ot">]</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="fields-2">Fields</h3>
+<ul>
+<li><p><strong><code>id</code></strong> (string, optional): Stable
+identity for this clip</p>
+<ul>
+<li>Preserved across save/load so that the clip can be addressed by
+identity rather than by its position in the <code>clips</code>
+array</li>
+<li>Omitted by writers that predate persistent identity. Readers mint
+<code>"track_N_clip_M"</code> for clips that lack it</li>
+<li>Independent of <code>anchor</code>: identity survives reordering,
+whereas anchor identifiers are regenerated from array position on every
+write</li>
+</ul></li>
+<li><p><strong><code>anchor</code></strong> (string, optional): ID of
+the anchor point for positioning</p>
+<ul>
+<li>If omitted or <code>null</code>, position is absolute (relative to
+track start at sample 0)</li>
+<li>Valid anchor ID examples:
+<ul>
+<li><code>"track_N"</code> - Anchor to the start of track N (sample 0 of
+that track)</li>
+<li><code>"track_N_clip_M"</code> - Anchor to the start of clip M on
+track N</li>
+<li><code>"master_track"</code> - Anchor to master track start</li>
+<li><code>"master_clip_M"</code> - Anchor to clip M on master track</li>
+</ul></li>
+</ul></li>
+<li><p><strong><code>position_samples</code></strong> (integer,
+required): Position in samples</p>
+<ul>
+<li>If <code>anchor</code> is null/omitted: absolute position from track
+start</li>
+<li>If <code>anchor</code> is set: offset in samples from the anchor
+point</li>
+<li>Can be negative to position before the anchor point</li>
+</ul></li>
+<li><p><strong><code>file</code></strong> (string, optional): Path to
+the clip file</p>
+<ul>
+<li>Absolute or relative path to audio/MIDI file</li>
+<li>Supported formats:
+<ul>
+<li>Audio: any format supported by the audio file reader (WAV, AIFF,
+FLAC, etc.)</li>
+<li>MIDI: <code>.midi2</code> files (SMF2 Clip format per M2-116-U v1.0
+specification)</li>
+</ul></li>
+</ul></li>
+<li><p><strong><code>mime_type</code></strong> (string, optional): MIME
+type of the clip file</p>
+<ul>
+<li>If omitted, type is inferred from file extension</li>
+<li>Common values:
+<ul>
+<li><code>"audio/wav"</code> - WAV audio</li>
+<li><code>"audio/aiff"</code> - AIFF audio</li>
+<li><code>"audio/flac"</code> - FLAC audio</li>
+</ul></li>
+</ul></li>
+<li><p><strong><code>clip_type</code></strong> (string, optional): Kind
+of clip</p>
+<ul>
+<li>Written when known; current values are <code>"audio"</code> and
+<code>"midi"</code></li>
+<li>Selects whether the MIDI-only fields below apply</li>
+</ul></li>
+<li><p><strong><code>duration_samples</code></strong> (integer,
+optional): Clip length in samples</p>
+<ul>
+<li>Written only when greater than zero</li>
+</ul></li>
+<li><p><strong><code>markers</code></strong> (array, optional): Markers
+within this clip</p>
+<ul>
+<li>See Marker Object</li>
+</ul></li>
+<li><p><strong><code>audio_warps</code></strong> (array, optional): Warp
+points that time-stretch this clip</p>
+<ul>
+<li>See Audio Warp Point Object</li>
+</ul></li>
+<li><p><strong><code>tick_resolution</code></strong> (integer,
+optional): Ticks per quarter note for MIDI content</p>
+<ul>
+<li>Written only when <code>clip_type</code> is <code>"midi"</code></li>
+</ul></li>
+<li><p><strong><code>nrpn_to_parameter_mapping</code></strong> (boolean,
+optional): Map incoming NRPN messages to plugin parameters</p>
+<ul>
+<li>Written only when <code>clip_type</code> is <code>"midi"</code> and
+the mapping is enabled, so an absent field means disabled</li>
+</ul></li>
+</ul>
+<h2 id="marker-object">Marker Object</h2>
+<p>Markers appear both in a clip's <code>markers</code> array and in a
+track's <code>markers</code> array, with the same shape.</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;marker_0&quot;</span><span class="fu">,</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;position_offset_seconds&quot;</span><span class="fu">:</span> <span class="fl">1.5</span><span class="fu">,</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;reference_type&quot;</span><span class="fu">:</span> <span class="st">&quot;clip_start&quot;</span><span class="fu">,</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;reference_clip_id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0_clip_0&quot;</span><span class="fu">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;reference_marker_id&quot;</span><span class="fu">:</span> <span class="st">&quot;marker_0&quot;</span><span class="fu">,</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Chorus&quot;</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<ul>
+<li><strong><code>id</code></strong> (string, optional): Marker
+identifier, written when non-empty</li>
+<li><strong><code>position_offset_seconds</code></strong> (number,
+required): Offset from the reference point, in seconds
+<ul>
+<li>Older projects may instead carry
+<code>position_offset_samples</code>, which readers convert</li>
+</ul></li>
+<li><strong><code>reference_type</code></strong> (string, required):
+What the offset is measured from
+<ul>
+<li>One of <code>"manual"</code>, <code>"clip_start"</code>,
+<code>"clip_end"</code>, <code>"clip_marker"</code>,
+<code>"master_marker"</code></li>
+</ul></li>
+<li><strong><code>reference_clip_id</code></strong> (string, optional):
+Referenced clip, written when non-empty</li>
+<li><strong><code>reference_marker_id</code></strong> (string,
+optional): Referenced marker, written when non-empty</li>
+<li><strong><code>name</code></strong> (string, optional):
+Human-readable label, written when non-empty</li>
+</ul>
+<h2 id="audio-warp-point-object">Audio Warp Point Object</h2>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;offset_seconds&quot;</span><span class="fu">:</span> <span class="fl">2.0</span><span class="fu">,</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;speed_ratio&quot;</span><span class="fu">:</span> <span class="fl">1.25</span><span class="fu">,</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;reference_type&quot;</span><span class="fu">:</span> <span class="st">&quot;clip_marker&quot;</span><span class="fu">,</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;reference_marker_id&quot;</span><span class="fu">:</span> <span class="st">&quot;marker_0&quot;</span><span class="fu">,</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;marker_id&quot;</span><span class="fu">:</span> <span class="st">&quot;marker_0&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<ul>
+<li><strong><code>offset_seconds</code></strong> (number, required):
+Offset of this warp point, in seconds
+<ul>
+<li>Older projects may instead carry
+<code>clip_position_offset_samples</code>, <code>offset_samples</code>,
+<code>source_offset_samples</code> or
+<code>source_position_samples</code>, which readers convert</li>
+</ul></li>
+<li><strong><code>speed_ratio</code></strong> (number, required):
+Playback speed multiplier applied from this point</li>
+<li><strong><code>reference_type</code></strong> (string, required):
+Same values as the marker <code>reference_type</code></li>
+<li><strong><code>reference_clip_id</code></strong> (string, optional):
+Referenced clip, written when non-empty</li>
+<li><strong><code>reference_marker_id</code></strong> (string,
+optional): Referenced marker, written when non-empty</li>
+<li><strong><code>marker_id</code></strong> (string, optional): Legacy
+duplicate of <code>reference_marker_id</code>
+<ul>
+<li>Written only when <code>reference_type</code> is
+<code>"clip_marker"</code>, so that older readers still resolve the
+reference</li>
+</ul></li>
+</ul>
+<h2 id="complete-example">Complete Example</h2>
+<p>This is the shape the current writer produces: persistent
+<code>id</code> on tracks and clips, and each track's graph stored as an
+external graph file rather than an inline <code>plugins[]</code>
+array.</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;tracks&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0&quot;</span><span class="fu">,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;volume&quot;</span><span class="fu">:</span> <span class="fl">1.0</span><span class="fu">,</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;graph&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;graph_type&quot;</span><span class="fu">:</span> <span class="st">&quot;&quot;</span><span class="fu">,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>        <span class="dt">&quot;external_file&quot;</span><span class="fu">:</span> <span class="st">&quot;graphs/track_0.graph.json&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>      <span class="fu">},</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;clips&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0_clip_0&quot;</span><span class="fu">,</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;position_samples&quot;</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">,</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;duration_samples&quot;</span><span class="fu">:</span> <span class="dv">480000</span><span class="fu">,</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;file&quot;</span><span class="fu">:</span> <span class="st">&quot;/audio/vocal_verse1.wav&quot;</span><span class="fu">,</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;mime_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio/wav&quot;</span><span class="fu">,</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;clip_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>        <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0_clip_1&quot;</span><span class="fu">,</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;anchor&quot;</span><span class="fu">:</span> <span class="st">&quot;track_0_clip_0&quot;</span><span class="fu">,</span></span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;position_samples&quot;</span><span class="fu">:</span> <span class="dv">480000</span><span class="fu">,</span></span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;file&quot;</span><span class="fu">:</span> <span class="st">&quot;/audio/vocal_chorus.wav&quot;</span><span class="fu">,</span></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;mime_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio/wav&quot;</span><span class="fu">,</span></span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;clip_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span></span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>        <span class="fu">}</span></span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span></span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_1&quot;</span><span class="fu">,</span></span>
+<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;volume&quot;</span><span class="fu">:</span> <span class="fl">0.8</span><span class="fu">,</span></span>
+<span id="cb7-32"><a href="#cb7-32" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;muted&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb7-33"><a href="#cb7-33" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;clips&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb7-34"><a href="#cb7-34" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span></span>
+<span id="cb7-35"><a href="#cb7-35" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;track_1_clip_0&quot;</span><span class="fu">,</span></span>
+<span id="cb7-36"><a href="#cb7-36" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;position_samples&quot;</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">,</span></span>
+<span id="cb7-37"><a href="#cb7-37" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;file&quot;</span><span class="fu">:</span> <span class="st">&quot;/midi/drums.midi2&quot;</span><span class="fu">,</span></span>
+<span id="cb7-38"><a href="#cb7-38" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;clip_type&quot;</span><span class="fu">:</span> <span class="st">&quot;midi&quot;</span><span class="fu">,</span></span>
+<span id="cb7-39"><a href="#cb7-39" aria-hidden="true" tabindex="-1"></a>          <span class="dt">&quot;tick_resolution&quot;</span><span class="fu">:</span> <span class="dv">480</span></span>
+<span id="cb7-40"><a href="#cb7-40" aria-hidden="true" tabindex="-1"></a>        <span class="fu">}</span></span>
+<span id="cb7-41"><a href="#cb7-41" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span></span>
+<span id="cb7-42"><a href="#cb7-42" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb7-43"><a href="#cb7-43" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb7-44"><a href="#cb7-44" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;master_track&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb7-45"><a href="#cb7-45" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;master_track&quot;</span><span class="fu">,</span></span>
+<span id="cb7-46"><a href="#cb7-46" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;volume&quot;</span><span class="fu">:</span> <span class="fl">0.95</span><span class="fu">,</span></span>
+<span id="cb7-47"><a href="#cb7-47" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;graph&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;graph_type&quot;</span><span class="fu">:</span> <span class="st">&quot;&quot;</span><span class="fu">,</span></span>
+<span id="cb7-49"><a href="#cb7-49" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;external_file&quot;</span><span class="fu">:</span> <span class="st">&quot;graphs/master_track.graph.json&quot;</span></span>
+<span id="cb7-50"><a href="#cb7-50" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb7-51"><a href="#cb7-51" aria-hidden="true" tabindex="-1"></a>  <span class="fu">}</span></span>
+<span id="cb7-52"><a href="#cb7-52" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>For the referenced graph payload, see the standalone specification’s
+<a href="AUDIO_GRAPH_FILE.html#linear-chain-example">Linear Chain
+Example</a>.</p>
+<h2 id="implementation-notes">Implementation Notes</h2>
+<h3 id="anchor-resolution">Anchor Resolution</h3>
+<p>When reading a project file, anchors are resolved in two passes:</p>
+<ol type="1">
+<li><strong>First pass</strong>: All tracks and clips are loaded, and
+anchor IDs are generated based on their position in the file</li>
+<li><strong>Second pass</strong>: Clip positions are updated to
+reference the actual anchor objects, with validation</li>
+</ol>
+<p>This ensures that clips can reference anchors that appear later in
+the file.</p>
+<h3 id="anchor-validation">Anchor Validation</h3>
+<p>During the second pass, the reader validates all anchors. An anchor
+is considered <strong>invalid</strong> if:</p>
+<ol type="1">
+<li><p><strong>Anchor not found</strong>: The specified anchor ID does
+not exist in the project</p>
+<ul>
+<li>Example: <code>"anchor": "track_999"</code> when there are only 3
+tracks</li>
+</ul></li>
+<li><p><strong>Recursive reference</strong>: The anchor creates a
+circular dependency</p>
+<ul>
+<li>Example: Clip A anchors to Clip B, Clip B anchors to Clip C, Clip C
+anchors back to Clip A</li>
+</ul></li>
+</ol>
+<p><strong>Behavior for invalid anchors:</strong></p>
+<ul>
+<li>A warning is printed to stderr describing the issue</li>
+<li>The clip with the invalid anchor is <strong>removed</strong> from
+the track</li>
+<li>The project continues loading with remaining valid clips</li>
+</ul>
+<p><strong>Example warning messages:</strong></p>
+<pre><code>Warning: Invalid anchor &#39;track_5&#39; in track 0 clip 2 - anchor not found. Clip will be removed.
+Warning: Invalid anchor &#39;track_0_clip_1&#39; in track 0 clip 0 - creates recursive reference. Clip will be removed.</code></pre>
+<h3 id="sample-rate-considerations">Sample Rate Considerations</h3>
+<p>Clip positions and durations are stored in samples; marker and audio
+warp offsets are stored in seconds. The current project writer does not
+emit a dedicated project sample-rate field. The loader uses the host
+sample rate when converting sample positions to time.</p>
+<h3 id="file-path-resolution">File Path Resolution</h3>
+<ul>
+<li>Absolute paths are used as-is</li>
+<li>Relative paths are resolved relative to the project file
+location</li>
+<li>Missing files should be handled gracefully (warn user, allow
+re-linking)</li>
+</ul>
+<h3 id="supported-midi-format">Supported MIDI Format</h3>
+<p>The <code>.midi2</code> files referenced in clips should conform to
+the <strong>MIDI 2.0 Clip File Specification</strong> (M2-116-U v1.0).
+It is distinct from standard MIDI file version 1.0 (SMF1).</p>
+    </main>
+</div>
+</body>
+</html>

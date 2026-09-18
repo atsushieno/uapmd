@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="custom-plugin-formats">Custom Plugin Formats</h1>
+<p>At <code>uapmd-plugin-hosting</code> (also at <code>remidy</code>) we
+can add support for custom audio plugin formats. Ideally an addin for a
+plugin format would be appropriate, but it is up to how you use the
+relevant API.</p>
+<p>We have an example addin for Reaper JSFX support (making use of <a
+href="https://github.com/JoepVanlier/ysfx">ysfx</a>, with a handful of
+GUI support rewrites to use ImGui instead of JUCE (the hooks are simple,
+rather than implementing everything).</p>
+    </main>
+</div>
+</body>
+</html>

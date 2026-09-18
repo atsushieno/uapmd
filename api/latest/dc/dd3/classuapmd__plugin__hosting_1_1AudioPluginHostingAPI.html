@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -83,9 +83,9 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a7c0114635da3e05de87e3b3bdb6e784f" id="r_a7c0114635da3e05de87e3b3bdb6e784f"><td class="memItemLeft" align="right" valign="top"><a id="a7c0114635da3e05de87e3b3bdb6e784f" name="a7c0114635da3e05de87e3b3bdb6e784f"></a>
-virtual std::vector&lt; <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">remidy::PluginCatalogEntry</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginCatalogEntries</b> ()=0</td></tr>
-<tr class="separator:a7c0114635da3e05de87e3b3bdb6e784f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae4e423b69057a9f48ef7be2cf8897cff" id="r_ae4e423b69057a9f48ef7be2cf8897cff"><td class="memItemLeft" align="right" valign="top"><a id="ae4e423b69057a9f48ef7be2cf8897cff" name="ae4e423b69057a9f48ef7be2cf8897cff"></a>
+virtual std::vector&lt; <a class="el" href="../../da/d25/classuapmd__plugin__hosting_1_1AudioPluginCatalogEntry.html">AudioPluginCatalogEntry</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginCatalogEntries</b> ()=0</td></tr>
+<tr class="separator:ae4e423b69057a9f48ef7be2cf8897cff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acc3cc35b84b898ca69cbd80287c35dc5" id="r_acc3cc35b84b898ca69cbd80287c35dc5"><td class="memItemLeft" align="right" valign="top"><a id="acc3cc35b84b898ca69cbd80287c35dc5" name="acc3cc35b84b898ca69cbd80287c35dc5"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>savePluginCatalogToFile</b> (std::filesystem::path path)=0</td></tr>
 <tr class="separator:acc3cc35b84b898ca69cbd80287c35dc5"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -104,6 +104,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>deletePluginI
 <tr class="memitem:af519ccd9220e2118e28450fbd7803cec" id="r_af519ccd9220e2118e28450fbd7803cec"><td class="memItemLeft" align="right" valign="top"><a id="af519ccd9220e2118e28450fbd7803cec" name="af519ccd9220e2118e28450fbd7803cec"></a>
 virtual <a class="el" href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getInstance</b> (int32_t instanceId)=0</td></tr>
 <tr class="separator:af519ccd9220e2118e28450fbd7803cec"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a94ccf7ee38c671daa2aedad9ddaf42fb" id="r_a94ccf7ee38c671daa2aedad9ddaf42fb"><td class="memItemLeft" align="right" valign="top"><a id="a94ccf7ee38c671daa2aedad9ddaf42fb" name="a94ccf7ee38c671daa2aedad9ddaf42fb"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addPluginFormat</b> (<a class="el" href="../../d8/d90/classuapmd__plugin__hosting_1_1AudioPluginFormat.html">AudioPluginFormat</a> *format)=0</td></tr>
+<tr class="separator:a94ccf7ee38c671daa2aedad9ddaf42fb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4d9f9e664fe759a3afd48ff01e30e66f" id="r_a4d9f9e664fe759a3afd48ff01e30e66f"><td class="memItemLeft" align="right" valign="top"><a id="a4d9f9e664fe759a3afd48ff01e30e66f" name="a4d9f9e664fe759a3afd48ff01e30e66f"></a>
+virtual std::vector&lt; <a class="el" href="../../d8/d90/classuapmd__plugin__hosting_1_1AudioPluginFormat.html">AudioPluginFormat</a> * &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginFormats</b> ()=0</td></tr>
+<tr class="separator:a4d9f9e664fe759a3afd48ff01e30e66f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a219e7f4d71913f15d3cf623f56b2e598" id="r_a219e7f4d71913f15d3cf623f56b2e598"><td class="memItemLeft" align="right" valign="top"><a id="a219e7f4d71913f15d3cf623f56b2e598" name="a219e7f4d71913f15d3cf623f56b2e598"></a>
 virtual remidy::EventListenerId&#160;</td><td class="memItemRight" valign="bottom"><b>addPluginStateChangeListener</b> (std::function&lt; void(int32_t)&gt; listener)=0</td></tr>
 <tr class="separator:a219e7f4d71913f15d3cf623f56b2e598"><td class="memSeparator" colspan="2">&#160;</td></tr>

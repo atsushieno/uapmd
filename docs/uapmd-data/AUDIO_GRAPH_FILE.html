@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="audio-graph-file-format-specification-ai-slop">Audio Graph File
+Format Specification (AI slop)</h1>
+<h2 id="scope-and-status">Scope and Status</h2>
+<p>This document describes JSON audio graph files independently of any
+enclosing project format. A graph describes processing nodes, plugin
+state references, and routing; it does not require tracks, clips, a
+timeline, or a particular archive layout. Other project formats can
+reference this specification for their graph payloads.</p>
+<p>This specification describes the format currently read and written by
+the UAPMD graph providers. Compatibility behavior for older files is
+noted where relevant.</p>
+<h2 id="integration-with-an-enclosing-format">Integration with an
+Enclosing Format</h2>
+<p>The enclosing format defines how graph files are located, how
+relative plugin <code>state_file</code> paths are resolved, and how
+graph inputs and outputs connect to its own processing model. A graph
+file does not prescribe a ZIP layout or require a particular filename;
+UAPMD uses <code>.graph.json</code>.</p>
+<p>For the UAPMD binding, see the project format's <a
+href="UAPMD_PROJECT_FILE.html#graph-reference-object">Graph Reference
+Object</a> and <a
+href="UAPMD_PROJECT_FILE.html#track-volume-persistence">Track Volume
+Persistence</a>. In that binding, relative state paths are resolved
+against the project directory, not the graph file's directory. The
+implicit track/master fader is owned by the project and excluded from
+authored graph nodes.</p>
+<h2 id="current-implemented-format">Current Implemented Format</h2>
+<p>The root is a JSON object. The current writer emits
+<code>graph_type</code> and omits empty collections. It does not emit
+<code>schema_version</code>.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>graph_type</code></td>
+<td>string</td>
+<td>Provider identifier: <code>""</code> for a simple linear chain,
+<code>"urn:uapmd-graph:common/graph/dag/v1"</code> for the full DAG
+provider.</td>
+</tr>
+<tr class="even">
+<td><code>plugins</code></td>
+<td>array</td>
+<td>Plugin records; array order defines the simple linear chain.</td>
+</tr>
+<tr class="odd">
+<td><code>nodes</code></td>
+<td>array</td>
+<td>Authored generic node descriptors.</td>
+</tr>
+<tr class="even">
+<td><code>connections</code></td>
+<td>array</td>
+<td>Explicit DAG edges; a linear provider rejects a nonempty array.</td>
+</tr>
+<tr class="odd">
+<td><code>properties</code></td>
+<td>object</td>
+<td>Provider-specific string values keyed by property name.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="plugin-records">Plugin Records</h3>
+<p>The current writer stores plugin instances in <code>plugins[]</code>,
+separately from generic <code>nodes[]</code>. Each record contains:</p>
+<ul>
+<li><code>node_id</code>: stable node identifier; older records without
+it receive <code>plugin:N</code>, where N is the zero-based position in
+<code>plugins[]</code>.</li>
+<li><code>plugin_id</code>: identifier in the plugin format.</li>
+<li><code>format</code>: plugin format name, such as
+<code>VST3</code>.</li>
+<li><code>display_name</code>: human-readable plugin name.</li>
+<li><code>state_file</code>: reference to saved plugin state; may be
+empty.</li>
+<li><code>group_index</code>: integer MIDI group selection, default
+<code>-1</code>.</li>
+</ul>
+<h3 id="generic-node-records">Generic Node Records</h3>
+<p>A <code>nodes[]</code> entry requires <code>node_id</code> and
+<code>type</code>. Optional fields are <code>display_name</code>,
+<code>options</code>, <code>parameters</code>, <code>metadata</code>,
+and <code>plugin</code>. Values within <code>options</code>,
+<code>parameters</code>, and <code>metadata</code> are scalars (boolean,
+integer, floating-point number, or string). The optional
+<code>plugin</code> payload contains <code>format</code>,
+<code>plugin_id</code>, and <code>state_file</code> strings. The current
+runtime writer stores plugin instances in <code>plugins[]</code> instead
+and excludes the UAPMD-owned <code>builtin:track_gain</code> node.</p>
+<p>For example, an authored gain node is represented as:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;gain_0&quot;</span><span class="fu">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;webaudio:GainNode&quot;</span><span class="fu">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;parameters&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;gain&quot;</span><span class="fu">:</span> <span class="fl">0.5</span> <span class="fu">}</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="built-in-node-types">Built-in Node Types</h3>
+<p>The built-in node registry supports these descriptors:</p>
+<table>
+<thead>
+<tr class="header">
+<th><code>type</code></th>
+<th>Configuration</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>webaudio:AnalyserNode</code></td>
+<td>No node-specific configuration fields.</td>
+<td>Pass-through audio/event processing with time-domain and frequency
+analysis.</td>
+</tr>
+<tr class="even">
+<td><code>webaudio:GainNode</code></td>
+<td><code>parameters.gain</code></td>
+<td>Linear gain multiplier.</td>
+</tr>
+<tr class="odd">
+<td><code>webaudio:ChannelMergerNode</code></td>
+<td><code>options.number_of_inputs</code></td>
+<td>Number of mono inputs combined into a multichannel output in a
+DAG.</td>
+</tr>
+<tr class="even">
+<td><code>webaudio:ChannelSplitterNode</code></td>
+<td><code>options.number_of_outputs</code></td>
+<td>Number of mono outputs split from a multichannel input in a
+DAG.</td>
+</tr>
+</tbody>
+</table>
+<p>For example, a two-input merger descriptor is:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;merger_0&quot;</span><span class="fu">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;webaudio:ChannelMergerNode&quot;</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;options&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;number_of_inputs&quot;</span><span class="fu">:</span> <span class="dv">2</span> <span class="fu">}</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>The JSON reader and writer support the descriptor fields above. The
+current runtime graph serializer captures node identity, type, display
+name, and gain parameters for gain nodes; it does not capture
+merger/splitter options or generic metadata from runtime nodes. These
+fields therefore do not all survive an application load/save cycle. A
+<code>plugin</code> payload in <code>nodes[]</code> is parsed, but the
+runtime graph builder skips it; plugin instances must be listed in
+<code>plugins[]</code>.</p>
+<h3 id="analyser-node">Analyser Node</h3>
+<p><code>webaudio:AnalyserNode</code> is serializable as a generic
+<code>nodes[]</code> descriptor and is registered with the built-in node
+factory. For example:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;analyser_0&quot;</span><span class="fu">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;webaudio:AnalyserNode&quot;</span><span class="fu">,</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;display_name&quot;</span><span class="fu">:</span> <span class="st">&quot;Output Spectrum&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>The node supplies audio data to consumers such as a spectrum analyzer
+whose UI must be rendered outside the realtime audio thread. During
+audio processing, it passes audio and events through and publishes
+captured samples using a lock-free snapshot. A consumer on a
+non-realtime thread reads that snapshot through
+<code>getFloatTimeDomainData()</code> or requests frequency data through
+<code>getFloatFrequencyData()</code>. Frequency analysis runs on the
+calling non-realtime thread; the audio callback only captures samples.
+The consumer uses the returned data to render its visualization without
+performing analysis or UI rendering in the audio callback.</p>
+<p>Its current implementation uses a fixed 256-sample analysis window
+and 128 frequency bins, averaging the channels of the first audio bus.
+It consumes no node-specific <code>options</code> or
+<code>parameters</code>; the Web Audio-style name does not imply support
+for configurable FFT size or smoothing properties.</p>
+<p>Serialization preserves the node descriptor, not captured samples or
+analysis results. Those are transient runtime data. An analyser that
+belongs to a graph can be serialized through the same generic-node path
+as other built-in nodes; an analyser instantiated separately by the host
+is not automatically part of that graph's JSON payload.</p>
+<h3 id="dag-connections">DAG Connections</h3>
+<p>Each connection contains an integer <code>id</code>, a
+<code>bus_type</code> (<code>audio</code> or <code>event</code>), and
+<code>source</code> and <code>target</code> endpoint objects:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;bus_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span><span class="fu">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;source&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;graph_input&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;graph:input&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">},</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;target&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin:0&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>An endpoint contains <code>type</code> (<code>graph_input</code>,
+<code>graph_output</code>, or <code>plugin</code>),
+<code>node_id</code>, and a zero-based <code>bus_index</code>. The
+boundary identifiers are <code>graph:input</code> and
+<code>graph:output</code>. Readers infer <code>type</code> from
+<code>node_id</code> when the former is absent, and default an absent
+<code>bus_index</code> to zero. Older endpoints using
+<code>plugin_index</code> remain readable, but current writers use
+<code>node_id</code> and do not emit <code>plugin_index</code>.</p>
+<h3 id="linear-chain-example">Linear Chain Example</h3>
+<p>A standalone graph file containing a plugin chain:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;graph_type&quot;</span><span class="fu">:</span> <span class="st">&quot;&quot;</span><span class="fu">,</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;plugins&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin:0&quot;</span><span class="fu">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;plugin_id&quot;</span><span class="fu">:</span> <span class="st">&quot;com.fabfilter.proq3&quot;</span><span class="fu">,</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;format&quot;</span><span class="fu">:</span> <span class="st">&quot;VST3&quot;</span><span class="fu">,</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;display_name&quot;</span><span class="fu">:</span> <span class="st">&quot;FabFilter Pro-Q 3&quot;</span><span class="fu">,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;state_file&quot;</span><span class="fu">:</span> <span class="st">&quot;/presets/vocal_eq.vstpreset&quot;</span><span class="fu">,</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;group_index&quot;</span><span class="fu">:</span> <span class="dv">-1</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin:1&quot;</span><span class="fu">,</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;plugin_id&quot;</span><span class="fu">:</span> <span class="st">&quot;com.fabfilter.proc2&quot;</span><span class="fu">,</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;format&quot;</span><span class="fu">:</span> <span class="st">&quot;VST3&quot;</span><span class="fu">,</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;display_name&quot;</span><span class="fu">:</span> <span class="st">&quot;FabFilter Pro-C 2&quot;</span><span class="fu">,</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;state_file&quot;</span><span class="fu">:</span> <span class="st">&quot;/presets/vocal_comp.vstpreset&quot;</span><span class="fu">,</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;group_index&quot;</span><span class="fu">:</span> <span class="dv">-1</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="complete-dag-example">Complete DAG Example</h3>
+<p>This graph routes audio from the graph input through an authored gain
+node to the graph output. The endpoint type <code>plugin</code> is also
+used for generic processing nodes; <code>node_id</code> identifies the
+actual node.</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;graph_type&quot;</span><span class="fu">:</span> <span class="st">&quot;urn:uapmd-graph:common/graph/dag/v1&quot;</span><span class="fu">,</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;nodes&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;gain_0&quot;</span><span class="fu">,</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;webaudio:GainNode&quot;</span><span class="fu">,</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;parameters&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;gain&quot;</span><span class="fu">:</span> <span class="fl">0.5</span> <span class="fu">}</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;connections&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;bus_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span><span class="fu">,</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;source&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;graph_input&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;graph:input&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">},</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;target&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;gain_0&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">}</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">2</span><span class="fu">,</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;bus_type&quot;</span><span class="fu">:</span> <span class="st">&quot;audio&quot;</span><span class="fu">,</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;source&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;plugin&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;gain_0&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">},</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;target&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;graph_output&quot;</span><span class="fu">,</span> <span class="dt">&quot;node_id&quot;</span><span class="fu">:</span> <span class="st">&quot;graph:output&quot;</span><span class="fu">,</span> <span class="dt">&quot;bus_index&quot;</span><span class="fu">:</span> <span class="dv">0</span> <span class="fu">}</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+    </main>
+</div>
+</body>
+</html>

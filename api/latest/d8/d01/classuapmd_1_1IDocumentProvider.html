@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -96,12 +96,27 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>WriteCallback</b> = 
 <tr class="memitem:a8b69e2376408b1cc87c4852db5c93dd1" id="r_a8b69e2376408b1cc87c4852db5c93dd1"><td class="memItemLeft" align="right" valign="top"><a id="a8b69e2376408b1cc87c4852db5c93dd1" name="a8b69e2376408b1cc87c4852db5c93dd1"></a>
 using&#160;</td><td class="memItemRight" valign="bottom"><b>PathCallback</b> = std::function&lt; void(<a class="el" href="../../dd/dd9/structuapmd_1_1DocumentIOResult.html">DocumentIOResult</a>, std::filesystem::path)&gt;</td></tr>
 <tr class="separator:a8b69e2376408b1cc87c4852db5c93dd1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1488513c5e2a724c9b2b9c94c5071303" id="r_a1488513c5e2a724c9b2b9c94c5071303"><td class="memItemLeft" align="right" valign="top"><a id="a1488513c5e2a724c9b2b9c94c5071303" name="a1488513c5e2a724c9b2b9c94c5071303"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>FolderPickCallback</b> = std::function&lt; void(<a class="el" href="../../d8/d6c/structuapmd_1_1FolderPickResult.html">FolderPickResult</a>)&gt;</td></tr>
+<tr class="separator:a1488513c5e2a724c9b2b9c94c5071303"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a3b0011603efb7502c062af4dba3b452a" id="r_a3b0011603efb7502c062af4dba3b452a"><td class="memItemLeft" align="right" valign="top"><a id="a3b0011603efb7502c062af4dba3b452a" name="a3b0011603efb7502c062af4dba3b452a"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pickOpenDocuments</b> (std::vector&lt; <a class="el" href="../../d8/dba/structuapmd_1_1DocumentFilter.html">DocumentFilter</a> &gt; filters, bool allowMultiple, PickCallback callback)=0</td></tr>
 <tr class="separator:a3b0011603efb7502c062af4dba3b452a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a223e9304f39ad488ccc53f08ea46ce00" id="r_a223e9304f39ad488ccc53f08ea46ce00"><td class="memItemLeft" align="right" valign="top"><a id="a223e9304f39ad488ccc53f08ea46ce00" name="a223e9304f39ad488ccc53f08ea46ce00"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pickFolder</b> (FolderPickCallback callback)=0</td></tr>
+<tr class="separator:a223e9304f39ad488ccc53f08ea46ce00"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a833c89bec5f167ebbd434202787db4d8" id="r_a833c89bec5f167ebbd434202787db4d8"><td class="memItemLeft" align="right" valign="top"><a id="a833c89bec5f167ebbd434202787db4d8" name="a833c89bec5f167ebbd434202787db4d8"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>folderPathsAreUsable</b> () const =0</td></tr>
+<tr class="separator:a833c89bec5f167ebbd434202787db4d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3dc6dc3506d1107051b0e31119d666e2" id="r_a3dc6dc3506d1107051b0e31119d666e2"><td class="memItemLeft" align="right" valign="top"><a id="a3dc6dc3506d1107051b0e31119d666e2" name="a3dc6dc3506d1107051b0e31119d666e2"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>listFolderDocuments</b> (std::string token, FolderPickCallback callback)=0</td></tr>
+<tr class="separator:a3dc6dc3506d1107051b0e31119d666e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4a9abad4f02f08941507ce10f4af40f8" id="r_a4a9abad4f02f08941507ce10f4af40f8"><td class="memItemLeft" align="right" valign="top"><a id="a4a9abad4f02f08941507ce10f4af40f8" name="a4a9abad4f02f08941507ce10f4af40f8"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>releaseFolder</b> (const std::string &amp;token)=0</td></tr>
+<tr class="separator:a4a9abad4f02f08941507ce10f4af40f8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5f24618caf88c06b66d4afa8368c7480" id="r_a5f24618caf88c06b66d4afa8368c7480"><td class="memItemLeft" align="right" valign="top"><a id="a5f24618caf88c06b66d4afa8368c7480" name="a5f24618caf88c06b66d4afa8368c7480"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>pickSaveDocument</b> (std::string defaultName, std::vector&lt; <a class="el" href="../../d8/dba/structuapmd_1_1DocumentFilter.html">DocumentFilter</a> &gt; filters, PickCallback callback)=0</td></tr>
 <tr class="separator:a5f24618caf88c06b66d4afa8368c7480"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="step-sequencer">Step Sequencer</h1>
+<h2 id="status">Status</h2>
+<p>The editor writes expanded MIDI notes with Flex Data loop and grid
+metadata, restores the pattern from those markers, and warns before
+opening unmarked clips. Sections describing possible API work and
+long-term features remain design notes.</p>
+<h2 id="goal">Goal</h2>
+<p>Add a step sequencer editor for MIDI 2.0 clips. The first version is
+an alternative editing view for an existing MIDI clip, rather than a new
+real-time pattern playback engine or a new first-class project
+object.</p>
+<p>The editor should be useful over a whole MIDI 2.0 clip and should
+support the usual step-sequencer workflow: rhythmic columns, note
+toggling, velocity and gate editing, pattern expansion, and
+transport-loop auditioning.</p>
+<h2 id="mvp-scope">MVP scope</h2>
+<ul>
+<li>Display a MIDI clip as a fixed grid of musical steps.</li>
+<li>Support selectable divisions such as quarter, eighth, sixteenth, and
+thirty-second notes.</li>
+<li>Support selectable pattern lengths, for example 16, 32, or 64
+steps.</li>
+<li>Toggle notes on and off, initially with a selectable MIDI pitch or
+pitch rows.</li>
+<li>Edit velocity and gate length.</li>
+<li>Show the transport playhead.</li>
+<li>Use the existing global transport loop to audition the clip's
+timeline range.</li>
+<li>Provide an <code>Expand by N</code> operation that bakes the pattern
+into N repetitions.</li>
+<li>Commit edits as ordinary MIDI UMP events through the existing MIDI
+clip replacement and history path.</li>
+</ul>
+<p>The transport loop is global and may therefore loop other tracks as
+well. That is acceptable for the MVP. A per-clip playback loop is
+outside this initial design.</p>
+<h2 id="interoperable-representation">Interoperable representation</h2>
+<p>The MIDI stream remains fully expanded and independently
+playable:</p>
+<pre class="text"><code>[pattern events] [repetition 2] [repetition 3] ... [repetition N]</code></pre>
+<p>This means another MIDI-capable application can open the project or
+exported clip without understanding UAPMD's step-sequencer convention.
+It will simply play the baked repetitions as ordinary MIDI.</p>
+<p>UAPMD adds a hint to the UMP stream using Flex Data Metadata Text.
+The marker text contains only a stable semantic identifier, for
+example:</p>
+<pre class="text"><code>uapmd.step-loop-end:v1</code></pre>
+<p>The marker's event timestamp is the authoritative end of the first
+reusable pattern cycle. The text must not contain absolute tick values,
+DCTPQ, BPM, step count, or repetition count.</p>
+<p>For example:</p>
+<pre class="text"><code>pattern events
+loop-end marker at tick L
+repetition 2
+optional boundary marker at tick 2L
+repetition 3
+optional boundary marker at tick 3L</code></pre>
+<p>The editor writes a boundary marker after every cycle, including the
+final cycle, so empty patterns and trailing silent repetitions retain
+their length. The first loop-end marker is authoritative for the pattern
+length. Older clips without later markers use the expanded event extent
+to infer repetitions.</p>
+<p>A separate <code>uapmd.step-grid:v1</code> marker at the end of the
+first step records the grid spacing by timestamp. This disambiguates
+sparse and empty patterns without embedding tick values in text. Both
+marker types use Flex Data Metadata Text, Unknown status, with channel
+addressing to retain the edited group and channel. Step count is the
+loop timestamp divided by the grid timestamp; repetition count is the
+final boundary timestamp divided by the first boundary timestamp.
+Loop-only clips use the finest supported grid that fits within 128
+steps.</p>
+<h2 id="dctpq-changes">DCTPQ changes</h2>
+<p>The loop boundary is represented by the timestamp of the Flex
+Metadata event, not by a number embedded in its text. Therefore a
+DCTPQ/tick-resolution change can rescale the marker timestamp together
+with all other event timestamps while leaving the metadata text
+unchanged.</p>
+<p>Any tick-rescaling or UMP-reconstruction path must preserve Flex
+Metadata messages as complete atomic UMP messages and must rescale their
+parallel tick timestamps. Marker messages must not be overlooked merely
+because they are not musical note or controller events.</p>
+<h2 id="loading-and-editing-behavior">Loading and editing behavior</h2>
+<p>When UAPMD finds a valid <code>uapmd.step-loop-end:v1</code>
+marker:</p>
+<ol type="1">
+<li>Use the timestamp of the first marker as the pattern length.</li>
+<li>Present the events before that timestamp as the editable
+pattern.</li>
+<li>Retain the full baked event stream as the actual clip source.</li>
+<li>Treat later events as baked repetitions.</li>
+<li>Optionally validate later boundary markers against the inferred
+pattern length.</li>
+</ol>
+<p>The repeated events should not be physically deleted from the loaded
+MIDI source. The step editor should discard them only from its working
+projection. This preserves the clip's playable duration and
+interoperability.</p>
+<p>When a step edit is applied, the editor should regenerate the
+complete baked stream from the editable pattern and its repetition
+count, then call the existing MIDI clip-content replacement path. This
+should remain one undoable clip-content operation.</p>
+<p>If no valid marker exists, the step editor warns that the clip is not
+recognized as originating from the step sequencer. The user can close
+without changes or open anyway, acknowledging that subsequent edits
+apply immediately and may discard data the editor cannot represent.
+Opening alone must leave the source untouched. Unrelated Flex Data text
+and incomplete marker messages do not count as step-sequencer
+metadata.</p>
+<p>Edits replace the old recognized marker packets instead of
+accumulating them. Only notes before the first loop boundary populate
+the working pattern; edits regenerate the baked repetitions. Unsupported
+or contradictory marker settings also trigger the warning. Clips saved
+before metadata writing was implemented remain unmarked and trigger the
+warning until the user opens and edits them.</p>
+<h2 id="expand-by-n"><code>Expand by N</code></h2>
+<p><code>Expand by N</code> means “make the total baked sequence exactly
+N repetitions of the current pattern.” The UI should show both the
+pattern length and the resulting expanded length to avoid ambiguity:</p>
+<pre class="text"><code>Pattern length: 16 steps
+Repetitions: 4
+Expanded length: 64 steps</code></pre>
+<p>The loop-end marker remains at the end of the first pattern cycle.
+The repetition count is derived from the expanded event extent or
+maintained as editor state; it is not required in the marker text.</p>
+<p>The normal step-sequencer view edits the base pattern. A later
+feature may provide an explicit command such as
+<code>Make Repetitions Independent</code> for users who want to edit
+later repetitions separately.</p>
+<h2 id="event-ownership-and-preservation">Event ownership and
+preservation</h2>
+<p>The editor should preserve non-note UMP content where possible,
+including tempo/time-signature information, channel and UMP group, MIDI
+2.0 note attributes, and relevant automation.</p>
+<p>The first implementation should define clearly which events inside
+the pattern range it owns. A reasonable initial policy is that it owns
+note events and preserves other event types without offering step-level
+editing for them. Replication of controller, NRPN, pitch-bend, and
+per-note automation should be specified before those events are expanded
+automatically.</p>
+<h2 id="playback-filtering">Playback filtering</h2>
+<p>Flex Metadata Text events are persisted in the MIDI clip but are
+authoring information. MIDI clip playback consumes this status bank
+instead of forwarding it to instrument plugins. This check does not
+allocate or lock on the audio thread; other Flex Data status banks
+retain their existing playback behavior.</p>
+<h2 id="possible-api-work">Possible API work</h2>
+<p>The builtin editor can initially use the existing clip-editor
+integration and MIDI replacement callback. If third-party clip-editor
+addins are expected to implement step editing, the addin API should
+expose a reusable service for:</p>
+<ul>
+<li>reading grouped UMP events and tick timestamps;</li>
+<li>recognizing UAPMD step-loop metadata;</li>
+<li>replacing MIDI clip content with one history-aware operation;
+and</li>
+<li>requesting transport-loop auditioning for a clip range.</li>
+</ul>
+<p>The initial feature should not introduce a new step-pattern project
+data model or a per-clip real-time looping engine.</p>
+<h2 id="long-term-boundary">Long-term boundary</h2>
+<p>This design deliberately stops short of first-class pattern
+sequencing. Probability, ratchets, swing, pattern chaining, independent
+per-clip looping, and non-destructive pattern instances would require a
+separate project and playback design. The baked-MIDI plus metadata-hint
+approach leaves room for those features without making them
+prerequisites for the first editor.</p>
+    </main>
+</div>
+</body>
+</html>

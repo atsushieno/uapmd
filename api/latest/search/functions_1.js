@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['ensureapibootstrapped_0',['ensureApiBootstrapped',['../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9',1,'uapmd_app::UapmdJSRuntime']]],
-  ['evaluatescript_1',['evaluateScript',['../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906',1,'uapmd_app::UapmdJSRuntime']]]
+  ['mcpserver_0',['mcpserver',['../d1/d6c/classuapmd__app_1_1McpServer.html#ac39d08e7f0aaff1fa003a3721ea9887e',1,'uapmd_app::McpServer::McpServer(int port)'],['../d1/d6c/classuapmd__app_1_1McpServer.html#a09cb42ec4c77a9e49347c7902f3a449b',1,'uapmd_app::McpServer::McpServer(std::string relayUrl, bool autoReconnect=true)']]]
 ];

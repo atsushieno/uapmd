@@ -1,22 +1,11 @@
 var searchData=
 [
-  ['scannedpluginentry_0',['ScannedPluginEntry',['../d2/d20/structuapmd__plugin__hosting_1_1ScannedPluginEntry.html',1,'uapmd_plugin_hosting']]],
-  ['scanonlyoptions_1',['ScanOnlyOptions',['../d9/d62/structuapmd__plugin__hosting_1_1ScanOnlyOptions.html',1,'uapmd_plugin_hosting']]],
-  ['scanonlyreport_2',['ScanOnlyReport',['../d9/d5f/structuapmd__plugin__hosting_1_1ScanOnlyReport.html',1,'uapmd_plugin_hosting']]],
-  ['scanverificationfailure_3',['ScanVerificationFailure',['../d7/da7/structuapmd__plugin__hosting_1_1ScanVerificationFailure.html',1,'uapmd_plugin_hosting']]],
-  ['scanverificationreport_4',['ScanVerificationReport',['../d5/daa/structuapmd__plugin__hosting_1_1ScanVerificationReport.html',1,'uapmd_plugin_hosting']]],
-  ['scopedcommandgesture_5',['ScopedCommandGesture',['../da/dd7/classuapmd_1_1ScopedCommandGesture.html',1,'uapmd']]],
-  ['scopedcommandstep_6',['ScopedCommandStep',['../d2/d63/classuapmd_1_1ScopedCommandStep.html',1,'uapmd']]],
-  ['scopeddocumenttransaction_7',['ScopedDocumentTransaction',['../d3/d6c/classuapmd_1_1ScopedDocumentTransaction.html',1,'uapmd']]],
-  ['separatedmastertrackevents_8',['SeparatedMasterTrackEvents',['../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html',1,'uapmd::MidiClipReader']]],
-  ['sequenceprocesscontext_9',['SequenceProcessContext',['../d1/d7c/classuapmd_1_1SequenceProcessContext.html',1,'uapmd']]],
-  ['sequencerengine_10',['SequencerEngine',['../d1/dee/classuapmd_1_1SequencerEngine.html',1,'uapmd']]],
-  ['sequencerprocessinglifecyclelistener_11',['SequencerProcessingLifecycleListener',['../d8/d18/classuapmd_1_1SequencerProcessingLifecycleListener.html',1,'uapmd']]],
-  ['sequencertrack_12',['SequencerTrack',['../d0/dc0/classuapmd_1_1SequencerTrack.html',1,'uapmd']]],
-  ['silentaudiofilereader_13',['SilentAudioFileReader',['../d5/d8a/classuapmd_1_1SilentAudioFileReader.html',1,'uapmd']]],
-  ['slowscanprogressstate_14',['SlowScanProgressState',['../da/da8/structuapmd__app_1_1AppModel_1_1SlowScanProgressState.html',1,'uapmd_app::AppModel']]],
-  ['smf2clipreaderwriter_15',['Smf2ClipReaderWriter',['../dd/dc4/classuapmd_1_1Smf2ClipReaderWriter.html',1,'uapmd']]],
-  ['smfconverter_16',['SmfConverter',['../de/d16/classuapmd_1_1SmfConverter.html',1,'uapmd']]],
-  ['sourcenode_17',['SourceNode',['../d6/dbc/classuapmd_1_1SourceNode.html',1,'uapmd']]],
-  ['stemfile_18',['StemFile',['../de/d57/structuapmd_1_1import_1_1DemucsStemSeparator_1_1StemFile.html',1,'uapmd::import::DemucsStemSeparator']]]
+  ['realtimesequencer_0',['RealtimeSequencer',['../da/d15/classuapmd_1_1RealtimeSequencer.html',1,'uapmd']]],
+  ['remotepluginscannerprocess_1',['RemotePluginScannerProcess',['../dc/d4e/classuapmd__plugin__hosting_1_1RemotePluginScannerProcess.html',1,'uapmd_plugin_hosting']]],
+  ['remotescannerserveroptions_2',['RemoteScannerServerOptions',['../d5/d4f/structuapmd__plugin__hosting_1_1RemoteScannerServerOptions.html',1,'uapmd_plugin_hosting']]],
+  ['rendertofilesettings_3',['RenderToFileSettings',['../db/ddf/structuapmd__app_1_1AppModel_1_1RenderToFileSettings.html',1,'uapmd_app::AppModel']]],
+  ['rendertofilestatus_4',['RenderToFileStatus',['../d9/d6e/structuapmd__app_1_1AppModel_1_1RenderToFileStatus.html',1,'uapmd_app::AppModel']]],
+  ['rtsnapshotpublisher_5',['RtSnapshotPublisher',['../d6/d52/classuapmd_1_1RtSnapshotPublisher.html',1,'uapmd']]],
+  ['rtsnapshotpublisher_3c_20clipsnapshot_20_3e_6',['RtSnapshotPublisher&lt; ClipSnapshot &gt;',['../d6/d52/classuapmd_1_1RtSnapshotPublisher.html',1,'uapmd']]],
+  ['rtsnapshotpublisher_3c_20sourcenodelist_20_3e_7',['RtSnapshotPublisher&lt; SourceNodeList &gt;',['../d6/d52/classuapmd_1_1RtSnapshotPublisher.html',1,'uapmd']]]
 ];

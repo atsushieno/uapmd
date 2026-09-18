@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -118,9 +118,28 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>        <span class="keyword">static</span> std::unique_ptr&lt;PluginFormatWebCLAP&gt; create();</div>
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    };</div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>} <span class="comment">// namespace remidy</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="preprocessor">#endif </span><span class="comment">// __EMSCRIPTEN__</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    <span class="comment">// What a host needs from a WebCLAP plugin instance beyond PluginInstance.</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    <span class="comment">//</span></div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <span class="comment">// A WebCLAP plugin lives partly in the browser, so two things a host does for other</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="comment">// formats have to be routed across that boundary instead: delivering input events, and</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="comment">// telling the plugin where it sits in the audio graph. The concrete instance class is</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="comment">// private to the format&#39;s implementation, so this is the part hosts can reach --</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="comment">// `dynamic_cast` a `PluginInstance*` to it and act if it answers.</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <span class="keyword">class </span>PluginInstanceWebCLAPControl {</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">public</span>:</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">virtual</span> ~PluginInstanceWebCLAPControl() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="comment">// Sends UMP input to the browser-side plugin for the current cycle.</span></div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> sendUmpInputEvents(<span class="keyword">const</span> uint32_t* events, <span class="keywordtype">size_t</span> sizeInBytes) = 0;</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="comment">// Tells the plugin which track&#39;s graph it belongs to, and in what order, so the</span></div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        <span class="comment">// browser side can wire its audio node up to match.</span></div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> attachToTrackGraph(int32_t trackIndex, <span class="keywordtype">bool</span> isMasterTrack, uint32_t order) = 0;</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    };</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>} <span class="comment">// namespace remidy</span></div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span><span class="preprocessor">#endif </span><span class="comment">// __EMSCRIPTEN__</span></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

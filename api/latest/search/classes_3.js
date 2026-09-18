@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['demucsstemseparator_0',['DemucsStemSeparator',['../de/d29/classuapmd_1_1import_1_1DemucsStemSeparator.html',1,'uapmd::import']]],
-  ['deviceentry_1',['DeviceEntry',['../de/dd7/structuapmd__app_1_1AppModel_1_1DeviceEntry.html',1,'uapmd_app::AppModel']]],
+  ['deviceentry_0',['DeviceEntry',['../de/dd7/structuapmd__app_1_1AppModel_1_1DeviceEntry.html',1,'uapmd_app::AppModel']]],
+  ['deviceinputaddress_1',['DeviceInputAddress',['../df/d7a/structuapmd_1_1DeviceInputAddress.html',1,'uapmd']]],
   ['deviceinputsourcenode_2',['DeviceInputSourceNode',['../d5/d0e/classuapmd_1_1DeviceInputSourceNode.html',1,'uapmd']]],
   ['deviceiodispatcher_3',['DeviceIODispatcher',['../d0/dc0/classuapmd_1_1DeviceIODispatcher.html',1,'uapmd']]],
   ['devicestate_4',['DeviceState',['../d9/d0f/structuapmd__app_1_1AppModel_1_1DeviceState.html',1,'uapmd_app::AppModel']]],

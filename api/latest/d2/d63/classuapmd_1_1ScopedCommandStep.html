@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -82,9 +82,9 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a6816e7c42540471ef734af993350b9da" id="r_a6816e7c42540471ef734af993350b9da"><td class="memItemLeft" align="right" valign="top"><a id="a6816e7c42540471ef734af993350b9da" name="a6816e7c42540471ef734af993350b9da"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>ScopedCommandStep</b> (<a class="el" href="../../d3/d19/classuapmd_1_1ProjectCommandManager.html">ProjectCommandManager</a> &amp;manager, std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User)</td></tr>
-<tr class="separator:a6816e7c42540471ef734af993350b9da"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a54b2d395837066067edf47dabc6da3e5" id="r_a54b2d395837066067edf47dabc6da3e5"><td class="memItemLeft" align="right" valign="top"><a id="a54b2d395837066067edf47dabc6da3e5" name="a54b2d395837066067edf47dabc6da3e5"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>ScopedCommandStep</b> (<a class="el" href="../../d3/d19/classuapmd_1_1ProjectCommandManager.html">ProjectCommandManager</a> &amp;manager, std::string description, ProjectMutationOrigin origin=ProjectMutationOrigin::User, ProjectStepEventBatching batching=ProjectStepEventBatching::PerCommand)</td></tr>
+<tr class="separator:a54b2d395837066067edf47dabc6da3e5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a237e89355344ccd326de67e512ad873d" id="r_a237e89355344ccd326de67e512ad873d"><td class="memItemLeft" align="right" valign="top"><a id="a237e89355344ccd326de67e512ad873d" name="a237e89355344ccd326de67e512ad873d"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>ScopedCommandStep</b> (const <a class="el" href="../../d2/d63/classuapmd_1_1ScopedCommandStep.html">ScopedCommandStep</a> &amp;)=delete</td></tr>
 <tr class="separator:a237e89355344ccd326de67e512ad873d"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -94,6 +94,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a58257482adf72908a6b12bad29b179df" id="r_a58257482adf72908a6b12bad29b179df"><td class="memItemLeft" align="right" valign="top"><a id="a58257482adf72908a6b12bad29b179df" name="a58257482adf72908a6b12bad29b179df"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>opened</b> () const</td></tr>
 <tr class="separator:a58257482adf72908a6b12bad29b179df"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6e6ec5894561123160ccec4989c2b95f" id="r_a6e6ec5894561123160ccec4989c2b95f"><td class="memItemLeft" align="right" valign="top"><a id="a6e6ec5894561123160ccec4989c2b95f" name="a6e6ec5894561123160ccec4989c2b95f"></a>
+const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>error</b> () const</td></tr>
+<tr class="separator:a6e6ec5894561123160ccec4989c2b95f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a52a2ef89a4ce1c3185f01ed2095e3988" id="r_a52a2ef89a4ce1c3185f01ed2095e3988"><td class="memItemLeft" align="right" valign="top"><a id="a52a2ef89a4ce1c3185f01ed2095e3988" name="a52a2ef89a4ce1c3185f01ed2095e3988"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>commit</b> (ProjectCommandCompletion completion={})</td></tr>
 <tr class="separator:a52a2ef89a4ce1c3185f01ed2095e3988"><td class="memSeparator" colspan="2">&#160;</td></tr>

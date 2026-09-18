@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="basic-pitch-polyphonic-transcription-ai-slop">Basic Pitch:
+polyphonic transcription (AI slop)</h1>
+<p>Turns an audio clip into a <strong>polyphonic</strong> MIDI 2.0 note
+clip at the same position on the same track, with per-note pitch bend.
+Where the <a href="PITCH_TRANSCRIPTION.html">monophonic estimators</a>
+return one fundamental per window — and answer a chord with a phantom
+note an octave below, or with nothing at all — this recovers the
+individual notes of a chord.</p>
+<table>
+<tbody>
+<tr class="odd">
+<td>package / addin id</td>
+<td><code>/uapmd/basic-pitch</code> / <code>transcription</code></td>
+</tr>
+<tr class="even">
+<td>CMake target</td>
+<td><code>uapmd-basic-pitch</code> (aliased
+<code>uapmd::basic-pitch</code>)</td>
+</tr>
+<tr class="odd">
+<td>built when</td>
+<td><code>UAPMD_ENABLE_BASIC_PITCH</code>, <strong>off by
+default</strong></td>
+</tr>
+<tr class="even">
+<td>model</td>
+<td><a
+href="https://github.com/spotify/basic-pitch">spotify/basic-pitch</a>
+<code>nmp.onnx</code>, Apache-2.0</td>
+</tr>
+<tr class="odd">
+<td>sources</td>
+<td><code>src/basic-pitch/</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="why-it-is-opt-in">Why it is opt-in</h2>
+<p>The option gates a <strong>download</strong>, not just a build. The
+model is Apache-2.0, including its weights, and they are not committed
+here, so an enabled build fetches <code>nmp.onnx</code> at configure
+time and embeds it into the binary. That makes enabling it a
+redistribution decision, which is why it defaults off rather than
+following the opt-out shape <code>UAPMD_ENABLE_LIBSONARE</code>
+uses.</p>
+<p>The weights are not the only Apache-2.0 material involved.
+<code>BasicPitchTranscriber.{hpp,cpp}</code> is a port of upstream's
+<code>note_creation.py</code>, which makes it a derivative work, and
+unlike the weights it <em>is</em> committed — so it carries Apache-2.0
+regardless of the option. That is consistent with the top-level README,
+which already releases the whole <code>uapmd-mir</code> module under
+Apache V2, and it was a deliberate choice: the note decoder's thresholds
+were tuned against this model, and departing from upstream would have
+cost notes and forfeited the ability to validate against upstream's own
+decoder. <code>src/basic-pitch/HACKING.md</code> records the provenance
+of every file.</p>
+<p>The download is pinned by SHA-256 rather than by tag:
+<code>main</code> is a moving branch, and a silent upstream retrain must
+fail the build rather than quietly change what ships. The tensor names
+in <code>BasicPitchModel.cpp</code> are safe for the same reason — they
+cannot drift without the download failing first.</p>
+<p>Embedding, rather than shipping a data file beside the app, is what
+lets this work on WebAssembly and Android, where there is nowhere
+sensible to read one from. The download becomes
+<code>basic_pitch_model_data.cpp</code> in the build directory —
+generated, never committed — carrying the 230,444 bytes of
+<code>nmp.onnx</code> verbatim as hex text in 60,000-character chunks,
+because MSVC caps a string literal at 65535 bytes.</p>
+<p>That generated file is the largest piece of Apache-2.0 material in
+the build, and it is what the compiler and the shipped binary actually
+see, so it carries the download URL, the pinned hash and the Spotify
+copyright in its own header. Any binary built with this option
+redistributes the weights, so <code>src/basic-pitch/LICENSE</code> and
+<code>src/basic-pitch/NOTICE</code> have to accompany it.
+<code>src/basic-pitch/HACKING.md</code> records the full provenance of
+every file, generated ones included.</p>
+<p>It is a <strong>built-in</strong> addin — a static library the
+application links <code>WHOLE_ARCHIVE</code> — with no platform guard,
+so it reaches every target including the ones where dynamic addin
+loading is unavailable.</p>
+<h2 id="entry-points">Entry points</h2>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th>one clip</th>
+<th>whole project</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>extension point</td>
+<td><code>/uapmd/app/clip-command/v1</code></td>
+<td><code>/uapmd/app/command/v1</code></td>
+</tr>
+<tr class="even">
+<td>id</td>
+<td><code>uapmd-basic-pitch.transcribe-audio-clip</code></td>
+<td><code>uapmd-basic-pitch.transcribe-all-audio-clips</code></td>
+</tr>
+<tr class="odd">
+<td>title</td>
+<td>"Transcribe to poly MIDI2 clip (basic-pitch)"</td>
+<td>"Transcribe all audio clips to poly MIDI2 clip (basic-pitch)"</td>
+</tr>
+<tr class="even">
+<td>order</td>
+<td>101</td>
+<td>1200</td>
+</tr>
+</tbody>
+</table>
+<p>Both drive one worker thread, so neither can start while the other
+runs, and both report progress by changing their own menu title. They
+sit directly beside the monophonic commands in the same menus.</p>
+<h2 id="the-model-is-a-weight-file-not-a-graph">The model is a weight
+file, not a graph</h2>
+<p><code>nmp.onnx</code> holds 248 nodes, but roughly three quarters of
+them are <code>Reshape</code>, <code>Unsqueeze</code>,
+<code>Transpose</code> and <code>Pad</code> — shape plumbing that is
+entirely static because the input length is fixed at 43,844 samples.
+Only ~30 convolutions and a dozen elementwise operations compute
+anything, and the whole file is 230 KB with 140 KB of that being
+weights.</p>
+<p>So the network is written out directly in
+<code>BasicPitchModel.cpp</code> and the ONNX file is read only for its
+tensors. <code>OnnxWeights.cpp</code> is a bounds-checked protobuf
+reader for four fields — <code>graph</code>, <code>initializer</code>,
+<code>dims</code>, <code>raw_data</code> — which is why neither
+libprotobuf nor onnxruntime is a dependency; neither could be carried to
+WebAssembly and Android without a fight.</p>
+<h2 id="stages">Stages</h2>
+<ol type="1">
+<li><p><strong>CQT</strong> (<code>cq_t2010v2</code>). Nine octaves.
+Each one reflect-pads the signal by 128 samples, applies two banks of 36
+kernels of 256 taps at a hop that halves per octave (256 down to 1),
+then decimates the signal by two through a 256-tap lowpass. All nine
+octaves share one kernel pair and one lowpass — that reuse is what makes
+the transform cheap. Bins are concatenated from the lowest octave upward
+and the top 309 of 324 are kept.</p>
+<p>The exported graph negates one of the two banks and swaps which one,
+per octave. Neither matters: only <code>sqrt(a² + b²)</code> is used, so
+the sign and the ordering fall out of the arithmetic and are simply not
+implemented.</p></li>
+<li><p><strong>Normalised log.</strong>
+<code>10·log10(magnitude² + 1e-10)</code>, min-max scaled to [0, 1] over
+the whole window, with the degenerate all-equal case pinned to zero.
+Then the BatchNormalization that followed it, folded by the exporter to
+<code>×2.480741 − 0.87691832</code>.</p></li>
+<li><p><strong>Harmonic stacking.</strong> Eight copies of the spectrum
+shifted by <code>round(36·log2(h))</code> bins for <code>h</code> in
+<code>[0.5, 1, 2, 3, 4, 5, 6, 7]</code>, so that the harmonics of a
+pitch line up on that pitch's bin and a small 2-D kernel can see a whole
+harmonic series at once.</p></li>
+<li><p><strong>Six convolutions</strong> producing three posteriorgrams:
+<code>contour</code> (264 bins, 3 per semitone), <code>note</code> and
+<code>onset</code> (88 pitches each). The onset head is fed the note
+head's output alongside its own stem — an onset is a note starting, so
+the two are deliberately not independent.</p></li>
+</ol>
+<h2 id="windowing-and-note-creation">Windowing and note creation</h2>
+<p>The network only ever sees two seconds. A clip is resampled to 22050
+Hz mono, padded by half the overlap, and fed through as windows
+advancing by 36,164 samples; 15 frames are dropped from each end of
+every window's 172 before the remainder are stitched, so a note near a
+boundary is decided by the window that saw the most context around
+it.</p>
+<p><code>BasicPitchTranscriber.cpp</code> then ports upstream's
+<code>note_creation.py</code> faithfully, because its thresholds were
+tuned against this model:</p>
+<ul>
+<li>onsets are strict local maxima above 0.5, walked
+<strong>backwards</strong> in time so that when two onsets compete for
+the same energy the later one is not truncated;</li>
+<li>frame energy above 0.3 keeps a note on, ending it after 11
+consecutive frames below;</li>
+<li><strong>inferred onsets</strong> add peaks wherever frame energy
+jumps, catching legato notes the onset head misses;</li>
+<li>the <strong>melodia pass</strong> harvests whatever energy no onset
+explained, growing each remaining peak in both directions;</li>
+<li>notes shorter than 127.7 ms are dropped;</li>
+<li>pitch bend per note comes from the contour head, Gaussian-weighted
+within 25 bins of the expected one, in thirds of a semitone.</li>
+</ul>
+<p>Resampling uses a windowed-sinc kernel cut off at whichever Nyquist
+is lower. Plain interpolation would fold everything above 11 kHz back
+into the band, and a pitch model reads those images as real
+partials.</p>
+<h2 id="accuracy-and-cost">Accuracy and cost</h2>
+<p>Checked against onnxruntime running the original graph on the same
+input. Every stage agrees to within float32 round-off:</p>
+<table>
+<thead>
+<tr class="header">
+<th>stage</th>
+<th>rel RMS</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>cqt_magnitude</td>
+<td>1.9e-07</td>
+</tr>
+<tr class="even">
+<td>normalized_log</td>
+<td>1.2e-04</td>
+</tr>
+<tr class="odd">
+<td>harmonic_stack</td>
+<td>2.1e-04</td>
+</tr>
+<tr class="even">
+<td>contour</td>
+<td>8.6e-05</td>
+</tr>
+<tr class="odd">
+<td>note</td>
+<td>4.7e-05</td>
+</tr>
+<tr class="even">
+<td>onset</td>
+<td>1.4e-04</td>
+</tr>
+</tbody>
+</table>
+<p>The error shrinks through the network: convolution followed by
+sigmoid damps the front end's log-amplified round-off rather than
+amplifying it. Note decoding was checked separately against upstream's
+own <code>output_to_notes_polyphonic</code> on identical posteriorgrams,
+and matches exactly — same frames, pitches, amplitudes and bend values,
+including the melodia pass. End to end over a six-second, four-window
+signal the two pipelines produce identical note lists.</p>
+<p>The convolutions are plain loops, deliberately: they are validated
+against reference activations, so they are written to be obviously
+correct. About 0.5 GMAC per two-second window works out at roughly 0.4x
+realtime, so a three-minute clip takes about a minute. If that becomes
+the bottleneck, the convolutions are the place to look, and ggml is
+already in the tree.</p>
+    </main>
+</div>
+</body>
+</html>

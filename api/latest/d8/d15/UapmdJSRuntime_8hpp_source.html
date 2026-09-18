@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -83,32 +83,32 @@ $(document).ready(function() { init_codefold(1); });
 <div class="contents">
 <div class="fragment"><div class="line"><a id="l00001" name="l00001"></a><span class="lineno">    1</span><span class="preprocessor">#pragma once</span></div>
 <div class="line"><a id="l00002" name="l00002"></a><span class="lineno">    2</span> </div>
-<div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="preprocessor">#include &lt;choc/javascript/choc_javascript.h&gt;</span></div>
-<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &lt;atomic&gt;</span></div>
-<div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="preprocessor">#include &lt;functional&gt;</span></div>
-<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;map&gt;</span></div>
-<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;memory&gt;</span></div>
-<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;mutex&gt;</span></div>
-<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;optional&gt;</span></div>
-<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;string&gt;</span></div>
-<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;string_view&gt;</span></div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#include &lt;unordered_set&gt;</span></div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#include &lt;vector&gt;</span></div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span> </div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#include &quot;uapmd-midi-service/uapmd-midi-service.hpp&quot;</span></div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="keyword">namespace </span>uapmd_app {</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="foldopen" id="foldopen00020" data-start="{" data-end="};">
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno"><a class="line" href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">   20</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">ParameterUpdate</a> {</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>    int32_t parameterIndex;</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>    <span class="keywordtype">double</span> value;</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>};</div>
+<div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="preprocessor">#include &lt;atomic&gt;</span></div>
+<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &lt;functional&gt;</span></div>
+<div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="preprocessor">#include &lt;map&gt;</span></div>
+<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;memory&gt;</span></div>
+<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;mutex&gt;</span></div>
+<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;optional&gt;</span></div>
+<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;string&gt;</span></div>
+<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;string_view&gt;</span></div>
+<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &lt;unordered_set&gt;</span></div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#include &lt;vector&gt;</span></div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span> </div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#include &quot;uapmd-midi-service/uapmd-midi-service.hpp&quot;</span></div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span> </div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="keyword">namespace </span>uapmd_app {</div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
+<div class="foldopen" id="foldopen00019" data-start="{" data-end="};">
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">   19</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">ParameterUpdate</a> {</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    int32_t parameterIndex;</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>    <span class="keywordtype">double</span> value;</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>};</div>
 </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
-<div class="foldopen" id="foldopen00031" data-start="{" data-end="};">
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">   31</a></span><span class="keyword">class </span><a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> {</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
+<div class="foldopen" id="foldopen00030" data-start="{" data-end="};">
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">   30</a></span><span class="keyword">class </span><a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> {</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    <span class="keyword">struct </span>Impl;</div>
 <div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    <span class="keyword">struct </span>MutationJob {</div>
 <div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>        int32_t <span class="keywordtype">id</span>{-1};</div>
 <div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>        std::mutex mutex;</div>
@@ -117,7 +117,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        std::string error;</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    };</div>
 <div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    choc::javascript::Context jsContext_;</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    std::unique_ptr&lt;Impl&gt; impl_;</div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="keywordtype">bool</span> apiBootstrapped_ = <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="comment">// Parameter update queue for JavaScript polling</span></div>
@@ -136,57 +136,59 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
 <div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span><span class="keyword">public</span>:</div>
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a>();</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a91bf4c791ff0d767746ae724f264b5aa">   63</a></span>    choc::javascript::Context&amp; <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a91bf4c791ff0d767746ae724f264b5aa">context</a>() { <span class="keywordflow">return</span> jsContext_; }</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keyword">const</span> choc::javascript::Context&amp; <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a91bf4c791ff0d767746ae724f264b5aa">context</a>()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> jsContext_; }</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">   69</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">reinitialize</a>();</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">   76</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">ensureApiBootstrapped</a>();</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906">   85</a></span>    std::string <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906">evaluateScript</a>(<span class="keyword">const</span> std::string&amp; code,</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        std::function&lt;std::optional&lt;std::string&gt;(std::string_view)&gt; fallbackModuleResolver = {});</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a924672300f7ea5b6575a38e47e3e7799">   92</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a924672300f7ea5b6575a38e47e3e7799">registerParameterListener</a>(int32_t instanceId);</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a67518801e456abf9fc059d985e9b5cea">   98</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a67518801e456abf9fc059d985e9b5cea">unregisterParameterListener</a>(int32_t instanceId);</div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a18aeeaf7be2eb4ea41ff37ac1eb40343">  104</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a18aeeaf7be2eb4ea41ff37ac1eb40343">registerAllParameterListeners</a>();</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span> </div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a70c5e26f343758833e3dd29de5483374">  110</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a70c5e26f343758833e3dd29de5483374">unregisterAllParameterListeners</a>();</div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa8f5399342a125e0c231f554ff8c42c7">  116</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa8f5399342a125e0c231f554ff8c42c7">registerMetadataListener</a>(int32_t instanceId);</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span> </div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a2b33e192ad2319027c924a4b63538e86">  122</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a2b33e192ad2319027c924a4b63538e86">unregisterMetadataListener</a>(int32_t instanceId);</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span> </div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a17a5da46416f5a6217a1e1b2c67c9b69">  128</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a17a5da46416f5a6217a1e1b2c67c9b69">registerAllMetadataListeners</a>();</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span> </div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a4a28018625a8e60e72d468c0bed3655d">  134</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a4a28018625a8e60e72d468c0bed3655d">unregisterAllMetadataListeners</a>();</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span> </div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span><span class="keyword">private</span>:</div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    std::shared_ptr&lt;MutationJob&gt; createMutationJob();</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    choc::value::Value mutationJobValue(<span class="keyword">const</span> std::shared_ptr&lt;MutationJob&gt;&amp; job);</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>    <span class="keywordtype">void</span> completeMutationJob(</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        <span class="keyword">const</span> std::shared_ptr&lt;MutationJob&gt;&amp; job,</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>        choc::value::Value result,</div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>        std::string error = {});</div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordtype">void</span> registerConsoleFunctions();</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    <span class="keywordtype">void</span> registerProjectAPI();</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    <span class="keywordtype">void</span> registerPluginCatalogAPI();</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keywordtype">void</span> registerPluginScanToolAPI();</div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keywordtype">void</span> registerPluginInstanceAPI();</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordtype">void</span> registerSequencerMidiAPI();</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    <span class="keywordtype">void</span> registerSequencerTransportAPI();</div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>    <span class="keywordtype">void</span> registerSequencerInstanceAPI();</div>
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>    <span class="keywordtype">void</span> registerSequencerAudioAnalysisAPI();</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>    <span class="keywordtype">void</span> registerSequencerAudioDeviceAPI();</div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>    <span class="keywordtype">void</span> registerTimelineAPI();</div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>    <span class="keywordtype">void</span> registerRenderAPI();</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>};</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">~UapmdJSRuntime</a>();</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a>(<span class="keyword">const</span> <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a>&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a>&amp; operator=(<span class="keyword">const</span> <a class="code hl_class" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a>&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">   67</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">reinitialize</a>();</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">   74</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">ensureApiBootstrapped</a>();</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906">   83</a></span>    std::string <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906">evaluateScript</a>(<span class="keyword">const</span> std::string&amp; code,</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>        std::function&lt;std::optional&lt;std::string&gt;(std::string_view)&gt; fallbackModuleResolver = {});</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a924672300f7ea5b6575a38e47e3e7799">   90</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a924672300f7ea5b6575a38e47e3e7799">registerParameterListener</a>(int32_t instanceId);</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a67518801e456abf9fc059d985e9b5cea">   96</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a67518801e456abf9fc059d985e9b5cea">unregisterParameterListener</a>(int32_t instanceId);</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span> </div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a18aeeaf7be2eb4ea41ff37ac1eb40343">  102</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a18aeeaf7be2eb4ea41ff37ac1eb40343">registerAllParameterListeners</a>();</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a70c5e26f343758833e3dd29de5483374">  108</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a70c5e26f343758833e3dd29de5483374">unregisterAllParameterListeners</a>();</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span> </div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa8f5399342a125e0c231f554ff8c42c7">  114</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa8f5399342a125e0c231f554ff8c42c7">registerMetadataListener</a>(int32_t instanceId);</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span> </div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a2b33e192ad2319027c924a4b63538e86">  120</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a2b33e192ad2319027c924a4b63538e86">unregisterMetadataListener</a>(int32_t instanceId);</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span> </div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a17a5da46416f5a6217a1e1b2c67c9b69">  126</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a17a5da46416f5a6217a1e1b2c67c9b69">registerAllMetadataListeners</a>();</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span> </div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno"><a class="line" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a4a28018625a8e60e72d468c0bed3655d">  132</a></span>    <span class="keywordtype">void</span> <a class="code hl_function" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a4a28018625a8e60e72d468c0bed3655d">unregisterAllMetadataListeners</a>();</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span> </div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span><span class="keyword">private</span>:</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    std::shared_ptr&lt;MutationJob&gt; createMutationJob();</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>    <span class="keyword">auto</span> mutationJobValue(<span class="keyword">const</span> std::shared_ptr&lt;MutationJob&gt;&amp; job);</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    <span class="keyword">template</span> &lt;<span class="keyword">typename</span> Value&gt;</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    <span class="keywordtype">void</span> completeMutationJob(</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>        <span class="keyword">const</span> std::shared_ptr&lt;MutationJob&gt;&amp; job,</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        Value result,</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>        std::string error = {});</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>    <span class="keywordtype">void</span> registerConsoleFunctions();</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordtype">void</span> registerProjectAPI();</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    <span class="keywordtype">void</span> registerPluginCatalogAPI();</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    <span class="keywordtype">void</span> registerPluginScanToolAPI();</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keywordtype">void</span> registerPluginInstanceAPI();</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keywordtype">void</span> registerSequencerMidiAPI();</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordtype">void</span> registerSequencerTransportAPI();</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    <span class="keywordtype">void</span> registerSequencerInstanceAPI();</div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>    <span class="keywordtype">void</span> registerSequencerAudioAnalysisAPI();</div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>    <span class="keywordtype">void</span> registerSequencerAudioDeviceAPI();</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>    <span class="keywordtype">void</span> registerTimelineAPI();</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>    <span class="keywordtype">void</span> registerRenderAPI();</div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>};</div>
 </div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span> </div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>} <span class="comment">// namespace uapmd_app</span></div>
-<div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">uapmd_app::UapmdJSRuntime</a></div><div class="ttdef"><b>Definition</b> UapmdJSRuntime.hpp:31</div></div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span> </div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>} <span class="comment">// namespace uapmd_app</span></div>
+<div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">uapmd_app::UapmdJSRuntime</a></div><div class="ttdef"><b>Definition</b> UapmdJSRuntime.hpp:30</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a17a5da46416f5a6217a1e1b2c67c9b69"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a17a5da46416f5a6217a1e1b2c67c9b69">uapmd_app::UapmdJSRuntime::registerAllMetadataListeners</a></div><div class="ttdeci">void registerAllMetadataListeners()</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a18aeeaf7be2eb4ea41ff37ac1eb40343"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a18aeeaf7be2eb4ea41ff37ac1eb40343">uapmd_app::UapmdJSRuntime::registerAllParameterListeners</a></div><div class="ttdeci">void registerAllParameterListeners()</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a2b33e192ad2319027c924a4b63538e86"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a2b33e192ad2319027c924a4b63538e86">uapmd_app::UapmdJSRuntime::unregisterMetadataListener</a></div><div class="ttdeci">void unregisterMetadataListener(int32_t instanceId)</div></div>
@@ -194,12 +196,11 @@ $(document).ready(function() { init_codefold(1); });
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a67518801e456abf9fc059d985e9b5cea"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a67518801e456abf9fc059d985e9b5cea">uapmd_app::UapmdJSRuntime::unregisterParameterListener</a></div><div class="ttdeci">void unregisterParameterListener(int32_t instanceId)</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a70c5e26f343758833e3dd29de5483374"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a70c5e26f343758833e3dd29de5483374">uapmd_app::UapmdJSRuntime::unregisterAllParameterListeners</a></div><div class="ttdeci">void unregisterAllParameterListeners()</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a837aea51905fb685ccbaf9bd470d86f9"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">uapmd_app::UapmdJSRuntime::ensureApiBootstrapped</a></div><div class="ttdeci">void ensureApiBootstrapped()</div></div>
-<div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a91bf4c791ff0d767746ae724f264b5aa"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a91bf4c791ff0d767746ae724f264b5aa">uapmd_app::UapmdJSRuntime::context</a></div><div class="ttdeci">choc::javascript::Context &amp; context()</div><div class="ttdef"><b>Definition</b> UapmdJSRuntime.hpp:63</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_a924672300f7ea5b6575a38e47e3e7799"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a924672300f7ea5b6575a38e47e3e7799">uapmd_app::UapmdJSRuntime::registerParameterListener</a></div><div class="ttdeci">void registerParameterListener(int32_t instanceId)</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_aa0fd68190aeaafb4a09f097bcbc4652b"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">uapmd_app::UapmdJSRuntime::reinitialize</a></div><div class="ttdeci">void reinitialize()</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_aa8f5399342a125e0c231f554ff8c42c7"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa8f5399342a125e0c231f554ff8c42c7">uapmd_app::UapmdJSRuntime::registerMetadataListener</a></div><div class="ttdeci">void registerMetadataListener(int32_t instanceId)</div></div>
 <div class="ttc" id="aclassuapmd__app_1_1UapmdJSRuntime_html_ad2c454ee3c912aafd30c5f079a6e1906"><div class="ttname"><a href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#ad2c454ee3c912aafd30c5f079a6e1906">uapmd_app::UapmdJSRuntime::evaluateScript</a></div><div class="ttdeci">std::string evaluateScript(const std::string &amp;code, std::function&lt; std::optional&lt; std::string &gt;(std::string_view)&gt; fallbackModuleResolver={})</div></div>
-<div class="ttc" id="astructuapmd__app_1_1ParameterUpdate_html"><div class="ttname"><a href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">uapmd_app::ParameterUpdate</a></div><div class="ttdef"><b>Definition</b> UapmdJSRuntime.hpp:20</div></div>
+<div class="ttc" id="astructuapmd__app_1_1ParameterUpdate_html"><div class="ttname"><a href="../../d4/d41/structuapmd__app_1_1ParameterUpdate.html">uapmd_app::ParameterUpdate</a></div><div class="ttdef"><b>Definition</b> UapmdJSRuntime.hpp:19</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

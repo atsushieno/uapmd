@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -85,11 +85,12 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a91bf4c791ff0d767746ae724f264b5aa" id="r_a91bf4c791ff0d767746ae724f264b5aa"><td class="memItemLeft" align="right" valign="top">choc::javascript::Context &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a91bf4c791ff0d767746ae724f264b5aa">context</a> ()</td></tr>
-<tr class="separator:a91bf4c791ff0d767746ae724f264b5aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aebb8bbe0ab9df1f0ecd4d1edd29bc995" id="r_aebb8bbe0ab9df1f0ecd4d1edd29bc995"><td class="memItemLeft" align="right" valign="top"><a id="aebb8bbe0ab9df1f0ecd4d1edd29bc995" name="aebb8bbe0ab9df1f0ecd4d1edd29bc995"></a>
-const choc::javascript::Context &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>context</b> () const</td></tr>
-<tr class="separator:aebb8bbe0ab9df1f0ecd4d1edd29bc995"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa346a9a2b547aea7b298360d6ab1f4ae" id="r_aa346a9a2b547aea7b298360d6ab1f4ae"><td class="memItemLeft" align="right" valign="top"><a id="aa346a9a2b547aea7b298360d6ab1f4ae" name="aa346a9a2b547aea7b298360d6ab1f4ae"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>UapmdJSRuntime</b> (const <a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> &amp;)=delete</td></tr>
+<tr class="separator:aa346a9a2b547aea7b298360d6ab1f4ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a65df9b66c0b9d1785f0ddd738bb7cad2" id="r_a65df9b66c0b9d1785f0ddd738bb7cad2"><td class="memItemLeft" align="right" valign="top"><a id="a65df9b66c0b9d1785f0ddd738bb7cad2" name="a65df9b66c0b9d1785f0ddd738bb7cad2"></a>
+<a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>operator=</b> (const <a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> &amp;)=delete</td></tr>
+<tr class="separator:a65df9b66c0b9d1785f0ddd738bb7cad2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa0fd68190aeaafb4a09f097bcbc4652b" id="r_aa0fd68190aeaafb4a09f097bcbc4652b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#aa0fd68190aeaafb4a09f097bcbc4652b">reinitialize</a> ()</td></tr>
 <tr class="separator:aa0fd68190aeaafb4a09f097bcbc4652b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a837aea51905fb685ccbaf9bd470d86f9" id="r_a837aea51905fb685ccbaf9bd470d86f9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html#a837aea51905fb685ccbaf9bd470d86f9">ensureApiBootstrapped</a> ()</td></tr>
@@ -116,32 +117,6 @@ const choc::javascript::Context &amp;&#160;</td><td class="memItemRight" valign=
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p><a class="el" href="../../d3/d41/classuapmd__app_1_1UapmdJSRuntime.html">UapmdJSRuntime</a> encapsulates the QuickJS runtime and provides a clean API for registering UAPMD-specific JavaScript functions. This class is decoupled from GUI components and can be used in any context that needs JavaScript execution with UAPMD APIs. </p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
-<a id="a91bf4c791ff0d767746ae724f264b5aa" name="a91bf4c791ff0d767746ae724f264b5aa"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a91bf4c791ff0d767746ae724f264b5aa">&#9670;&#160;</a></span>context()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">choc::javascript::Context &amp; uapmd_app::UapmdJSRuntime::context </td>
-          <td>(</td>
-          <td class="paramname"></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-<p>Returns the underlying choc::javascript::Context for advanced use cases. </p>
-
-</div>
-</div>
 <a id="a837aea51905fb685ccbaf9bd470d86f9" name="a837aea51905fb685ccbaf9bd470d86f9"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a837aea51905fb685ccbaf9bd470d86f9">&#9670;&#160;</a></span>ensureApiBootstrapped()</h2>
 

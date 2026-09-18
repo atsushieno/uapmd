@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -91,7 +91,7 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPreprocessCallb
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a785e5b30b4afa8c6bb938a786e210f25" id="r_a785e5b30b4afa8c6bb938a786e210f25"><td class="memItemLeft" align="right" valign="top"><a id="a785e5b30b4afa8c6bb938a786e210f25" name="a785e5b30b4afa8c6bb938a786e210f25"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>registerAddinExtensionPoints</b> (uapmd_addin::AddinManager &amp;manager)=0</td></tr>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>registerAddinExtensionPoints</b> (<a class="el" href="../../d8/d8a/classuapmd__addin_1_1AddinManager.html">uapmd_addin::AddinManager</a> &amp;manager)=0</td></tr>
 <tr class="separator:a785e5b30b4afa8c6bb938a786e210f25"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aaecf78d1a7f1b9527459781085428b36" id="r_aaecf78d1a7f1b9527459781085428b36"><td class="memItemLeft" align="right" valign="top"><a id="aaecf78d1a7f1b9527459781085428b36" name="aaecf78d1a7f1b9527459781085428b36"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>enqueueUmp</b> (int32_t instanceId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp)=0</td></tr>
@@ -381,12 +381,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearTrackDir
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:aff0161024333b5884e670cbd25172828" id="r_aff0161024333b5884e670cbd25172828"><td class="memItemLeft" align="right" valign="top"><a id="aff0161024333b5884e670cbd25172828" name="aff0161024333b5884e670cbd25172828"></a>
-static std::unique_ptr&lt; <a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts)</td></tr>
-<tr class="separator:aff0161024333b5884e670cbd25172828"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3c3d013650fe65dc8615b7dac1b718f5" id="r_a3c3d013650fe65dc8615b7dac1b718f5"><td class="memItemLeft" align="right" valign="top"><a id="a3c3d013650fe65dc8615b7dac1b718f5" name="a3c3d013650fe65dc8615b7dac1b718f5"></a>
-static std::unique_ptr&lt; <a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>createWithPluginHost</b> (int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, std::unique_ptr&lt; <a class="el" href="../../dc/dd3/classuapmd__plugin__hosting_1_1AudioPluginHostingAPI.html">uapmd_plugin_hosting::AudioPluginHostingAPI</a> &gt; pluginHost)</td></tr>
-<tr class="separator:a3c3d013650fe65dc8615b7dac1b718f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a818d0a87d3801bd53e1fa0ee4134c282" id="r_a818d0a87d3801bd53e1fa0ee4134c282"><td class="memItemLeft" align="right" valign="top"><a id="a818d0a87d3801bd53e1fa0ee4134c282" name="a818d0a87d3801bd53e1fa0ee4134c282"></a>
+static std::unique_ptr&lt; <a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, ProjectHistoryFactory historyFactory={})</td></tr>
+<tr class="separator:a818d0a87d3801bd53e1fa0ee4134c282"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a47b354654d44066790ff1f3b941876db" id="r_a47b354654d44066790ff1f3b941876db"><td class="memItemLeft" align="right" valign="top"><a id="a47b354654d44066790ff1f3b941876db" name="a47b354654d44066790ff1f3b941876db"></a>
+static std::unique_ptr&lt; <a class="el" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>createWithPluginHost</b> (int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, std::unique_ptr&lt; <a class="el" href="../../dc/dd3/classuapmd__plugin__hosting_1_1AudioPluginHostingAPI.html">uapmd_plugin_hosting::AudioPluginHostingAPI</a> &gt; pluginHost, ProjectHistoryFactory historyFactory={})</td></tr>
+<tr class="separator:a47b354654d44066790ff1f3b941876db"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../d5/d96/SequencerEngine_8hpp_source.html">SequencerEngine.hpp</a></li>

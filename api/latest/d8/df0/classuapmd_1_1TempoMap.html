@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.6</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -76,6 +76,7 @@ $(function() {
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="../../d3/d6e/classuapmd_1_1TempoMap-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">uapmd::TempoMap Class Reference</div></div>
 </div><!--header-->
@@ -92,9 +93,9 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a071bcf74de9fa98648f5400a0cd60aa8" id="r_a071bcf74de9fa98648f5400a0cd60aa8"><td class="memItemLeft" align="right" valign="top"><a id="a071bcf74de9fa98648f5400a0cd60aa8" name="a071bcf74de9fa98648f5400a0cd60aa8"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>rebuild</b> (const std::vector&lt; <a class="el" href="../../d6/d9b/structuapmd_1_1TempoMap_1_1TempoPoint.html">TempoPoint</a> &gt; &amp;tempoPoints, const std::vector&lt; <a class="el" href="../../d3/d70/structuapmd_1_1TempoMap_1_1TimeSignaturePoint.html">TimeSignaturePoint</a> &gt; &amp;timeSignaturePoints, double defaultBpm=120.0)</td></tr>
-<tr class="separator:a071bcf74de9fa98648f5400a0cd60aa8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aac6accf16fafb3d343b844ff1081b076" id="r_aac6accf16fafb3d343b844ff1081b076"><td class="memItemLeft" align="right" valign="top"><a id="aac6accf16fafb3d343b844ff1081b076" name="aac6accf16fafb3d343b844ff1081b076"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>rebuild</b> (const std::vector&lt; <a class="el" href="../../d6/d9b/structuapmd_1_1TempoMap_1_1TempoPoint.html">TempoPoint</a> &gt; &amp;tempoPoints, const std::vector&lt; <a class="el" href="../../d3/d70/structuapmd_1_1TempoMap_1_1TimeSignaturePoint.html">TimeSignaturePoint</a> &gt; &amp;timeSignaturePoints, double defaultBpm=kDefaultBpm)</td></tr>
+<tr class="separator:aac6accf16fafb3d343b844ff1081b076"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a532dd45b7d4c7e2cd1b7e2cb09a062c8" id="r_a532dd45b7d4c7e2cd1b7e2cb09a062c8"><td class="memItemLeft" align="right" valign="top"><a id="a532dd45b7d4c7e2cd1b7e2cb09a062c8" name="a532dd45b7d4c7e2cd1b7e2cb09a062c8"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>clear</b> ()</td></tr>
 <tr class="separator:a532dd45b7d4c7e2cd1b7e2cb09a062c8"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -113,6 +114,12 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>beatsToSeconds</b> 
 <tr class="memitem:a256bd347a206dbbfd2f0960288de5712" id="r_a256bd347a206dbbfd2f0960288de5712"><td class="memItemLeft" align="right" valign="top"><a id="a256bd347a206dbbfd2f0960288de5712" name="a256bd347a206dbbfd2f0960288de5712"></a>
 const std::vector&lt; <a class="el" href="../../db/d38/structuapmd_1_1TempoMap_1_1EffectiveSignature.html">EffectiveSignature</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>effectiveSignatures</b> () const</td></tr>
 <tr class="separator:a256bd347a206dbbfd2f0960288de5712"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
+Static Public Member Functions</h2></td></tr>
+<tr class="memitem:a377bcb9089e0ecfaaddc4ba14ff32aae" id="r_a377bcb9089e0ecfaaddc4ba14ff32aae"><td class="memItemLeft" align="right" valign="top"><a id="a377bcb9089e0ecfaaddc4ba14ff32aae" name="a377bcb9089e0ecfaaddc4ba14ff32aae"></a>
+static double&#160;</td><td class="memItemRight" valign="bottom"><b>barLengthBeats</b> (const <a class="el" href="../../db/d38/structuapmd_1_1TempoMap_1_1EffectiveSignature.html">EffectiveSignature</a> &amp;signature)</td></tr>
+<tr class="separator:a377bcb9089e0ecfaaddc4ba14ff32aae"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../d8/d35/TempoMap_8hpp_source.html">TempoMap.hpp</a></li>

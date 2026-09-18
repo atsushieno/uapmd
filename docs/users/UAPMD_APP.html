@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="uapmd-app-ui-guide-ai-slop">uapmd-app UI Guide (AI slop)</h1>
+<p>NOTE: it is an AI-slop documentation where the screenshots are all
+taken at v0.5.6+. uapmd-app is a quickly moving target and the sshots
+will quickly get outdated. Please bear with that.</p>
+<hr />
+<p>This is a screen-by-screen reference for <code>uapmd-app</code>, the
+ImGui-based reference host that ships with UAPMD. It describes what each
+control does and where to find it.</p>
+<p>For the wider picture -- what UAPMD is, how to obtain audio plugins
+on each platform, and what source separation needs from you -- read <a
+href="USERS_GUIDE.html">USERS_GUIDE.md</a> first. This document assumes
+you already have the app running.</p>
+<p>Screenshots were taken on macOS with the dark theme. Layout is
+identical on the other desktop platforms; on Android, iOS and Web the
+same widgets are laid out for the available screen space.</p>
+<ul>
+<li><a href="#starting-the-app">Starting the app</a></li>
+<li><a href="#the-main-window">The main window</a></li>
+<li><a href="#the-toolbar">The toolbar</a></li>
+<li><a href="#the-timeline">The timeline</a></li>
+<li><a href="#tracks">Tracks</a></li>
+<li><a href="#clips">Clips</a></li>
+<li><a href="#clip-editors">Clip editors</a></li>
+<li><a href="#plugins">Plugins</a></li>
+<li><a href="#projects-and-rendering">Projects and rendering</a></li>
+<li><a href="#settings">Settings</a></li>
+<li><a href="#addins">Addins</a></li>
+<li><a href="#automating-the-app">Automating the app</a></li>
+</ul>
+<h2 id="starting-the-app">Starting the app</h2>
+<p>On desktop the executable takes a few optional arguments:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Argument</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--scan-only</code></td>
+<td>Scan plugins and exit, without opening a window.</td>
+</tr>
+<tr class="even">
+<td><code>--force-rescan</code> (or <code>--rescan</code>)</td>
+<td>Discard the cached scan results and scan again.</td>
+</tr>
+<tr class="odd">
+<td><code>--full</code></td>
+<td>Perform full verification during the scan. Requires
+<code>--scan-only</code>.</td>
+</tr>
+<tr class="even">
+<td><code>--mcp-server [port]</code></td>
+<td>Start the MCP server on launch. Defaults to port 37373.</td>
+</tr>
+<tr class="odd">
+<td><code>--no-confirm-on-quit</code></td>
+<td>Skip the "you have unsaved changes" dialog when closing.</td>
+</tr>
+</tbody>
+</table>
+<p>A positional argument is treated as a project file to load.</p>
+<h2 id="the-main-window">The main window</h2>
+<p><img src="../images/uapmd-app-guide-launched.png"
+alt="uapmd-app immediately after launch" /></p>
+<p>Everything lives in a single window with four bands, top to
+bottom:</p>
+<ol type="1">
+<li><strong>The toolbar</strong> -- engine power, transport, global
+commands, display scale, theme.</li>
+<li><strong>The navigator row</strong> -- the time-unit switcher, the
+zoom slider, and the whole-song position controller.</li>
+<li><strong>The track list</strong> -- the master track followed by your
+tracks, each with a legend on the left and its clips on the right.</li>
+<li><strong>The footer</strong> -- add a track, and open the Mixer
+Monitor and Plugin Instances windows.</li>
+</ol>
+<p>Auxiliary windows (Settings, Plugin Selector, editors, and so on)
+open as floating panels inside the main window. They can be moved and
+resized like ordinary windows, and their positions are remembered
+between runs.</p>
+<p>At launch you get three empty tracks and an empty master track.
+Nothing is loaded and nothing is playing, but the audio engine is
+already running.</p>
+<h2 id="the-toolbar">The toolbar</h2>
+<h3 id="audio-engine">Audio Engine</h3>
+<p>The leftmost button reports and toggles the audio engine. It is
+<strong>green when on</strong> and <strong>red when off</strong>.
+Turning it off releases the audio device and disables the transport
+buttons; turning it back on re-activates the device and the plugins on
+it.</p>
+<h3 id="command">Command</h3>
+<p><img src="../images/uapmd-app-guide-command-menu.png"
+alt="The Command menu" /></p>
+<p><code>Command</code> is the catch-all menu:</p>
+<ul>
+<li><strong>Undo / Redo</strong> at the top, labelled with the operation
+they will reverse (for example "Undo Add track"). They are greyed out
+when there is nothing to undo, and a "History operation in progress..."
+note appears while one is still running. The keyboard shortcuts work
+anywhere outside a text field: <code>Ctrl+Z</code> / <code>Cmd+Z</code>
+to undo, <code>Ctrl+Shift+Z</code> / <code>Cmd+Shift+Z</code> or
+<code>Ctrl+Y</code> to redo.</li>
+<li><strong>Show / Hide Device Settings</strong>,
+<strong>Addins</strong>, <strong>Script</strong>, and <strong>MCP
+Settings</strong> -- toggles for the four floating panels described
+later in this document.</li>
+<li><strong>Commands contributed by addins</strong>, below the
+separator. What appears here depends on which addins are enabled; in the
+screenshot above they are master-track population (libsonare and
+librosa.cpp) and audio-to-MIDI transcription (pitch-detection for
+monophonic, basic-pitch for polyphonic material).</li>
+</ul>
+<h3 id="transport">Transport</h3>
+<p>Three buttons, all disabled while the audio engine is off:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Button</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Play / Stop</td>
+<td>One button that shows a triangle when idle and a square while the
+transport is engaged. Stopping also cancels a paused state.</td>
+</tr>
+<tr class="even">
+<td>Record</td>
+<td>Records into the <strong>currently selected MIDI clip</strong>.
+Select a clip on the timeline first, otherwise the button does nothing.
+It turns red while recording; press it again to stop.</td>
+</tr>
+<tr class="odd">
+<td>Pause / Resume</td>
+<td>Enabled only while the transport is engaged. Shows a pause glyph
+while playing and a play glyph while paused.</td>
+</tr>
+</tbody>
+</table>
+<p><img src="../images/uapmd-app-guide-playback.png"
+alt="Playback in progress" /></p>
+<p>During playback the playhead marker moves along the ruler, a vertical
+line tracks it in the position controller, and the two spectrum
+analyzers at the right end of the toolbar show input and output
+activity.</p>
+<h3 id="scale-and-theme">Scale and theme</h3>
+<p><code>Scale:</code> picks the UI scale factor -- <code>x0.5</code>,
+<code>x0.8</code>, <code>x1.0</code>, <code>x1.2</code>,
+<code>x1.5</code>, <code>x2.0</code>, <code>x4.0</code>. Changing it
+rescales every widget and font, and resizes the window to match. The
+button next to it (a half-filled circle) switches between the dark and
+light themes.</p>
+<h3 id="plugins-import-project">Plugins, Import, Project</h3>
+<p><img src="../images/uapmd-app-guide-import-menu.png"
+alt="The Import menu" /></p>
+<p><code>Plugins</code> toggles the <a href="#plugins">Plugin
+Selector</a>. <code>Import</code> offers:</p>
+<ul>
+<li><strong>Import MIDI Tracks (SMF)</strong> -- pick a MIDI 1.0
+<code>.mid</code> file; each of its tracks becomes a track holding a
+MIDI 2.0 clip.</li>
+<li><strong>Import Split Audio Tracks</strong> -- opens the split-audio
+import window. This item only appears while at least one stem separation
+addin is enabled.</li>
+</ul>
+<p><img src="../images/uapmd-app-guide-project-menu.png"
+alt="The Project menu" /></p>
+<p><code>Project</code> covers <strong>New Project</strong>,
+<strong>Load Project</strong>, <strong>Save Project</strong>, and
+<strong><a href="#rendering-to-a-file">Render To File</a></strong>.
+Starting a new project or closing the app while there are unsaved
+changes prompts you first, unless you launched with
+<code>--no-confirm-on-quit</code>.</p>
+<h3 id="spectrum-analyzers">Spectrum analyzers</h3>
+<p><code>In</code> and <code>Out</code> at the right end are live
+spectrum displays of the audio input and the final output bus.</p>
+<h2 id="the-timeline">The timeline</h2>
+<p><img src="../images/uapmd-app-guide-timeline.png"
+alt="Tracks with MIDI clips" /></p>
+<h3 id="time-units">Time units</h3>
+<p>The <code>View: Seconds</code> / <code>View: Beats</code> button
+switches the ruler and the clip positions between absolute time and
+musical time. The two views are independent -- each keeps its own
+zoom.</p>
+<p><img src="../images/uapmd-app-guide-beats-view.png"
+alt="The beats/ticks view" /></p>
+<h3 id="zoom-and-position">Zoom and position</h3>
+<p>The slider next to the view switcher is the <strong>timeline
+zoom</strong>, showing pixels per unit. It is logarithmic and spans four
+orders of magnitude, so small drags near the left end still move a
+useful amount.</p>
+<p>The wide bar filling the rest of the row is the <strong>position
+controller</strong>. It shows the entire song: one lane per track, each
+clip a small bar, with a translucent rectangle marking the region
+currently visible below. Drag it to scroll the track list.</p>
+<h3 id="the-master-track">The master track</h3>
+<p>The first row is the master track. It carries the tempo and
+time-signature meta events that the beats view is built from, and it can
+host its own plugin chain via <strong>Add Master Plugin</strong>. It has
+a gain slider but no mute or solo.</p>
+<h3 id="the-footer">The footer</h3>
+<p><code>+</code> adds an empty track. <code>Mixer Monitor</code> and
+<code>Plugin Instances</code> open the two windows described below.</p>
+<h2 id="tracks">Tracks</h2>
+<p>A track owns an audio plugin graph and a set of clips. It is not "a
+plugin" -- a track typically holds one instrument plugin followed by
+zero or more effects, or, for audio material, just effects.</p>
+<p>Each track legend has two rows of controls.</p>
+<p><strong>Row 1</strong> -- clipboard icon, graph icon, gain slider,
+<code>M</code>, <code>S</code>:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Control</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Clipboard icon</td>
+<td>Opens the <a href="#clips">clip menu</a>.</td>
+</tr>
+<tr class="even">
+<td>Graph icon</td>
+<td>Shows or hides the <a href="#the-track-graph-editor">track graph
+editor</a>.</td>
+</tr>
+<tr class="odd">
+<td>Gain slider</td>
+<td>Track volume. Hovering shows the value in dB and as a linear factor;
+at the bottom of its travel it reads <code>Mute</code>.</td>
+</tr>
+<tr class="even">
+<td><code>M</code></td>
+<td>Mute. Turns red while the track is muted.</td>
+</tr>
+<tr class="odd">
+<td><code>S</code></td>
+<td>Solo. Turns amber while soloed.
+<code>Ctrl</code>/<code>Cmd</code>-click to add a track to the current
+solo set instead of replacing it.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Row 2</strong> -- snowflake icon, the plugin button,
+<code>⋮</code>:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Control</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Snowflake icon</td>
+<td>Track freezing. Off by default; clicking renders the track and
+freezes it. While rendering the icon becomes a spinner and clicking
+cancels; a queued freeze shows amber and a completed one blue. If a
+freeze fails, the tooltip carries the error and clicking turns the
+policy off.</td>
+</tr>
+<tr class="even">
+<td>Plugin button</td>
+<td>Shows the name of the track's first plugin, or
+<code>Add Plugin</code> when the track is empty. Opens the <a
+href="#the-plugin-menu-on-a-track">plugin menu</a>.</td>
+</tr>
+<tr class="odd">
+<td><code>⋮</code></td>
+<td>More track actions.</td>
+</tr>
+</tbody>
+</table>
+<p><img src="../images/uapmd-app-guide-track-more-menu.png"
+alt="More track actions" /></p>
+<p>The <code>⋮</code> menu holds the two actions that are destructive or
+easy to hit by accident: <strong>Bypass Track Processing</strong> (which
+stops the track's plugins from processing while leaving them loaded) and
+<strong>Delete Track</strong>.</p>
+<p>Most of these controls are disabled while a track is busy -- for
+example while a freeze render is running.</p>
+<h2 id="clips">Clips</h2>
+<p>A track can hold both audio and MIDI 2.0 clips at the same time. On
+playback both are fed into the track's graph, sliced per sample block.
+The usual reason to mix them is automation: an audio clip carrying the
+material, plus a MIDI 2.0 clip carrying Assignable Controllers that
+drive the effect plugins.</p>
+<h3 id="the-clip-menu">The clip menu</h3>
+<p><img src="../images/uapmd-app-guide-track-clips-menu.png"
+alt="The track clip menu" /></p>
+<p>The clipboard icon in the track legend opens the clip menu, which
+applies to the track as a whole:</p>
+<ul>
+<li><strong>Edit Clips...</strong> -- opens the per-track clip editor
+window.</li>
+<li><strong>Add an Empty MIDI2 Clip</strong> / <strong>Add Empty Audio
+Clip</strong>.</li>
+<li><strong>Create Audio Clip From File...</strong> --
+<code>.wav</code>, <code>.ogg</code>, <code>.flac</code>.</li>
+<li><strong>Add a MIDI Clip from File...</strong> -- a MIDI 1.0
+<code>.mid</code> file, translated to MIDI 2.0.</li>
+<li><strong>Add MIDI2 Clip from File...</strong> -- a MIDI 2.0 clip file
+(<code>.midi2</code>).</li>
+<li><strong>Clear All</strong> -- removes every clip on the track, after
+a confirmation.</li>
+</ul>
+<p>The master track offers the same menu minus the audio-clip and
+<code>Clear All</code> entries.</p>
+<h3 id="selecting-and-editing-clips">Selecting and editing clips</h3>
+<p><img src="../images/uapmd-app-guide-clip-context.png"
+alt="The clip context menu" /></p>
+<p>Drag across empty space in either timeline view to select the clips
+the rectangle crosses. A drag that crosses no clips is a range instead,
+and offers <strong>Add New MIDI Clip</strong> and <strong>Add Empty
+Audio Clip</strong> sized to the dragged span on release; in the beats
+view the range snaps to the nearest quarter-note beat. Alt-drag always
+takes the range reading and leaves the selection alone. Shift-click or
+Shift-drag adds to the selection; Ctrl-click (Cmd-click on macOS)
+toggles a clip. Click an unselected clip to select it alone. Click empty
+space, or press Escape while hovering the timeline, to clear selection.
+The track's Clips and More menus include <strong>Select All
+Clips</strong>.</p>
+<p><strong>Right-click, double-click, or press and hold a clip</strong>
+to open its context menu. Opening the menu on a selected clip keeps the
+other clips selected, so the commands below that act on the selection
+act on all of it. Press and hold is how touch devices reach these menus:
+hold for half a second without moving, and the press opens the menu
+instead of selecting:</p>
+<ul>
+<li><strong>Show Dump List</strong> -- the <a
+href="#the-midi-event-list">MIDI event list editor</a>.</li>
+<li><strong>Edit Audio Events</strong> -- the audio marker and warp
+editor. Enabled for audio clips only.</li>
+<li><strong>Open Piano Roll</strong> -- the <a
+href="#the-piano-roll">piano roll editor</a>.</li>
+<li><strong>Cut</strong>, <strong>Copy</strong>, and
+<strong>Delete</strong> apply to all selected clips. <strong>Disable
+Clip</strong> applies to the clicked clip.</li>
+<li><strong>Paste here</strong> inserts copied clips relative to the
+clicked track, preserving their track offsets. For multi-track copies,
+its submenu previews the source-to-destination track mapping,
+destination plugins, and clip counts. Choose <strong>Paste into these
+tracks</strong> to apply it.</li>
+<li><strong>Paste to original tracks</strong> follows the original
+tracks by persistent identity, even if tracks have been reordered since
+copying. If an original track was deleted, nothing is pasted.</li>
+<li>Both paste modes start at the clicked time, preserve time spacing,
+and select the new clips. Destinations must exist and be visible. Pasted
+clips get fresh identities and absolute positions. Cut, paste, and group
+deletion each form one undo step.</li>
+<li><strong>Add an Empty MIDI2 Clip Here</strong>, <strong>Add Empty
+Audio Clip Here</strong>, <strong>Create Audio Clip From File
+Here...</strong>, <strong>Import SMF Here...</strong> -- these use the
+timeline position you double-clicked as the new clip's start.</li>
+</ul>
+<p>Right-clicking, double-clicking, or pressing and holding empty space
+also offers selection and clipboard commands. Paste from a track
+header's Clips or More menu uses the playhead position. The internal
+clip clipboard is cleared when the project is cleared.</p>
+<h2 id="clip-editors">Clip editors</h2>
+<h3 id="the-piano-roll">The piano roll</h3>
+<p><img src="../images/uapmd-app-guide-piano-roll.png"
+alt="The piano roll editor" /></p>
+<p>The piano roll edits the notes of a MIDI 2.0 clip. Its toolbar
+carries <code>H Zoom</code> in pixels per second, <code>V Zoom</code> as
+the height of one semitone row, and a <code>Snap</code> division. The
+header also reports the clip length, the note count, and how many
+clip-level events it holds.</p>
+<p>Drag across empty grid space to select notes. Shift-click or
+Shift-drag adds notes; Ctrl-click (Cmd-click on macOS) toggles a note.
+Clicking an unselected note selects it alone. Click empty space or press
+Escape over the grid to clear selection. Selection highlights use the
+note rectangles, and selected notes remain selected when an edit changes
+their event order. Reloading changed clip content, including undo/redo,
+clears note selection; refreshing unchanged content preserves it.</p>
+<p>Right-click or long-press a note or empty grid space for
+<strong>Cut</strong>, <strong>Copy</strong>, <strong>Paste
+here</strong>, <strong>Delete</strong>, and <strong>Select All
+Notes</strong>. Opening a menu on a selected note preserves the
+selection. The clipboard belongs to that open clip: it does not transfer
+notes between clips, and closing the piano-roll window discards it.
+Paste preserves pitches, durations, relative timing, MIDI group/channel,
+velocity, release velocity, note attributes, and attached per-note
+automation. It starts at the clicked time, snapped to the grid, and
+selects the pasted notes. Clip-level controllers are not included in a
+note copy. Each cut, paste, or group deletion is one undo step.</p>
+<p>While the pointer is over the note grid, Ctrl/Cmd+A selects all
+notes, Ctrl/Cmd+C/X copies/cuts, Ctrl/Cmd+V pastes at the pointer's
+snapped time, and Delete/Backspace deletes selected notes. Double-click
+still creates a note in empty space or requests deletion of the clicked
+note. Dragging a selected note moves all selected notes in time and
+pitch, preserving their spacing, durations, and pitch intervals.
+Attached per-note automation follows each note. The clicked note anchors
+grid snapping; the whole group stops at time zero or MIDI pitch limits.
+Release commits one undo step and keeps the moved notes selected; Escape
+cancels the drag. Edges also move the group when multiple notes are
+selected. Group resizing and property editing are not included: the
+property popup and lower panel edit the primary note. Single-note edge
+dragging still resizes that note.</p>
+<p>Selecting a note fills the lower pane with that note's per-note
+events, where you can insert an event before the selected one, edit its
+type and value, or delete it. With no note selected the pane lists the
+clip-level automation events instead.</p>
+<h3 id="the-midi-event-list">The MIDI event list</h3>
+<p><img src="../images/uapmd-app-guide-midi-event-list.png"
+alt="The MIDI event list editor" /></p>
+<p>The dump list is the raw view of the same clip: one row per UMP, with
+its tick position, its absolute time, its delta from the previous event,
+and its message bytes. The example above shows MIDI 2.0 note-ons and
+note-offs (<code>40 90 3C 00 60 00 00 00</code> is a note-on for note
+60).</p>
+<p>Edits here are staged, not applied immediately -- change what you
+need, then <strong>Apply Changes</strong>, or <strong>Discard
+Changes</strong> to reload the clip as it stands. The <code>⋮</code>
+button on each row inserts an event before it or deletes it.</p>
+<h3 id="audio-events">Audio events</h3>
+<p>For audio clips, <strong>Edit Audio Events</strong> opens an editor
+for the clip's <strong>markers</strong> and <strong>warps</strong>.
+Markers name a position in the clip; warps map a position in the clip to
+a position on the timeline. Both are edited as lists, with
+<code>Add Marker</code> / <code>Add Warp</code>, and applied with
+<code>Apply</code>.</p>
+<h2 id="plugins">Plugins</h2>
+<h3 id="finding-and-loading-plugins">Finding and loading plugins</h3>
+<p><img src="../images/uapmd-app-guide-plugin-selector.png"
+alt="The Plugin Selector" /></p>
+<p>The <code>Plugins</code> button opens the Plugin Selector. UAPMD
+always performs a <em>fast</em> scan at startup, which discovers plugins
+without instantiating them -- this covers CLAP, LV2, AUv2, AUv3, and
+those VST3 bundles that ship a <code>moduleinfo.json</code>.</p>
+<p>Everything else needs a real scan, which is what <strong>Scan
+Plugins</strong> does. Two checkboxes control it: <strong>Force
+Rescan</strong> discards the cached results, and <strong>Remote scanner
+process</strong> runs the scan in a separate process on desktop, so that
+a plugin which crashes on load cannot take the app down with it.
+<code>Timeout (s)</code> bounds how long a single bundle may take.</p>
+<p>Bundles that failed are collected under <strong>Blocked
+bundles</strong>, which expands to list them and offers
+<code>Clear blocklist</code>, <code>Show scan report</code>,
+<code>Copy as Markdown</code>, and a table preview.</p>
+<p><img src="../images/uapmd-app-guide-plugin-search.png"
+alt="Filtering the plugin list" /></p>
+<p><code>Search:</code> filters the table, which sorts by format, name,
+vendor, or ID. Select a row and press <strong>Instantiate
+Plugin</strong>.</p>
+<p><strong>Destination</strong> below the button says where the plugin
+will go. It reads <code>New Track (new UMP device)</code> by default;
+opening the selector from a track's <code>Add Plugin</code> entry
+instead targets that track, and from the master track's entry it targets
+the master track. When a new track is created you can give its virtual
+UMP device a name and pick the MIDI API to expose it on.</p>
+<h3 id="the-plugin-menu-on-a-track">The plugin menu on a track</h3>
+<p><img src="../images/uapmd-app-guide-track-plugin-menu.png"
+alt="The track plugin menu" /></p>
+<p>The plugin button in a track legend lists every plugin instance on
+that track, each with:</p>
+<ul>
+<li><strong>Show / Hide <code>&lt;name&gt;</code> Details</strong> --
+the instance details window.</li>
+<li><strong>Show / Hide <code>&lt;name&gt;</code> GUI</strong> -- the
+plugin's own editor. Disabled when the plugin has no GUI.</li>
+<li><strong>Delete <code>&lt;name&gt;</code> (at [n])</strong> --
+<code>n</code> is the plugin's position in the chain.</li>
+</ul>
+<p><strong>Add Plugin</strong> at the bottom opens the Plugin Selector
+targeting this track, appending to the chain.</p>
+<h3 id="instance-details">Instance details</h3>
+<p><img src="../images/uapmd-app-guide-instance-details.png"
+alt="The plugin instance details window" /></p>
+<p>The details window is a playground for one plugin instance:</p>
+<ul>
+<li><strong>Show UI</strong> opens the plugin's own editor, and the
+toggle next to it bypasses the instance.</li>
+<li><strong>Save State</strong> / <strong>Load State</strong> write and
+read the plugin's own state.</li>
+<li><strong>Delete</strong> removes the instance from the track.</li>
+<li><strong>Pitchbend</strong> and <strong>Chan.Pressure</strong>
+sliders, and a <strong>MIDI keyboard</strong> you can click to audition
+the plugin.</li>
+<li><strong>Presets</strong> lists the presets the plugin reports;
+selecting one loads it.</li>
+<li><strong>UMP Group</strong> picks which UMP group of the track's
+virtual MIDI device drives this instance. Groups already in use are
+disabled.</li>
+<li><strong>Parameters</strong> lists every parameter with its current
+and default value and a <code>Reset</code> button. <code>Context</code>
+and <code>Value/Key</code> narrow the list to per-note or per-key
+parameters where the plugin supports them, and
+<code>Filter Parameters</code> is a text filter over the names.</li>
+</ul>
+<h3 id="the-plugin-gui">The plugin GUI</h3>
+<p><img src="../images/uapmd-app-guide-plugin-gui.png"
+alt="A plugin&#39;s own GUI" /></p>
+<p>Plugin editors open as dedicated native windows, sized to whatever
+the plugin asks for and resized along with it when the plugin requests a
+new size.</p>
+<h3 id="the-track-graph-editor">The track graph editor</h3>
+<p><img src="../images/uapmd-app-guide-track-graph.png"
+alt="The track graph editor" /></p>
+<p>The graph icon in a track legend opens that track's audio graph.
+Nodes are the graph input, the built-in track volume node, each plugin
+instance, and the graph output; edges are audio and event connections.
+Ports are listed per node, so a plugin's channel layout is visible
+directly.</p>
+<p>A track starts as a simple chain, and editing the connections turns
+it into a general DAG. <strong>Revert to Simple Graph</strong> puts it
+back to a plain chain. A minimap in the corner helps when the graph
+outgrows the window.</p>
+<h3 id="plugin-instances">Plugin instances</h3>
+<p><img src="../images/uapmd-app-guide-audio-graph-editor.png"
+alt="The Audio Graph Editor window" /></p>
+<p><code>Plugin Instances</code> in the footer opens a flat list of
+every plugin instance in the project, grouped by track, showing the
+format and the virtual UMP device each is exposed as.
+<code>Disable</code> bypasses an instance and <code>Show</code> opens
+its details window.</p>
+<p>Note that this window lists plugin <em>instances</em>, not tracks --
+one track with two plugins appears as two rows.</p>
+<h3 id="the-mixer-monitor">The mixer monitor</h3>
+<p><img src="../images/uapmd-app-guide-mixer-monitor.png"
+alt="The Mixer Monitor window" /></p>
+<p>The Mixer Monitor reports latency compensation. The header shows the
+audible and render positions and the current playback phase; below it,
+<code>Playback Compensation</code> and <code>Input Monitoring</code>
+select the compensation strategy, and the table breaks down each track's
+reported latency, render lead, holdback, tail, and routing.</p>
+<h2 id="projects-and-rendering">Projects and rendering</h2>
+<p>A project saves the tracks, their audio and MIDI 2.0 clips, and the
+plugin graphs with their state. <strong>Save Project</strong> and
+<strong>Load Project</strong> live in the <code>Project</code> menu,
+along with <strong>New Project</strong>, which resets to the launch
+state after prompting about unsaved changes.</p>
+<h3 id="rendering-to-a-file">Rendering to a file</h3>
+<p><img src="../images/uapmd-app-guide-render-to-file.png"
+alt="The Render To File window" /></p>
+<p><strong>Render To File</strong> renders the timeline to a WAV file
+using offline processing -- faster than real time, and independent of
+the audio device.</p>
+<ul>
+<li><strong>Output</strong> is the target path; <code>Browse...</code>
+opens a file dialog.</li>
+<li><strong>Range</strong> is <code>Entire Project</code>,
+<code>Loop Region</code>, or <code>Custom</code>. The detected project
+length is shown underneath, and <code>Custom</code> lets you type
+absolute start and end times.</li>
+<li><strong>Tail / Guard (s)</strong> extends the render past the end of
+the material, so reverb tails are not cut off.</li>
+<li><strong>Infinite Tail</strong> decides what to do with plugins that
+never fall silent.</li>
+<li><strong>Stop after silence</strong>, with <strong>Hold Length
+(s)</strong> and <strong>Threshold (dB)</strong>, ends the render once
+the output has stayed below the threshold for that long.</li>
+</ul>
+<p>A progress bar sits above <strong>Start Render</strong>, which
+becomes a stop button while a render runs.</p>
+<h2 id="settings">Settings</h2>
+<p><img src="../images/uapmd-app-guide-settings.png"
+alt="The Settings window" /></p>
+<p><code>Command</code> -&gt; <code>Show Device Settings</code> opens
+audio and MIDI configuration:</p>
+<ul>
+<li><strong>Input Device</strong> and <strong>Output Device</strong>,
+with their <strong>Sample Rate</strong> selectors.</li>
+<li><strong>Buffer Size</strong>, or
+<code>Use Platform Buffer Size</code> to let the platform decide.</li>
+<li><strong>MIDI Input Connections</strong> and <strong>MIDI Output
+Connections</strong> -- each row binds a platform MIDI port to a track,
+so you can play a track from external hardware or send its output
+out.</li>
+</ul>
+<p>Changing the audio device restarts the engine, which reactivates
+every loaded plugin.</p>
+<h2 id="addins">Addins</h2>
+<p><img src="../images/uapmd-app-guide-addin-manager.png"
+alt="The Addin Manager" /></p>
+<p>Several features are addins rather than built-in code, and the Addin
+Manager lists them all with their package ID, the extension point they
+implement, their state, and the library they come from. The checkbox in
+the first column enables or disables each one.</p>
+<p>Addins ship built-in (the piano roll, the MIDI event list, ARA
+support, the Demucs and BS-Roformer stem separators, Basic Pitch), or
+come from a shared library placed in one of the directories named at the
+top of the window.</p>
+<p>Disabling an addin removes what it contributes -- turn off both stem
+separators, for example, and <code>Import Split Audio Tracks</code>
+disappears from the <code>Import</code> menu.</p>
+<h2 id="automating-the-app">Automating the app</h2>
+<p>Everything the UI does is also reachable programmatically, which is
+how UAPMD is meant to be driven for anything repetitive.</p>
+<h3 id="the-script-editor">The script editor</h3>
+<p><img src="../images/uapmd-app-guide-script-editor.png"
+alt="The Script Editor" /></p>
+<p><code>Command</code> -&gt; <code>Show Script</code> opens a
+JavaScript editor with <code>Run</code> and <code>Load</code>, plus
+<code>Preset</code> with the bundled <code>Demo</code>,
+<code>PluginState</code>, and <code>TestDAG</code> scripts. The demo
+script documents the API:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Object</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>uapmd.catalog.*</code></td>
+<td>Plugin discovery and management</td>
+</tr>
+<tr class="even">
+<td><code>uapmd.scanTool.*</code></td>
+<td>Plugin scanning and caching</td>
+</tr>
+<tr class="odd">
+<td><code>uapmd.instancing.*</code></td>
+<td>Plugin instance creation</td>
+</tr>
+<tr class="even">
+<td><code>uapmd.instance(id)</code></td>
+<td>A plugin instance -- <code>getParameters</code>,
+<code>setParameterValue</code>, <code>showUI</code></td>
+</tr>
+<tr class="odd">
+<td><code>uapmd.sequencer.*</code></td>
+<td>Audio engine, MIDI, and transport</td>
+</tr>
+</tbody>
+</table>
+<p>There is also an object-oriented wrapper
+(<code>PluginScanTool</code>, <code>sequencer</code>) imported from
+<code>remidy-bridge</code>; both styles work.</p>
+<h3 id="mcp">MCP</h3>
+<p><img src="../images/uapmd-app-guide-mcp-settings.png"
+alt="MCP Settings" /></p>
+<p><code>Command</code> -&gt; <code>Show MCP Settings</code> exposes the
+app as an MCP server, so an agent can inspect and edit the project.</p>
+<ul>
+<li><strong>Server</strong> mode listens on a port on
+<code>127.0.0.1</code> -- desktop only.</li>
+<li><strong>Client</strong> mode connects out to a relay over WebSocket,
+with an optional auto-reconnect. This is the default on platforms
+without an embedded HTTP server.</li>
+</ul>
+<p>Press <strong>Connect</strong> to start and
+<strong>Disconnect</strong> to stop; the status line above the button
+reports what it is doing. Launching with
+<code>--mcp-server [port]</code> starts server mode without visiting
+this window.</p>
+<p>The tool surface covers tracks (<code>list_tracks</code>,
+<code>create_track</code>, <code>add_plugin_to_track</code>), clips
+(<code>list_clips</code>, <code>add_midi_clip</code>,
+<code>create_empty_midi_clip</code>, <code>add_ump_event</code>,
+<code>remove_ump_event</code>), transport (<code>play</code>,
+<code>stop</code>, <code>jump</code>, <code>set_tempo</code>), the graph
+(<code>connect_track_graph</code>, <code>ensure_dag_track_graph</code>,
+<code>revert_track_graph_to_simple</code>), history (<code>undo</code>,
+<code>redo</code>, <code>begin_compound</code>,
+<code>end_compound</code>), projects (<code>save_project</code>,
+<code>load_project</code>), presets, freezing, latency compensation
+state, and <code>run_script</code> for the JavaScript API above.</p>
+<p>On the Web build MCP is always active as a JavaScript export instead,
+called through <code>Module.ccall('uapmd_mcp_call', ...)</code>, with
+<code>Module.ccall('uapmd_eval', ...)</code> for scripts.</p>
+    </main>
+</div>
+</body>
+</html>
