@@ -57,7 +57,9 @@ namespace remidy {
         // Deactivate and destroy via proxy (handles thread safety and state checking)
         EventLoop::runTaskOnMainThread([&] {
             if (plugin) {
-                plugin->deactivate();
+                // Scanning may destroy an instance before configure() activates it.
+                if (activated_)
+                    plugin->deactivate();
                 plugin->destroy();
             }
         });

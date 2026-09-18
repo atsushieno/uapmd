@@ -11,115 +11,72 @@
 namespace uapmd_app {
 
     namespace {
-        // JSFX key codes follow pugl's, which is what ysfx documents. Only the keys a
-        // script can actually ask about are translated; ordinary characters pass through as
-        // themselves.
-        constexpr uint32_t kKeyBackspace = 0x08;
-        constexpr uint32_t kKeyEscape = 0x1b;
-        constexpr uint32_t kKeyDelete = 0x7f;
-        constexpr uint32_t kKeyF1 = 0xe000;
-        constexpr uint32_t kKeyLeft = kKeyF1 + 12;
-        constexpr uint32_t kKeyUp = kKeyF1 + 13;
-        constexpr uint32_t kKeyRight = kKeyF1 + 14;
-        constexpr uint32_t kKeyDown = kKeyF1 + 15;
-        constexpr uint32_t kKeyPageUp = kKeyF1 + 16;
-        constexpr uint32_t kKeyPageDown = kKeyF1 + 17;
-        constexpr uint32_t kKeyHome = kKeyF1 + 18;
-        constexpr uint32_t kKeyEnd = kKeyF1 + 19;
-        constexpr uint32_t kKeyInsert = kKeyF1 + 20;
-
-        constexpr uint32_t kModShift = 1 << 0;
-        constexpr uint32_t kModCtrl = 1 << 1;
-        constexpr uint32_t kModAlt = 1 << 2;
-        constexpr uint32_t kModSuper = 1 << 3;
-
         uint32_t currentModifiers() {
             const auto& io = ImGui::GetIO();
             uint32_t mods = 0;
-            if (io.KeyShift) mods |= kModShift;
-            if (io.KeyCtrl) mods |= kModCtrl;
-            if (io.KeyAlt) mods |= kModAlt;
-            if (io.KeySuper) mods |= kModSuper;
+            if (io.KeyShift) mods |= uapmd_plugin_hosting::kFramebufferModifierShift;
+            if (io.KeyCtrl) mods |= uapmd_plugin_hosting::kFramebufferModifierControl;
+            if (io.KeyAlt) mods |= uapmd_plugin_hosting::kFramebufferModifierAlt;
+            if (io.KeySuper) mods |= uapmd_plugin_hosting::kFramebufferModifierSuper;
             return mods;
         }
 
-        bool translateKey(ImGuiKey key, uint32_t& out) {
+        // Dear ImGui's keys, described the way the extension describes keys: a named key
+        // where there is one, otherwise the character it types. What the plugin makes of
+        // either is the plugin's business.
+        bool translateKey(ImGuiKey key, uapmd_plugin_hosting::FramebufferKeyEvent& out) {
+            using Key = uapmd_plugin_hosting::FramebufferKey;
             switch (key) {
-                case ImGuiKey_Backspace: out = kKeyBackspace; return true;
-                case ImGuiKey_Escape: out = kKeyEscape; return true;
-                case ImGuiKey_Delete: out = kKeyDelete; return true;
-                case ImGuiKey_LeftArrow: out = kKeyLeft; return true;
-                case ImGuiKey_RightArrow: out = kKeyRight; return true;
-                case ImGuiKey_UpArrow: out = kKeyUp; return true;
-                case ImGuiKey_DownArrow: out = kKeyDown; return true;
-                case ImGuiKey_PageUp: out = kKeyPageUp; return true;
-                case ImGuiKey_PageDown: out = kKeyPageDown; return true;
-                case ImGuiKey_Home: out = kKeyHome; return true;
-                case ImGuiKey_End: out = kKeyEnd; return true;
-                case ImGuiKey_Insert: out = kKeyInsert; return true;
-                case ImGuiKey_Enter: out = '\r'; return true;
-                case ImGuiKey_Tab: out = '\t'; return true;
-                case ImGuiKey_Space: out = ' '; return true;
+                case ImGuiKey_Backspace:  out.key = Key::Backspace; return true;
+                case ImGuiKey_Tab:        out.key = Key::Tab; return true;
+                case ImGuiKey_Enter:      out.key = Key::Enter; return true;
+                case ImGuiKey_Escape:     out.key = Key::Escape; return true;
+                case ImGuiKey_Space:      out.key = Key::Space; return true;
+                case ImGuiKey_Delete:     out.key = Key::Delete; return true;
+                case ImGuiKey_LeftArrow:  out.key = Key::Left; return true;
+                case ImGuiKey_RightArrow: out.key = Key::Right; return true;
+                case ImGuiKey_UpArrow:    out.key = Key::Up; return true;
+                case ImGuiKey_DownArrow:  out.key = Key::Down; return true;
+                case ImGuiKey_PageUp:     out.key = Key::PageUp; return true;
+                case ImGuiKey_PageDown:   out.key = Key::PageDown; return true;
+                case ImGuiKey_Home:       out.key = Key::Home; return true;
+                case ImGuiKey_End:        out.key = Key::End; return true;
+                case ImGuiKey_Insert:     out.key = Key::Insert; return true;
                 default: break;
             }
+            if (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) {
+                out.key = static_cast<Key>(static_cast<uint32_t>(Key::F1) +
+                                           static_cast<uint32_t>(key - ImGuiKey_F1));
+                return true;
+            }
             if (key >= ImGuiKey_A && key <= ImGuiKey_Z) {
-                out = static_cast<uint32_t>('a' + (key - ImGuiKey_A));
+                out.character = static_cast<uint32_t>('a' + (key - ImGuiKey_A));
                 return true;
             }
             if (key >= ImGuiKey_0 && key <= ImGuiKey_9) {
-                out = static_cast<uint32_t>('0' + (key - ImGuiKey_0));
-                return true;
-            }
-            if (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) {
-                out = kKeyF1 + static_cast<uint32_t>(key - ImGuiKey_F1);
+                out.character = static_cast<uint32_t>('0' + (key - ImGuiKey_0));
                 return true;
             }
             return false;
         }
 
-        // JSFX menu descriptions are '|'-separated, with a leading '#' marking a disabled
-        // item, '!' a checked one, '>' the start of a submenu and '<' its end. Only the
-        // flat form is handled here; a nested menu is flattened rather than dropped, so a
-        // script that uses one still works, if less prettily.
-        struct MenuItem {
-            std::string label;
-            bool disabled{false};
-            bool checked{false};
-            bool separator{false};
-            int32_t id{0};
-        };
-
-        std::vector<MenuItem> parseMenu(const std::string& spec) {
-            std::vector<MenuItem> items{};
-            int32_t nextId = 1;
-            size_t start = 0;
-            while (start <= spec.size()) {
-                const size_t end = spec.find('|', start);
-                std::string entry = spec.substr(start, end == std::string::npos ? std::string::npos : end - start);
-                start = end == std::string::npos ? spec.size() + 1 : end + 1;
-
-                MenuItem item{};
-                size_t i = 0;
-                bool submenuEnd = false;
-                while (i < entry.size()) {
-                    if (entry[i] == '#') { item.disabled = true; i++; }
-                    else if (entry[i] == '!') { item.checked = true; i++; }
-                    else if (entry[i] == '>') { i++; }
-                    else if (entry[i] == '<') { submenuEnd = true; i++; }
-                    else break;
-                }
-                item.label = entry.substr(i);
-                (void) submenuEnd;
-                if (item.label.empty())
-                    item.separator = true;
-                else
-                    item.id = nextId;
-                // Every entry consumes an id in JSFX's numbering, including ones that turn
-                // out to be separators, so the ids the script gets back stay aligned.
-                nextId++;
-                items.emplace_back(std::move(item));
+        ImGuiMouseCursor translateCursor(uapmd_plugin_hosting::FramebufferCursor cursor) {
+            using Cursor = uapmd_plugin_hosting::FramebufferCursor;
+            switch (cursor) {
+                case Cursor::IBeam:          return ImGuiMouseCursor_TextInput;
+                case Cursor::Hand:           return ImGuiMouseCursor_Hand;
+                case Cursor::SizeHorizontal: return ImGuiMouseCursor_ResizeEW;
+                case Cursor::SizeVertical:   return ImGuiMouseCursor_ResizeNS;
+                case Cursor::SizeNESW:       return ImGuiMouseCursor_ResizeNESW;
+                case Cursor::SizeNWSE:       return ImGuiMouseCursor_ResizeNWSE;
+                case Cursor::SizeAll:        return ImGuiMouseCursor_ResizeAll;
+                case Cursor::NotAllowed:     return ImGuiMouseCursor_NotAllowed;
+                // Dear ImGui has neither a crosshair nor a wait cursor.
+                case Cursor::Crosshair:
+                case Cursor::Wait:
+                case Cursor::Arrow:
+                default:                     return ImGuiMouseCursor_Arrow;
             }
-            return items;
         }
     }
 
@@ -211,10 +168,12 @@ namespace uapmd_app {
         input.visible = true;
         input.modifiers = currentModifiers();
 
-        // Buttons follow JSFX's mouse_cap bits: 1 left, 2 right, 64 middle.
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) input.buttons |= 1;
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) input.buttons |= 2;
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) input.buttons |= 64;
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            input.buttons |= uapmd_plugin_hosting::kFramebufferButtonLeft;
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+            input.buttons |= uapmd_plugin_hosting::kFramebufferButtonRight;
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Middle))
+            input.buttons |= uapmd_plugin_hosting::kFramebufferButtonMiddle;
         // Only report buttons while the pointer is over the editor, so that a drag started
         // elsewhere in the application does not reach the script.
         if (!over && !ImGui::IsItemActive())
@@ -223,6 +182,14 @@ namespace uapmd_app {
         if (over) {
             input.wheel = io.MouseWheel;
             input.horizontalWheel = io.MouseWheelH;
+            // Dear ImGui resets the cursor every frame, so whatever the script last asked
+            // for has to be asked for again while the pointer is over the editor.
+            ImGuiMouseCursor cursor;
+            {
+                std::lock_guard lock{menu_mutex_};
+                cursor = cursor_;
+            }
+            ImGui::SetMouseCursor(cursor);
         }
 
         // Dear ImGui does not expose its key event queue, so transitions are polled. Both
@@ -235,15 +202,18 @@ namespace uapmd_app {
                 const bool released = ImGui::IsKeyReleased(imKey);
                 if (!pressed && !released)
                     continue;
-                uint32_t translated;
+                uapmd_plugin_hosting::FramebufferKeyEvent translated{};
+                translated.modifiers = input.modifiers;
                 if (!translateKey(imKey, translated))
                     continue;
-                if (pressed)
-                    input.keys.emplace_back(uapmd_plugin_hosting::FramebufferKeyEvent{
-                            input.modifiers, translated, true});
-                if (released)
-                    input.keys.emplace_back(uapmd_plugin_hosting::FramebufferKeyEvent{
-                            input.modifiers, translated, false});
+                if (pressed) {
+                    translated.pressed = true;
+                    input.keys.emplace_back(translated);
+                }
+                if (released) {
+                    translated.pressed = false;
+                    input.keys.emplace_back(translated);
+                }
             }
         }
 
@@ -251,12 +221,10 @@ namespace uapmd_app {
     }
 
     void JsfxEditorPanel::renderPendingMenu() {
-        std::string spec;
         bool shouldOpen = false;
         {
             std::lock_guard lock{menu_mutex_};
             if (menu_requested_ && !menu_open_) {
-                spec = menu_spec_;
                 menu_open_ = true;
                 menu_requested_ = false;
                 shouldOpen = true;
@@ -278,19 +246,12 @@ namespace uapmd_app {
         int32_t chosen = -1;
         bool closed = false;
         if (ImGui::BeginPopup(popupId)) {
-            std::string currentSpec;
+            std::vector<uapmd_plugin_hosting::FramebufferMenuItem> items;
             {
                 std::lock_guard lock{menu_mutex_};
-                currentSpec = menu_spec_;
+                items = menu_items_;
             }
-            for (auto& item : parseMenu(currentSpec)) {
-                if (item.separator) {
-                    ImGui::Separator();
-                    continue;
-                }
-                if (ImGui::MenuItem(item.label.c_str(), nullptr, item.checked, !item.disabled))
-                    chosen = item.id;
-            }
+            renderMenuItems(items, chosen);
             ImGui::EndPopup();
         } else {
             // The popup is gone, which means it was dismissed without a choice.
@@ -371,8 +332,19 @@ namespace uapmd_app {
                     texture_->SetStatus(ImTextureStatus_WantUpdates);
                 uploaded_serial_ = view.serial;
             }
-            ImGui::Image(texture_->GetTexRef(),
-                         ImVec2(static_cast<float>(view.width), static_cast<float>(view.height)));
+            const ImVec2 size(static_cast<float>(view.width), static_cast<float>(view.height));
+            // The surface has to be an item that claims the mouse. Dear ImGui moves a
+            // window when a drag starts on a part of it no item owns, and an image owns
+            // nothing -- so dragging a slider in the editor dragged the window instead,
+            // and the script never saw the mouse go down. The button takes the input, all
+            // three of its buttons, and the frame is painted in its place.
+            ImGui::InvisibleButton("##jsfx-surface", size,
+                                   ImGuiButtonFlags_MouseButtonLeft |
+                                   ImGuiButtonFlags_MouseButtonRight |
+                                   ImGuiButtonFlags_MouseButtonMiddle);
+            ImGui::GetWindowDrawList()->AddImage(
+                    texture_->GetTexRef(), origin,
+                    ImVec2(origin.x + size.x, origin.y + size.y));
             drew = true;
         });
 
@@ -388,7 +360,30 @@ namespace uapmd_app {
         return open_;
     }
 
-    void JsfxEditorPanel::requestMenu(const std::string& spec, int32_t x, int32_t y,
+    // Submenus are drawn as submenus now that they arrive as a tree: the plugin's format
+    // built it, so this only has to put it on screen.
+    void JsfxEditorPanel::renderMenuItems(
+            const std::vector<uapmd_plugin_hosting::FramebufferMenuItem>& items,
+            int32_t& chosen) {
+        for (auto& item : items) {
+            if (item.separator) {
+                ImGui::Separator();
+                continue;
+            }
+            if (!item.children.empty()) {
+                if (ImGui::BeginMenu(item.label.c_str(), !item.disabled)) {
+                    renderMenuItems(item.children, chosen);
+                    ImGui::EndMenu();
+                }
+                continue;
+            }
+            if (ImGui::MenuItem(item.label.c_str(), nullptr, item.checked, !item.disabled))
+                chosen = item.id;
+        }
+    }
+
+    void JsfxEditorPanel::requestMenu(const std::vector<uapmd_plugin_hosting::FramebufferMenuItem>& items,
+                                      int32_t x, int32_t y,
                                       std::function<void(int32_t)> completed) {
         (void) x;
         (void) y;   // Dear ImGui opens the popup where the mouse is, which is where JSFX wants it.
@@ -400,15 +395,16 @@ namespace uapmd_app {
                 completed(0);
             return;
         }
-        menu_spec_ = spec;
+        menu_items_ = items;
         menu_completion_ = std::move(completed);
         menu_requested_ = true;
     }
 
-    void JsfxEditorPanel::setCursor(int32_t cursor) {
-        (void) cursor;
-        // JSFX cursor identifiers are Win32 ones and mostly have no Dear ImGui equivalent.
-        // Leaving the cursor alone is better than guessing at a mapping.
+    void JsfxEditorPanel::setCursor(uapmd_plugin_hosting::FramebufferCursor cursor) {
+        // Now that the shape arrives in terms Dear ImGui also has, it can be honoured.
+        // It is applied while drawing, because Dear ImGui resets the cursor every frame.
+        std::lock_guard lock{menu_mutex_};
+        cursor_ = translateCursor(cursor);
     }
 
     std::string JsfxEditorPanel::droppedFile(int32_t index) {

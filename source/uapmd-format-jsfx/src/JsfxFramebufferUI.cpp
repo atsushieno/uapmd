@@ -12,6 +12,142 @@ namespace uapmd_jsfx {
         uint32_t clampSize(uint32_t value) {
             return std::clamp(value, kMinimumSize, kMaximumSize);
         }
+
+        // Everything below turns what a host reports into what ysfx expects. It lives on
+        // this side of the extension so that a host never has to learn any of it, and so
+        // that there is one copy of it however many hosts there are.
+
+        uint32_t translateModifiers(uint32_t modifiers) {
+            uint32_t out = 0;
+            if (modifiers & uapmd_plugin_hosting::kFramebufferModifierShift)
+                out |= ysfx_mod_shift;
+            if (modifiers & uapmd_plugin_hosting::kFramebufferModifierControl)
+                out |= ysfx_mod_ctrl;
+            if (modifiers & uapmd_plugin_hosting::kFramebufferModifierAlt)
+                out |= ysfx_mod_alt;
+            if (modifiers & uapmd_plugin_hosting::kFramebufferModifierSuper)
+                out |= ysfx_mod_super;
+            return out;
+        }
+
+        // ysfx's button bits are not in the order a script sees them: it maps left/middle/
+        // right (1/2/4) onto mouse_cap 1/64/2 itself. Sending a script's own numbering
+        // here delivers a right click as a middle one.
+        uint32_t translateButtons(uint32_t buttons) {
+            uint32_t out = 0;
+            if (buttons & uapmd_plugin_hosting::kFramebufferButtonLeft)
+                out |= ysfx_button_left;
+            if (buttons & uapmd_plugin_hosting::kFramebufferButtonRight)
+                out |= ysfx_button_right;
+            if (buttons & uapmd_plugin_hosting::kFramebufferButtonMiddle)
+                out |= ysfx_button_middle;
+            return out;
+        }
+
+        uint32_t translateKey(const uapmd_plugin_hosting::FramebufferKeyEvent& event) {
+            using Key = uapmd_plugin_hosting::FramebufferKey;
+            switch (event.key) {
+                case Key::None:      break;
+                case Key::Backspace: return ysfx_key_backspace;
+                case Key::Tab:       return '\t';
+                case Key::Enter:     return '\r';
+                case Key::Escape:    return ysfx_key_escape;
+                case Key::Space:     return ' ';
+                case Key::Delete:    return ysfx_key_delete;
+                case Key::Left:      return ysfx_key_left;
+                case Key::Right:     return ysfx_key_right;
+                case Key::Up:        return ysfx_key_up;
+                case Key::Down:      return ysfx_key_down;
+                case Key::PageUp:    return ysfx_key_page_up;
+                case Key::PageDown:  return ysfx_key_page_down;
+                case Key::Home:      return ysfx_key_home;
+                case Key::End:       return ysfx_key_end;
+                case Key::Insert:    return ysfx_key_insert;
+                case Key::F1: case Key::F2: case Key::F3: case Key::F4:
+                case Key::F5: case Key::F6: case Key::F7: case Key::F8:
+                case Key::F9: case Key::F10: case Key::F11: case Key::F12:
+                    return ysfx_key_f1 + (static_cast<uint32_t>(event.key) -
+                                          static_cast<uint32_t>(Key::F1));
+            }
+            // Not a named key, so it is whatever was typed. JSFX deals in single bytes,
+            // and folds letters to lower case.
+            if (event.character >= 'A' && event.character <= 'Z')
+                return event.character - 'A' + 'a';
+            return event.character <= 0xFF ? event.character : 0;
+        }
+
+        // Cursor identifiers reach a JSFX script from gfx_setcursor() unchanged, and by
+        // REAPER's convention they are Win32 IDC_* values.
+        uapmd_plugin_hosting::FramebufferCursor translateCursor(int32_t cursor) {
+            using Cursor = uapmd_plugin_hosting::FramebufferCursor;
+            switch (cursor) {
+                case 32513: return Cursor::IBeam;
+                case 32514: return Cursor::Wait;
+                case 32515: return Cursor::Crosshair;
+                case 32642: return Cursor::SizeNWSE;
+                case 32643: return Cursor::SizeNESW;
+                case 32644: return Cursor::SizeHorizontal;
+                case 32645: return Cursor::SizeVertical;
+                case 32646: return Cursor::SizeAll;
+                case 32648: return Cursor::NotAllowed;
+                case 32649: return Cursor::Hand;
+                case 32512: default: return Cursor::Arrow;
+            }
+        }
+
+        // ysfx parses the gfx_showmenu string itself, ids and all, so this only has to
+        // walk the instructions it produces and nest the submenus.
+        std::vector<uapmd_plugin_hosting::FramebufferMenuItem> parseMenu(const char* spec) {
+            std::vector<uapmd_plugin_hosting::FramebufferMenuItem> items{};
+            if (!spec || !*spec)
+                return items;
+
+            ysfx_menu_t* menu = ysfx_parse_menu(spec);
+            if (!menu)
+                return items;
+
+            // Submenus nest, so the instruction stream is walked with a stack of the lists
+            // being appended to.
+            std::vector<std::vector<uapmd_plugin_hosting::FramebufferMenuItem>*> stack{&items};
+            for (uint32_t i = 0; i < menu->insn_count; i++) {
+                const ysfx_menu_insn_t& insn = menu->insns[i];
+                auto& current = *stack.back();
+                switch (insn.opcode) {
+                    case ysfx_menu_item: {
+                        uapmd_plugin_hosting::FramebufferMenuItem item{};
+                        item.label = insn.name ? insn.name : "";
+                        item.id = static_cast<int32_t>(insn.id);
+                        item.disabled = (insn.item_flags & ysfx_menu_item_disabled) != 0;
+                        item.checked = (insn.item_flags & ysfx_menu_item_checked) != 0;
+                        current.emplace_back(std::move(item));
+                        break;
+                    }
+                    case ysfx_menu_separator: {
+                        uapmd_plugin_hosting::FramebufferMenuItem item{};
+                        item.separator = true;
+                        current.emplace_back(std::move(item));
+                        break;
+                    }
+                    case ysfx_menu_sub: {
+                        uapmd_plugin_hosting::FramebufferMenuItem item{};
+                        item.label = insn.name ? insn.name : "";
+                        item.disabled = (insn.item_flags & ysfx_menu_item_disabled) != 0;
+                        current.emplace_back(std::move(item));
+                        stack.push_back(&current.back().children);
+                        break;
+                    }
+                    case ysfx_menu_endsub:
+                        // Never pop the outermost list: a malformed menu with more ends
+                        // than starts would otherwise walk off it.
+                        if (stack.size() > 1)
+                            stack.pop_back();
+                        break;
+                }
+            }
+
+            ysfx_menu_free(menu);
+            return items;
+        }
     }
 
     JsfxFramebufferUI::JsfxFramebufferUI(ysfx_t* fx) : fx_(fx) {
@@ -138,7 +274,11 @@ namespace uapmd_jsfx {
 
         // The host opens the menu and returns; it must not block. The completion may come
         // from any thread, including from inside requestMenu itself.
-        host->requestMenu(std::string{spec}, x, y, [self, generation](int32_t choice) {
+        //
+        // Parsed here rather than by the host: the spec is JSFX's, and so are the rules
+        // for what `#`, `!`, `>` and `<` mean and how the ids a script gets back are
+        // numbered. ysfx already knows all of that.
+        host->requestMenu(parseMenu(spec), x, y, [self, generation](int32_t choice) {
             {
                 std::lock_guard lock{self->menu_mutex_};
                 // A completion for a menu that was already abandoned is ignored, so a late
@@ -180,7 +320,7 @@ namespace uapmd_jsfx {
             return;
         std::lock_guard lock{self->state_mutex_};
         if (self->host_)
-            self->host_->setCursor(cursor);
+            self->host_->setCursor(translateCursor(cursor));
     }
 
     const char* JsfxFramebufferUI::onGetDropFile(void* userData, int32_t index) {
@@ -240,9 +380,12 @@ namespace uapmd_jsfx {
 
         ysfx_gfx_set_window_state(fx_, input.hasFocus, displayed, input.pointerOver);
         for (auto& key : keys)
-            ysfx_gfx_add_key(fx_, key.modifiers, key.key, key.pressed);
-        ysfx_gfx_update_mouse(fx_, input.modifiers, input.pointerX, input.pointerY,
-                              input.buttons, static_cast<ysfx_real>(input.wheel),
+            ysfx_gfx_add_key(fx_, translateModifiers(key.modifiers), translateKey(key),
+                             key.pressed);
+        ysfx_gfx_update_mouse(fx_, translateModifiers(input.modifiers),
+                              input.pointerX, input.pointerY,
+                              translateButtons(input.buttons),
+                              static_cast<ysfx_real>(input.wheel),
                               static_cast<ysfx_real>(input.horizontalWheel));
 
         const bool changed = ysfx_gfx_run(fx_);

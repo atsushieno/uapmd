@@ -34,7 +34,8 @@ namespace uapmd_app {
 
         // Menu requests arrive on the plugin's thread and are serviced on ours.
         std::mutex menu_mutex_{};
-        std::string menu_spec_{};
+        std::vector<uapmd_plugin_hosting::FramebufferMenuItem> menu_items_{};
+        ImGuiMouseCursor cursor_{ImGuiMouseCursor_Arrow};
         std::function<void(int32_t)> menu_completion_{};
         bool menu_requested_{false};
         bool menu_open_{false};
@@ -65,9 +66,14 @@ namespace uapmd_app {
         // behind for the renderer to finish with.
         static void collectRetiredTextures();
 
-        void requestMenu(const std::string& spec, int32_t x, int32_t y,
+        static void renderMenuItems(
+                const std::vector<uapmd_plugin_hosting::FramebufferMenuItem>& items,
+                int32_t& chosen);
+
+        void requestMenu(const std::vector<uapmd_plugin_hosting::FramebufferMenuItem>& items,
+                         int32_t x, int32_t y,
                          std::function<void(int32_t)> completed) override;
-        void setCursor(int32_t cursor) override;
+        void setCursor(uapmd_plugin_hosting::FramebufferCursor cursor) override;
         std::string droppedFile(int32_t index) override;
     };
 

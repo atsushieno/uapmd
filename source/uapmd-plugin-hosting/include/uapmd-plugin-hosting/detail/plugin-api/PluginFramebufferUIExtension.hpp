@@ -47,10 +47,40 @@ namespace uapmd_plugin_hosting {
         RGBA8
     };
 
-    // One key press or release, in the encoding the plugin expects.
+    // Modifier keys, as bits of FramebufferInput::modifiers and
+    // FramebufferKeyEvent::modifiers. A host reports what its own toolkit calls these and
+    // the format translates: a host should never have to know what the plugin encodes
+    // them as, and the one that did got it wrong.
+    enum FramebufferModifier : uint32_t {
+        kFramebufferModifierShift   = 1u << 0,
+        kFramebufferModifierControl = 1u << 1,
+        kFramebufferModifierAlt     = 1u << 2,
+        kFramebufferModifierSuper   = 1u << 3
+    };
+
+    // Pointer buttons, as bits of FramebufferInput::buttons.
+    enum FramebufferButton : uint32_t {
+        kFramebufferButtonLeft   = 1u << 0,
+        kFramebufferButtonRight  = 1u << 1,
+        kFramebufferButtonMiddle = 1u << 2
+    };
+
+    // Keys that have no character of their own. Anything typable arrives as a character
+    // instead, so this names only what a code point cannot.
+    enum class FramebufferKey : uint32_t {
+        None = 0,
+        Backspace, Tab, Enter, Escape, Space, Delete,
+        Left, Right, Up, Down,
+        PageUp, PageDown, Home, End, Insert,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12
+    };
+
+    // One key press or release. Either `character` carries what was typed, as a Unicode
+    // code point, or `key` names a key that has no code point -- never both.
     struct FramebufferKeyEvent {
         uint32_t modifiers{0};
-        uint32_t key{0};
+        uint32_t character{0};
+        FramebufferKey key{FramebufferKey::None};
         bool pressed{false};
     };
 
@@ -75,6 +105,38 @@ namespace uapmd_plugin_hosting {
         std::vector<FramebufferKeyEvent> keys{};
     };
 
+    // One entry of a menu the plugin has asked for. A separator carries no label and no
+    // id; an entry with children is a submenu and its own id is 0.
+    //
+    // The plugin hands over a menu already built, rather than whatever string its format
+    // describes menus with: parsing that string means knowing the format's rules for
+    // disabled items, submenus and -- worst -- how ids are numbered, none of which a host
+    // has any business knowing.
+    struct FramebufferMenuItem {
+        std::string label{};
+        int32_t id{0};
+        bool disabled{false};
+        bool checked{false};
+        bool separator{false};
+        std::vector<FramebufferMenuItem> children{};
+    };
+
+    // Cursor shapes in terms every toolkit has. The format maps its own identifiers onto
+    // these; the host maps these onto its toolkit's.
+    enum class FramebufferCursor {
+        Arrow,
+        IBeam,
+        Crosshair,
+        Hand,
+        SizeHorizontal,
+        SizeVertical,
+        SizeNESW,
+        SizeNWSE,
+        SizeAll,
+        Wait,
+        NotAllowed
+    };
+
     // Services the plugin needs from whoever is displaying it.
     //
     // None of these may block. A plugin format whose script asks for a menu has to wait for
@@ -90,18 +152,18 @@ namespace uapmd_plugin_hosting {
     public:
         virtual ~FramebufferUIHost() = default;
 
-        // Opens a menu and returns immediately. `spec` is the format's own menu
-        // description and the position is in framebuffer pixels.
+        // Opens a menu and returns immediately. The position is in framebuffer pixels.
         //
-        // `completed` must be called exactly once, with the chosen item counting from 1,
-        // or 0 if the user dismissed the menu without choosing. It may be called from any
-        // thread, including from inside this call. A host that cannot show a menu at all
-        // still has to complete with 0 rather than dropping the request.
-        virtual void requestMenu(const std::string& spec, int32_t x, int32_t y,
+        // `completed` must be called exactly once, with the id of the chosen item, or 0 if
+        // the user dismissed the menu without choosing. It may be called from any thread,
+        // including from inside this call. A host that cannot show a menu at all still has
+        // to complete with 0 rather than dropping the request.
+        virtual void requestMenu(const std::vector<FramebufferMenuItem>& items,
+                                 int32_t x, int32_t y,
                                  std::function<void(int32_t)> completed) = 0;
 
-        // Requests a mouse cursor shape, using the format's own cursor identifiers.
-        virtual void setCursor(int32_t cursor) = 0;
+        // Requests a mouse cursor shape.
+        virtual void setCursor(FramebufferCursor cursor) = 0;
 
         // Returns the path of a file dropped on the plugin, by index, or an empty string
         // when there is none. An index of -1 asks the host to forget the dropped files.
