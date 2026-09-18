@@ -105,6 +105,7 @@ target_sources(uapmd-format-jsfx PRIVATE
         src/JsfxPluginInstance.cpp
         src/JsfxScanning.cpp
         src/JsfxStateCodec.cpp
+        src/JsfxUserContent.cpp
 )
 
 add_library(uapmd::uapmd-format-jsfx ALIAS uapmd-format-jsfx)

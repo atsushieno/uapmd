@@ -23,7 +23,13 @@ namespace uapmd_jsfx {
     // AudioPluginFileOrUrlScanning is implemented for its search path API rather than
     // because scanning is slow. Users keep effects in more places than REAPER's own folder.
     class JsfxScanning : public uapmd_plugin_hosting::AudioPluginFileOrUrlScanning {
-        std::vector<std::filesystem::path> default_search_paths_{};
+        // Worked out on demand rather than once, because one of them -- the directory
+        // the user's own imports go to -- is not knowable until the application has said
+        // where this installation may write. On Android, iOS and the web that happens
+        // after this object exists, and there it is the only search path there is.
+        mutable std::vector<std::filesystem::path> default_search_paths_{};
+
+        void refreshDefaultSearchPaths() const;
 
     public:
         JsfxScanning();
@@ -42,7 +48,10 @@ namespace uapmd_jsfx {
                                  uapmd_plugin_hosting::AudioPluginScanCompletedCallback scanCompleted) override;
 
         bool usePluginSearchPaths() override { return true; }
-        std::vector<std::filesystem::path>& getDefaultSearchPaths() override { return default_search_paths_; }
+        std::vector<std::filesystem::path>& getDefaultSearchPaths() override {
+            refreshDefaultSearchPaths();
+            return default_search_paths_;
+        }
 
         std::vector<std::filesystem::path> enumerateCandidateBundles(bool requireFastScanning) override;
 

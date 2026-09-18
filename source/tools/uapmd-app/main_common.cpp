@@ -23,6 +23,13 @@
     #include <TargetConditionals.h>
 #endif
 
+#if defined(__ANDROID__)
+    #include <jni.h>
+    #include <android/log.h>
+    #include <filesystem>
+    #include <SDL3/SDL_system.h>
+#endif
+
 #ifdef USE_GLFW_BACKEND
     #include <GLFW/glfw3.h>
 #endif
@@ -84,7 +91,65 @@ using namespace uapmd;
 
 namespace uapmd_app {
 
+#if defined(__ANDROID__)
+namespace {
+    // Where this installation may write, asked of the Activity.
+    //
+    // This lives here rather than in the Android entry point because the entry point is
+    // a shared library of its own: a global set over there is not necessarily the one
+    // this library reads. It is set before anything that writes is constructed, because
+    // the plugin list, the user's imported effects and their registered folders all
+    // quietly do nothing without it.
+    void initAndroidApplicationDataDirectory() {
+        auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
+        if (!env || !activity) {
+            __android_log_print(ANDROID_LOG_WARN, "UAPMD",
+                                "No Activity; nothing written by this application will persist.");
+            return;
+        }
+
+        std::string directory;
+        if (jclass contextClass = env->GetObjectClass(activity)) {
+            if (jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir",
+                                                         "()Ljava/io/File;")) {
+                if (jobject filesDir = env->CallObjectMethod(activity, getFilesDir)) {
+                    jclass fileClass = env->GetObjectClass(filesDir);
+                    if (jmethodID getAbsolutePath = env->GetMethodID(
+                            fileClass, "getAbsolutePath", "()Ljava/lang/String;")) {
+                        auto path = static_cast<jstring>(
+                                env->CallObjectMethod(filesDir, getAbsolutePath));
+                        if (path) {
+                            if (const char* chars = env->GetStringUTFChars(path, nullptr)) {
+                                directory = chars;
+                                env->ReleaseStringUTFChars(path, chars);
+                            }
+                            env->DeleteLocalRef(path);
+                        }
+                    }
+                    env->DeleteLocalRef(fileClass);
+                    env->DeleteLocalRef(filesDir);
+                }
+            }
+            env->DeleteLocalRef(contextClass);
+        }
+
+        if (directory.empty()) {
+            __android_log_print(ANDROID_LOG_WARN, "UAPMD",
+                                "No files directory; nothing written will persist.");
+            return;
+        }
+        uapmd_plugin_hosting::applicationDataDirectory(std::filesystem::path{directory});
+        __android_log_print(ANDROID_LOG_INFO, "UAPMD", "Application data directory: %s",
+                            uapmd_plugin_hosting::applicationDataDirectory().string().c_str());
+    }
+}
+#endif
+
 int runMainLoop(int argc, char** argv) {
+#if defined(__ANDROID__)
+    initAndroidApplicationDataDirectory();
+#endif
     std::vector<std::string> args;
     args.reserve(static_cast<size_t>(std::max(argc - 1, 0)));
     for (int i = 1; i < argc; ++i) {

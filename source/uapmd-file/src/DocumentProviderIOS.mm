@@ -95,6 +95,39 @@ DocumentHandle handleFromURL(NSURL* url)
     return h;
 }
 
+// A bookmark is how a grant outlives the process. It is base64 so that it can sit in
+// the same settings a path would.
+std::string bookmarkToken(NSURL* url)
+{
+    NSError* error = nil;
+    NSData* bookmark = [url bookmarkDataWithOptions:0
+                     includingResourceValuesForKeys:nil
+                                      relativeToURL:nil
+                                              error:&error];
+    if (!bookmark || error)
+        return {};
+    return [bookmark base64EncodedStringWithOptions:0].UTF8String ?: "";
+}
+
+NSURL* urlFromBookmarkToken(const std::string& token)
+{
+    if (token.empty())
+        return nil;
+    NSData* bookmark = [[NSData alloc]
+        initWithBase64EncodedString:[NSString stringWithUTF8String:token.c_str()]
+                            options:0];
+    if (!bookmark)
+        return nil;
+    BOOL stale = NO;
+    NSError* error = nil;
+    NSURL* url = [NSURL URLByResolvingBookmarkData:bookmark
+                                           options:0
+                                     relativeToURL:nil
+                               bookmarkDataIsStale:&stale
+                                             error:&error];
+    return error ? nil : url;
+}
+
 NSURL* urlFromHandle(const DocumentHandle& handle)
 {
     return [NSURL URLWithString:[NSString stringWithUTF8String:handle.id.c_str()]];
@@ -113,6 +146,23 @@ NSURL* urlFromHandle(const DocumentHandle& handle)
 @implementation UAPMDOpenPickerDelegate
 - (void)documentPicker:(UIDocumentPickerViewController*)controller
   didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
+    if (self.onPick) self.onPick(urls);
+}
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller {
+    if (self.onCancel) self.onCancel();
+}
+@end
+
+// Shared delegate for folder picks. Kept separate from the open-pick delegate so
+// that a folder pick and a file pick can be on screen without displacing each other.
+@interface UAPMDFolderPickerDelegate : NSObject <UIDocumentPickerDelegate>
+@property (copy) void (^onPick)(NSArray<NSURL*>*);
+@property (copy) void (^onCancel)(void);
+@end
+
+@implementation UAPMDFolderPickerDelegate
+- (void)documentPicker:(UIDocumentPickerViewController*)controller
+    didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (self.onPick) self.onPick(urls);
 }
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller {
@@ -148,6 +198,15 @@ class DocumentProviderIOS final : public IDocumentProvider {
     // Stored as CFTypeRef (retained) and released when the pick completes.
     void* openDelegate_  = nullptr;
     void* exportDelegate_ = nullptr;
+    void* folderDelegate_ = nullptr;
+
+    // Folders whose security-scoped access is deliberately still open.
+    //
+    // A file inside a picked folder is only readable while the folder's scope is
+    // held, and the handles pickFolder returns are read afterwards, so the scope
+    // stays open until this provider goes away. It costs one open scope per folder
+    // the user picks in a session.
+    std::vector<void*> scoped_folders_;
 
     void retainDelegate(void** slot, id obj) {
         if (*slot) CFRelease(*slot);
@@ -161,6 +220,12 @@ public:
     ~DocumentProviderIOS() override {
         releaseDelegate(&openDelegate_);
         releaseDelegate(&exportDelegate_);
+        releaseDelegate(&folderDelegate_);
+        for (void* folder : scoped_folders_) {
+            NSURL* url = (__bridge NSURL*) folder;
+            [url stopAccessingSecurityScopedResource];
+            CFRelease(folder);
+        }
     }
 
     // ── Picking ───────────────────────────────────────────────────────────────
@@ -211,6 +276,87 @@ public:
             [presenter presentViewController:picker animated:YES completion:nil];
         });
     }
+
+    void pickFolder(FolderPickCallback callback) override
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController* presenter = topViewController();
+            if (!presenter) {
+                FolderPickResult failure;
+                failure.error = "No active view controller to present from";
+                callback(failure);
+                return;
+            }
+
+            UIDocumentPickerViewController* picker =
+                [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFolder]];
+            picker.allowsMultipleSelection = NO;
+
+            UAPMDFolderPickerDelegate* delegate = [[UAPMDFolderPickerDelegate alloc] init];
+
+            delegate.onPick = ^(NSArray<NSURL*>* urls) {
+                FolderPickResult result;
+                result.success = true;
+                if (NSURL* folder = urls.firstObject) {
+                    if ([folder startAccessingSecurityScopedResource])
+                        scoped_folders_.push_back((void*) CFBridgingRetain(folder));
+                    result.display_name = folder.lastPathComponent.UTF8String ?: "";
+                    // Made while the scope is open, which is the only time it can be:
+                    // it is what lets this folder be read again after a restart.
+                    result.token = bookmarkToken(folder);
+                    collectFolderDocuments(folder, result.documents);
+                }
+                dispatch_async(dispatch_get_main_queue(), ^{ callback(result); });
+                std::lock_guard<std::mutex> lock(mutex_);
+                releaseDelegate(&folderDelegate_);
+            };
+            delegate.onCancel = ^{
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    FolderPickResult cancelled;
+                    cancelled.success = true;
+                    callback(cancelled);
+                });
+                std::lock_guard<std::mutex> lock(mutex_);
+                releaseDelegate(&folderDelegate_);
+            };
+
+            picker.delegate = delegate;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                retainDelegate(&folderDelegate_, delegate);
+            }
+            [presenter presentViewController:picker animated:YES completion:nil];
+        });
+    }
+
+    // A folder outside the app's own container is reachable only through the grant
+    // that picking it produced, so there is no path worth keeping. The grant itself
+    // survives as a bookmark, which is what listFolderDocuments resolves.
+    bool folderPathsAreUsable() const override { return false; }
+
+    void listFolderDocuments(std::string token, FolderPickCallback callback) override
+    {
+        FolderPickResult result;
+        NSURL* folder = urlFromBookmarkToken(token);
+        if (!folder) {
+            result.error = "That folder is no longer available. Choose it again.";
+            callback(std::move(result));
+            return;
+        }
+        if ([folder startAccessingSecurityScopedResource]) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            scoped_folders_.push_back((void*) CFBridgingRetain(folder));
+        }
+        result.success = true;
+        result.token = std::move(token);
+        result.display_name = folder.lastPathComponent.UTF8String ?: "";
+        collectFolderDocuments(folder, result.documents);
+        callback(std::move(result));
+    }
+
+    // Nothing is registered with the system for a bookmark; dropping the token is
+    // enough, and the scope it opened is closed when this provider goes away.
+    void releaseFolder(const std::string&) override {}
 
     void pickSaveDocument(
         std::string defaultName,
@@ -274,6 +420,30 @@ public:
     }
 
     // ── I/O ───────────────────────────────────────────────────────────────────
+
+    // Walks a picked folder, giving each file a display_name relative to the folder
+    // so that copying the result keeps the structure it had.
+    static void collectFolderDocuments(NSURL* folder, std::vector<DocumentHandle>& out)
+    {
+        NSFileManager* fm = [NSFileManager defaultManager];
+        NSDirectoryEnumerator<NSURL*>* walker =
+            [fm enumeratorAtURL:folder
+     includingPropertiesForKeys:@[NSURLIsDirectoryKey]
+                        options:NSDirectoryEnumerationSkipsHiddenFiles
+                   errorHandler:nil];
+        NSString* base = folder.path;
+        for (NSURL* url in walker) {
+            NSNumber* isDirectory = nil;
+            [url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
+            if (isDirectory.boolValue)
+                continue;
+            DocumentHandle handle = handleFromURL(url);
+            NSString* path = url.path;
+            if (base.length > 0 && [path hasPrefix:base] && path.length > base.length + 1)
+                handle.display_name = [path substringFromIndex:base.length + 1].UTF8String;
+            out.push_back(std::move(handle));
+        }
+    }
 
     void readDocument(DocumentHandle handle, ReadCallback callback) override
     {

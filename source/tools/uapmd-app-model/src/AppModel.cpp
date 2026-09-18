@@ -972,6 +972,184 @@ void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
     scanningThread.detach();
 }
 
+#if UAPMD_HAS_JSFX
+void uapmd_app::AppModel::syncJsfxRegisteredFolders(
+        std::function<void(uint32_t, std::string)> completed) {
+    auto folders = uapmd_jsfx::jsfxRegisteredFolders();
+    auto* provider = documentProvider();
+    if (folders.empty() || !provider) {
+        completed(0, {});
+        return;
+    }
+
+    // Copying a registered folder means reading every file in it, which for a folder
+    // of any size is far too much to do between two frames. It runs on a thread of its
+    // own and reports back on the main one.
+    std::thread syncThread([this, folders = std::move(folders),
+                            completed = std::move(completed)]() mutable {
+        auto report = [completed = std::move(completed)](uint32_t written, std::string error) mutable {
+            remidy::EventLoop::enqueueTaskOnMainThread(
+                [completed = std::move(completed), written, error = std::move(error)]() mutable {
+                    completed(written, std::move(error));
+                });
+        };
+        syncJsfxRegisteredFoldersOnThisThread(std::move(folders), std::move(report));
+    });
+    syncThread.detach();
+}
+
+void uapmd_app::AppModel::syncJsfxRegisteredFoldersOnThisThread(
+        std::vector<uapmd_jsfx::JsfxRegisteredFolder> folders,
+        std::function<void(uint32_t, std::string)> completed) {
+    auto* provider = documentProvider();
+    if (!provider) {
+        completed(0, {});
+        return;
+    }
+
+    // Every folder is re-read and every file of it re-written, all asynchronously, so
+    // the counters are shared and whichever finishes last reports.
+    auto pendingFolders = std::make_shared<size_t>(folders.size());
+    auto written = std::make_shared<uint32_t>(0);
+    auto error = std::make_shared<std::string>();
+    auto finished = std::make_shared<std::function<void(uint32_t, std::string)>>(std::move(completed));
+
+    auto folderDone = [pendingFolders, written, error, finished]() {
+        if (--*pendingFolders > 0)
+            return;
+        (*finished)(*written, *error);
+    };
+
+    for (auto& folder : folders) {
+        const std::string name = folder.name;
+        provider->listFolderDocuments(folder.token,
+            [this, name, written, error, folderDone](uapmd::FolderPickResult listed) {
+                if (!listed.success) {
+                    // A folder whose grant has gone keeps the mirror it already has:
+                    // the user's effects stay usable until they say otherwise.
+                    if (error->empty())
+                        *error = name + ": " + listed.error;
+                    folderDone();
+                    return;
+                }
+                if (listed.documents.empty()) {
+                    // An empty answer is still an answer: the folder was emptied.
+                    uapmd_jsfx::clearJsfxFolderMirror(name);
+                    folderDone();
+                    return;
+                }
+
+                // Rebuilt rather than written over, so that files taken out of the
+                // folder stop being effects here too.
+                uapmd_jsfx::clearJsfxFolderMirror(name);
+
+                auto* provider = documentProvider();
+                if (!provider) {
+                    folderDone();
+                    return;
+                }
+
+                auto pendingFiles = std::make_shared<size_t>(listed.documents.size());
+                for (auto& handle : listed.documents) {
+                    const std::string relative = handle.display_name.empty() ? handle.id
+                                                                             : handle.display_name;
+                    // Belt and braces: a provider that hands over hidden files anyway
+                    // must not get them mirrored, for the same reason the walk skips
+                    // them. A leading dot anywhere in the path is enough to say no.
+                    if (relative.front() == '.' || relative.find("/.") != std::string::npos) {
+                        if (--*pendingFiles == 0)
+                            folderDone();
+                        continue;
+                    }
+                    provider->readDocument(handle,
+                        [name, relative, written, error, pendingFiles, folderDone](
+                                uapmd::DocumentIOResult io, std::vector<uint8_t> data) {
+                            if (io.success) {
+                                auto result = uapmd_jsfx::writeJsfxFolderMirrorFile(
+                                        name, relative, data.data(), data.size());
+                                if (result.success)
+                                    *written += result.filesWritten;
+                                else if (error->empty())
+                                    *error = relative + ": " + result.error;
+                            } else if (error->empty())
+                                *error = relative + ": " + io.error;
+
+                            if (--*pendingFiles == 0)
+                                folderDone();
+                        });
+                }
+            });
+    }
+}
+#endif
+
+void uapmd_app::AppModel::refreshFastScannedPlugins(std::function<void(std::string)> completed) {
+    if (isScanning_) {
+        std::cout << "Plugin scanning already in progress" << std::endl;
+        // Still answered: a caller that is waiting to say it finished would otherwise
+        // wait for ever.
+        if (completed)
+            completed({});
+        return;
+    }
+    isScanning_ = true;
+
+#if UAPMD_HAS_JSFX
+    // Registered folders are re-read before the scan rather than after it, because the
+    // scan is what turns their content into effects.
+    //
+    // The scan lives in its own function rather than in a second trip through this one:
+    // the completion below runs immediately when nothing is registered, and a function
+    // that called itself from there would never stop calling itself.
+    syncJsfxRegisteredFolders([this, completed = std::move(completed)](
+            uint32_t, std::string syncError) mutable {
+        if (!syncError.empty())
+            std::cout << "JSFX folder sync: " << syncError << std::endl;
+        startFastCatalogRefresh(std::move(completed), std::move(syncError));
+    });
+#else
+    startFastCatalogRefresh(std::move(completed), {});
+#endif
+}
+
+void uapmd_app::AppModel::startFastCatalogRefresh(std::function<void(std::string)> completed,
+                                                  std::string syncError) {
+    // Reading a few hundred script headers is not instant, and this runs from the UI.
+    std::thread refreshThread([this, completed = std::move(completed),
+                               syncError = std::move(syncError)]() mutable {
+        std::string error;
+        bool success = true;
+        try {
+            // Clearing first is the point: a merge would leave behind the entries of a
+            // folder the user has just removed. The slow formats are not re-enumerated,
+            // they come back from the plugin list cache.
+            pluginScanTool_->catalog().clear();
+            pluginScanTool_->performPluginScanning(true, uapmd_plugin_hosting::ScanMode::InProcess, false);
+
+            // The host keeps a catalog of its own, and that is the one instantiation
+            // resolves against, so it has to see the same effects the list now shows.
+            if (auto* host = sequencer_.engine()->pluginHost())
+                host->reloadPluginCatalogFromCache();
+        } catch (const std::exception& e) {
+            success = false;
+            error = std::string("Exception while refreshing the plugin list: ") + e.what();
+        }
+
+        for (auto& callback : scanningCompleted)
+            callback(success, error);
+
+        isScanning_ = false;
+
+        // On the main thread, because whoever asked is showing it to someone.
+        if (completed)
+            remidy::EventLoop::enqueueTaskOnMainThread(
+                    [completed = std::move(completed), syncError = std::move(syncError)]() mutable {
+                        completed(std::move(syncError));
+                    });
+    });
+    refreshThread.detach();
+}
+
 uapmd_app::AppModel::SlowScanProgressState uapmd_app::AppModel::slowScanProgress() const {
     std::lock_guard<std::mutex> lock(slowScanMutex_);
     return slowScanProgress_;

@@ -219,6 +219,22 @@ std::optional<std::string> extractJsonPayload(const std::string& text) {
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
 
+// This file is already inside namespace uapmd_plugin_hosting at this point.
+namespace {
+    std::filesystem::path& applicationDataDirectoryStorage() {
+        static std::filesystem::path instance{};
+        return instance;
+    }
+}
+
+void applicationDataDirectory(std::filesystem::path path) {
+    applicationDataDirectoryStorage() = std::move(path);
+}
+
+const std::filesystem::path& applicationDataDirectory() {
+    return applicationDataDirectoryStorage();
+}
+
 PluginScanToolImpl::PluginScanToolImpl() {
 #if ANDROID
     std::filesystem::path dir{};
@@ -230,6 +246,13 @@ PluginScanToolImpl::PluginScanToolImpl() {
 #else
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
 #endif
+    // An application that knows better -- because only it can, on a sandboxed platform --
+    // has the last word.
+    if (auto& supplied = applicationDataDirectory(); !supplied.empty())
+        dir = supplied;
+    else if (!dir.empty())
+        applicationDataDirectory(dir);
+
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
     blocklist_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-blocklist.json");

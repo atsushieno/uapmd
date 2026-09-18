@@ -96,6 +96,57 @@ public:
         }).detach();
     }
 
+    void pickFolder(FolderPickCallback callback) override
+    {
+        std::thread([this, callback = std::move(callback)]() mutable
+        {
+            pfd::select_folder dialog("Choose folder");
+
+            FolderPickResult result;
+            result.success = true;
+            auto chosen = dialog.result();
+            if (!chosen.empty()) {
+                result.path = std::filesystem::path{chosen};
+                result.token = chosen;   // a path names itself
+                result.display_name = result.path.filename().string();
+                // A folder whose name ends in a separator has an empty filename.
+                if (result.display_name.empty())
+                    result.display_name = result.path.parent_path().filename().string();
+            }
+
+            enqueue([callback = std::move(callback),
+                     result   = std::move(result)]() mutable {
+                callback(std::move(result));
+            });
+        }).detach();
+    }
+
+    // Desktop is the one platform where a chosen folder is a location rather than
+    // a grant, so it is the one platform where it can be kept and read from later.
+    bool folderPathsAreUsable() const override { return true; }
+
+    void listFolderDocuments(std::string token, FolderPickCallback callback) override
+    {
+        FolderPickResult result;
+        std::filesystem::path folder{token};
+        std::error_code ec{};
+        if (!std::filesystem::is_directory(folder, ec)) {
+            result.error = token + " is no longer a folder";
+            callback(std::move(result));
+            return;
+        }
+        // Nothing is enumerated: the caller has a location and can read it directly,
+        // which is the whole difference between this platform and the others.
+        result.success = true;
+        result.path = folder;
+        result.token = std::move(token);
+        result.display_name = folder.filename().string();
+        callback(std::move(result));
+    }
+
+    // A path is not a grant; there is nothing to give back.
+    void releaseFolder(const std::string&) override {}
+
     void pickSaveDocument(
         std::string defaultName,
         std::vector<DocumentFilter> filters,

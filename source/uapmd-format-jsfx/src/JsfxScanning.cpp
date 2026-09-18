@@ -6,6 +6,8 @@
 
 #include "ysfx.h"
 
+#include "uapmd-format-jsfx/uapmd-format-jsfx.hpp"
+
 namespace uapmd_jsfx {
 
     namespace {
@@ -45,20 +47,36 @@ namespace uapmd_jsfx {
             return value ? std::string{value} : std::string{};
         }
 
+        // Where this host keeps effects of its own: what the user imported, and the
+        // mirrors of the folders they registered. Always searched, and not a setting --
+        // turning them off would hide the user's own effects from them, and they are
+        // wherever this installation happens to keep its files rather than somewhere
+        // anyone chose. The two are kept apart so that rebuilding a mirror cannot take
+        // an import with it, and so that plugin ids read as "<folder>/<effect>".
+        std::vector<std::filesystem::path> hostOwnedSearchPaths() {
+            std::vector<std::filesystem::path> paths{};
+            if (auto userContent = jsfxUserContentDirectory(); !userContent.empty())
+                paths.emplace_back(std::move(userContent));
+            if (auto mirrors = jsfxFolderMirrorRoot(); !mirrors.empty())
+                paths.emplace_back(std::move(mirrors));
+            return paths;
+        }
+
+        // Where this platform conventionally keeps JSFX effects: REAPER's own folder.
+        // This is the part the user may decline to search.
         std::vector<std::filesystem::path> platformDefaultSearchPaths() {
             std::vector<std::filesystem::path> paths{};
+
 #if defined(__EMSCRIPTEN__)
-            // There is no host filesystem. Effects arrive through the browser and land in
-            // the same IDBFS-backed directory the application uses for other uploads.
-            paths.emplace_back("/browser/uploads/jsfx");
+            // There is no host filesystem; everything arrives through the browser, and the
+            // user content directory above is IDBFS-backed so imports survive a reload.
 #elif defined(_WIN32)
             auto appData = environmentPath("APPDATA");
             if (!appData.empty())
                 paths.emplace_back(std::filesystem::path{appData} / "REAPER" / "Effects");
 #elif defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
-            // No REAPER installation exists on these platforms, and the writable location
-            // is the application's own. It is supplied as an override search path rather
-            // than guessed at here.
+            // No REAPER installation to borrow from; the user content directory above is
+            // the whole story unless the user adds search paths of their own.
 #elif defined(__APPLE__)
             auto home = environmentPath("HOME");
             if (!home.empty())
@@ -87,11 +105,21 @@ namespace uapmd_jsfx {
         }
     }
 
-    JsfxScanning::JsfxScanning() : default_search_paths_(platformDefaultSearchPaths()) {
+    JsfxScanning::JsfxScanning() {
+        refreshDefaultSearchPaths();
+    }
+
+    void JsfxScanning::refreshDefaultSearchPaths() const {
+        default_search_paths_ = platformDefaultSearchPaths();
     }
 
     std::vector<std::filesystem::path> JsfxScanning::activeSearchRoots() const {
         std::vector<std::filesystem::path> roots{};
+        // Searched whatever the settings say: these hold the effects the user gave this
+        // host to keep, and there would be no way to get at them again otherwise.
+        for (auto& path : hostOwnedSearchPaths())
+            roots.emplace_back(std::move(path));
+        refreshDefaultSearchPaths();
         if (useDefaultSearchPaths())
             for (auto& path : default_search_paths_)
                 roots.emplace_back(path);

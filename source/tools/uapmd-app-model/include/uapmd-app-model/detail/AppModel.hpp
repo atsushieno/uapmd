@@ -261,6 +261,11 @@ namespace uapmd_app {
         const uapmd_plugin_hosting::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
         uapmd::IDocumentProvider* documentProvider();
+#if UAPMD_HAS_JSFX
+        // The JSFX format this model registered, so that the UI can edit its search paths.
+        // Null only if JSFX failed to construct.
+        uapmd_jsfx::JsfxPluginFormat* jsfxPluginFormat() { return jsfxPluginFormat_.get(); }
+#endif
         bool isScanning() const { return isScanning_; }
         bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire); }
         void setAudioEngineEnabled(bool enabled);
@@ -400,6 +405,41 @@ namespace uapmd_app {
                                    PluginScanRequest request = PluginScanRequest::InProcess,
                                    double remoteTimeoutSeconds = 0.0,
                                    bool requireFastScanning = false);
+#if UAPMD_HAS_JSFX
+        // Re-reads every JSFX folder the user registered and rebuilds its mirror, so
+        // that effects they have added to one since the last look become available.
+        //
+        // The reading is the platform's, so this is asynchronous and the completion
+        // arrives on the thread the document provider dispatches to -- the UI thread.
+        // Callers on any other thread must not assume otherwise. It completes
+        // immediately when no folder is registered, which is every desktop install.
+        void syncJsfxRegisteredFolders(std::function<void(uint32_t filesWritten,
+                                                          std::string error)> completed);
+#endif
+
+        // Rebuilds the catalog entries of the formats that scan by reading files rather
+        // than by loading them, JSFX among them. It is what a change to where those
+        // formats look needs: a full rescan would also re-enumerate every plugin bundle,
+        // and merging alone would keep effects that have just been taken away.
+        // `completed` runs on the main thread once the catalog is rebuilt, for callers
+        // that told the user something was happening and have to say when it stopped.
+        // Its argument is why re-reading a registered folder failed, empty when nothing
+        // did: an unreadable folder otherwise shows up only as effects that never
+        // appear.
+        void refreshFastScannedPlugins(std::function<void(std::string error)> completed = {});
+
+    private:
+        // The scanning half of refreshFastScannedPlugins, after any folder sync.
+        void startFastCatalogRefresh(std::function<void(std::string error)> completed,
+                                    std::string syncError);
+#if UAPMD_HAS_JSFX
+        // The body of syncJsfxRegisteredFolders, running on its own thread.
+        void syncJsfxRegisteredFoldersOnThisThread(
+                std::vector<uapmd_jsfx::JsfxRegisteredFolder> folders,
+                std::function<void(uint32_t, std::string)> completed);
+#endif
+
+    public:
         SlowScanProgressState slowScanProgress() const;
         std::vector<uapmd_plugin_hosting::BlocklistEntry> pluginBlocklist() const;
         bool unblockPluginFromBlocklist(const std::string& entryId);

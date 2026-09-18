@@ -48,6 +48,9 @@ MainWindow::MainWindow(GuiDefaults defaults)
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
+#if UAPMD_HAS_JSFX
+    commandRegistry_.registerCommand(jsfxResourcesCommand_);
+#endif
     // Clip-scoped commands are offered from the clip context menu, which the
     // timeline editor owns.
     addinRuntime_.registerExtensionPoint("/uapmd/app/clip-command/v1", &clipCommandRegistry_);
@@ -801,6 +804,8 @@ void MainWindow::render(void* window) {
     scriptEditor_.render();
 
 #if UAPMD_HAS_JSFX
+    jsfxResourcesWindow_.render();
+
     uapmd_app::JsfxEditorPanel::collectRetiredTextures();
     // Editors that are a pixel buffer rather than a native view are drawn here, with the
     // rest of the application's own windows. Closing one leaves the plugin alone; it is

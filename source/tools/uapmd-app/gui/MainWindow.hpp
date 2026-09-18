@@ -5,6 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include "JsfxEditorPanel.hpp"
+#include "JsfxResourcesWindow.hpp"
 #include <unordered_set>
 #include <chrono>
 #include <optional>
@@ -112,6 +113,21 @@ class MainWindow {
 
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
 #if UAPMD_HAS_JSFX
+        uapmd_app::JsfxResourcesWindow jsfxResourcesWindow_;
+        // JSFX is built in rather than loaded as an addin, so it has nothing of its own to
+        // contribute this with. The application contributes it to the registry an addin
+        // would have used, which is what puts it in the same menu.
+        class JsfxResourcesCommand : public uapmd_addin::Command {
+            MainWindow& owner_;
+
+        public:
+            explicit JsfxResourcesCommand(MainWindow& owner) : owner_(owner) {}
+            std::string_view id() const noexcept override { return "uapmd.jsfx.resources"; }
+            std::string_view title() const noexcept override { return "JSFX Effects..."; }
+            void invoke() noexcept override { owner_.jsfxResourcesWindow_.toggle(); }
+        };
+        JsfxResourcesCommand jsfxResourcesCommand_{*this};
+
         // Editors that draw into a pixel buffer rather than a native view. They are our
         // own windows, so they live here rather than among the container windows.
         std::unordered_map<int32_t, std::unique_ptr<uapmd_app::JsfxEditorPanel>> framebufferPanels_;

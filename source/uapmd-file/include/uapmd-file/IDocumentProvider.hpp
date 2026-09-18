@@ -42,6 +42,45 @@ struct DocumentFilter {
     std::vector<std::string> extensions;
 };
 
+// ─── Folders ─────────────────────────────────────────────────────────────────
+
+// Returned by pickFolder.
+//
+// A folder is not the same kind of thing on every platform, and this carries
+// whichever of the two a platform can give:
+//
+//   path      : a real filesystem path, which the caller may keep and read from
+//               whenever it likes. Desktop only.
+//   documents : the files that were inside the folder, as handles to read through
+//               this interface. Android, iOS and Web hand out a grant or a browser
+//               object rather than a location, so there is nothing to keep: the
+//               content can be copied, but the folder cannot be referred to again.
+//
+// Exactly one of the two is populated on success. A caller that only understands
+// paths does not work on three of the four platforms, which is why both are here.
+//
+// Cancelled by user : success == true,  path empty and documents empty.
+// Error             : success == false, error is non-empty.
+//
+// display_name is the folder's own name, suitable for labelling it or for naming
+// a copy of it. Each document's display_name is its path relative to the folder
+// that was picked, so that copying them preserves the structure they had.
+struct FolderPickResult {
+    bool success = false;
+    std::filesystem::path path;
+    std::vector<DocumentHandle> documents;
+    // A token that names this folder again later, to be stored and handed to
+    // listFolderDocuments. Empty where a folder cannot be returned to at all, which
+    // is the web: a browser gives up the files it held and nothing else.
+    //
+    // Holding a token may mean holding a grant -- on Android a persistable URI
+    // permission, on iOS a bookmark -- so a token that is no longer wanted should be
+    // dropped with releaseFolder() rather than merely forgotten.
+    std::string token;
+    std::string display_name;
+    std::string error;
+};
+
 // ─── Result types ────────────────────────────────────────────────────────────
 
 // Returned by pick operations.
@@ -82,6 +121,7 @@ public:
     using ReadCallback  = std::function<void(DocumentIOResult, std::vector<uint8_t>)>;
     using WriteCallback = std::function<void(DocumentIOResult)>;
     using PathCallback  = std::function<void(DocumentIOResult, std::filesystem::path)>;
+    using FolderPickCallback = std::function<void(FolderPickResult)>;
 
     // ── Picking ──────────────────────────────────────────────────────────────
 
@@ -93,6 +133,34 @@ public:
         std::vector<DocumentFilter> filters,
         bool allowMultiple,
         PickCallback callback) = 0;
+
+    // Show the OS folder picker.
+    //
+    // Whether a picked folder arrives as a path or as its contents is a property
+    // of the platform rather than of the folder, so callers must handle both;
+    // folderPathsAreUsable() answers which to expect before anything is picked,
+    // for UI that has to say up front what the button is going to do.
+    virtual void pickFolder(FolderPickCallback callback) = 0;
+
+    // Whether pickFolder yields a path that stays valid after the call.
+    // False where a folder is reached through a grant rather than a location; those
+    // platforms answer with documents, and are re-read through listFolderDocuments.
+    virtual bool folderPathsAreUsable() const = 0;
+
+    // Re-reads a folder picked earlier, named by the token that pick produced.
+    //
+    // This is what makes a registered folder a standing arrangement rather than a
+    // one-off copy: the user adds files to it with whatever tool they like, and the
+    // next call sees them. The result is shaped exactly as pickFolder's.
+    //
+    // Fails when the grant has been revoked or the folder has gone, which the caller
+    // should treat as "ask the user for it again" rather than as a hard error.
+    virtual void listFolderDocuments(std::string token, FolderPickCallback callback) = 0;
+
+    // Gives up a token obtained from pickFolder, releasing any grant behind it.
+    // Callers must do this when the user removes a folder; forgetting the token alone
+    // leaves the grant held for as long as the platform feels like it.
+    virtual void releaseFolder(const std::string& token) = 0;
 
     // Show the OS save-file picker / save dialog.
     // callback receives exactly one handle on success, zero on cancel.

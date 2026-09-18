@@ -26,6 +26,94 @@ namespace uapmd_jsfx {
     // fonts, i.e. whether setJsfxEditorFontData() has any effect.
     bool jsfxUsesOwnFontBackend();
 
+    // Where effects the user adds themselves are kept.
+    //
+    // JSFX is a filesystem format: ysfx opens scripts, their includes and their data by
+    // path, so anything the user imports has to end up as real files somewhere writable.
+    // This is that place, and it is always one of the search paths.
+    //
+    // On desktop it sits beside the plugin caches. On Android it is app storage, because
+    // the shared areas need permissions the application does not ask for. On the web it is
+    // the IDBFS-backed upload directory, so imports survive a reload.
+    //
+    // Returns an empty path where there is nowhere writable, in which case importing is
+    // unavailable and only the platform's own locations are searched.
+    std::filesystem::path jsfxUserContentDirectory();
+
+    // Whether a file should be treated as an archive to unpack rather than a single
+    // effect to copy. Decided by name, because that is all a picked document reliably has.
+    bool looksLikeJsfxArchive(const std::string& fileName);
+
+    struct JsfxImportResult {
+        bool success{false};
+        uint32_t filesWritten{0};
+        std::filesystem::path destination{};
+        std::string error{};   // empty when success
+    };
+
+    // Puts imported content into the user content directory, either copying a single file
+    // or unpacking an archive. `subdirectory` is optional and lets a set of effects keep
+    // its own folder; it must stay inside the content directory.
+    //
+    // Archives are untrusted: an entry that would be written outside the destination
+    // aborts the whole import rather than being skipped quietly.
+    //
+    // The caller supplies the bytes, so this works the same whether they came from a file
+    // on disk, a document the user picked through the platform's own picker, or a browser
+    // upload. A rescan is needed afterwards for the new effects to reach the catalog.
+    JsfxImportResult importJsfxContent(const std::string& fileName,
+                                       const uint8_t* data,
+                                       size_t size,
+                                       const std::string& subdirectory = {});
+
+    // ─── Registered folders ──────────────────────────────────────────────────
+    //
+    // A folder the user has handed over for good, on a platform where a folder is a
+    // grant rather than a location: Android's persisted tree permission, iOS's
+    // bookmark. The user keeps their effects where they put them -- Download/JSFX,
+    // say -- adds to that folder whenever they like with whatever tool they like, and
+    // this host keeps up.
+    //
+    // Keeping up means copying, because ysfx opens scripts, their imports and their
+    // data files by path and a grant has no path behind it. Each registered folder is
+    // therefore mirrored into a directory of our own that is searched, and the mirror
+    // is rebuilt whenever the folder is re-read. JSFX content is text-sized -- REAPER's
+    // entire Effects folder is about 1.5 MB -- so the duplication is cheap in a way it
+    // would not be for a sample library.
+    //
+    // Desktop does not use any of this: a folder there is a path, and goes straight
+    // into the search paths.
+    struct JsfxRegisteredFolder {
+        std::string token;   // opaque; means something only to the IDocumentProvider
+        std::string name;    // the user-facing name, and the mirror's directory name
+    };
+
+    // Where every mirror lives. It is always one of the search paths.
+    std::filesystem::path jsfxFolderMirrorRoot();
+
+    std::vector<JsfxRegisteredFolder> jsfxRegisteredFolders();
+
+    // Registering the same token twice renames the existing entry rather than adding
+    // another. Returns the name actually used, which differs from the one asked for
+    // when that name is taken or unusable.
+    std::string registerJsfxFolder(const std::string& token, const std::string& name);
+
+    // Forgets the folder and deletes its mirror. The caller is responsible for giving
+    // the grant itself back through IDocumentProvider::releaseFolder.
+    void unregisterJsfxFolder(const std::string& token);
+
+    // Empties a registered folder's mirror, ready for it to be written again. Files
+    // the user removed from the folder have to stop being effects here too, which a
+    // copy on top of the old mirror would not achieve.
+    bool clearJsfxFolderMirror(const std::string& name);
+
+    // Writes one file of a registered folder into its mirror. `relativePath` is the
+    // path the file had inside the folder, and must stay inside the mirror.
+    JsfxImportResult writeJsfxFolderMirrorFile(const std::string& name,
+                                               const std::string& relativePath,
+                                               const uint8_t* data,
+                                               size_t size);
+
     // JSFX, the effects language REAPER ships, hosted by ysfx.
     //
     // This is an application-provided plugin format: construct one, hand it to

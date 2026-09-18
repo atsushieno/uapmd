@@ -23,8 +23,15 @@ if(UAPMD_TARGET_WASM)
         "-sAUDIO_WORKLET=1"
         "-pthread"
         "-sPTHREAD_POOL_SIZE=8"
+        # Emscripten gives every thread 64 KB of stack by default, which is far too
+        # little for a C++ parser: loading a large JSFX script recurses deeply enough to
+        # run off the end, and a stack that overruns in wasm surfaces as "memory access
+        # out of bounds" rather than as anything resembling a stack overflow. Plugin
+        # scanning parses every script it finds, and it runs on a worker.
+        "-sSTACK_SIZE=4MB"
+        "-sDEFAULT_PTHREAD_STACK_SIZE=4MB"
         "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','HEAPU8','UTF8ToString','stringToUTF8','lengthBytesUTF8','allocateUTF8','FS']"
-        "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_libremidi_devices_poll','_libremidi_devices_input','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_web_storage_ready','_uapmd_webclap_on_worklet_message','_uapmd_webclap_on_worklet_state_response','_uapmd_webclap_on_worklet_state_load_complete','_uapmd_file_picked','_uapmd_file_pick_cancelled']"
+        "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_libremidi_devices_poll','_libremidi_devices_input','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_web_storage_ready','_uapmd_webclap_on_worklet_message','_uapmd_webclap_on_worklet_state_response','_uapmd_webclap_on_worklet_state_load_complete','_uapmd_file_picked','_uapmd_file_pick_cancelled','_uapmd_folder_document','_uapmd_folder_picked']"
     )
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
@@ -36,6 +43,7 @@ endif()
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
         gui/JsfxEditorPanel.cpp
+        gui/JsfxResourcesWindow.cpp
         gui/MainWindow.cpp
         gui/MixerMonitorWindow.cpp
         gui/PluginList.cpp

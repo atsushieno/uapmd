@@ -96,7 +96,9 @@ std::vector<uint8_t> drainInputStream(JNIEnv* env, jobject stream)
     jmethodID closeMethod = env->GetMethodID(cls, "close", "()V");
     env->DeleteLocalRef(cls);
 
-    constexpr int kBuf = 4096;
+    // Big enough that reading a file is a handful of JNI round trips rather than
+    // thousands: a folder of effects can be hundreds of megabytes.
+    constexpr int kBuf = 256 * 1024;
     jbyteArray buf = env->NewByteArray(kBuf);
     std::vector<uint8_t> result;
 
@@ -144,6 +146,77 @@ std::string sanitizeForFilename(const std::string& id)
     for (unsigned char c : id)
         out += (std::isalnum(c) || c == '.') ? static_cast<char>(c) : '_';
     return out;
+}
+
+std::string jstringToStd(JNIEnv* env, jstring jstr)
+{
+    if (!jstr) return {};
+    const char* chars = env->GetStringUTFChars(jstr, nullptr);
+    std::string result = chars ? chars : "";
+    env->ReleaseStringUTFChars(jstr, chars);
+    return result;
+}
+
+// What SAF calls a folder: the MIME type a document row carries when it has
+// children rather than content.
+constexpr const char* kDirectoryMimeType = "vnd.android.document/directory";
+
+jclass documentsContractClass(JNIEnv* env)
+{
+    static jclass cls = nullptr;
+    if (!cls) {
+        jclass local = env->FindClass("android/provider/DocumentsContract");
+        if (local) {
+            cls = static_cast<jclass>(env->NewGlobalRef(local));
+            env->DeleteLocalRef(local);
+        }
+    }
+    return cls;
+}
+
+std::string treeDocumentId(JNIEnv* env, jobject treeUri)
+{
+    jclass cls = documentsContractClass(env);
+    if (!cls) return {};
+    static jmethodID method = nullptr;
+    if (!method)
+        method = env->GetStaticMethodID(cls, "getTreeDocumentId",
+            "(Landroid/net/Uri;)Ljava/lang/String;");
+    if (!method) return {};
+    auto jstr = static_cast<jstring>(env->CallStaticObjectMethod(cls, method, treeUri));
+    auto result = jstringToStd(env, jstr);
+    if (jstr) env->DeleteLocalRef(jstr);
+    return result;
+}
+
+jobject buildChildDocumentsUri(JNIEnv* env, jobject treeUri, const std::string& parentDocumentId)
+{
+    jclass cls = documentsContractClass(env);
+    if (!cls) return nullptr;
+    static jmethodID method = nullptr;
+    if (!method)
+        method = env->GetStaticMethodID(cls, "buildChildDocumentsUriUsingTree",
+            "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;");
+    if (!method) return nullptr;
+    jstring jid = env->NewStringUTF(parentDocumentId.c_str());
+    jobject uri = env->CallStaticObjectMethod(cls, method, treeUri, jid);
+    env->DeleteLocalRef(jid);
+    return uri;
+}
+
+jobject buildDocumentUri(JNIEnv* env, jobject treeUri, const std::string& documentId)
+{
+    jclass cls = documentsContractClass(env);
+    if (!cls) return nullptr;
+    static jmethodID method = nullptr;
+    if (!method)
+        method = env->GetStaticMethodID(cls, "buildDocumentUriUsingTree",
+            "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;");
+    if (!method) return nullptr;
+    jstring jid = env->NewStringUTF(documentId.c_str());
+    jobject uri = env->CallStaticObjectMethod(cls, method, treeUri, jid);
+    env->DeleteLocalRef(jid);
+    return uri;
 }
 
 void runOnAndroidUiThread(std::function<void()> task)
@@ -348,6 +421,7 @@ class DocumentProviderAndroid : public IDocumentProvider {
     };
     std::mutex pending_mutex_;
     std::map<int, PendingPick> pending_picks_;
+    std::map<int, FolderPickCallback> pending_folder_picks_;
 
     // Temp files created by resolveToPath, keyed by handle id
     std::mutex temp_mutex_;
@@ -456,6 +530,104 @@ public:
         });
     }
 
+    void pickFolder(FolderPickCallback callback) override
+    {
+        int requestCode;
+        {
+            std::lock_guard lock(pending_mutex_);
+            requestCode = next_request_code_++;
+            pending_folder_picks_[requestCode] = std::move(callback);
+        }
+        runOnAndroidUiThread([this, requestCode]() {
+            JNIEnv* env = jmi::getEnv();
+            if (!env) {
+                failPendingFolderPick(requestCode, "JNIEnv unavailable");
+                return;
+            }
+            jobject intent = newIntent(env, "android.intent.action.OPEN_DOCUMENT_TREE");
+            if (!intent) {
+                failPendingFolderPick(requestCode, "Failed to create Intent");
+                return;
+            }
+            jmethodID startActivity = startActivityForResultMethod(env);
+            if (!startActivity) {
+                env->DeleteLocalRef(intent);
+                failPendingFolderPick(requestCode, "Failed to resolve Activity.startActivityForResult");
+                return;
+            }
+            env->CallVoidMethod(activity_, startActivity, intent, static_cast<jint>(requestCode));
+            env->DeleteLocalRef(intent);
+        });
+    }
+
+    // A tree grant names a folder without being a location: there is no path behind a
+    // content:// URI. It is still a standing arrangement rather than a one-off, which
+    // is what listFolderDocuments is for.
+    bool folderPathsAreUsable() const override { return false; }
+
+    void listFolderDocuments(std::string token, FolderPickCallback callback) override
+    {
+        JNIEnv* env = jmi::getEnv();
+        FolderPickResult result;
+        if (!env) {
+            result.error = "JNIEnv unavailable";
+            callback(std::move(result));
+            return;
+        }
+
+        jobject treeUri = parseUri(env, token);
+        if (!treeUri) {
+            result.error = "That folder is no longer registered. Choose it again.";
+            callback(std::move(result));
+            return;
+        }
+
+        auto rootId = treeDocumentId(env, treeUri);
+        if (rootId.empty()) {
+            env->DeleteLocalRef(treeUri);
+            result.error = "That folder is no longer readable. Choose it again.";
+            callback(std::move(result));
+            return;
+        }
+
+        result.success = true;
+        result.token = token;
+        result.display_name = displayNameFromUri(env, treeUri);
+        if (auto slash = result.display_name.find_last_of(":/"); slash != std::string::npos)
+            result.display_name = result.display_name.substr(slash + 1);
+        collectTreeDocuments(env, treeUri, rootId, {}, 0, result.documents);
+        env->DeleteLocalRef(treeUri);
+
+        // Answered on the calling thread rather than queued for the UI one. Re-reading
+        // a folder is the prelude to reading every file in it, and that work has to
+        // stay on whatever thread asked for it -- on the UI thread it would freeze the
+        // application for as long as the copying takes.
+        callback(std::move(result));
+    }
+
+    void releaseFolder(const std::string& token) override
+    {
+        runOnAndroidUiThread([this, token]() {
+            JNIEnv* env = jmi::getEnv();
+            if (!env) return;
+            jobject uriObj = parseUri(env, token);
+            if (!uriObj) return;
+            jobject resolver = callContentResolver(env, activity_);
+            static jmethodID method = nullptr;
+            if (!method)
+                method = env->GetMethodID(contentResolverClass(env),
+                    "releasePersistableUriPermission", "(Landroid/net/Uri;I)V");
+            if (method) {
+                constexpr jint FLAG_GRANT_READ_URI_PERMISSION = 0x00000001;
+                env->CallVoidMethod(resolver, method, uriObj, FLAG_GRANT_READ_URI_PERMISSION);
+                if (env->ExceptionCheck())
+                    env->ExceptionClear();   // a grant we never held is not an error
+            }
+            env->DeleteLocalRef(resolver);
+            env->DeleteLocalRef(uriObj);
+        });
+    }
+
     void pickSaveDocument(
         std::string defaultName,
         std::vector<DocumentFilter> filters,
@@ -516,6 +688,22 @@ public:
 
     void onActivityResult(JNIEnv* env, int requestCode, int resultCode, jobject intentObj)
     {
+        {
+            FolderPickCallback folderCallback;
+            {
+                std::lock_guard lock(pending_mutex_);
+                auto it = pending_folder_picks_.find(requestCode);
+                if (it != pending_folder_picks_.end()) {
+                    folderCallback = std::move(it->second);
+                    pending_folder_picks_.erase(it);
+                }
+            }
+            if (folderCallback) {
+                handleFolderResult(env, resultCode, intentObj, std::move(folderCallback));
+                return;
+            }
+        }
+
         PendingPick pick;
         {
             std::lock_guard lock(pending_mutex_);
@@ -581,6 +769,156 @@ public:
                          result = std::move(result)]() mutable {
             callback(std::move(result));
         });
+    }
+
+    void handleFolderResult(JNIEnv* env, int resultCode, jobject intentObj,
+                            FolderPickCallback callback)
+    {
+        FolderPickResult result;
+        result.success = true;
+
+        constexpr int RESULT_OK = -1; // android.app.Activity.RESULT_OK
+        if (resultCode == RESULT_OK && intentObj) {
+            jclass intentCls = env->GetObjectClass(intentObj);
+            jmethodID getData = env->GetMethodID(intentCls, "getData", "()Landroid/net/Uri;");
+            jobject treeUri = env->CallObjectMethod(intentObj, getData);
+            env->DeleteLocalRef(intentCls);
+
+            if (treeUri) {
+                // Held on to so that reading the files afterwards is still allowed:
+                // the grant otherwise lasts only as long as this activity result.
+                takePersistablePermission(env, treeUri);
+
+                auto rootId = treeDocumentId(env, treeUri);
+                if (rootId.empty())
+                    result.error = "The chosen folder did not report a document id.";
+                else {
+                    // The tree URI is the token: with the grant taken above it names
+                    // this folder for as long as the user keeps it registered.
+                    result.token = uriToString(env, treeUri);
+                    result.display_name = displayNameFromUri(env, treeUri);
+                    // The last path segment of a tree URI is the document id, which
+                    // often carries a "primary:Music/Effects" shape.
+                    if (auto slash = result.display_name.find_last_of(":/");
+                            slash != std::string::npos)
+                        result.display_name = result.display_name.substr(slash + 1);
+                    collectTreeDocuments(env, treeUri, rootId, {}, 0, result.documents);
+                }
+                env->DeleteLocalRef(treeUri);
+            }
+        }
+
+        if (!result.error.empty())
+            result.success = false;
+
+        enqueueCallback([callback = std::move(callback),
+                         result = std::move(result)]() mutable {
+            callback(std::move(result));
+        });
+    }
+
+    // Walks a picked tree, depth first, turning every file into a handle whose
+    // display_name is its path relative to the folder that was picked -- so that
+    // copying the result keeps whatever structure the folder had.
+    void collectTreeDocuments(JNIEnv* env,
+                              jobject treeUri,
+                              const std::string& parentDocumentId,
+                              const std::string& prefix,
+                              int depth,
+                              std::vector<DocumentHandle>& out)
+    {
+        // A provider is free to answer whatever it likes, including a cycle.
+        constexpr int kMaxDepth = 16;
+        constexpr size_t kMaxDocuments = 20000;
+        if (depth >= kMaxDepth || out.size() >= kMaxDocuments)
+            return;
+
+        jobject childrenUri = buildChildDocumentsUri(env, treeUri, parentDocumentId);
+        if (!childrenUri)
+            return;
+
+        jobject resolver = callContentResolver(env, activity_);
+        static jmethodID queryMethod = nullptr;
+        if (!queryMethod)
+            queryMethod = env->GetMethodID(contentResolverClass(env), "query",
+                "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;"
+                "[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;");
+
+        jclass stringClass = env->FindClass("java/lang/String");
+        jobjectArray projection = env->NewObjectArray(3, stringClass, nullptr);
+        const char* columns[] = {"document_id", "_display_name", "mime_type"};
+        for (jsize i = 0; i < 3; i++) {
+            jstring column = env->NewStringUTF(columns[i]);
+            env->SetObjectArrayElement(projection, i, column);
+            env->DeleteLocalRef(column);
+        }
+
+        jobject cursor = queryMethod
+                ? env->CallObjectMethod(resolver, queryMethod, childrenUri, projection,
+                                        nullptr, nullptr, nullptr)
+                : nullptr;
+        env->DeleteLocalRef(projection);
+        env->DeleteLocalRef(stringClass);
+        env->DeleteLocalRef(resolver);
+        env->DeleteLocalRef(childrenUri);
+        if (!cursor)
+            return;
+
+        jclass cursorCls = env->GetObjectClass(cursor);
+        jmethodID moveToNext = env->GetMethodID(cursorCls, "moveToNext", "()Z");
+        jmethodID getString = env->GetMethodID(cursorCls, "getString", "(I)Ljava/lang/String;");
+        jmethodID close = env->GetMethodID(cursorCls, "close", "()V");
+
+        // Subfolders are gathered first and recursed into after the cursor is
+        // closed: a provider may not support two open cursors at once.
+        std::vector<std::pair<std::string, std::string>> subfolders;
+
+        while (env->CallBooleanMethod(cursor, moveToNext)) {
+            auto idStr = static_cast<jstring>(env->CallObjectMethod(cursor, getString, 0));
+            auto nameStr = static_cast<jstring>(env->CallObjectMethod(cursor, getString, 1));
+            auto mimeStr = static_cast<jstring>(env->CallObjectMethod(cursor, getString, 2));
+
+            std::string documentId = jstringToStd(env, idStr);
+            std::string name = jstringToStd(env, nameStr);
+            std::string mime = jstringToStd(env, mimeStr);
+            if (idStr) env->DeleteLocalRef(idStr);
+            if (nameStr) env->DeleteLocalRef(nameStr);
+            if (mimeStr) env->DeleteLocalRef(mimeStr);
+
+            if (documentId.empty() || name.empty())
+                continue;
+            // Version control and package manager bookkeeping is not content. A .git
+            // directory is usually the largest thing in a folder of effects and never
+            // holds one, and walking it costs a query per directory inside it.
+            if (name.front() == '.')
+                continue;
+            const std::string relative = prefix.empty() ? name : prefix + "/" + name;
+
+            if (mime == kDirectoryMimeType) {
+                subfolders.emplace_back(documentId, relative);
+                continue;
+            }
+
+            jobject documentUri = buildDocumentUri(env, treeUri, documentId);
+            if (!documentUri)
+                continue;
+            DocumentHandle handle;
+            handle.id = uriToString(env, documentUri);
+            handle.display_name = relative;
+            handle.mime_type = mime;
+            out.push_back(std::move(handle));
+            env->DeleteLocalRef(documentUri);
+
+            if (out.size() >= kMaxDocuments)
+                break;
+        }
+
+        env->CallVoidMethod(cursor, close);
+        env->DeleteLocalRef(cursorCls);
+        env->DeleteLocalRef(cursor);
+
+        for (auto& [childId, childPrefix] : subfolders)
+            collectTreeDocuments(env, treeUri, childId, childPrefix, depth + 1, out);
     }
 
     // ── I/O ──────────────────────────────────────────────────────────────────
@@ -704,6 +1042,26 @@ private:
         return code;
     }
 
+    void failPendingFolderPick(int requestCode, std::string error)
+    {
+        FolderPickCallback callback;
+        {
+            std::lock_guard lock(pending_mutex_);
+            auto it = pending_folder_picks_.find(requestCode);
+            if (it == pending_folder_picks_.end()) return;
+            callback = std::move(it->second);
+            pending_folder_picks_.erase(it);
+        }
+        if (!callback) return;
+        FolderPickResult result;
+        result.success = false;
+        result.error = std::move(error);
+        enqueueCallback([callback = std::move(callback),
+                         result = std::move(result)]() mutable {
+            callback(std::move(result));
+        });
+    }
+
     void failPendingPick(int requestCode, std::string error)
     {
         PickCallback cb;
@@ -796,6 +1154,14 @@ std::unique_ptr<IDocumentProvider> createDocumentProvider()
             { p->pickOpenDocuments(std::move(f), m, std::move(cb)); }
         void pickSaveDocument(std::string n, std::vector<DocumentFilter> f, PickCallback cb) override
             { p->pickSaveDocument(std::move(n), std::move(f), std::move(cb)); }
+        void pickFolder(FolderPickCallback cb) override
+            { p->pickFolder(std::move(cb)); }
+        bool folderPathsAreUsable() const override
+            { return p->folderPathsAreUsable(); }
+        void listFolderDocuments(std::string t, FolderPickCallback cb) override
+            { p->listFolderDocuments(std::move(t), std::move(cb)); }
+        void releaseFolder(const std::string& t) override
+            { p->releaseFolder(t); }
         void readDocument(DocumentHandle h, ReadCallback cb) override
             { p->readDocument(std::move(h), std::move(cb)); }
         void writeDocument(DocumentHandle h, std::vector<uint8_t> d, WriteCallback cb) override

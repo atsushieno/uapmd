@@ -13,6 +13,19 @@
 namespace uapmd_plugin_hosting {
     using namespace remidy;
 
+    // Where this installation keeps the files it owns: the plugin list cache, the
+    // blocklist, the search path settings, and anything a plugin format needs to write.
+    //
+    // Desktop and the web work this out for themselves. Android and iOS cannot: the
+    // location belongs to the application sandbox and only the platform layer knows it, so
+    // the application sets it before anything that writes is constructed. Setting it after
+    // a PluginScanTool exists does not move that tool's files.
+    //
+    // An empty path means there is nowhere writable, which is a supported state: nothing
+    // is cached, nothing persists, and scanning simply runs again next launch.
+    void applicationDataDirectory(std::filesystem::path path);
+    const std::filesystem::path& applicationDataDirectory();
+
     enum class ScanMode {
         InProcess,
         Remote
