@@ -227,6 +227,7 @@ Apache V2 or compatible (opt-in features):
 - [libraz/libsonare](https://github.com/libraz/libsonare) - Apache V2
 - [spotify/basic-pitch](https://github.com/spotify/basic-pitch) (ported note decoder; model weights downloaded at build time) - Apache V2
 - [DrumScript/DrumScript](https://github.com/DrumScript/DrumScript) internally translated to C++ - Apache V2
+- [JoepVanlier/ysfx](https://github.com/JoepVanlier/ysfx) - Apache V2
 
 These libraries drag in libraries that are released under the MPL (opt-in features):
 

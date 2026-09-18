@@ -33,6 +33,8 @@ android {
                     // Demucs is a built-in addin and reachable here for the same
                     // reason; it is opt-in because demucs.cpp vendors MPL-2.0 Eigen.
                     "-DUAPMD_ENABLE_DEMUCS_CPP=ON",
+                    // JSFX is opt-in because ysfx is Apache-2.0.
+                    "-DUAPMD_ENABLE_JSFX=ON",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",
