@@ -236,8 +236,19 @@ namespace uapmd_jsfx {
     }
 
     void JsfxFramebufferUI::displayed(bool value) {
-        std::lock_guard lock{state_mutex_};
-        displayed_ = value;
+        {
+            std::lock_guard lock{state_mutex_};
+            displayed_ = value;
+        }
+        // Being displayed is what makes the renderer run. A host that draws the frames
+        // itself never goes near showUI() -- there is no view for it to create -- so if
+        // this did not start the renderer, nothing would, and the editor would stay
+        // blank for ever. start() is idempotent, so the showUI() path is unaffected.
+        //
+        // Not stopped on the way out: a hidden editor keeps ticking slowly so that it
+        // notices being shown again, which is what desiredFrameRate() is about.
+        if (value)
+            start();
     }
 
     uint32_t JsfxFramebufferUI::desiredFrameRate() {
