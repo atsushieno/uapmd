@@ -194,41 +194,7 @@ std::vector<PluginCatalogEntry> PluginScannerCLAP::getAllFastScannablePlugins() 
 
     // may return nullptr if it failed to load.
     void* loadModuleFromPath(std::filesystem::path clapPath) {
-#if __APPLE__
-        const auto allBundles = CFBundleGetAllBundles();
-        CFBundleRef bundle{nullptr};
-        for (size_t i = 0, n = CFArrayGetCount(allBundles); i < n; i++) {
-            bundle = (CFBundleRef) CFArrayGetValueAtIndex(allBundles, i);
-            const auto url = CFBundleCopyBundleURL(bundle);
-            const auto pathString = CFURLCopyPath(url);
-            if (!strcmp(CFStringGetCStringPtr(pathString, kCFStringEncodingUTF8), clapPath.c_str())) {
-                // increase the reference count and return it
-                CFRetain(bundle);
-                CFRelease(pathString);
-                CFRelease(url);
-                return bundle;
-            }
-            CFRelease(pathString);
-            CFRelease(url);
-        }
-        const auto filePath = CFStringCreateWithBytes(
-            kCFAllocatorDefault,
-            (const UInt8*) clapPath.c_str(),
-            clapPath.string().size(),
-            CFStringEncoding{},
-            false);
-        const auto cfUrl = CFURLCreateWithFileSystemPath(
-            kCFAllocatorDefault,
-            filePath,
-            kCFURLPOSIXPathStyle,
-            true);
-        const auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
-        CFRelease(cfUrl);
-        CFRelease(filePath);
-        return ret;
-#else
         return loadLibraryFromBinary(clapPath);
-#endif
     }
 
     StatusCode PluginFormatCLAPImpl::doLoad(std::filesystem::path &clapPath, void **module) const {
@@ -243,7 +209,7 @@ std::vector<PluginCatalogEntry> PluginScannerCLAP::getAllFastScannablePlugins() 
 #if _WIN32
         FreeLibrary((HMODULE) module);
 #elif __APPLE__
-        CFRelease(module);
+        unloadLibrary(module);
 #else
         dlclose(module);
 #endif

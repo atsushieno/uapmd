@@ -4,9 +4,11 @@
 #include <filesystem>
 
 #if __APPLE__
-// Forward declare CoreFoundation type to avoid including the header
-typedef const struct __CFString* CFStringRef;
-CFStringRef createCFString(const char* s);
+// macOS modules own both a dlopen handle and the bundle used for VST3 initialization.
+typedef struct __CFBundle* CFBundleRef;
+CFBundleRef getLibraryBundle(void* module);
+void* getLibrarySymbol(void* module, const char* name);
+void unloadLibrary(void* module);
 #endif
 
 // string-to-and-from-hex converters
@@ -16,4 +18,4 @@ std::string stringToHexBinary(std::string s);
 std::string vst3TuidToString(const char* s, const size_t size, const bool capital = true);
 std::string stringToVst3Tuid(std::string s);
 
-void* loadLibraryFromBinary(std::filesystem::path& vst3Dir);
+void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile);

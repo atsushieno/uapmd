@@ -5,6 +5,7 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 #if _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -12,13 +13,37 @@
 #include <Windows.h>
 #elif __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
+#include <dlfcn.h>
+#include <limits.h>
 #elif defined(__linux__) && !defined(EMSCRIPTEN)
 #include <dlfcn.h>
 #endif
 
 #if __APPLE__
-CFStringRef createCFString(const char* s) {
-    return CFStringCreateWithBytes(kCFAllocatorDefault, (UInt8*) s, strlen(s), CFStringEncoding{}, false);
+namespace {
+    struct MacOSModule {
+        CFBundleRef bundle{};
+        void* handle{};
+
+        ~MacOSModule() {
+            if (handle)
+                dlclose(handle);
+            if (bundle)
+                CFRelease(bundle);
+        }
+    };
+}
+
+CFBundleRef getLibraryBundle(void* module) {
+    return module ? static_cast<MacOSModule*>(module)->bundle : nullptr;
+}
+
+void* getLibrarySymbol(void* module, const char* name) {
+    return module ? dlsym(static_cast<MacOSModule*>(module)->handle, name) : nullptr;
+}
+
+void unloadLibrary(void* module) {
+    delete static_cast<MacOSModule*>(module);
 }
 #endif
 
@@ -98,20 +123,44 @@ std::string stringToVst3Tuid(std::string s) {
     return std::string(reinterpret_cast<const char*>(ret.data()), ret.size());
 }
 
-// The returned library (platform dependent) must be released later (in the platform manner)
+// The returned module must be released by its platform loader (unloadLibrary on macOS).
 // It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
 void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
 #if _WIN32
     auto ret = LoadLibraryW(pluginDirOrFile.c_str());
 #elif __APPLE__
-    auto cfStringRef = createCFString(pluginDirOrFile.string().c_str());
-    auto cfUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-        cfStringRef,
-        kCFURLPOSIXPathStyle,
-        false);
-    auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
-    CFRelease(cfUrl);
-    CFRelease(cfStringRef);
+    auto module = std::make_unique<MacOSModule>();
+    auto executablePath = pluginDirOrFile;
+    std::error_code ec;
+    if (std::filesystem::is_directory(pluginDirOrFile, ec)) {
+        const auto path = pluginDirOrFile.string();
+        auto url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
+            reinterpret_cast<const UInt8*>(path.c_str()), path.size(), true);
+        if (!url)
+            return nullptr;
+        module->bundle = CFBundleCreate(kCFAllocatorDefault, url);
+        CFRelease(url);
+        if (!module->bundle)
+            return nullptr;
+
+        // Resolve CFBundleExecutable instead of guessing a filename or extension.
+        auto executableUrl = CFBundleCopyExecutableURL(module->bundle);
+        if (!executableUrl)
+            return nullptr;
+        std::array<UInt8, PATH_MAX> executable{};
+        const auto resolved = CFURLGetFileSystemRepresentation(executableUrl, true,
+            executable.data(), executable.size());
+        CFRelease(executableUrl);
+        if (!resolved)
+            return nullptr;
+        executablePath = reinterpret_cast<const char*>(executable.data());
+    }
+    // Load the resolved binary directly: both MH_BUNDLE and MH_DYLIB are supported.
+    // Keep the CFBundle alive for resources and VST3's bundleEntry argument.
+    module->handle = dlopen(executablePath.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    if (!module->handle)
+        return nullptr;
+    auto ret = module.release();
 #elif defined(__linux__) && !defined(EMSCRIPTEN)
     auto ret = dlopen(pluginDirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
     //if (errno)

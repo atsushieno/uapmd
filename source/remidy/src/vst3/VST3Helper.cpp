@@ -16,12 +16,11 @@ namespace remidy_vst3 {
 #if _WIN32
         auto sym = (get_plugin_factory_func) GetProcAddress((HMODULE) module, "GetPluginFactory");
 #elif __APPLE__
-        auto bundle = (CFBundleRef) module;
-        auto sym = (get_plugin_factory_func) CFBundleGetFunctionPointerForName(bundle, createCFString("GetPluginFactory"));
+        auto sym = (get_plugin_factory_func) getLibrarySymbol(module, "GetPluginFactory");
 #else
         auto sym = (get_plugin_factory_func) dlsym(module, "GetPluginFactory");
 #endif
-        return sym();
+        return sym ? sym() : nullptr;
     }
 
 }

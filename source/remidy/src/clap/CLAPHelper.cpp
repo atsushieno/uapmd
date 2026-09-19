@@ -17,8 +17,7 @@ namespace remidy_clap {
 #if _WIN32
         auto sym = (clap_plugin_entry_t*) GetProcAddress((HMODULE) module, "clap_entry");
 #elif __APPLE__
-        auto bundle = (CFBundleRef) module;
-        auto sym = (clap_plugin_entry_t*) CFBundleGetDataPointerForName(bundle, createCFString("clap_entry"));
+        auto sym = (clap_plugin_entry_t*) getLibrarySymbol(module, "clap_entry");
 #else
         auto sym = (clap_plugin_entry_t*) dlsym(module, "clap_entry");
 #endif

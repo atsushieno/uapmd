@@ -114,37 +114,7 @@ namespace remidy_vst3 {
     // may return nullptr if it failed to load.
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
-        const auto allBundles = CFBundleGetAllBundles();
-        CFBundleRef bundle{nullptr};
-        for (size_t i = 0, n = CFArrayGetCount(allBundles); i < n; i++) {
-            bundle = (CFBundleRef) CFArrayGetValueAtIndex(allBundles, i);
-            const auto url = CFBundleCopyBundleURL(bundle);
-            const auto pathString = CFURLCopyPath(url);
-            if (!strcmp(CFStringGetCStringPtr(pathString, kCFStringEncodingUTF8), vst3Dir.c_str())) {
-                // increase the reference count and return it
-                CFRetain(bundle);
-                CFRelease(pathString);
-                CFRelease(url);
-                return bundle;
-            }
-            CFRelease(pathString);
-            CFRelease(url);
-        }
-        const auto filePath = CFStringCreateWithBytes(
-            kCFAllocatorDefault,
-            (const UInt8*) vst3Dir.c_str(),
-            vst3Dir.string().size(),
-            kCFStringEncodingUTF8,
-            false);
-        const auto cfUrl = CFURLCreateWithFileSystemPath(
-            kCFAllocatorDefault,
-            filePath,
-            kCFURLPOSIXPathStyle,
-            true);
-        const auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
-        CFRelease(cfUrl);
-        CFRelease(filePath);
-        return ret;
+        return loadLibraryFromBinary(vst3Dir);
 #else
         auto libraryFilePath = getPluginCodeFile(vst3Dir);
         if (!libraryFilePath.empty()) {
@@ -161,18 +131,14 @@ namespace remidy_vst3 {
         if (initDll) // optional
             initDll();
 #elif __APPLE__
-        auto bundle = (CFBundleRef) module;
-        CFErrorRef cfError;
-        if (!CFBundleLoadExecutableAndReturnError(bundle, &cfError)) {
-            // FIXME: we need logger here too
-            std::cerr << "CFBundleLoadExecutableAndReturnError : " << cfError << std::endl;
+        auto bundle = getLibraryBundle(module);
+        if (!bundle)
             return -1;
-        }
-        auto bundleEntry = (vst3_bundle_entry_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleEntry"));
+        auto bundleEntry = (vst3_bundle_entry_func) getLibrarySymbol(module, "bundleEntry");
         if (!bundleEntry)
             return -2;
         // check this in prior (not calling now).
-        auto bundleExit = !module ? nullptr : CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
+        auto bundleExit = getLibrarySymbol(module, "bundleExit");
         if (!bundleExit)
             return -3;
         if (!bundleEntry(bundle))
@@ -199,11 +165,10 @@ namespace remidy_vst3 {
             exitDll();
         FreeLibrary(module);
 #elif __APPLE__
-        auto bundle = (CFBundleRef) moduleBundle;
-        auto bundleExit = (vst3_bundle_exit_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
+        auto bundleExit = (vst3_bundle_exit_func) getLibrarySymbol(moduleBundle, "bundleExit");
         if (bundleExit) // it might not exist, as it may fail to load the library e.g. ABI mismatch.
             bundleExit();
-        CFRelease(bundle);
+        unloadLibrary(moduleBundle);
 #else
         auto moduleExit = (vst3_module_exit_func) dlsym(moduleBundle, "ModuleExit");
         moduleExit(); // no need to check existence, it's done at loading.
