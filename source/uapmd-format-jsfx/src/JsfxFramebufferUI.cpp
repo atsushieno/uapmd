@@ -403,6 +403,15 @@ namespace uapmd_jsfx {
         if (!changed && !resized)
             return;
 
+        // LICE draws colour without maintaining alpha, so the channel holds whatever the
+        // buffer happened to contain -- values that differ from frame to frame and between
+        // the two buffers. An editor is opaque by definition, being the plugin's window, so
+        // it is made to say so here. Left as it is, a host that composites with the alpha it
+        // is given makes the whole editor pulse in brightness as it redraws, and every host
+        // has to work around it separately.
+        for (size_t i = 3; i < back_.size(); i += 4)
+            back_[i] = 0xFF;
+
         std::lock_guard lock{frame_mutex_};
         front_.swap(back_);
         width_ = width;
