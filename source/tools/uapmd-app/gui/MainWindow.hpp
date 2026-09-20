@@ -83,7 +83,7 @@ class MainWindow {
         bool mcpAutoReconnect_ = true;
 #endif
 
-        bool showAudioGraphWindow_ = false;
+        bool showVirtualMidiDevicesWindow_ = false;
 
         // Spectrum analyzers
         SpectrumAnalyzer inputSpectrumAnalyzer_;
@@ -185,7 +185,7 @@ class MainWindow {
         void renderPlatformMidiConnections();
 
         // Track UI
-        void renderAudioGraphEditorWindow();
+        void renderVirtualMidiDevicesWindow();
         void refreshInstances();
         void handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);

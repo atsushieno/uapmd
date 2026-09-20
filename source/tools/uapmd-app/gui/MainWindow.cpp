@@ -80,6 +80,11 @@ MainWindow::MainWindow(GuiDefaults defaults)
     addinRuntime_.registerExtensionPoint(
         "/uapmd/audio-import/stem-separator/v1", &stemSeparatorRegistry_);
     audioImportWindow_.setStemSeparatorRegistry(&stemSeparatorRegistry_);
+    addinRuntime_.registerExtensionPoint("/uapmd/app/model/v1", &appModel);
+    appModel.showVirtualMidiDevices = [this]() {
+        showVirtualMidiDevicesWindow_ = !showVirtualMidiDevicesWindow_;
+    };
+    uapmd_app::registerVirtualMidiDevicesAddin();
     addinRuntime_.initialize();
     // Built-in and installed addins register their editors during initialize().
     timelineEditor_.setClipEditorRegistry(&clipEditorRegistry_);
@@ -146,15 +151,9 @@ MainWindow::MainWindow(GuiDefaults defaults)
                 return;  // Error already logged elsewhere
             }
 
-            // AppModel now creates DeviceState, we just initialize GUI-specific state
-            // Initialize UMP device name buffer
-            auto& sequencer = uapmd_app::AppModel::instance().sequencer();
-            std::string pluginFormat = sequencer.getPluginFormat(result.instanceId);
-            std::string deviceLabel = result.device ? std::format("{} [{}]", result.pluginName, pluginFormat) : "";
-            umpDeviceNameBuffers_[result.instanceId] = {};
-            std::strncpy(umpDeviceNameBuffers_[result.instanceId].data(), deviceLabel.c_str(),
-                         umpDeviceNameBuffers_[result.instanceId].size() - 1);
-            umpDeviceNameBuffers_[result.instanceId][umpDeviceNameBuffers_[result.instanceId].size() - 1] = '\0';
+            // Let buildTrackInstanceInfo initialize the name from the model's label
+            // (or plugin name/format), even when no MIDI endpoint exists yet.
+            umpDeviceNameBuffers_.erase(result.instanceId);
 
             // Refresh UI to display new instance
             refreshInstances();
@@ -348,7 +347,6 @@ MainWindow::MainWindow(GuiDefaults defaults)
         .loadPluginState = [this](int32_t instanceId) { loadPluginState(instanceId); },
         .onInstanceDetailsClosed = [this](int32_t) { trackList_.markDirty(); },
         .showMixerMonitor = [this]() { mixerMonitorWindow_.toggle(); },
-        .showPluginInstances = [this]() { showAudioGraphWindow_ = !showAudioGraphWindow_; },
     });
 
     // Set up child window size helpers for TimelineEditor
@@ -803,7 +801,7 @@ void MainWindow::render(void* window) {
     renderDeviceSettingsWindow();
     addinManagerWindow_.render(uiScale_);
     panel_registry_.render();
-    renderAudioGraphEditorWindow();
+    renderVirtualMidiDevicesWindow();
     mixerMonitorWindow_.render(uiScale_);
     exporterWindow_.render(uiScale_);
     audioImportWindow_.render(uiScale_);
@@ -873,6 +871,7 @@ void MainWindow::shutdown() {
     // Editor instances may contain code from dynamically loaded addins.
     timelineEditor_.setClipEditorRegistry(nullptr);
     addinRuntime_.shutdown();
+    uapmd_app::AppModel::instance().showVirtualMidiDevices = {};
     panel_registry_.clearRetainedPanels();
 
 #if UAPMD_HAS_JSFX
@@ -1104,15 +1103,37 @@ void MainWindow::renderPlatformMidiConnections() {
         });
 }
 
-void MainWindow::renderAudioGraphEditorWindow() {
-    if (!showAudioGraphWindow_) {
+void MainWindow::renderVirtualMidiDevicesWindow() {
+    if (!uapmd_app::AppModel::instance().virtualMidiDevicesEnabled())
+        showVirtualMidiDevicesWindow_ = false;
+    if (!showVirtualMidiDevicesWindow_) {
         return;
     }
 
     const std::string windowId = "AudioGraphEditor";
     setNextChildWindowSize(windowId, ImVec2(620.0f, 420.0f));
-    if (ImGui::Begin("Audio Graph Editor", &showAudioGraphWindow_)) {
+    if (ImGui::Begin("Virtual MIDI Devices", &showVirtualMidiDevicesWindow_)) {
         updateChildWindowSizeState(windowId);
+        auto& appModel = uapmd_app::AppModel::instance();
+        bool autoCreateDevices = appModel.autoCreateVirtualMidiDevices();
+        if (ImGui::Checkbox("Create virtual MIDI 2.0 devices automatically", &autoCreateDevices))
+            appModel.setAutoCreateVirtualMidiDevices(autoCreateDevices);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Create devices for subsequently instantiated plugins. Use Enable or Disable below for existing instances.");
+        const bool enableAll = ImGui::Button("Enable All");
+        ImGui::SameLine();
+        const bool disableAll = ImGui::Button("Disable All");
+        if (enableAll || disableAll)
+            if (auto* host = appModel.sequencer().engine()->pluginHost())
+                for (const auto instanceId : host->instanceIds()) {
+                    const auto instance = buildTrackInstanceInfo(instanceId);
+                    if (!instance || instance->deviceInstantiating)
+                        continue;
+                    if (enableAll && instance->deviceSupported && !instance->deviceRunning)
+                        handleEnableDevice(instanceId, instance->umpDeviceName);
+                    else if (disableAll && instance->deviceRunning)
+                        handleDisableDevice(instanceId);
+                }
         trackList_.update();
         trackList_.render();
     }
@@ -1454,6 +1475,10 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
 
         if (!labelFound) {
             initialName = std::format("{} [{}]", pluginName, pluginFormat);
+            if (trackIndex >= 0)
+                initialName += std::format(" T{}", trackIndex + 1);
+            else if (trackIndex == uapmd::kMasterTrackIndex)
+                initialName += " Master";
         }
 
         umpDeviceNameBuffers_[instanceId] = {};

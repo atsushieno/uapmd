@@ -1321,11 +1321,6 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         if (ImGui::Button("Mixer Monitor"))
             callbacks_.showMixerMonitor();
     }
-    if (callbacks_.showPluginInstances) {
-        ImGui::SameLine();
-        if (ImGui::Button("Plugin Instances"))
-            callbacks_.showPluginInstances();
-    }
 }
 
 void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {

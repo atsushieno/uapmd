@@ -32,7 +32,6 @@ struct TimelineEditorCallbacks {
     std::function<void(int32_t instanceId)> loadPluginState;
     std::function<void(int32_t instanceId)> onInstanceDetailsClosed;
     std::function<void()> showMixerMonitor;
-    std::function<void()> showPluginInstances;
 };
 
 class TimelineEditor {

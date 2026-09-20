@@ -51,6 +51,12 @@ It also provides some built-in graph nodes such as gain, channel splitter, and a
 - `ProgramList` for the indexed presets as Program Change
 - `State` to save and load the plugin states.
 
+The app model provides the built-in **Virtual MIDI Devices** addin. It subscribes to
+control-thread plugin lifecycle events and unregisters its endpoints when disabled.
+Automatic endpoint creation is off by default and can be enabled in its window;
+individual endpoints can also be enabled manually. The window is exposed through
+the application command registry.
+
 ### uapmd-data
 
 `uapmd-data` offers the project data model such as tracks, clips, audio clips, MIDI2 clips, plugin states, and audio graphs.

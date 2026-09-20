@@ -1457,8 +1457,6 @@ void uapmd_app::AppModel::createPluginInstanceAsync(const std::string& format,
         pluginName = "Unknown Plugin";
     }
 
-    // This is the same logic as VirtualMidiDeviceController::createDevice
-    // but we call the callback instead of managing state
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
@@ -1653,6 +1651,35 @@ uapmd_app::AppModel::PluginInstanceResult uapmd_app::AppModel::registerPluginIns
     std::string deviceLabel = config.deviceName.empty()
         ? std::format("{} [{}]", pluginName, pluginFormat)
         : config.deviceName;
+    if (config.deviceName.empty()) {
+        const auto trackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
+        if (trackIndex >= 0)
+            deviceLabel += std::format(" T{}", trackIndex + 1);
+        else if (trackIndex == kMasterTrackIndex)
+            deviceLabel += " Master";
+    }
+
+    if (configOverride && !configOverride->stateFile.empty()) {
+        auto stateResult = loadPluginStateSync(
+            instanceId,
+            configOverride->stateFile.string(),
+            uapmd::ProjectMutationOrigin::Internal);
+        if (!stateResult.success) {
+            std::cerr << "Automatic plugin state load failed for " << pluginName
+                      << ": " << stateResult.error << std::endl;
+        }
+    }
+
+    // Engine lifecycle notifications precede the creation callback. Reuse the
+    // endpoint unless that callback supplies a different name or MIDI backend.
+    if (auto existing = getDeviceForInstance(instanceId)) {
+        if (!configOverride || ((*existing)->label == deviceLabel && (*existing)->apiName == config.apiName)) {
+            result.device = (*existing)->device;
+            return result;
+        }
+        if ((*existing)->device)
+            disableUmpDevice(instanceId);
+    }
 
     auto state = std::make_shared<DeviceState>();
     state->label = deviceLabel;
@@ -1681,33 +1708,13 @@ uapmd_app::AppModel::PluginInstanceResult uapmd_app::AppModel::registerPluginIns
         devices_.push_back(DeviceEntry{nextDeviceId_++, state});
     }
 
-    if (configOverride && !configOverride->stateFile.empty()) {
-        auto stateResult = loadPluginStateSync(
-            instanceId,
-            configOverride->stateFile.string(),
-            uapmd::ProjectMutationOrigin::Internal);
-        if (!stateResult.success) {
-            std::cerr << "Automatic plugin state load failed for " << pluginName
-                      << ": " << stateResult.error << std::endl;
-        }
-    }
-
-    if (midiApiSupportsDynamicUmpEndpoints(config.apiName)) {
-        enableUmpDevice(instanceId, deviceLabel);
-    } else {
-        state->running = false;
-        state->hasError = true;
-        state->statusMessage = "Dynamic Virtual MIDI 2.0 devices are unavailable on this platform.";
-    }
+    if (register_virtual_midi_device_)
+        register_virtual_midi_device_(instanceId);
+    else
+        state->statusMessage = "Virtual MIDI Devices addin is disabled";
 
     result.device = state->device;
     return result;
-}
-
-void uapmd_app::AppModel::clearDeviceEntries() {
-    std::lock_guard lock(devicesMutex_);
-    devices_.clear();
-    nextDeviceId_ = 1;
 }
 
 void uapmd_app::AppModel::forgetRemovedPluginInstance(int32_t instanceId) {
@@ -1810,6 +1817,14 @@ void uapmd_app::AppModel::enableUmpDevice(int32_t instanceId, const std::string&
         return;
     }
 
+    if (!virtualMidiDevicesEnabled()) {
+        result.error = "Virtual MIDI Devices addin is disabled";
+        result.statusMessage = result.error;
+        for (auto& cb : enableDeviceCompleted)
+            cb(result);
+        return;
+    }
+
     // Lock the device state for modifications
     std::lock_guard guard(deviceState->mutex);
 
@@ -1907,14 +1922,18 @@ void uapmd_app::AppModel::disableUmpDevice(int32_t instanceId) {
         result.success = false;
         result.error = "Device not found for instance";
         result.statusMessage = "Error";
-        for (auto& cb : disableDeviceCompleted) {
-            cb(result);
-        }
+        // Addin cleanup may have already unregistered the endpoint. During
+        // model destruction the singleton is reset and UI callbacks are unsafe.
+        if (!shutting_down_)
+            for (auto& cb : disableDeviceCompleted)
+                cb(result);
         return;
     }
 
     if (auto fb = sequencer().engine()->functionBlockManager()->getFunctionDeviceForInstance(instanceId))
         fb->destroyDevice(instanceId);
+
+    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Stop and destroy the device to unregister the virtual MIDI port
     std::lock_guard guard(deviceState->mutex);
@@ -3779,8 +3798,7 @@ void uapmd_app::AppModel::resyncAfterProjectReplacement() {
     for (int32_t i = 0; i < numTracks; ++i)
         notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
 
-    // Rebuild device entries and notify listeners for each plugin instance
-    clearDeviceEntries();
+    // Lifecycle listeners have registered the new instances; preserve their devices.
     if (auto* fbm = sequencer().engine()->functionBlockManager())
         fbm->deleteEmptyDevices();
 

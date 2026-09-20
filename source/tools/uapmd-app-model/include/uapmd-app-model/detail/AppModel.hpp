@@ -29,6 +29,8 @@ namespace uapmd_app {
     struct ScopedTempDir;
     // Forward declarations
     class AppModel;
+    class VirtualMidiDevicesAddin;
+    void registerVirtualMidiDevicesAddin();
     struct PianoRollSession;
     struct PianoRollClipSnapshot;
     class ClipEnablementSerializationExtension;
@@ -63,6 +65,10 @@ namespace uapmd_app {
     };
 
     class AppModel : uapmd_midi_service::MidiIOManagerFeature {
+        friend class VirtualMidiDevicesAddin;
+        // Installed by the addin; invoked after per-instance configuration is applied.
+        std::function<void(int32_t)> register_virtual_midi_device_;
+        bool auto_create_virtual_midi_devices_{false};
         std::shared_ptr<uapmd_midi_service::MidiIOFeature> createMidiIOFeature(
             std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
 
@@ -213,7 +219,6 @@ namespace uapmd_app {
         std::unordered_set<int32_t> currentPluginInstanceIds() const;
         void reconcileAfterHistoryMutation(
             const std::unordered_set<int32_t>& previousPluginInstanceIds);
-        void clearDeviceEntries();
         void maybeStartInitialPluginScan();
         bool pauseTransportForPluginMutation();
         void resumeTransportAfterPluginMutation(bool resumeTransport);
@@ -354,6 +359,11 @@ namespace uapmd_app {
         // Enable virtual MIDI device for an instance
         // Notifies all registered callbacks when complete
         void enableUmpDevice(int32_t instanceId, const std::string& deviceName);
+        bool virtualMidiDevicesEnabled() const { return static_cast<bool>(register_virtual_midi_device_); }
+        bool autoCreateVirtualMidiDevices() const { return auto_create_virtual_midi_devices_; }
+        // Applies to subsequent registrations; existing devices are unchanged.
+        void setAutoCreateVirtualMidiDevices(bool enabled) { auto_create_virtual_midi_devices_ = enabled; }
+        std::function<void()> showVirtualMidiDevices;
 
         // Disable virtual MIDI device for an instance
         // Notifies all registered callbacks when complete

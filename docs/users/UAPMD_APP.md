@@ -54,7 +54,7 @@ Everything lives in a single window with four bands, top to bottom:
    position controller.
 3. **The track list** -- the master track followed by your tracks, each with a legend on the
    left and its clips on the right.
-4. **The footer** -- add a track, and open the Mixer Monitor and Plugin Instances windows.
+4. **The footer** -- add a track, and open the Mixer Monitor window.
 
 Auxiliary windows (Settings, Plugin Selector, editors, and so on) open as floating panels inside
 the main window. They can be moved and resized like ordinary windows, and their positions are
@@ -164,8 +164,7 @@ a gain slider but no mute or solo.
 
 ### The footer
 
-`+` adds an empty track. `Mixer Monitor` and `Plugin Instances` open the two windows described
-below.
+`+` adds an empty track. `Mixer Monitor` opens the mixer window described below.
 
 
 ## Tracks
@@ -404,13 +403,25 @@ A track starts as a simple chain, and editing the connections turns it into a ge
 **Revert to Simple Graph** puts it back to a plain chain. A minimap in the corner helps when the
 graph outgrows the window.
 
-### Plugin instances
+### Virtual MIDI devices
 
-![The Audio Graph Editor window](../images/uapmd-app-guide-audio-graph-editor.png)
+![The Virtual MIDI Devices window](../images/uapmd-app-guide-audio-graph-editor.png)
 
-`Plugin Instances` in the footer opens a flat list of every plugin instance in the project,
+`Virtual MIDI Devices` in the `Command` menu opens a flat list of every plugin instance in the project,
 grouped by track, showing the format and the virtual UMP device each is exposed as. `Disable`
-bypasses an instance and `Show` opens its details window.
+unregisters its virtual MIDI device and `Show` opens its details window.
+
+`Create virtual MIDI 2.0 devices automatically` is off by default. Turn it on to create
+devices for subsequently instantiated plugins, including plugins loaded from projects.
+Changing the checkbox leaves existing devices unchanged; use each row's `Enable` or `Disable`
+button to control them manually.
+`Enable All` and `Disable All` apply to all current instances without changing the
+automatic creation setting. `Enable All` uses the names entered in the device list.
+Default device names include a track suffix, such as `sforzando [VST3] T1`;
+master-track devices use `Master`. Custom device names are kept as entered.
+
+Disabling the Virtual MIDI Devices addin unregisters its devices and removes the command.
+Re-enabling the addin creates devices for existing instances only when automatic creation is on.
 
 Note that this window lists plugin *instances*, not tracks -- one track with two plugins appears
 as two rows.
