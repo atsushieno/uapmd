@@ -1858,13 +1858,21 @@ void uapmd_app::AppModel::enableUmpDevice(int32_t instanceId, const std::string&
             }
         }
         const auto pluginNode = targetTrack ? targetTrack->graph().getPluginNode(instanceId) : nullptr;
-        if (!fbDevice->createFunctionBlock(deviceState->apiName, pluginNode, instanceId,
+        bool created = false;
+        std::string creationError = "Failed to create virtual MIDI device";
+        try {
+            created = fbDevice->createFunctionBlock(deviceState->apiName, pluginNode, instanceId,
                                                deviceName.empty() ? deviceState->label : deviceName,
                                                "UAPMD Project",
-                                               "0.1")) {
+                                               "0.1");
+        } catch (const std::exception& e) {
+            creationError += std::string(": ") + e.what();
+        }
+        if (!created) {
+            fbManager->deleteEmptyDevices();
             deviceState->running = false;
             deviceState->hasError = true;
-            deviceState->statusMessage = "Failed to create virtual MIDI device";
+            deviceState->statusMessage = creationError;
             result.success = false;
             result.error = deviceState->statusMessage;
             result.statusMessage = deviceState->statusMessage;

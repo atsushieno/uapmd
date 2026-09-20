@@ -1,6 +1,7 @@
 #include "LibreMidiIODevice.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
@@ -14,6 +15,21 @@ namespace uapmd {
             std::replace(name.begin(), name.end(), ' ', '_');
             std::replace(name.begin(), name.end(), ' ', '_');
             return name;
+        }
+
+        template<typename Midi, typename Configuration>
+        std::unique_ptr<Midi> createMidiClient(Configuration config, libremidi::API api) {
+            auto constructing = std::make_shared<std::atomic<bool>>(true);
+            config.on_error = [constructing](std::string_view message, const auto&) {
+                // ALSA backends can otherwise finish construction with a null
+                // sequencer, then dereference it when opening or destroying a port.
+                // Only throw synchronously during construction, never from MIDI I/O.
+                if (constructing->load(std::memory_order_relaxed))
+                    throw std::runtime_error(std::string(message));
+            };
+            auto client = std::make_unique<Midi>(config, api);
+            constructing->store(false, std::memory_order_relaxed);
+            return client;
         }
     }
 
@@ -42,10 +58,10 @@ namespace uapmd {
         inConfig.ignore_sysex = false;
 
         try {
-            midiIn = std::make_unique<libremidi::midi_in>(inConfig, *resolvedApi);
+            midiIn = createMidiClient<libremidi::midi_in>(inConfig, *resolvedApi);
             auto ret = midiIn->open_virtual_port(in_port_name);
             if (ret.is_set())
-                midiIn.reset();
+                throw std::runtime_error(std::string(ret.message().data(), ret.message().size()));
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Failed to create libremidi MIDI input: ") + e.what());
         }
@@ -54,10 +70,10 @@ namespace uapmd {
         libremidi::output_configuration outConfig{};
 
         try {
-            midiOut = std::make_unique<libremidi::midi_out>(outConfig, *resolvedApi);
+            midiOut = createMidiClient<libremidi::midi_out>(outConfig, *resolvedApi);
             auto ret = midiOut->open_virtual_port(out_port_name);
             if (ret.is_set())
-                midiOut.reset();
+                throw std::runtime_error(std::string(ret.message().data(), ret.message().size()));
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Failed to create libremidi MIDI output: ") + e.what());
         }
