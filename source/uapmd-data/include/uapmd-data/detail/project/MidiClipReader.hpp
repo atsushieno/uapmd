@@ -1,9 +1,11 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 #include <filesystem>
 #include <cstdint>
+#include <umppi/umppi.hpp>
 #include "MidiTimelineEvents.hpp"
 #include "../timeline/TimelineTrack.hpp"
 #include "../timeline/MasterTimelineMeta.hpp"
@@ -26,6 +28,7 @@ namespace uapmd {
             double tempo{120.0};         // Detected tempo in BPM
             bool success{true};          // Conversion success flag
             std::string error;           // Error message if failed
+            std::optional<std::string> name; // Embedded MIDI2 clip-name metadata
         };
 
         struct SeparatedMasterTrackEvents {
@@ -47,6 +50,8 @@ namespace uapmd {
         //  - Traditional SMF (Format 0, 1, 2) with "MThd" header
         //  - SMF2 (MIDI 2.0 Clip File) with "SMF2CLIP" header per M2-116-U v1.0
         static ClipInfo readAnyFormat(const std::filesystem::path& file);
+        // In-memory compiler/import output; no temporary MIDI file is needed.
+        static ClipInfo readSmf2Clip(const std::vector<umppi::Ump>& clip);
         static SeparatedMasterTrackEvents separateMasterTrackEvents(ClipInfo clipInfo);
 
         // Check if a file is a valid SMF2 (MIDI 2.0 Clip File) with "SMF2CLIP" header

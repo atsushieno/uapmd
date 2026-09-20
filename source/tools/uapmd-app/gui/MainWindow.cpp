@@ -39,6 +39,10 @@ float snapScaleToOption(float scale) {
 }
 } // namespace
 
+#if UAPMD_HAS_AUGENE2
+#include <uapmd-augene2/uapmd-augene2.hpp>
+#endif
+
 using namespace uapmd;
 
 namespace uapmd_app_gui {
@@ -48,6 +52,10 @@ MainWindow::MainWindow(GuiDefaults defaults)
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
+    addinRuntime_.registerExtensionPoint("/uapmd/app/panel/v1", &panel_registry_);
+#if UAPMD_HAS_AUGENE2
+    uapmd_augene2::registerProjectService(engine->timeline(), panel_registry_);
+#endif
 #if UAPMD_HAS_JSFX
     commandRegistry_.registerCommand(jsfxResourcesCommand_);
 #endif
@@ -794,6 +802,7 @@ void MainWindow::render(void* window) {
     timelineEditor_.renderPluginGraphWindow(uiScale_);
     renderDeviceSettingsWindow();
     addinManagerWindow_.render(uiScale_);
+    panel_registry_.render();
     renderAudioGraphEditorWindow();
     mixerMonitorWindow_.render(uiScale_);
     exporterWindow_.render(uiScale_);
@@ -864,6 +873,7 @@ void MainWindow::shutdown() {
     // Editor instances may contain code from dynamically loaded addins.
     timelineEditor_.setClipEditorRegistry(nullptr);
     addinRuntime_.shutdown();
+    panel_registry_.clearRetainedPanels();
 
 #if UAPMD_HAS_JSFX
     // Framebuffer editors have to go while both the plugins and ImGui are still here:
@@ -1139,6 +1149,7 @@ void MainWindow::handleRedo() {
 }
 
 void MainWindow::update() {
+    panel_registry_.update();
     if (auto* provider = uapmd_app::AppModel::instance().documentProvider())
         provider->tick();
 }

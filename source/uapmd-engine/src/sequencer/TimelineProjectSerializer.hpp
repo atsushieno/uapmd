@@ -82,6 +82,9 @@ namespace uapmd::timeline_detail {
         SequencerEngine& engine_;
         TimelineFacade& facade_;
         TimelineProjectSerializerHost& host_;
+        // Preserve opaque addin data when its provider is not installed.
+        std::map<std::string, std::string> preserved_settings_;
+        std::filesystem::path preserved_extensions_root_;
 
     public:
         TimelineProjectSerializer(

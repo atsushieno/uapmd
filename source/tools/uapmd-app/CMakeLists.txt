@@ -612,6 +612,10 @@ set(_uapmd_app_link_libraries
 if(TARGET uapmd::ara)
     list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-ara>")
 endif()
+if(UAPMD_ENABLE_AUGENE2)
+    add_subdirectory(../../uapmd-augene2 ${CMAKE_CURRENT_BINARY_DIR}/uapmd-augene2)
+    list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-augene2>")
+endif()
 # WHOLE_ARCHIVE so each built-in addin's static registration object is kept.
 if(TARGET uapmd::demucs)
     list(APPEND _uapmd_app_link_libraries "$<LINK_LIBRARY:WHOLE_ARCHIVE,uapmd-demucs>")

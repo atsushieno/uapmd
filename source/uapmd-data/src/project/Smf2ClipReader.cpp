@@ -107,6 +107,9 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
     uint64_t currentTick = 0;
     bool expectDelta = true;
     bool endOfClipSeen = false;
+    std::string clipName;
+    bool readingClipName = false;
+    result.name.reset();
 
     for (; it != clip.end(); ++it) {
         if (expectDelta) {
@@ -124,6 +127,26 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
                 return fail("EndOfClip must be the final event in SMF2 clip");
             endOfClipSeen = true;
             break;
+        }
+
+        if (it->getMessageType() == umppi::MessageType::FLEX_DATA &&
+            ((it->int1 >> 8) & 255) == umppi::FlexDataStatusBank::METADATA_TEXT &&
+            (it->int1 & 255) == umppi::MetadataTextStatus::MIDI_CLIP_NAME) {
+            const auto format = (it->int1 >> 22) & 3;
+            if (format == 0 || format == 1) {
+                clipName.clear();
+                readingClipName = true;
+            }
+            if (readingClipName) {
+                for (auto word : {it->int2, it->int3, it->int4})
+                    for (int shift = 24; shift >= 0; shift -= 8)
+                        if (auto ch = static_cast<char>((word >> shift) & 255))
+                            clipName += ch;
+                if (format == 0 || format == 3) {
+                    result.name = clipName;
+                    readingClipName = false;
+                }
+            }
         }
 
         double flexTempo = 0.0;
@@ -176,6 +199,16 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
 }
 
 } // namespace
+
+    MidiClipReader::ClipInfo MidiClipReader::readSmf2Clip(const std::vector<umppi::Ump>& clip) {
+        ClipInfo result;
+        std::string error;
+        if (!populateClipInfoFromSmf2Clip(clip, result, error)) {
+            result.success = false;
+            result.error = std::move(error);
+        }
+        return result;
+    }
 
     MidiClipReader::ClipInfo MidiClipReader::readAnyFormat(const std::filesystem::path& file) {
         ClipInfo result;

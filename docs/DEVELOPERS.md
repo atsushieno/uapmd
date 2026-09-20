@@ -91,6 +91,7 @@ These CMake options controls enablement of some modules:
 - `UAPMD_ENABLE_DEMUCS_CPP`: enables the Demucs.cpp stem separation addin (MIT-licensed module, but vendors Eigen ^)
   - `UAPMD_DEMUCS_USE_OPENBLAS` : enables OpenBLAS within Demucs.cpp
 - `UAPMD_ENABLE_ARA`: enables the ARA host integration (opt-in Apache2-licensed module)
+- `UAPMD_ENABLE_AUGENE2`: enables the Augene2 MML integration addin (MIT; ANTLR parser generation requires Java at build time). See [Augene2 integration](../AUGENE2_INTEGRATION_PLAN.md#usage-and-build-notes).
 
 
 ## Release workflow

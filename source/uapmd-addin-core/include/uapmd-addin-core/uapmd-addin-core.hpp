@@ -79,6 +79,31 @@ private:
     std::vector<Command*> commands_;
 };
 
+// Model-thread services with an optional panel. update() runs even when the
+// window is hidden; addins unregister before destroying their panel.
+class Panel {
+public:
+    virtual ~Panel() = default;
+    virtual void update() = 0;
+    virtual void render() = 0;
+};
+
+class PanelRegistry {
+public:
+    void registerPanel(Panel& panel);
+    void unregisterPanel(Panel& panel) noexcept;
+    void update();
+    void render();
+    // Retain project services while their addin UI is disabled. Release these
+    // after shutting down addins, while the project host is still alive.
+    void retainPanel(std::shared_ptr<Panel> panel);
+    void clearRetainedPanels();
+
+private:
+    std::vector<Panel*> panels_;
+    std::vector<std::shared_ptr<Panel>> retained_panels_;
+};
+
 // A clip the host is offering as the subject of a ClipCommand. The identifiers
 // are the ones the host's own clip APIs take, so an addin resolves the clip
 // through the engine rather than through anything carried here; the two flags

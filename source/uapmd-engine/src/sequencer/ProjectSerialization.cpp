@@ -53,12 +53,6 @@ namespace uapmd::sequencer_detail {
             return result;
         }
 
-        std::filesystem::path extensionDataRoot(
-            const std::filesystem::path& projectDir,
-            std::string_view extensionId) {
-            return projectDir / "extensions" / escapeExtensionPathComponent(extensionId);
-        }
-
         uint32_t bpmToTenNanoseconds(double bpm) {
             double clampedBpm = std::clamp(bpm, 0.0001, 960.0);
             double value = 6000000000.0 / clampedBpm;
@@ -208,16 +202,33 @@ namespace uapmd::sequencer_detail {
             return result;
         }
 
-        std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const MidiClipSourceNode& node, bool includeTimelineMeta) {
+        std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const MidiClipSourceNode& node, bool includeTimelineMeta, const std::string& name) {
             std::vector<umppi::Ump> clip;
             clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
             clip.emplace_back(umppi::Ump(umppi::UmpFactory::dctpq(node.tickResolution())));
             clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
             clip.push_back(umppi::UmpFactory::startOfClip());
 
+            // Persist the display name in standard MIDI2 metadata. Replace any
+            // original name packets so a manual rename survives reloading.
+            auto names = umppi::UmpFactory::metadataText(0, umppi::FlexDataAddress::GROUP, 0,
+                umppi::MetadataTextStatus::MIDI_CLIP_NAME, name);
+            if (names.empty())
+                names = umppi::UmpFactory::metadataText(0, umppi::FlexDataAddress::GROUP, 0,
+                    umppi::MetadataTextStatus::MIDI_CLIP_NAME, std::vector<uint8_t>{0});
+            for (const auto& packet : names) {
+                clip.emplace_back(umppi::UmpFactory::deltaClockstamp(0));
+                clip.push_back(packet);
+            }
+
             auto gathered = gatherMidiClipEvents(node, includeTimelineMeta);
             uint64_t previousTick = 0;
             for (const auto& entry : gathered.events) {
+                const auto& packet = entry.message;
+                if (packet.getMessageType() == umppi::MessageType::FLEX_DATA &&
+                    ((packet.int1 >> 8) & 255) == umppi::FlexDataStatusBank::METADATA_TEXT &&
+                    (packet.int1 & 255) == umppi::MetadataTextStatus::MIDI_CLIP_NAME)
+                    continue;
                 uint64_t delta = entry.tick >= previousTick ? entry.tick - previousTick : 0;
                 clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(static_cast<uint32_t>(delta))));
                 clip.push_back(entry.message);
@@ -231,6 +242,11 @@ namespace uapmd::sequencer_detail {
             return clip;
         }
     } // namespace
+
+    std::filesystem::path extensionDataRoot(
+        const std::filesystem::path& projectDir, std::string_view extensionId) {
+        return projectDir / "extensions" / escapeExtensionPathComponent(extensionId);
+    }
 
     std::filesystem::path makeRelativePath(
         const std::filesystem::path& baseDir,
@@ -339,7 +355,7 @@ namespace uapmd::sequencer_detail {
                 }
 
                 std::string writeError;
-                auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, includeTimelineMeta);
+                auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, includeTimelineMeta, clip.name);
                 if (!Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
                     error = std::move(writeError);
                     return false;
@@ -476,7 +492,8 @@ namespace uapmd::sequencer_detail {
         std::vector<char> bytes{
             std::istreambuf_iterator<char>(in),
             std::istreambuf_iterator<char>()};
-        if (!in.eof()) {
+        // streambuf iterators reach EOF without setting the istream's eofbit.
+        if (in.bad()) {
             error = "Failed to read extension data file: " + target.string();
             return std::nullopt;
         }

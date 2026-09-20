@@ -239,6 +239,8 @@ namespace uapmd {
         if (it == clips_.end())
             return false;
 
+        if (it->second.clipType == ClipType::Midi && it->second.name != name)
+            it->second.needsFileSave = true;
         it->second.name = name;
         rebuildSnapshotLocked();
         return true;

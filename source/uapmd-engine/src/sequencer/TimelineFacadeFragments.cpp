@@ -177,65 +177,66 @@ namespace uapmd {
         // observer can see the track filling in.
         auto finish = [this, source, options, state, sharedCallback]() {
             std::string error;
-            ProjectDocumentTransaction transaction(project_document_events_);
+            {
+                ProjectDocumentTransaction transaction(project_document_events_);
 
-            if (options.idPolicy == ProjectObjectIdPolicy::Restore)
-                pending_track_reference_id_ = source->referenceId;
-            state->publishedTrackIndex = engine_.publishPreparedTrack(
-                std::move(state->prepared), options.insertionIndex);
-            pending_track_reference_id_.clear();
-            if (state->publishedTrackIndex < 0)
-                error = "Failed to publish the prepared track";
+                if (options.idPolicy == ProjectObjectIdPolicy::Restore)
+                    pending_track_reference_id_ = source->referenceId;
+                state->publishedTrackIndex = engine_.publishPreparedTrack(
+                    std::move(state->prepared), options.insertionIndex);
+                pending_track_reference_id_.clear();
+                if (state->publishedTrackIndex < 0)
+                    error = "Failed to publish the prepared track";
 
-            if (error.empty() && options.includeClips) {
-                for (const auto& clipFragment : source->clips) {
-                    auto result = attachClipFragment(
-                        state->publishedTrackIndex, clipFragment, options.idPolicy);
-                    if (!result.success) {
-                        error = result.error.empty()
-                            ? "Failed to restore a clip while attaching the track"
-                            : std::move(result.error);
-                        break;
-                    }
-                }
-            }
-
-            if (error.empty()) {
-                auto* timelineTrack = resolveTrack(state->publishedTrackIndex);
-                if (!timelineTrack) {
-                    error = "The created timeline track is unavailable";
-                } else {for (auto* extension : projectSerializationExtensionsSnapshot()) {
-                        const auto it = source->extensionState.find(std::string(extension->extensionId()));
-                        static const std::vector<uint8_t> kNoState{};
-                        const auto& extensionState = it == source->extensionState.end()
-                            ? kNoState : it->second;
-                        std::string extensionError;
-                        if (!extension->restoreTrackFragmentState(
-                                timelineTrack->referenceId(), extensionState, extensionError)) {
-                            error = std::format(
-                                "Extension {} failed to restore state for track {}: {}",
-                                extension->extensionId(),
-                                timelineTrack->referenceId(),
-                                extensionError);
+                if (error.empty() && options.includeClips) {
+                    for (const auto& clipFragment : source->clips) {
+                        auto result = attachClipFragment(
+                            state->publishedTrackIndex, clipFragment, options.idPolicy);
+                        if (!result.success) {
+                            error = result.error.empty()
+                                ? "Failed to restore a clip while attaching the track"
+                                : std::move(result.error);
                             break;
                         }
                     }
                 }
-            }
 
-            if (!error.empty()) {
-                if (state->publishedTrackIndex >= 0
-                    && !engine_.removeTrack(state->publishedTrackIndex))
-                    error += " The partially attached track could not be removed.";
-                state->publishedTrackIndex = -1;
-                state->completed = true;
-                (*sharedCallback)(-1, std::move(error));
-                return;
+                if (error.empty()) {
+                    auto* timelineTrack = resolveTrack(state->publishedTrackIndex);
+                    if (!timelineTrack) {
+                        error = "The created timeline track is unavailable";
+                    } else {for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                            const auto it = source->extensionState.find(std::string(extension->extensionId()));
+                            static const std::vector<uint8_t> kNoState{};
+                            const auto& extensionState = it == source->extensionState.end()
+                                ? kNoState : it->second;
+                            std::string extensionError;
+                            if (!extension->restoreTrackFragmentState(
+                                    timelineTrack->referenceId(), extensionState, extensionError)) {
+                                error = std::format(
+                                    "Extension {} failed to restore state for track {}: {}",
+                                    extension->extensionId(),
+                                    timelineTrack->referenceId(),
+                                    extensionError);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!error.empty()) {
+                    if (state->publishedTrackIndex >= 0
+                        && !engine_.removeTrack(state->publishedTrackIndex))
+                        error += " The partially attached track could not be removed.";
+                    state->publishedTrackIndex = -1;
+                }
             }
+            // A completion may immediately run the next undo/redo command,
+            // which must capture its fragments outside this transaction.
             if (state->completed)
                 return;
             state->completed = true;
-            (*sharedCallback)(state->publishedTrackIndex, std::string{});
+            (*sharedCallback)(state->publishedTrackIndex, std::move(error));
         };
 
         auto finishHolder = std::make_shared<std::function<void()>>(

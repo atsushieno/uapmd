@@ -94,6 +94,7 @@ class MainWindow {
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
         uapmd_addin::CommandRegistry commandRegistry_;
+        uapmd_addin::PanelRegistry panel_registry_;
         uapmd_addin::ClipCommandRegistry clipCommandRegistry_;
         uapmd_addin::ClipEditorRegistry clipEditorRegistry_;
         uapmd::import::StemSeparatorRegistry stemSeparatorRegistry_;

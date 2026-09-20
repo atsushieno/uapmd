@@ -19,6 +19,7 @@ option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via
 # Declared here rather than next to add_subdirectory(tests): uapmd-mir reads it and
 # is added well before that point.
 option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
+option(UAPMD_ENABLE_AUGENE2 "Build the Augene2 MML integration addin (requires Java at build time)" OFF)
 
 # librosa.cpp is ISC, but fetches Eigen (MPL-2.0) as a submodule, so it is opt-in for the
 # same reason as UAPMD_ENABLE_DEMUCS_CPP. It stands on its own rather than following

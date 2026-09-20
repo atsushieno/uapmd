@@ -517,6 +517,37 @@ namespace uapmd {
             trackIndex, std::move(*before), origin, "Edit MIDI clip content");
     }
 
+    bool TimelineFacadeImpl::replaceMidiClipData(
+            int32_t trackIndex, int32_t clipId, MidiClipReader::ClipInfo content,
+            ProjectMutationOrigin origin) {
+        auto* track = resolveTrack(trackIndex);
+        auto* clip = track ? track->clipManager().getClip(clipId) : nullptr;
+        if (!clip || clip->clipType != ClipType::Midi || !content.success || !content.tick_resolution)
+            return false;
+        auto before = captureClipFragment(trackIndex, clipId);
+        if (!before)
+            return false;
+        const auto resolution = clip->tickResolution;
+        MidiClipReader::rescaleTicks(content.ump_tick_timestamps, content.tempo_changes,
+            content.time_signature_changes, content.tick_resolution, resolution);
+        auto replacement = std::make_unique<MidiClipSourceNode>(clip->sourceNodeInstanceId,
+            std::move(content.ump_data), std::move(content.ump_tick_timestamps), resolution,
+            content.tempo, static_cast<double>(sampleRate_),
+            std::move(content.tempo_changes), std::move(content.time_signature_changes));
+        const auto duration = replacement->totalLength();
+        {
+            ProjectDocumentTransaction transaction(project_document_events_);
+            if (!track->replaceClipSourceNode(clipId, std::move(replacement)))
+                return false;
+            clip->clipTempo = content.tempo;
+            clip->needsFileSave = true;
+            track->clipManager().resizeClip(clipId, duration);
+            notifyClipChanged(trackIndex, clipId, "clip-content-changed");
+            notifyTimelineChanged();
+        }
+        return recordReplacedClip(trackIndex, std::move(*before), origin, "Compile MML clip");
+    }
+
     bool TimelineFacadeImpl::appendMidiEventsToClip(int32_t trackIndex, int32_t clipId,
             std::vector<uapmd_ump_t> words, std::vector<uint64_t> ticks) {
                 if (words.empty() || words.size() != ticks.size())

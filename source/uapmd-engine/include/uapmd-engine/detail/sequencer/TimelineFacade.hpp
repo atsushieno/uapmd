@@ -136,6 +136,12 @@ public:
         std::vector<uint64_t> umpTickTimestamps,
         ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
 
+    // Reimport including tempo/signature metadata. Incoming ticks are normalized
+    // to the existing clip resolution; its document identity is retained.
+    virtual bool replaceMidiClipData(
+        int32_t trackIndex, int32_t clipId, MidiClipReader::ClipInfo content,
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+
     // Captures a clip without modifying it; returns nullopt on failure.
     // Must be called outside a document transaction.
     virtual std::optional<ProjectClipFragment> captureClipFragment(

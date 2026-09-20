@@ -153,6 +153,7 @@ namespace uapmd::timeline_detail {
             operation.plugin_state_dir = operation.project_dir / "plugin_states";
             operation.graph_dir = operation.project_dir / "graphs";
             operation.project = UapmdProjectData::create();
+            operation.project->settings() = preserved_settings_;
 
             ProjectSaveBuild build;
             build.clipDir = operation.project_dir / "clips";
@@ -583,6 +584,8 @@ namespace uapmd::timeline_detail {
     // set. A failed load leaves the partial replacement dirty; a successful
     // one establishes a clean history root at the end.
     void TimelineProjectSerializer::resetDocument(const std::filesystem::path& projectFile) {
+        preserved_settings_.clear();
+        preserved_extensions_root_.clear();
         facade_.commands().history().clear(false);
 
         ProjectDocumentEvent closingEvent(
@@ -950,13 +953,21 @@ namespace uapmd::timeline_detail {
                 clipTempo,
                 std::move(musicalClip.tempo_changes),
                 std::move(musicalClip.time_signature_changes),
-                resolvedPath.filename().string(),
+                musicalClip.name.value_or(resolvedPath.filename().string()),
                 clip.nrpnToParameterMapping(),
                 separated.hasMasterTrackClip(),
                 ProjectMutationOrigin::Load);
             if (!loadResult.success) {
                 run.error = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
                 return false;
+            }
+            // Clip creation supplies a default for an empty name; an explicit
+            // empty metadata value must survive a round-trip as well.
+            if (musicalClip.name && musicalClip.name->empty()) {
+                auto& manager = timelineTrack->clipManager();
+                const bool needsSave = manager.clipNeedsFileSave(loadResult.clipId);
+                manager.setClipName(loadResult.clipId, "");
+                manager.setClipNeedsFileSave(loadResult.clipId, needsSave);
             }
             auto* loadedClip = timelineTrack->clipManager().getClip(loadResult.clipId);
             if (loadedClip) {
@@ -1029,7 +1040,7 @@ namespace uapmd::timeline_detail {
                 clipTempo,
                 std::move(clipInfo.tempo_changes),
                 std::move(clipInfo.time_signature_changes),
-                resolvedPath.filename().string(),
+                clipInfo.name.value_or(resolvedPath.filename().string()),
                 false,
                 resolvedPath.string(),
                 ProjectMutationOrigin::Load);
@@ -1037,6 +1048,12 @@ namespace uapmd::timeline_detail {
                 run.error = masterLoadResult.error.empty()
                     ? "Failed to load master track clip" : masterLoadResult.error;
                 return;
+            }
+            if (clipInfo.name && clipInfo.name->empty()) {
+                auto& manager = facade_.masterTimelineTrack()->clipManager();
+                const bool needsSave = manager.clipNeedsFileSave(masterLoadResult.clipId);
+                manager.setClipName(masterLoadResult.clipId, "");
+                manager.setClipNeedsFileSave(masterLoadResult.clipId, needsSave);
             }
             auto* loadedClip =
                 facade_.masterTimelineTrack()->clipManager().getClip(masterLoadResult.clipId);
@@ -1376,6 +1393,7 @@ namespace uapmd::timeline_detail {
     bool TimelineProjectSerializer::loadProjectDataExtensions(
             UapmdProjectData& project,
             std::string& error) {
+        preserved_settings_ = project.settings();
                 std::vector<ProjectSerializationExtension*> extensions;
         extensions = host_.serializationExtensions();
         for (auto* extension : extensions) {
@@ -1395,6 +1413,39 @@ namespace uapmd::timeline_detail {
             const std::filesystem::path& projectFile,
             const std::filesystem::path& projectDir,
             std::string& error) {
+        // Save As and archive saves write into a fresh staging directory. Copy
+        // opaque resources for unavailable providers. Active providers write
+        // their current files themselves. Never follow links out of the tree.
+        try {
+            const auto destination = projectDir / "extensions";
+            std::unordered_set<std::string> active;
+            for (auto* extension : host_.serializationExtensions())
+                if (extension)
+                    active.insert(sequencer_detail::extensionDataRoot({}, extension->extensionId()).filename().string());
+            if (!preserved_extensions_root_.empty() &&
+                std::filesystem::weakly_canonical(preserved_extensions_root_) !=
+                    std::filesystem::weakly_canonical(destination)) {
+                std::vector<std::filesystem::path> files;
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(preserved_extensions_root_)) {
+                    if (entry.is_symlink() || !entry.is_regular_file())
+                        continue;
+                    const auto relative = entry.path().lexically_relative(preserved_extensions_root_);
+                    if (!active.contains(relative.begin()->string()))
+                        files.push_back(relative);
+                }
+                // Enumerate before writing, even if Save As points inside the
+                // previous resource directory.
+                for (const auto& relative : files) {
+                    const auto target = destination / relative;
+                    std::filesystem::create_directories(target.parent_path());
+                    std::filesystem::copy_file(preserved_extensions_root_ / relative, target,
+                        std::filesystem::copy_options::overwrite_existing);
+                }
+            }
+        } catch (const std::exception& exception) {
+            error = "Could not preserve project extension resources: " + std::string(exception.what());
+            return false;
+        }
                 std::vector<ProjectSerializationExtension*> extensions;
         extensions = host_.serializationExtensions();
 
@@ -1417,6 +1468,10 @@ namespace uapmd::timeline_detail {
             const std::filesystem::path& projectFile,
             const std::filesystem::path& projectDir,
             std::string& error) {
+        std::error_code filesystem_error;
+        const auto root = projectDir / "extensions";
+        if (std::filesystem::is_directory(root, filesystem_error))
+            preserved_extensions_root_ = root;
                 std::vector<ProjectSerializationExtension*> extensions;
         extensions = host_.serializationExtensions();
 

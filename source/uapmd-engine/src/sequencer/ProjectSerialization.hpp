@@ -12,6 +12,9 @@
 
 namespace uapmd::sequencer_detail {
 
+    std::filesystem::path extensionDataRoot(
+        const std::filesystem::path& projectDir, std::string_view extensionId);
+
     std::filesystem::path makeRelativePath(
         const std::filesystem::path& baseDir,
         const std::filesystem::path& target);

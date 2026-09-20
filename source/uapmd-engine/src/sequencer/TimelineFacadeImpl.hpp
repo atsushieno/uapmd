@@ -1132,6 +1132,9 @@ namespace uapmd {
             std::vector<uapmd_ump_t> umpEvents,
             std::vector<uint64_t> umpTickTimestamps,
             ProjectMutationOrigin origin) override;
+        bool replaceMidiClipData(
+            int32_t trackIndex, int32_t clipId, MidiClipReader::ClipInfo content,
+            ProjectMutationOrigin origin) override;
 
         std::optional<ProjectClipFragment> captureClipFragment(
             int32_t trackIndex,

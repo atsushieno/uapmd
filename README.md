@@ -214,6 +214,7 @@ MIT/ISC/whatever compatible with them:
 - [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
 - [chenmozhijin/BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp) - MIT
   - [ggml-org/ggml](https://github.com/ggml-org/ggml) (CPU backend only) - MIT
+- [atsushieno/augene2](https://github.com/atsushieno/augene2) - MIT
 
 Fonts used:
 

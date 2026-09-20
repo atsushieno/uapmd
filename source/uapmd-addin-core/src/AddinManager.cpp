@@ -18,6 +18,34 @@
 #endif
 
 namespace uapmd_addin {
+
+void PanelRegistry::registerPanel(Panel& panel) {
+    if (std::ranges::find(panels_, &panel) == panels_.end())
+        panels_.push_back(&panel);
+}
+
+void PanelRegistry::unregisterPanel(Panel& panel) noexcept {
+    std::erase(panels_, &panel);
+}
+
+void PanelRegistry::update() {
+    for (auto* panel : panels_)
+        panel->update();
+}
+
+void PanelRegistry::render() {
+    for (auto* panel : panels_)
+        panel->render();
+}
+
+void PanelRegistry::retainPanel(std::shared_ptr<Panel> panel) {
+    retained_panels_.push_back(std::move(panel));
+}
+
+void PanelRegistry::clearRetainedPanels() {
+    retained_panels_.clear();
+}
+
 namespace {
 
 class ManagerAddinHost final : public AddinHost {
