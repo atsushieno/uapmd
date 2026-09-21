@@ -51,8 +51,6 @@ namespace uapmd {
         if (!audio_)
             return 0;
 
-        audio_thread_id.reset();
-
         return audio_->stop();
     }
 
@@ -97,10 +95,7 @@ namespace uapmd {
 
     uapmd_status_t DefaultDeviceIODispatcher::runCallbacks(AudioProcessContext& data) {
         drainQueuedMidi(data);
-        if (!audio_thread_id.has_value()) {
-            audio_thread_id = std::this_thread::get_id();
-            remidy::audioThreadIds().push_back(audio_thread_id.value());
-        }
+        remidy::AudioThreadScope audioThreadScope;
         for (auto& entry : callbacks)
             if (auto status = entry.callback(data); status != 0)
                 return status;

@@ -9,6 +9,9 @@
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include <unordered_set>
 #include <umppi/umppi.hpp>
 
@@ -18,6 +21,7 @@
 #include "LatencyCompensationManagerImpl.hpp"
 #include "TailProcessManagerImpl.hpp"
 #include "TrackRoutingManager.hpp"
+#include "AudioTrackWorkerPool.hpp"
 #include "readerwriterqueue.h"
 
 #ifdef __EMSCRIPTEN__
@@ -183,6 +187,27 @@ namespace uapmd {
         std::vector<PlaybackEngineExtension*> playback_engine_extensions_;
         std::atomic<bool> platform_midi_output_worker_running_{true};
         std::thread platform_midi_output_worker_;
+        struct PluginControlNotification {
+            int32_t instance_id;
+            int32_t parameter_id;
+            double value;
+            bool preset_request{};
+            uint64_t generation{};
+        };
+        struct PluginControlDispatch {
+            // Producer: audio coordinator; consumer: main event loop. The
+            // dispatch worker only reads the atomic scheduling flags.
+            moodycamel::ReaderWriterQueue<PluginControlNotification> queue{1024};
+            std::atomic<bool> ready{false};
+            std::atomic<bool> pending{false};
+            std::atomic<uint32_t> dropped{0};
+            std::atomic<uint32_t> dropped_presets{0};
+            // Main-thread only, including engine destruction. Posted tasks own
+            // this state independently and become no-ops after owner is cleared.
+            SequencerEngineImpl* owner{};
+        };
+        std::shared_ptr<PluginControlDispatch> plugin_control_dispatch_ =
+            std::make_shared<PluginControlDispatch>();
         UapmdFunctionBlockManager function_block_manager{};
 
         // Playback state (managed by RealtimeSequencer)
@@ -199,8 +224,14 @@ namespace uapmd {
         std::unique_ptr<webaudio_compat::AnalyserNode> input_analyser_;
         webaudio_compat::AnalyserNode* output_analyser_{nullptr}; // owned by master_track_ graph
 
-        // UMP output processing
-        std::vector<uapmd_ump_t> plugin_output_scratch_;
+        static_assert(std::atomic<uint32_t>::is_always_lock_free);
+        static_assert(std::atomic<bool>::is_always_lock_free);
+        std::atomic<bool> audio_processing_timing_enabled_{false};
+        moodycamel::ReaderWriterQueue<AudioProcessingTiming> audio_processing_timings_{4096};
+        std::atomic<uint32_t> realtime_block_count_{0};
+        std::atomic<uint32_t> audio_deadline_misses_{0};
+        std::atomic<uint32_t> dropped_timing_records_{0};
+        uint64_t timing_block_number_{0}; // processing thread only
 
         // Plugin instance management
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
@@ -257,20 +288,54 @@ namespace uapmd {
         // that the handshake depends on cannot be broken.
         std::atomic<bool> structure_mutation_active_{false};
         std::atomic<bool> in_process_audio_{false};
+        uint32_t structure_mutation_depth_{}; // serialized control thread only
+        std::unique_ptr<AudioTrackWorkerPool> audio_workers_;
+        std::vector<AudioTrackJob> audio_track_jobs_;
+        std::atomic<AudioWorkerFault> audio_worker_fault_{AudioWorkerFault::None};
+        static_assert(std::atomic<AudioWorkerFault>::is_always_lock_free);
 
-        // RAII for the mutator side. Held only on the main thread, never nested by the
-        // current call graph (no track mutator calls another). The spin is bounded by one
-        // audio callback duration (a few ms at most); cleanupEmptyTracks() already relies on
-        // the same busy-wait idiom.
+        // One report per latched fault. The callback publishes into this fixed
+        // mailbox; reset flushes it before another fault can be admitted. Only
+        // non-RT consumers take the mutex or enter the logger.
+        AudioWorkerFaultDiagnostic audio_worker_diagnostic_;
+        AudioWorkerFaultDiagnostic last_audio_worker_diagnostic_;
+        std::atomic<bool> audio_worker_diagnostic_pending_{false};
+        std::mutex audio_worker_diagnostic_mutex_;
+        void reportAudioWorkerFault();
+
+        void waitForAudioWorkers() override {
+            if (audio_workers_)
+                audio_workers_->waitUntilIdle();
+            audioWorkerDiagnostic();
+            if (audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None) {
+                for (auto& flag : track_processing_flags_)
+                    flag->store(false, std::memory_order_release);
+                // A failed block never reached normal mixing/recycling. Return
+                // its held slots before any control mutation shifts track indices.
+                for (size_t i = 0; i < pump_rings_.size() && i < rt_dequeued_slots_.size(); ++i)
+                    if (rt_dequeued_slots_[i] != SIZE_MAX) {
+                        pump_rings_[i]->free_slots.try_enqueue(rt_dequeued_slots_[i]);
+                        rt_dequeued_slots_[i] = SIZE_MAX;
+                    }
+            }
+        }
+
+        // Control-thread only, with nesting for lifecycle/transport notifications.
+        // A faulted callback may have returned while workers still own contexts;
+        // wait for those participants as well before mutating any shared storage.
         struct StructureMutationGuard {
             SequencerEngineImpl& engine;
             explicit StructureMutationGuard(SequencerEngineImpl& e) : engine(e) {
+                if (engine.structure_mutation_depth_++ != 0)
+                    return;
                 engine.structure_mutation_active_.store(true, std::memory_order_seq_cst);
                 while (engine.in_process_audio_.load(std::memory_order_seq_cst))
                     std::this_thread::yield();
+                engine.waitForAudioWorkers();
             }
             ~StructureMutationGuard() {
-                engine.structure_mutation_active_.store(false, std::memory_order_release);
+                if (--engine.structure_mutation_depth_ == 0)
+                    engine.structure_mutation_active_.store(false, std::memory_order_release);
             }
         };
 
@@ -389,6 +454,7 @@ namespace uapmd {
         }
 
         bool setInstanceGroup(int32_t instanceId, uint8_t group) override {
+            StructureMutationGuard guard(*this);
             if (!executing_track_freeze_render_step_ &&
                 frozen_track_manager_->isInstanceBusy(instanceId))
                 return false;
@@ -500,6 +566,57 @@ namespace uapmd {
 
         void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
+        bool configureAudioWorkers(uint32_t workerCount) override;
+        uint32_t audioWorkerCount() const override {
+            return audio_workers_ ? audio_workers_->workerCount() : 0;
+        }
+        AudioWorkerFault audioWorkerFault() const override {
+            return audio_worker_fault_.load(std::memory_order_acquire);
+        }
+        AudioWorkerFaultDiagnostic audioWorkerDiagnostic() override {
+            // Observe callback exit before consuming its mailbox. A fault latch
+            // is set before the callback has finished publishing diagnostics.
+            const bool faultPublished = audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None &&
+                !in_process_audio_.load(std::memory_order_acquire);
+            reportAudioWorkerFault();
+            std::lock_guard lock(audio_worker_diagnostic_mutex_);
+            if (faultPublished && audio_workers_ && !audio_workers_->busy() &&
+                last_audio_worker_diagnostic_.fault != AudioWorkerFault::None &&
+                !last_audio_worker_diagnostic_.completion_available) {
+                last_audio_worker_diagnostic_.after_completion = audio_workers_->progressSnapshot();
+                last_audio_worker_diagnostic_.completion_available = true;
+            }
+            return last_audio_worker_diagnostic_;
+        }
+        void resetAudioWorkerFault() override {
+            StructureMutationGuard guard(*this);
+            if (audio_worker_fault_.load(std::memory_order_acquire) == AudioWorkerFault::None)
+                return;
+            engine_active_.store(false, std::memory_order_release);
+            resetProcessingState();
+            requestAllNotesOff();
+            reportAudioWorkerFault();
+            audio_worker_fault_.store(AudioWorkerFault::None, std::memory_order_release);
+        }
+        void setAudioProcessingTimingEnabled(bool enabled) override {
+            audio_processing_timing_enabled_.store(enabled, std::memory_order_relaxed);
+        }
+        bool tryDequeueAudioProcessingTiming(AudioProcessingTiming& timing) override {
+            return audio_processing_timings_.try_dequeue(timing);
+        }
+        AudioProcessingTimingCounters audioProcessingTimingCounters() const override {
+            return {
+                realtime_block_count_.load(std::memory_order_relaxed),
+                audio_deadline_misses_.load(std::memory_order_relaxed),
+                dropped_timing_records_.load(std::memory_order_relaxed),
+            };
+        }
+        uint32_t droppedPluginParameterNotificationCount() const override {
+            return plugin_control_dispatch_->dropped.load(std::memory_order_relaxed);
+        }
+        uint32_t droppedPluginPresetRequestCount() const override {
+            return plugin_control_dispatch_->dropped_presets.load(std::memory_order_relaxed);
+        }
         bool beginOfflineTrackRender(
             const OfflineTrackRenderSettings& settings,
             std::string& error) override;
@@ -603,6 +720,10 @@ namespace uapmd {
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+        void dispatchTrackPluginOutput(SequencerTrack& track);
+        void refreshProcessingGroups(SequencerTrack& track);
+        void notifyPluginOutputParameter(const PluginControlNotification& notification);
+        void applyPluginPresetRequest(const PluginControlNotification& notification);
         static void platformMidiInputTrampoline(
             void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void deliverPlatformMidiInput(
@@ -676,8 +797,7 @@ namespace uapmd {
         ump_buffer_size_in_ints(umpBufferSizeInInts),
         plugin_host(suppliedPluginHost
             ? std::move(suppliedPluginHost)
-            : AudioPluginHostingAPI::create()),
-        plugin_output_scratch_(umpBufferSizeInInts, 0) {
+            : AudioPluginHostingAPI::create()) {
         input_analyser_ = webaudio_compat::createAnalyserNode({.node_id = "engine-input-analyser"});
         timeline_ = TimelineFacade::create(*this, std::move(historyFactory));
         midi_recorder_ = std::make_unique<MidiRecorder>(*this);
@@ -752,6 +872,7 @@ namespace uapmd {
         addProcessingLifecycleListener(*latency_compensation_manager_);
         reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
+        plugin_control_dispatch_->owner = this;
         platform_midi_output_worker_ = std::thread([this] { runPlatformMidiOutputWorker(); });
 
         // Call the pump-aware overload so that processTracksAudio writes into
@@ -763,11 +884,15 @@ namespace uapmd {
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
+        waitForAudioWorkers();
+        audio_workers_.reset();
+        plugin_control_dispatch_->owner = nullptr;
         clearPlatformMidiInputRoute();
         clearPlatformMidiOutputRoute();
         platform_midi_output_worker_running_.store(false, std::memory_order_release);
         if (platform_midi_output_worker_.joinable())
             platform_midi_output_worker_.join();
+        reportAudioWorkerFault();
         if (frozen_track_manager_) {
             removeTrackAudioProcessorExtension(frozen_track_manager_->audioProcessorExtension());
             timeline_->removeProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
@@ -1062,6 +1187,8 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::resetProcessingState() {
+        waitForAudioWorkers();
+        transport_generation_.fetch_add(1, std::memory_order_acq_rel);
         auto clearContextBuffers = [](AudioProcessContext* ctx) {
             if (!ctx)
                 return;
@@ -1101,6 +1228,7 @@ namespace uapmd {
         auto clearTrackEvents = [](SequencerTrack* track) {
             if (!track)
                 return;
+            track->clearPluginOutputEvents();
             for (auto& entry : track->graph().plugins())
                 if (entry.second)
                     entry.second->clearQueuedEvents();
@@ -1123,6 +1251,8 @@ namespace uapmd {
             return;
 
         const auto index = static_cast<size_t>(trackIndex);
+        if (tracks_[index])
+            tracks_[index]->clearPluginOutputEvents();
         auto clearContext = [](AudioProcessContext* context) {
             if (!context)
                 return;
@@ -1225,7 +1355,26 @@ namespace uapmd {
                 pump_rings_[t]->filled.try_enqueue(pump_slot_indices_[t]);
     }
 
+    bool SequencerEngineImpl::configureAudioWorkers(uint32_t workerCount) {
+        if (workerCount > 32)
+            return false;
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        if (workerCount != 0)
+            return false;
+#endif
+        StructureMutationGuard guard(*this);
+        try {
+            auto workers = workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount) : nullptr;
+            audio_track_jobs_.resize(tracks_.size());
+            audio_workers_ = std::move(workers);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
+        remidy::AudioThreadScope audioThreadScope;
         // Record start time for deadline tracking
         auto startTime = std::chrono::steady_clock::now();
 
@@ -1234,8 +1383,10 @@ namespace uapmd {
         // main-thread mutation is in flight (see structure_mutation_active_).
         InProcessAudioScope inProcessAudio(in_process_audio_);
         if (structure_mutation_active_.load(std::memory_order_seq_cst) ||
-            track_freeze_render_active_.load(std::memory_order_seq_cst)) {
+            track_freeze_render_active_.load(std::memory_order_seq_cst) ||
+            audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None) {
             process.clearAudioOutputs();
+            process.eventOut().position(0);
             return 0;
         }
 
@@ -1254,6 +1405,27 @@ namespace uapmd {
             process.clearAudioOutputs();
             return 0;
         }
+
+        const bool captureTiming = audio_processing_timing_enabled_.load(std::memory_order_relaxed);
+        const bool offline = offline_rendering_.load(std::memory_order_acquire);
+        const auto timingBlock = ++timing_block_number_;
+        const auto timingSampleRate = sampleRate;
+        using TimingClock = std::chrono::steady_clock;
+        const auto publishTiming = [&](AudioProcessingStage stage,
+                                       TimingClock::time_point begin,
+                                       TimingClock::time_point end,
+                                       int32_t trackIndex = -1) {
+            if (!captureTiming)
+                return;
+            const AudioProcessingTiming timing{
+                timingBlock, stage, trackIndex,
+                stage == AudioProcessingStage::Track ? trackFrameCount : process.frameCount(), timingSampleRate,
+                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()),
+                offline,
+            };
+            if (!audio_processing_timings_.try_enqueue(timing))
+                dropped_timing_records_.fetch_add(1, std::memory_order_relaxed);
+        };
 
         // The input analyser is an ordinary pass-through node at the device
         // boundary. Its copied output is not part of the main mix; the normal
@@ -1315,7 +1487,44 @@ namespace uapmd {
             track_processing_flags_.size());
         auto eventHandlers = audio_processing_event_handlers_.protect();
         auto extensions = track_audio_processor_extensions_.protect();
+        bool parallel = audio_workers_ && processTrackCount > 1;
+        for (size_t i = 0; parallel && i < processTrackCount; ++i)
+            if (!tracks_[i]->graph().supportsParallelTrackProcessing())
+                parallel = false;
+        if (eventHandlers)
+            for (const auto* handler : *eventHandlers)
+                if (handler && !handler->supportsParallelTrackProcessing())
+                    parallel = false;
+        if (extensions)
+            for (const auto* extension : *extensions)
+                if (extension && !extension->supportsParallelTrackProcessing())
+                    parallel = false;
+        const auto workerDeadline = startTime + std::chrono::duration_cast<TimingClock::duration>(
+            std::chrono::duration<double>(timingSampleRate > 0
+                ? 0.8 * static_cast<double>(process.frameCount()) / timingSampleRate : 0.0));
+        // If preparation already consumed the worker budget, retain the serial
+        // path instead of publishing a batch that cannot meet its join deadline.
+        parallel = parallel && (offline || TimingClock::now() < workerDeadline);
+        const auto tracksStart = captureTiming ? TimingClock::now() : TimingClock::time_point{};
+        publishTiming(AudioProcessingStage::Preparation, startTime, tracksStart);
+        const auto finishTrack = [&](size_t i, TimingClock::time_point trackStart) {
+            auto& tp = *sequence.tracks[i];
+            const TrackAudioProcessingEvent event{
+                static_cast<uapmd_track_index_t>(i), *tracks_[i], tp, trackFrameCount,
+            };
+            if (eventHandlers)
+                for (auto* handler : *eventHandlers)
+                    if (handler)
+                        handler->afterTrackProcess(event);
+            tp.eventIn().position(0);
+            track_processing_flags_[i]->store(false, std::memory_order_release);
+            if (captureTiming)
+                publishTiming(AudioProcessingStage::Track, trackStart, TimingClock::now(), static_cast<int32_t>(i));
+        };
         for (size_t i = 0; i < processTrackCount; i++) {
+            const auto trackStart = captureTiming ? TimingClock::now() : TimingClock::time_point{};
+            tracks_[i]->clearPluginOutputEvents();
+            refreshProcessingGroups(*tracks_[i]);
             // Set processing flag BEFORE accessing sequence.tracks[i]
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
@@ -1348,20 +1557,89 @@ namespace uapmd {
                     break;
                 }
             }
-            if (!processedByExtension && !tracks_[i]->bypassed())
+            const bool processGraph = !processedByExtension && !tracks_[i]->bypassed();
+            if (parallel) {
+                auto& job = audio_track_jobs_[i];
+                job = {processGraph ? &tracks_[i]->graph() : nullptr, &tp, 0, 0};
+                if (!processGraph && !processedByExtension)
+                    tp.clearAudioOutputs();
+                if (captureTiming)
+                    job.duration_nanoseconds = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(TimingClock::now() - trackStart).count());
+                continue;
+            }
+            if (processGraph)
                 tracks_[i]->graph().processAudio(tp);
             else if (!processedByExtension)
                 tp.clearAudioOutputs();
-
-            if (eventHandlers)
-                for (auto* handler : *eventHandlers)
-                    if (handler)
-                        handler->afterTrackProcess(event);
-            tp.eventIn().position(0); // reset
-
-            // Clear processing flag AFTER we're done with the track context
-            track_processing_flags_[i]->store(false, std::memory_order_release);
+            finishTrack(i, trackStart);
         }
+
+        if (parallel) {
+            const auto dispatchTime = TimingClock::now();
+            audio_workers_->start(audio_track_jobs_.data(), static_cast<uint32_t>(processTrackCount), captureTiming);
+            audio_workers_->participate(offline ? TimingClock::time_point::max() : workerDeadline);
+            if (offline)
+                audio_workers_->waitUntilIdle();
+            const bool complete = offline || audio_workers_->completeBefore(workerDeadline);
+            auto fault = complete ? AudioWorkerFault::None : AudioWorkerFault::DeadlineExceeded;
+            int32_t failedTrack = -1;
+            int32_t pluginStatus = 0;
+            if (complete)
+                for (size_t i = 0; i < processTrackCount; ++i)
+                    if (audio_track_jobs_[i].status != 0) {
+                        fault = AudioWorkerFault::PluginFailure;
+                        failedTrack = static_cast<int32_t>(i);
+                        pluginStatus = audio_track_jobs_[i].status;
+                        break;
+                    }
+            if (fault != AudioWorkerFault::None) {
+                // Do not mix, recycle slots, invoke post callbacks, or rerun jobs.
+                // The next callback returns silence before touching any context.
+                // Control mutations/destruction wait for all worker participants.
+                audio_worker_fault_.store(fault, std::memory_order_release);
+                engine_active_.store(false, std::memory_order_release);
+                process.clearAudioOutputs();
+                process.eventOut().position(0);
+                const auto end = TimingClock::now();
+                audio_worker_diagnostic_ = {
+                    fault, timingBlock, audio_workers_->workerCount(),
+                    static_cast<uint32_t>(processTrackCount), audio_workers_->pendingParticipants(),
+                    process.frameCount(), timingSampleRate, failedTrack, pluginStatus,
+                    std::chrono::duration<double, std::milli>(end - startTime).count(),
+                    std::chrono::duration<double, std::milli>(dispatchTime - startTime).count(), offline,
+                };
+                audio_worker_diagnostic_.playback_position_samples = playback_position_samples_.load(std::memory_order_acquire);
+                audio_worker_diagnostic_.at_fault = audio_workers_->progressSnapshot();
+                audio_worker_diagnostic_pending_.store(true, std::memory_order_release);
+                if (!offline) {
+                    realtime_block_count_.fetch_add(1, std::memory_order_relaxed);
+                    if (timingSampleRate > 0 &&
+                        std::chrono::duration<double>(end - startTime).count() >
+                        static_cast<double>(process.frameCount()) / timingSampleRate)
+                        audio_deadline_misses_.fetch_add(1, std::memory_order_relaxed);
+                }
+                publishTiming(AudioProcessingStage::Callback, startTime, end);
+                return 1;
+            }
+            for (size_t i = 0; i < processTrackCount; ++i) {
+                // Track timing sums its own preparation, DSP and post work; time
+                // spent on other tracks or waiting for workers is not attributed.
+                const auto start = captureTiming ? TimingClock::now() -
+                    std::chrono::duration_cast<TimingClock::duration>(
+                        std::chrono::nanoseconds(audio_track_jobs_[i].duration_nanoseconds)) : TimingClock::time_point{};
+                finishTrack(i, start);
+            }
+        }
+
+        // Only the coordinator dispatches external events. Graph callbacks copy
+        // into track-owned buffers, so workers never share output scratch,
+        // snapshot reader slots, or the platform MIDI queues' producer role.
+        for (size_t i = 0; i < processTrackCount; ++i)
+            dispatchTrackPluginOutput(*tracks_[i]);
+
+        const auto mixStart = captureTiming ? TimingClock::now() : TimingClock::time_point{};
+        publishTiming(AudioProcessingStage::Tracks, tracksStart, mixStart);
 
 #ifdef __EMSCRIPTEN__
         publishWebAudioTrackCount(static_cast<uint32_t>(processTrackCount));
@@ -1452,14 +1730,19 @@ namespace uapmd {
         // Done after the mixing loop so no slot is recycled while its output buffers
         // are still being read.
         for (size_t t = 0; t < tracks_.size() && t < pump_rings_.size(); t++)
-            if (rt_dequeued_slots_[t] != SIZE_MAX)
+            if (rt_dequeued_slots_[t] != SIZE_MAX) {
                 pump_rings_[t]->free_slots.try_enqueue(rt_dequeued_slots_[t]);
+                rt_dequeued_slots_[t] = SIZE_MAX;
+            }
 
         // Route the mix through the master track graph unconditionally so that the
         // master GainNode (always present) applies the master volume even when no
         // plugins have been added to the master track.
         if (master_track_ && master_track_context_) {
+            master_track_->clearPluginOutputEvents();
+            refreshProcessingGroups(*master_track_);
             master_track_->graph().processAudio(*masterCtx);
+            dispatchTrackPluginOutput(*master_track_);
 
             if (masterCtx->audioOutBusCount() > 0 && process.audioOutBusCount() > 0) {
                 for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(masterCtx->audioOutBusCount()); ++busIndex)
@@ -1469,6 +1752,9 @@ namespace uapmd {
             for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(mixCtx->audioOutBusCount()); ++busIndex)
                 accumulateAudioBus(process, 0, *mixCtx, busIndex, trackFrameCount);
         }
+
+        const auto postProcessingStart = captureTiming ? TimingClock::now() : TimingClock::time_point{};
+        publishTiming(AudioProcessingStage::MixAndMaster, mixStart, postProcessingStart);
 
         if (prerollActive && process.audioOutBusCount() > 0) {
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
@@ -1517,25 +1803,17 @@ namespace uapmd {
         tail_process_manager_->processAudio(
             outputPeak, process.frameCount());
 
-        // Check for missed audio processing deadline
-        auto endTime = std::chrono::steady_clock::now();
-        auto elapsedMicros = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
-
-        // Calculate available time for this buffer
-        double availableTimeMicros = (static_cast<double>(process.frameCount()) / static_cast<double>(sampleRate)) * 1000000.0;
-
-        // Log warning if we exceeded the deadline
-        //if (elapsedMicros > availableTimeMicros) {
-        if (elapsedMicros > availableTimeMicros) {
-            double cpuLoad = (static_cast<double>(elapsedMicros) / availableTimeMicros) * 100.0;
-            remidy::Logger::global()->logWarning(
-                "Audio deadline missed: processed %d frames in %.2f μs (available: %.2f μs, CPU load: %.1f%%)",
-                process.frameCount(),
-                static_cast<double>(elapsedMicros),
-                availableTimeMicros,
-                cpuLoad
-            );
+        if (captureTiming)
+            publishTiming(AudioProcessingStage::PostProcessing, postProcessingStart, TimingClock::now());
+        const auto endTime = TimingClock::now();
+        if (!offline) {
+            realtime_block_count_.fetch_add(1, std::memory_order_relaxed);
+            const auto elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
+            if (timingSampleRate > 0 && process.frameCount() > 0 &&
+                elapsedSeconds > static_cast<double>(process.frameCount()) / timingSampleRate)
+                audio_deadline_misses_.fetch_add(1, std::memory_order_relaxed);
         }
+        publishTiming(AudioProcessingStage::Callback, startTime, endTime);
 
         // FIXME: define status codes
         return 0;
@@ -1640,6 +1918,7 @@ namespace uapmd {
                 true, std::memory_order_seq_cst);
             while (in_process_audio_.load(std::memory_order_seq_cst))
                 std::this_thread::yield();
+            waitForAudioWorkers();
             tail_process_manager_->holdStoppedOutputSilent();
 
             auto* track = tracks_[static_cast<size_t>(settings.trackIndex)].get();
@@ -1673,6 +1952,7 @@ namespace uapmd {
 
     OfflineTrackRenderStepResult
     SequencerEngineImpl::renderOfflineTrackStep(uint32_t maximumBlocks) {
+        remidy::AudioThreadScope audioThreadScope;
         OfflineTrackRenderStepResult step;
         auto* session = track_freeze_render_session_.get();
         if (!session) {
@@ -1718,8 +1998,11 @@ namespace uapmd {
                 }
                 timeline_->state() = session->previous_timeline_state;
                 playbackPosition(session->previous_playback_position);
-                tracks_[static_cast<size_t>(session->settings.trackIndex)]
-                    ->graph().processAudio(*session->track_context);
+                auto& renderTrack = *tracks_[static_cast<size_t>(session->settings.trackIndex)];
+                renderTrack.clearPluginOutputEvents();
+                refreshProcessingGroups(renderTrack);
+                renderTrack.graph().processAudio(*session->track_context);
+                dispatchTrackPluginOutput(renderTrack);
                 executing_track_freeze_render_step_ = false;
 
                 size_t cachedChannel = 0;
@@ -1872,6 +2155,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
+        StructureMutationGuard guard(*this);
         default_input_channels_ = inputChannels;
         default_output_channels_ = outputChannels;
         if (master_track_context_) {
@@ -1888,6 +2172,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::setSampleRate(int32_t newSampleRate) {
+        StructureMutationGuard guard(*this);
         if (newSampleRate > 0) {
             sampleRate = newSampleRate;
             notifyAudioProcessingConfigurationChanged();
@@ -2073,6 +2358,7 @@ namespace uapmd {
         auto trackIndex = insertionIndex;
 
         // Keep pre-allocated work vectors in sync.
+        audio_track_jobs_.resize(tracks_.size());
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
 
@@ -2097,6 +2383,7 @@ namespace uapmd {
             return false;
         if (index >= tracks_.size())
             return false;
+        StructureMutationGuard mutationGuard(*this);
         const auto timelineTracks = timeline_->tracks();
         const auto trackId = timelineTracks[index]->referenceId();
         removePlatformMidiTrackConnections(trackId);
@@ -2118,7 +2405,6 @@ namespace uapmd {
             }
             function_block_manager.deleteEmptyDevices();
         }
-        StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
@@ -2219,6 +2505,7 @@ namespace uapmd {
                     return;
                 }
 
+                StructureMutationGuard mutationGuard(*this);
                 if (targetMaster) {
                     ensureContextBusConfiguration(master_track_context_.get(), instance->audioBuses());
                     applyTrackBusesLayout(master_track_.get(), AudioGraphBusesLayout{
@@ -2285,6 +2572,7 @@ namespace uapmd {
     }
 
     bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
+        StructureMutationGuard mutationGuard(*this);
         if (!executing_track_freeze_render_step_ &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return false;
@@ -2426,6 +2714,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
+        StructureMutationGuard guard(*this);
         tail_process_manager_->cancelTailProcessing();
         notifyTransportTransition(
             SequencerTransportTransition::PositionChanged,
@@ -2458,6 +2747,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::jumpPlayback(double positionSeconds) {
+        StructureMutationGuard guard(*this);
         if (!std::isfinite(positionSeconds))
             return;
         if (positionSeconds < 0.0) {
@@ -2474,6 +2764,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::startPlayback() {
+        StructureMutationGuard guard(*this);
         if (frozen_track_manager_->requestPlaybackAfterBusyTrackRestored(
                 [this] { startPlayback(); }))
             return;
@@ -2488,6 +2779,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
+        StructureMutationGuard guard(*this);
         for (auto* extension : playback_engine_extensions_)
             if (extension)
                 extension->playbackStopped();
@@ -2508,6 +2800,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::pausePlayback() {
+        StructureMutationGuard guard(*this);
         is_playback_active_.store(false, std::memory_order_release);
         timeline_->state().isPlaying = false;
         notifyTransportTransition(
@@ -2522,6 +2815,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
+        StructureMutationGuard guard(*this);
         if (frozen_track_manager_->requestPlaybackAfterBusyTrackRestored(
                 [this] { resumePlayback(); }))
             return;
@@ -2546,13 +2840,24 @@ namespace uapmd {
     void SequencerEngineImpl::configureTrackRouting(SequencerTrack* track) {
         if (!track)
             return;
-        track->graph().setGroupResolver([this](int32_t instanceId) {
+        track->configureProcessingGroups();
+        refreshProcessingGroups(*track);
+        track->graph().setGroupResolver([track](int32_t instanceId) {
+            return track->processingGroup(instanceId);
+        });
+        track->graph().setPresetRequestCallback([track](int32_t instanceId, uint32_t index) {
+            track->capturePresetRequest(instanceId, index);
+        });
+        track->graph().setEventOutputCallback([track](int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes) {
+            track->capturePluginOutput(instanceId, data, dataSizeInBytes);
+        });
+    }
+
+    void SequencerEngineImpl::refreshProcessingGroups(SequencerTrack& track) {
+        for (const auto instanceId : track.orderedInstanceIds()) {
             const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId);
-            return fb ? fb->group() : static_cast<uint8_t>(0xFF);
-        });
-        track->graph().setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes) {
-            dispatchPluginOutput(instanceId, data, dataSizeInBytes);
-        });
+            track.setProcessingGroup(instanceId, fb ? fb->group() : static_cast<uint8_t>(0xFF));
+        }
     }
 
     // Do we really need this...?
@@ -2578,7 +2883,31 @@ namespace uapmd {
         return -1;
     }
 
-    // Plugin output dispatch (with group rewriting + NRPN parameter extraction)
+    void SequencerEngineImpl::dispatchTrackPluginOutput(SequencerTrack& track) {
+        for (const auto& event : track.pluginOutputEvents()) {
+            if (!event.preset_request) {
+                dispatchPluginOutput(event.instance_id, event.words.data(), event.size_in_bytes);
+                continue;
+            }
+            // Offline/freeze rendering cannot depend on UI event-loop timing or
+            // replay preset requests later against the live project.
+            if (offline_rendering_.load(std::memory_order_acquire) || executing_track_freeze_render_step_) {
+                plugin_control_dispatch_->dropped_presets.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            const PluginControlNotification request{
+                event.instance_id, static_cast<int32_t>(event.words[0]), 0.0, true,
+                transport_generation_.load(std::memory_order_acquire),
+            };
+            if (plugin_control_dispatch_->queue.try_enqueue(request))
+                plugin_control_dispatch_->ready.store(true, std::memory_order_release);
+            else
+                plugin_control_dispatch_->dropped_presets.fetch_add(1, std::memory_order_relaxed);
+        }
+        track.clearPluginOutputEvents();
+    }
+
+    // Coordinator only: group rewriting and NRPN parameter extraction for one UMP.
     void SequencerEngineImpl::dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
         if (!data || bytes == 0)
             return;
@@ -2588,10 +2917,10 @@ namespace uapmd {
             return;
         const auto group = fb->group();
 
-        if (bytes > plugin_output_scratch_.size() * sizeof(uapmd_ump_t))
+        if (bytes > 4 * sizeof(uapmd_ump_t))
             return;
 
-        auto* scratch = plugin_output_scratch_.data();
+        uapmd_ump_t scratch[4]{};
         std::memcpy(scratch, data, bytes);
 
         // Process UMP messages and extract parameter changes
@@ -2620,30 +2949,13 @@ namespace uapmd {
                 int32_t paramId = (bank * 128) + index;
                 double value = static_cast<double>(value32) / 4294967295.0;
 
-                // FIXME: we have to strictly determine whether the output event handler must be RT-safe or not.
-                // Defer the node lookup and notification to the main thread. This
-                // callback runs on the audio thread, where getPluginNode() is both
-                // forbidden (it takes the graph's non-realtime farbot access, a
-                // blocking mutex) and deadlock-prone: the UI thread holds that mutex
-                // while spin-waiting for the audio thread in nonRealtimeRelease().
-                // The parameter listeners are UI/JS code that expects the main
-                // thread anyway (all other notify sites run there).
-                // FIXME: enqueueTaskOnMainThread() allocates and briefly locks the
-                // task queue mutex, so this path is not strictly lock-free; NRPN
-                // output events are sporadic enough that this is acceptable for now.
-                remidy::EventLoop::enqueueTaskOnMainThread([this, instanceId, paramId, value] {
-                    for (const auto& track : tracks()) {
-                        if (auto* node = track->graph().getPluginNode(instanceId)) {
-                            node->parameterUpdateEvent().notify(paramId, value);
-                            return;
-                        }
-                    }
-                    if (master_track_) {
-                        if (auto* node = master_track_->graph().getPluginNode(instanceId)) {
-                            node->parameterUpdateEvent().notify(paramId, value);
-                        }
-                    }
-                });
+                // The non-RT output worker posts UI tasks. The audio coordinator
+                // only copies into a preallocated queue, never the event-loop
+                // task queue (which allocates and takes a mutex).
+                if (plugin_control_dispatch_->queue.try_enqueue({instanceId, paramId, value}))
+                    plugin_control_dispatch_->ready.store(true, std::memory_order_release);
+                else
+                    plugin_control_dispatch_->dropped.fetch_add(1, std::memory_order_relaxed);
             }
 
             // Rewrite group field
@@ -2651,6 +2963,43 @@ namespace uapmd {
             enqueuePlatformMidiOutput(findTrackIndexForInstance(instanceId), words, size);
             offset += size;
         }
+    }
+
+    void SequencerEngineImpl::applyPluginPresetRequest(const PluginControlNotification& notification) {
+        // Main/control thread only. Hold exclusion through the synchronous load;
+        // the async backend overload could outlive both this guard and the node.
+        StructureMutationGuard guard(*this);
+        if (notification.generation != transport_generation_.load(std::memory_order_acquire) ||
+            offline_rendering_.load(std::memory_order_acquire) ||
+            track_freeze_render_active_.load(std::memory_order_acquire) ||
+            audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None)
+            return;
+        auto* instance = getPluginInstance(notification.instance_id);
+        if (!instance || frozen_track_manager_->isInstanceBusy(notification.instance_id))
+            return;
+        try {
+            const auto presets = instance->presetMetadataList();
+            if (notification.parameter_id < 0 || static_cast<size_t>(notification.parameter_id) >= presets.size())
+                return;
+            instance->loadPreset(notification.parameter_id);
+        } catch (const std::exception& error) {
+            remidy::Logger::global()->logError("MIDI preset load failed: %s", error.what());
+        } catch (...) {
+            remidy::Logger::global()->logError("MIDI preset load failed");
+        }
+    }
+
+    void SequencerEngineImpl::notifyPluginOutputParameter(const PluginControlNotification& notification) {
+        // Main thread: graph lookup takes non-realtime access, and listeners can
+        // invoke UI/JS code. Removed instances are intentionally ignored.
+        for (const auto& track : tracks_)
+            if (auto* node = track->graph().getPluginNode(notification.instance_id)) {
+                node->parameterUpdateEvent().notify(notification.parameter_id, notification.value);
+                return;
+            }
+        if (master_track_)
+            if (auto* node = master_track_->graph().getPluginNode(notification.instance_id))
+                node->parameterUpdateEvent().notify(notification.parameter_id, notification.value);
     }
 
 
@@ -2949,9 +3298,72 @@ namespace uapmd {
                 }
     }
 
+    void SequencerEngineImpl::reportAudioWorkerFault() {
+        if (!audio_worker_diagnostic_pending_.load(std::memory_order_acquire))
+            return;
+        std::lock_guard lock(audio_worker_diagnostic_mutex_);
+        if (!audio_worker_diagnostic_pending_.load(std::memory_order_acquire))
+            return;
+        const auto diagnostic = audio_worker_diagnostic_;
+        last_audio_worker_diagnostic_ = diagnostic;
+        audio_worker_diagnostic_pending_.store(false, std::memory_order_release);
+        const double periodMs = diagnostic.sample_rate > 0
+            ? 1000.0 * diagnostic.frame_count / diagnostic.sample_rate : 0.0;
+        remidy::Logger::global()->logError(
+            "Audio engine stopped: %s; block=%llu, mode=%s, workers=%u (+ coordinator), tracks=%u, "
+            "frames=%d, sample_rate=%d Hz, callback_elapsed=%.3f ms, block_period=%.3f ms, "
+            "worker_budget=%.3f ms (%s), dispatch_at=%.3f ms, "
+            "pending_workers=%u, failed_track=%d (zero-based; -1=unknown), plugin_status=%d. "
+            "Output is silenced; restart the audio engine to resume. "
+            "Try Serial/fewer workers or a larger audio buffer if deadline faults recur.",
+            diagnostic.fault == AudioWorkerFault::DeadlineExceeded
+                ? "audio worker completion deadline exceeded" : "plugin processing failed",
+            static_cast<unsigned long long>(diagnostic.block_number),
+            diagnostic.offline ? "offline" : "realtime", diagnostic.worker_count, diagnostic.track_count,
+            diagnostic.frame_count, diagnostic.sample_rate, diagnostic.elapsed_ms, periodMs,
+            diagnostic.offline ? 0.0 : 0.8 * periodMs,
+            diagnostic.offline ? "disabled offline" : "80% of block", diagnostic.dispatch_ms,
+            diagnostic.pending_participants, diagnostic.failed_track, diagnostic.plugin_status);
+        uint32_t acknowledged = 0;
+        for (uint32_t i = 1; i <= diagnostic.worker_count; ++i)
+            if (diagnostic.at_fault.participants[i].acknowledged_ns != 0)
+                ++acknowledged;
+        remidy::Logger::global()->logError(
+            "Audio worker snapshot: block=%llu, playback_samples=%lld, workers_acknowledged=%u/%u, "
+            "jobs_completed=%u/%u. Query get_audio_worker_diagnostics via MCP for per-worker/track details.",
+            static_cast<unsigned long long>(diagnostic.block_number),
+            static_cast<long long>(diagnostic.playback_position_samples), acknowledged, diagnostic.worker_count,
+            diagnostic.at_fault.completed_jobs, diagnostic.track_count);
+    }
+
     void SequencerEngineImpl::runPlatformMidiOutputWorker() {
         while (platform_midi_output_worker_running_.load(std::memory_order_acquire)) {
+            reportAudioWorkerFault();
             bool sent = false;
+            auto& dispatch = *plugin_control_dispatch_;
+            if (!dispatch.pending.load(std::memory_order_acquire) &&
+                dispatch.ready.exchange(false, std::memory_order_acq_rel)) {
+                dispatch.pending.store(true, std::memory_order_release);
+                remidy::EventLoop::enqueueTaskOnMainThread([state = plugin_control_dispatch_] {
+                    // Bound work per UI turn and allow at most one outstanding
+                    // task even when the event loop is stalled.
+                    PluginControlNotification notification;
+                    size_t count = 0;
+                    size_t presetCount = 0;
+                    while (state->owner && count < 256 && presetCount < 4 && state->queue.try_dequeue(notification)) {
+                        ++count;
+                        if (notification.preset_request) {
+                            ++presetCount;
+                            state->owner->applyPluginPresetRequest(notification);
+                        } else
+                            state->owner->notifyPluginOutputParameter(notification);
+                    }
+                    if (count == 256 || presetCount == 4)
+                        state->ready.store(true, std::memory_order_release);
+                    state->pending.store(false, std::memory_order_release);
+                });
+                sent = true;
+            }
             {
                 const auto routes = platform_midi_output_routes_.protect(1);
                 if (routes) for (const auto& route : *routes) {
@@ -3042,6 +3454,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::cleanupEmptyTracks() {
+        StructureMutationGuard mutationGuard(*this);
         // It uses busy-waiting to ensure the audio thread is not currently processing
         // the track before deletion.
 

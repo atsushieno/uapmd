@@ -8,6 +8,9 @@
 #include <ranges>
 #include <cmath>
 #include <limits>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 #include "PlatformDialogs.hpp"
 
@@ -431,7 +434,9 @@ void MainWindow::render(void* window) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             auto& appModel = uapmd_app::AppModel::instance();
             const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
-            const char* audioEngineLabel = audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off";
+            const auto audioFault = appModel.sequencer().engine()->audioWorkerFault();
+            const char* audioEngineLabel = audioFault != uapmd::AudioWorkerFault::None
+                ? "Audio Engine: Restart" : (audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off");
             const ImVec4 onColor(0.25f, 0.58f, 0.33f, 1.0f);
             const ImVec4 onHoverColor(0.30f, 0.66f, 0.39f, 1.0f);
             const ImVec4 onActiveColor(0.20f, 0.50f, 0.26f, 1.0f);
@@ -449,7 +454,12 @@ void MainWindow::render(void* window) {
             }
             ImGui::PopStyleColor(3);
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(audioEngineEnabled ? "Click to turn off the audio engine" : "Click to turn on the audio engine");
+                if (audioFault == uapmd::AudioWorkerFault::DeadlineExceeded)
+                    ImGui::SetTooltip("Audio workers missed their deadline. Use fewer workers or a larger buffer in Settings, then click to restart.");
+                else if (audioFault == uapmd::AudioWorkerFault::PluginFailure)
+                    ImGui::SetTooltip("A plugin failed during parallel processing. Select Serial in Settings, then click to restart.");
+                else
+                    ImGui::SetTooltip(audioEngineEnabled ? "Click to turn off the audio engine" : "Click to turn on the audio engine");
             }
             ImGui::SameLine();
 
@@ -960,6 +970,25 @@ void MainWindow::renderDeviceSettingsWindow() {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
+        auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
+        const auto workerCount = engine->audioWorkerCount();
+        const auto workerLabel = workerCount == 0 ? std::string("Serial") : std::to_string(workerCount);
+        if (ImGui::BeginCombo("Audio Workers (experimental)", workerLabel.c_str())) {
+            for (const uint32_t count : {0u, 1u, 2u, 4u, 8u}) {
+                const auto label = count == 0 ? std::string("Serial") : std::to_string(count);
+                if (UapmdSelectable(label.c_str(), workerCount == count)) {
+                    audio_worker_settings_error_ = engine->configureAudioWorkers(count)
+                        ? "" : "Could not configure audio workers.";
+                }
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Process independent tracks concurrently. This session-only setting defaults to Serial; incompatible graph providers or extensions retain serial processing.");
+        if (!audio_worker_settings_error_.empty())
+            ImGui::TextWrapped("%s", audio_worker_settings_error_.c_str());
+#endif
         ImGui::Separator();
         renderPlatformMidiConnections();
     }

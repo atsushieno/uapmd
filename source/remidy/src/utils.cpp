@@ -1,5 +1,6 @@
 
 #include "utils.hpp"
+#include <remidy/remidy.hpp>
 #include <thread>
 #include <vector>
 #include <array>
@@ -173,11 +174,12 @@ void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
 }
 
 namespace remidy {
-    std::vector<std::thread::id> instance{};
-
-    std::vector<std::thread::id>& audioThreadIds() {
-        if (instance.empty())
-            instance.resize(std::thread::hardware_concurrency());
-        return instance;
+    namespace {
+        thread_local bool audio_thread_role = false;
     }
+    AudioThreadScope::AudioThreadScope() noexcept : previous_(audio_thread_role) {
+        audio_thread_role = true;
+    }
+    AudioThreadScope::~AudioThreadScope() { audio_thread_role = previous_; }
+    bool isAudioThread() noexcept { return audio_thread_role; }
 }

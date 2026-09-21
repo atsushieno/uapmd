@@ -192,6 +192,7 @@ private:
 class FrozenTrackAudioProcessorExtension final : public TrackAudioProcessorExtension {
 public:
     explicit FrozenTrackAudioProcessorExtension(FrozenTrackManager& manager);
+    bool supportsParallelTrackProcessing() const noexcept override { return true; }
 
     bool shouldProcessAudio(
         SequencerEngine& engine,

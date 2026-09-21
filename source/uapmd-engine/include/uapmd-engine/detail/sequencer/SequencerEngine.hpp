@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <array>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -45,6 +46,83 @@ namespace uapmd {
         ProjectObjectId trackId;
     };
 
+    enum class AudioProcessingStage {
+        Preparation,
+        Track,
+        Tracks,
+        MixAndMaster,
+        PostProcessing,
+        Callback,
+    };
+
+    enum class AudioWorkerFault {
+        None,
+        DeadlineExceeded,
+        PluginFailure,
+    };
+
+    struct AudioWorkerProgress {
+        // Zero means not observed yet; timestamps are ns after batch dispatch + 1.
+        uint64_t acknowledged_ns{};
+        uint64_t retired_ns{};
+        int32_t current_track{-1};
+        uint32_t completed_jobs{};
+    };
+    struct AudioTrackProgress {
+        uint64_t started_ns{};
+        uint64_t finished_ns{};
+        int32_t participant{-1}; // 0 = coordinator; workers start at 1
+        int32_t status{};
+    };
+    struct AudioWorkerProgressSnapshot {
+        uint32_t track_count{};
+        uint32_t pending_participants{};
+        uint32_t completed_jobs{};
+        // Fixed bounds keep fault capture allocation-free. Extra tracks are
+        // included in completed_jobs but omitted from the detailed array.
+        std::array<AudioWorkerProgress, 33> participants{};
+        std::array<AudioTrackProgress, 128> tracks{};
+    };
+    struct AudioWorkerFaultDiagnostic {
+        AudioWorkerFault fault{};
+        uint64_t block_number{};
+        uint32_t worker_count{};
+        uint32_t track_count{};
+        uint32_t pending_participants{};
+        int32_t frame_count{};
+        int32_t sample_rate{};
+        int32_t failed_track{-1};
+        int32_t plugin_status{};
+        double elapsed_ms{};
+        double dispatch_ms{};
+        bool offline{};
+        int64_t playback_position_samples{};
+        AudioWorkerProgressSnapshot at_fault{};
+        bool completion_available{};
+        AudioWorkerProgressSnapshot after_completion{};
+    };
+
+    struct AudioProcessingTiming {
+        uint64_t block_number{};
+        AudioProcessingStage stage{};
+        // Only meaningful for Track records; index at the time of processing.
+        int32_t track_index{-1};
+        // Track records use the clamped track frame count; other stages use the
+        // device callback frame count (the realtime deadline budget).
+        int32_t frame_count{};
+        int32_t sample_rate{};
+        uint64_t duration_nanoseconds{};
+        bool offline{};
+    };
+
+    struct AudioProcessingTimingCounters {
+        // Lifetime counters wrap modulo 2^32. Readings are individually atomic,
+        // not a coherent snapshot. Only fully processed realtime blocks count.
+        uint32_t realtime_blocks{};
+        uint32_t deadline_misses{};
+        uint32_t dropped_records{};
+    };
+
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher, which fires `processAudio()` in its audio I/O callback.
@@ -54,6 +132,8 @@ namespace uapmd {
         SequencerEngine() = default;
 
     public:
+        // Destroy on the main/control event-loop thread after processing stops.
+        // Parameter notifications and plugin lifecycle operations use that thread.
         virtual ~SequencerEngine() = default;
 
         virtual void registerAddinExtensionPoints(uapmd_addin::AddinManager& manager) = 0;
@@ -200,6 +280,55 @@ namespace uapmd {
         // outputs, and runs the master track. In single-threaded builds this is called
         // after pumpAudio().
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
+
+        // Opt-in desktop track parallelism; default is zero workers (serial).
+        // Serialized control thread only. Configuring may wait for outstanding work and
+        // create/join threads. Maximum 32 workers; unsupported platforms reject
+        // nonzero counts. The coordinator also processes jobs. Unknown extensions
+        // retain serial ordering unless they explicitly opt in. Realtime worker
+        // completion is polled until 80% of the block budget has elapsed; the
+        // remaining budget is reserved for mixing/master. This cannot preempt
+        // a plugin already executing on the coordinator. Offline calls can wait.
+        virtual bool configureAudioWorkers(uint32_t workerCount) = 0;
+        // Control-thread query; the configured count can remain nonzero while a
+        // block falls back to serial processing for compatibility.
+        virtual uint32_t audioWorkerCount() const = 0;
+        // Control thread, after device callbacks have stopped: drain any workers
+        // retained by a faulted callback before directly accessing plugin state.
+        virtual void waitForAudioWorkers() = 0;
+        virtual AudioWorkerFault audioWorkerFault() const = 0;
+        // Serialized control thread, nonblocking with respect to DSP. Retains
+        // the last fault across reset. Snapshot fields are individually sampled.
+        virtual AudioWorkerFaultDiagnostic audioWorkerDiagnostic() = 0;
+        // A late/failed batch silences output and deactivates processing. Buffers
+        // remain owned until workers retire. Control-thread reset waits for them,
+        // clears processing buffers and requests a note flush. Enable the engine
+        // separately after reset; enabling alone cannot clear a fault.
+        virtual void resetAudioWorkerFault() = 0;
+
+        // Optional detailed timing, disabled by default. Enabling is sampled at
+        // block boundaries. No allocation or logging occurs in the producer.
+        // Counters remain active when detailed timing is disabled. Inactive and
+        // structurally excluded callbacks are not measured; offline processAudio
+        // calls are tagged and excluded from realtime deadline counters.
+        virtual void setAudioProcessingTimingEnabled(bool enabled) = 0;
+        // Exactly one non-RT consumer may drain records. Queue capacity is finite;
+        // full queues drop new records rather than stall audio. A block's records
+        // can therefore be incomplete. Disabling does not discard queued records.
+        // Compute percentiles and report results on the consuming thread. The
+        // callback duration includes instrumentation except final counter/record publication;
+        // stage records are nested (Track inside Tracks, all inside Callback).
+        virtual bool tryDequeueAudioProcessingTiming(AudioProcessingTiming& timing) = 0;
+        virtual AudioProcessingTimingCounters audioProcessingTimingCounters() const = 0;
+        // Bounded audio-to-UI NRPN notification handoff drops newest on overflow.
+        // This lifetime counter wraps modulo 2^32. Track output capture has a
+        // separate per-track counter on SequencerTrack.
+        virtual uint32_t droppedPluginParameterNotificationCount() const = 0;
+        // MIDI presets are asynchronous control-thread operations. Requests from
+        // offline/freeze rendering are discarded rather than replayed later.
+        // Counts these discards and control-queue overflow (wraps modulo 2^32).
+        // Track capture overflow uses droppedPluginOutputEventCount().
+        virtual uint32_t droppedPluginPresetRequestCount() const = 0;
         // Existing-instance track rendering. begin excludes the realtime audio
         // callback; step performs bounded work on the calling thread; finish
         // restores plugin/transport state and invokes transition before audio
@@ -217,7 +346,8 @@ namespace uapmd {
             const OfflineTrackRenderSettings& settings,
             const OfflineRenderCallbacks& callbacks = {}) = 0;
 
-        // Playback control (accessed by RealtimeSequencer)
+        // Playback control (accessed by RealtimeSequencer). Mutating operations
+        // run on the serialized control thread, never inside processing callbacks.
         virtual bool isPlaybackActive() const = 0;
         virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;

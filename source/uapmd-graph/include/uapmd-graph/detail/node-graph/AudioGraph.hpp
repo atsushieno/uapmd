@@ -33,6 +33,10 @@ namespace uapmd_graph {
         virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
         virtual int32_t processAudio(uapmd::AudioProcessContext& process) = 0;
+        // A track scheduler may process distinct graphs concurrently, but never
+        // the same graph twice. Opt-in implementations must keep processing state
+        // instance-local and treat the shared transport context as read-only.
+        virtual bool supportsParallelTrackProcessing() const noexcept { return false; }
         virtual uint32_t outputBusCount() = 0;
         virtual uint32_t outputLatencyInSamples(uint32_t outputBusIndex) = 0;
         virtual double outputTailLengthInSeconds(uint32_t outputBusIndex) = 0;

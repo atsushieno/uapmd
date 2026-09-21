@@ -2,9 +2,9 @@
 #include <memory>
 #include <remidy/remidy.hpp>
 #include "readerwriterqueue.h"
-#include "uapmd-midi-service/detail/midi/MidiIOFeature.hpp"
-#include "uapmd-midi-service/detail/midi/UapmdUmpMapper.hpp"
-#include "uapmd-plugin-hosting/detail/plugin-api/AudioPluginInstanceAPI.hpp"
+#include <atomic>
+#include "uapmd-midi-service/uapmd-midi-service.hpp"
+#include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
 using namespace uapmd_plugin_hosting;
 
@@ -13,7 +13,8 @@ namespace uapmd_midi_service {
         public UapmdUmpInputMapper,
         public remidy::UmpInputDispatcher {
         uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin;
-        moodycamel::ReaderWriterQueue<uint32_t> preset_load_queue_{4};
+        moodycamel::ReaderWriterQueue<uint32_t> preset_load_queue_{64};
+        std::atomic<uint32_t> dropped_preset_requests_{0};
 
     public:
         explicit UapmdNodeUmpInputMapper(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
@@ -26,11 +27,13 @@ namespace uapmd_midi_service {
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;
 
-        // Enqueues the preset load request for later drain on the non-RT thread.
+        // Captures a request without calling the plugin; newest requests drop on overflow.
         void loadPreset(uint32_t index) override;
 
-        // Drains queued preset load requests; call from non-RT context only.
-        void drainPresetRequests() override;
+        bool tryDequeuePresetRequest(uint32_t& index) override;
+        uint32_t droppedPresetRequestCount() const override {
+            return dropped_preset_requests_.load(std::memory_order_relaxed);
+        }
     };
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {

@@ -83,5 +83,15 @@ namespace remidy {
         virtual ~PluginExtensibility() = default;
     };
 
-    std::vector<std::thread::id>& audioThreadIds();
+    // Logical processing role, scoped to the calling thread. Nested scopes are
+    // supported; no shared registry, allocation, or synchronization is required.
+    class AudioThreadScope {
+        bool previous_;
+    public:
+        AudioThreadScope() noexcept;
+        ~AudioThreadScope();
+        AudioThreadScope(const AudioThreadScope&) = delete;
+        AudioThreadScope& operator=(const AudioThreadScope&) = delete;
+    };
+    bool isAudioThread() noexcept;
 }

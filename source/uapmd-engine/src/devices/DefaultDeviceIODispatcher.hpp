@@ -23,7 +23,6 @@ namespace uapmd {
         size_t ump_buffer_size_in_bytes{0};
         std::mutex midi_mutex{};
         bool midi_input_handler_registered{false};
-        std::optional<std::thread::id> audio_thread_id{};
 
         uapmd_status_t runCallbacks(AudioProcessContext& data);
         void drainQueuedMidi(AudioProcessContext& data);

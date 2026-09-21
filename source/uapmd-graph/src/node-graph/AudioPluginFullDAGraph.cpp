@@ -419,6 +419,7 @@ namespace uapmd_graph {
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
+        bool supportsParallelTrackProcessing() const noexcept override { return true; }
         uint32_t outputBusCount() override;
         uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
         double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
@@ -1075,7 +1076,7 @@ namespace uapmd_graph {
                 auto* instance = pluginNode->instance();
                 const bool bypassed = instance && instance->bypassed();
                 if (!bypassed)
-                    pluginNode->processInputMapping(process);
+                    pluginNode->processInputMapping(process, preset_request_callback_);
                 if (bypassed)
                     process.copyInputsToOutputs();
                 else {
@@ -1174,9 +1175,8 @@ namespace uapmd_graph {
             }
 
             if (pluginImpl && pluginNode && instance) {
-                pluginImpl->drainPresetRequests();
                 if (!instance->bypassed())
-                    pluginImpl->processInputMapping(runtime.process);
+                    pluginImpl->processInputMapping(runtime.process, preset_request_callback_);
 
                 if (instance->bypassed()) {
                     runtime.process.copyInputsToOutputs();

@@ -71,7 +71,10 @@ uapmd_status_t uapmd::RealtimeSequencer::startAudio() {
 }
 
 uapmd_status_t uapmd::RealtimeSequencer::stopAudio() {
-    return dispatcher->stop();
+    const auto status = dispatcher->stop();
+    if (status == 0)
+        sequencer->waitForAudioWorkers();
+    return status;
 }
 
 uapmd_status_t uapmd::RealtimeSequencer::isAudioPlaying() {

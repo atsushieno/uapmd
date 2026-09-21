@@ -238,9 +238,18 @@ public:
     uapmd_status_t startProcessing() override { return 0; }
     uapmd_status_t stopProcessing() override { return 0; }
     uapmd_status_t processAudio(remidy::AudioProcessContext& process) override {
+        if (on_process_)
+            on_process_();
         process.copyInputsToOutputs();
+        if (output_nrpn_) {
+            uapmd_ump_t words[]{static_cast<uint32_t>(*output_nrpn_ >> 32), static_cast<uint32_t>(*output_nrpn_)};
+            std::memcpy(process.eventOut().getMessages(), words, sizeof(words));
+            process.eventOut().position(sizeof(words));
+        }
         return 0;
     }
+    void outputNrpn(uint64_t message) { output_nrpn_ = message; }
+    void onProcess(std::function<void()> callback) { on_process_ = std::move(callback); }
     double tailLengthInSeconds() const override { return 0.0; }
     bool requiresReplacingProcess() const override { return false; }
     std::vector<uapmd_plugin_hosting::ParameterMetadata> parameterMetadataList() override { return {}; }
@@ -249,8 +258,16 @@ public:
         uint32_t) override {
         return {};
     }
-    std::vector<uapmd_plugin_hosting::PresetsMetadata> presetMetadataList() override { return {}; }
+    std::vector<uapmd_plugin_hosting::PresetsMetadata> presetMetadataList() override {
+        return std::vector<uapmd_plugin_hosting::PresetsMetadata>(preset_count_);
+    }
+    void onPreset(size_t count, std::function<void(int32_t)> callback) {
+        preset_count_ = count;
+        on_preset_ = std::move(callback);
+    }
     void loadPreset(int32_t presetIndex) override {
+        if (on_preset_)
+            on_preset_(presetIndex);
         state_ = {static_cast<uint8_t>(presetIndex)};
         externallySetParameter(2, static_cast<double>(presetIndex) / 10.0);
     }
@@ -399,6 +416,10 @@ private:
     }
 
     mutable std::string display_name_{"Test Plugin"};
+    std::optional<uint64_t> output_nrpn_;
+    std::function<void()> on_process_;
+    size_t preset_count_{};
+    std::function<void(int32_t)> on_preset_;
     mutable std::string format_name_{"Test"};
     mutable std::string plugin_id_{"test.plugin"};
     bool bypassed_{false};
@@ -595,6 +616,33 @@ class SequencerEngineOutputTest : public ::testing::Test {
 protected:
     fs::path test_dir_;
 
+    std::unique_ptr<uapmd::SequencerEngine> createWorkerTestEngine(
+        uint32_t bufferSize, std::vector<MutableTimingPlugin*>& plugins) {
+        auto host = std::make_unique<TestPluginHostingAPI>();
+        auto* hostPtr = host.get();
+        auto engine = uapmd::SequencerEngine::createWithPluginHost(48000, bufferSize, 4096, std::move(host));
+        engine->setEngineActive(true);
+        for (int32_t index = 0; index < 2; ++index) {
+            EXPECT_EQ(engine->addEmptyTrack(), index);
+            std::string format = "Test";
+            std::string pluginId = "test.plugin";
+            int32_t instanceId = -1;
+            engine->addPluginToTrack(index, format, pluginId,
+                [&](int32_t id, int32_t, std::string error) {
+                    EXPECT_TRUE(error.empty());
+                    instanceId = id;
+                });
+            if (instanceId < 0)
+                return {};
+            plugins.push_back(hostPtr->mutableInstance(instanceId));
+            EXPECT_TRUE(engine->timeline().addAudioClipToTrack(
+                index, uapmd::TimelinePosition::fromSamples(0, 48000),
+                std::make_unique<SineAudioFileReader>(48000, 2, 48000, 440.0, 0.1f),
+                "synthetic://worker-sine").success);
+        }
+        return engine;
+    }
+
     void SetUp() override {
         test_dir_ = fs::temp_directory_path() / "uapmd_engine_output_test";
         fs::create_directories(test_dir_);
@@ -711,6 +759,387 @@ TEST_F(SequencerEngineOutputTest, OfflineRenderProducesAudibleSamples) {
     ASSERT_EQ(rendered.properties.numChannels, outputChannels);
     ASSERT_GT(rendered.properties.numFrames, 0u);
     EXPECT_GT(peakInFrameRange(rendered, 0, rendered.properties.numFrames), 0.01f);
+}
+
+TEST_F(SequencerEngineOutputTest, TimingBackpressureDoesNotInterruptAudioProcessing) {
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 64;
+    constexpr uint32_t umpBufferSize = 4096;
+    auto engine = uapmd::SequencerEngine::create(sampleRate, bufferSize, umpBufferSize);
+    engine->setEngineActive(true);
+    ASSERT_GE(engine->addEmptyTrack(), 0);
+    remidy::AudioProcessContext process(engine->data().masterContext(), umpBufferSize);
+    process.configureMainBus(2, 2, bufferSize);
+    process.frameCount(bufferSize);
+    process.clearAudioInputs();
+
+    // Default operation maintains counters without generating detailed records.
+    ASSERT_EQ(engine->processAudio(process), 0);
+    uapmd::AudioProcessingTiming timing;
+    EXPECT_FALSE(engine->tryDequeueAudioProcessingTiming(timing));
+    EXPECT_EQ(engine->audioProcessingTimingCounters().realtime_blocks, 1u);
+
+    engine->setAudioProcessingTimingEnabled(true);
+    // Deliberately stop consuming until the bounded queue overflows.
+    for (int block = 0; block < 1800; ++block) {
+        for (uint32_t channel = 0; channel < 2; ++channel)
+            std::fill_n(process.getFloatOutBuffer(0, channel), bufferSize, 1.0f);
+        ASSERT_EQ(engine->processAudio(process), 0);
+        for (uint32_t channel = 0; channel < 2; ++channel)
+            for (uint32_t frame = 0; frame < bufferSize; ++frame)
+                ASSERT_FLOAT_EQ(process.getFloatOutBuffer(0, channel)[frame], 0.0f);
+    }
+    const auto counters = engine->audioProcessingTimingCounters();
+    EXPECT_EQ(counters.realtime_blocks, 1801u);
+    EXPECT_GT(counters.dropped_records, 0u);
+    bool sawTrack = false;
+    bool sawCallback = false;
+    uint64_t previousBlock = 0;
+    while (engine->tryDequeueAudioProcessingTiming(timing)) {
+        EXPECT_GE(timing.block_number, previousBlock);
+        previousBlock = timing.block_number;
+        EXPECT_EQ(timing.sample_rate, sampleRate);
+        EXPECT_EQ(timing.frame_count, bufferSize);
+        EXPECT_FALSE(timing.offline);
+        if (timing.stage == uapmd::AudioProcessingStage::Track) {
+            sawTrack = true;
+            EXPECT_EQ(timing.track_index, 0);
+        }
+        sawCallback = sawCallback || timing.stage == uapmd::AudioProcessingStage::Callback;
+    }
+    EXPECT_TRUE(sawTrack);
+    EXPECT_TRUE(sawCallback);
+
+    // A drained queue accepts records again; offline work must not inflate
+    // realtime deadline statistics even when detailed capture is enabled.
+    engine->offlineRendering(true);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    ASSERT_TRUE(engine->tryDequeueAudioProcessingTiming(timing));
+    EXPECT_TRUE(timing.offline);
+    while (engine->tryDequeueAudioProcessingTiming(timing))
+        EXPECT_TRUE(timing.offline);
+    EXPECT_EQ(engine->audioProcessingTimingCounters().realtime_blocks, counters.realtime_blocks);
+    EXPECT_EQ(engine->audioProcessingTimingCounters().deadline_misses, counters.deadline_misses);
+    engine->offlineRendering(false);
+    engine->setAudioProcessingTimingEnabled(false);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    EXPECT_FALSE(engine->tryDequeueAudioProcessingTiming(timing));
+}
+
+TEST_F(SequencerEngineOutputTest, TrackOutputCaptureCopiesMessagesAndBoundsOverflow) {
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        48000, 64, 16, std::make_unique<TestPluginHostingAPI>());
+    engine->addEmptyTrack();
+    engine->addEmptyTrack();
+    auto* first = engine->tracks()[0];
+    auto* second = engine->tracks()[1];
+    const auto nrpn = umppi::UmpFactory::midi2NRPN(0, 0, 0, 2, 0xFFFFFFFFu);
+    uapmd_ump_t words[]{static_cast<uint32_t>(nrpn >> 32), static_cast<uint32_t>(nrpn)};
+    first->capturePluginOutput(100, words, sizeof(words));
+    second->capturePluginOutput(101, words, sizeof(words));
+    words[1] = 0; // Capture must own the payload after the plugin reuses its buffer.
+    ASSERT_EQ(first->pluginOutputEvents().size(), 1u);
+    ASSERT_EQ(second->pluginOutputEvents().size(), 1u);
+    EXPECT_EQ(first->pluginOutputEvents()[0].instance_id, 100);
+    EXPECT_EQ(first->pluginOutputEvents()[0].words[1], 0xFFFFFFFFu);
+    for (int i = 0; i < 100; ++i)
+        first->capturePluginOutput(100, words, sizeof(words));
+    EXPECT_GT(first->droppedPluginOutputEventCount(), 0u);
+    EXPECT_EQ(second->droppedPluginOutputEventCount(), 0u);
+    EXPECT_EQ(second->pluginOutputEvents().size(), 1u);
+    first->clearPluginOutputEvents();
+    // A truncated message must not leave a partial UMP in the output buffer.
+    first->capturePluginOutput(100, words, sizeof(words[0]));
+    EXPECT_TRUE(first->pluginOutputEvents().empty());
+    first->capturePluginOutput(100, words, sizeof(words));
+    EXPECT_EQ(first->pluginOutputEvents().size(), 1u);
+}
+
+TEST_F(SequencerEngineOutputTest, PluginOutputParametersReachMainThreadInTrackOrder) {
+    class NullMidiIO final : public uapmd_midi_service::MidiIOFeature {
+    public:
+        void addInputHandler(uapmd::ump_receiver_t, void*) override {}
+        void removeInputHandler(uapmd::ump_receiver_t) override {}
+        void send(uapmd_ump_t*, size_t, uapmd_timestamp_t) override {}
+    };
+    class NullMidiManager final : public uapmd_midi_service::MidiIOManagerFeature {
+    public:
+        std::shared_ptr<uapmd_midi_service::MidiIOFeature> createMidiIOFeature(
+            std::string, std::string, std::string, std::string) override {
+            return std::make_shared<NullMidiIO>();
+        }
+    } midiManager;
+    ScopedTestEventLoop eventLoop;
+    auto host = std::make_unique<TestPluginHostingAPI>();
+    auto* hostPtr = host.get();
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(48000, 64, 4096, std::move(host));
+    engine->setEngineActive(true);
+    engine->functionBlockManager()->setMidiIOManager(&midiManager);
+    const auto deviceIndex = engine->functionBlockManager()->create();
+    const auto mainThread = std::this_thread::get_id();
+    std::vector<int32_t> notifiedTracks;
+    for (int32_t trackIndex = 0; trackIndex < 2; ++trackIndex) {
+        ASSERT_EQ(engine->addEmptyTrack(), trackIndex);
+        int32_t instanceId = -1;
+        std::string format = "Test";
+        std::string pluginId = "test.plugin";
+        engine->addPluginToTrack(trackIndex, format, pluginId,
+            [&](int32_t id, int32_t, std::string error) {
+                EXPECT_TRUE(error.empty());
+                instanceId = id;
+            });
+        ASSERT_GE(instanceId, 0);
+        auto* node = engine->tracks()[trackIndex]->graph().getPluginNode(instanceId);
+        ASSERT_NE(node, nullptr);
+        ASSERT_TRUE(engine->functionBlockManager()->getFunctionDeviceByIndex(deviceIndex)
+            ->createFunctionBlock("test", node, instanceId, "test", "test", "1"));
+        hostPtr->mutableInstance(instanceId)->outputNrpn(
+            umppi::UmpFactory::midi2NRPN(0, 0, 0, 2, 0xFFFFFFFFu));
+        node->parameterUpdateEvent().addListener([&, trackIndex](int32_t parameter, double value) {
+            EXPECT_EQ(std::this_thread::get_id(), mainThread);
+            EXPECT_EQ(parameter, 2);
+            EXPECT_DOUBLE_EQ(value, 1.0);
+            notifiedTracks.push_back(trackIndex);
+        });
+    }
+    remidy::AudioProcessContext process(engine->data().masterContext(), 4096);
+    process.configureMainBus(2, 2, 64);
+    process.frameCount(64);
+    process.clearAudioInputs();
+    std::thread audio([&] { EXPECT_EQ(engine->processAudio(process), 0); });
+    audio.join();
+    EXPECT_TRUE(notifiedTracks.empty());
+    for (int attempt = 0; attempt < 100 && notifiedTracks.size() < 2; ++attempt) {
+        remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(notifiedTracks, (std::vector<int32_t>{0, 1}));
+    EXPECT_EQ(engine->droppedPluginParameterNotificationCount(), 0u);
+    // A queued delivery must not retain a destroyed engine or call its listeners.
+    EXPECT_EQ(engine->processAudio(process), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    engine.reset();
+    remidy::EventLoop::processQueuedTasks();
+    EXPECT_EQ(notifiedTracks.size(), 2u);
+}
+
+TEST_F(SequencerEngineOutputTest, ParallelTracksMatchSerialOutputAndRespectExtensionOptIn) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<MutableTimingPlugin*> plugins;
+    auto engine = createWorkerTestEngine(64, plugins);
+    ASSERT_NE(engine, nullptr);
+    engine->offlineRendering(true);
+    engine->startPlayback();
+    remidy::AudioProcessContext process(engine->data().masterContext(), 4096);
+    process.configureMainBus(2, 2, 64);
+    process.frameCount(64);
+    process.clearAudioInputs();
+    ASSERT_EQ(engine->processAudio(process), 0);
+    std::vector<float> serial(process.getFloatOutBuffer(0, 0), process.getFloatOutBuffer(0, 0) + 64);
+    EXPECT_GT(*std::max_element(serial.begin(), serial.end()), 0.01f);
+    engine->jumpPlayback(0.0);
+    std::atomic<int> entered{0};
+    for (auto* plugin : plugins)
+        plugin->onProcess([&] {
+            EXPECT_TRUE(remidy::isAudioThread());
+            entered.fetch_add(1);
+            const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (entered.load() < 2 && std::chrono::steady_clock::now() < limit)
+                std::this_thread::yield();
+            EXPECT_EQ(entered.load(), 2);
+        });
+    ASSERT_TRUE(engine->configureAudioWorkers(1));
+    EXPECT_EQ(engine->processAudio(process), 0);
+    EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+    EXPECT_EQ(entered.load(), 2);
+    EXPECT_FALSE(remidy::isAudioThread());
+    for (size_t frame = 0; frame < serial.size(); ++frame)
+        EXPECT_FLOAT_EQ(process.getFloatOutBuffer(0, 0)[frame], serial[frame]);
+    for (auto* plugin : plugins)
+        plugin->onProcess({});
+
+    class SerialHandler final : public uapmd::AudioProcessingEventHandler {
+    public:
+        std::vector<int32_t> order;
+        void beforeTrackProcess(const uapmd::TrackAudioProcessingEvent& event) noexcept override {
+            order.push_back(event.track_index * 2);
+        }
+        void afterTrackProcess(const uapmd::TrackAudioProcessingEvent& event) noexcept override {
+            order.push_back(event.track_index * 2 + 1);
+        }
+    } handler;
+    handler.order.reserve(4);
+    engine->addAudioProcessingEventHandler(handler);
+    EXPECT_EQ(engine->processAudio(process), 0);
+    EXPECT_EQ(handler.order, (std::vector<int32_t>{0, 1, 2, 3}));
+    engine->removeAudioProcessingEventHandler(handler);
+
+    // A throwing plugin must retire its job and fault the engine, not terminate
+    // a worker or strand a participant count indefinitely.
+    plugins[0]->onProcess([] { throw std::runtime_error("test DSP failure"); });
+    EXPECT_NE(engine->processAudio(process), 0);
+    EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::PluginFailure);
+    plugins[0]->onProcess({});
+    engine->resetAudioWorkerFault();
+    EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+    EXPECT_TRUE(engine->configureAudioWorkers(0));
+}
+
+TEST_F(SequencerEngineOutputTest, LateWorkerRetainsBuffersUntilControlThreadRecovery) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<MutableTimingPlugin*> plugins;
+    auto engine = createWorkerTestEngine(256, plugins);
+    ASSERT_NE(engine, nullptr);
+    ASSERT_TRUE(engine->configureAudioWorkers(1));
+    std::atomic<bool> workerEntered{false};
+    std::atomic<bool> releaseWorker{false};
+    std::atomic<int> calls{0};
+    const auto coordinator = std::this_thread::get_id();
+    for (auto* plugin : plugins)
+        plugin->onProcess([&] {
+            ++calls;
+            if (std::this_thread::get_id() != coordinator) {
+                workerEntered.store(true);
+                while (!releaseWorker.load())
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } else {
+                const auto limit = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+                while (!workerEntered.load() && std::chrono::steady_clock::now() < limit)
+                    std::this_thread::yield();
+            }
+        });
+    // Always release the deliberately stalled fake plugin, including failure
+    // paths. Production plugins are never canceled or processed twice.
+    std::jthread release([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        releaseWorker.store(true);
+    });
+    remidy::AudioProcessContext process(engine->data().masterContext(), 4096);
+    process.configureMainBus(2, 2, 256);
+    process.frameCount(256);
+    process.clearAudioInputs();
+    EXPECT_NE(engine->processAudio(process), 0);
+    EXPECT_TRUE(workerEntered.load());
+    EXPECT_FALSE(releaseWorker.load());
+    EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::DeadlineExceeded);
+    const auto diagnostic = engine->audioWorkerDiagnostic();
+    EXPECT_EQ(diagnostic.fault, uapmd::AudioWorkerFault::DeadlineExceeded);
+    EXPECT_EQ(diagnostic.at_fault.track_count, 2u);
+    EXPECT_EQ(diagnostic.at_fault.completed_jobs, 1u);
+    EXPECT_GT(diagnostic.at_fault.participants[1].acknowledged_ns, 0u);
+    EXPECT_GE(diagnostic.at_fault.participants[1].current_track, 0);
+    EXPECT_FALSE(diagnostic.completion_available);
+    engine->setEngineActive(true); // Enabling alone must not bypass the fault.
+    process.eventOut().position(sizeof(uint32_t));
+    EXPECT_EQ(engine->processAudio(process), 0);
+    EXPECT_EQ(process.eventOut().position(), 0u);
+    EXPECT_EQ(calls.load(), 2);
+    for (uint32_t frame = 0; frame < 256; ++frame)
+        EXPECT_FLOAT_EQ(process.getFloatOutBuffer(0, 0)[frame], 0.0f);
+    EXPECT_TRUE(engine->removeTrack(0)); // Must wait for worker ownership to end.
+    EXPECT_TRUE(releaseWorker.load());
+    const auto completed = engine->audioWorkerDiagnostic();
+    EXPECT_TRUE(completed.completion_available);
+    EXPECT_EQ(completed.after_completion.completed_jobs, 2u);
+    EXPECT_EQ(completed.after_completion.pending_participants, 0u);
+    EXPECT_GT(completed.after_completion.participants[1].retired_ns, 0u);
+    engine->resetAudioWorkerFault();
+    EXPECT_EQ(engine->audioWorkerDiagnostic().block_number, diagnostic.block_number);
+    EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+    EXPECT_TRUE(engine->configureAudioWorkers(0));
+    engine->setEngineActive(true);
+    EXPECT_EQ(engine->processAudio(process), 0);
+    EXPECT_EQ(calls.load(), 3);
+    EXPECT_FALSE(remidy::isAudioThread());
+}
+
+TEST_F(SequencerEngineOutputTest, MidiPresetsAreAppliedOnControlThreadAndCanceledOnReset) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<MutableTimingPlugin*> plugins;
+    auto engine = createWorkerTestEngine(4096, plugins);
+    ASSERT_NE(engine, nullptr);
+    ASSERT_TRUE(engine->configureAudioWorkers(1));
+    const auto mainThread = std::this_thread::get_id();
+    std::vector<int32_t> loaded;
+    for (auto* plugin : plugins)
+        plugin->onPreset(8, [&](int32_t index) {
+            EXPECT_EQ(std::this_thread::get_id(), mainThread);
+            EXPECT_FALSE(remidy::isAudioThread());
+            loaded.push_back(index);
+        });
+    remidy::AudioProcessContext process(engine->data().masterContext(), 4096);
+    process.configureMainBus(2, 2, 4096);
+    process.frameCount(4096);
+    process.clearAudioInputs();
+    const auto enqueuePreset = [&](int32_t track, uint32_t preset) {
+        // MIDI 2.0 Program Change, group/channel zero, no bank selection.
+        uapmd_ump_t words[]{0x40C00000u, preset << 24};
+        engine->enqueueUmp(engine->tracks()[track]->orderedInstanceIds().front(), words, sizeof(words), 0);
+    };
+    const auto drain = [] {
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    // Exercise linear, migrated DAG, and custom-topology DAG paths.
+    for (int phase = 0; phase < 3; ++phase) {
+        if (phase == 1)
+            for (int32_t track = 0; track < 2; ++track)
+                ASSERT_TRUE(engine->timeline().commands().replaceTrackGraphType(
+                    track, "urn:uapmd-graph:common/graph/dag/v1", 4096));
+        if (phase == 2)
+            for (auto& track : engine->tracks()) {
+                auto* graph = track->graph().getExtension<GraphConnectionExtension>();
+                ASSERT_NE(graph, nullptr);
+                const auto connections = graph->connections();
+                ASSERT_FALSE(connections.empty());
+                // Reconnect an existing edge to compile a custom topology.
+                ASSERT_TRUE(graph->disconnect(connections.front().id));
+                ASSERT_EQ(graph->connect(connections.front()), 0);
+            }
+        drain();
+        loaded.clear();
+        enqueuePreset(0, 2);
+        enqueuePreset(1, 3);
+        std::thread audio([&] { EXPECT_EQ(engine->processAudio(process), 0); });
+        audio.join();
+        EXPECT_TRUE(loaded.empty());
+        drain();
+        EXPECT_EQ(loaded, (std::vector<int32_t>{2, 3}));
+        EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+    }
+    loaded.clear();
+    enqueuePreset(0, 4);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    engine->resetProcessingState();
+    drain();
+    EXPECT_TRUE(loaded.empty());
+
+    enqueuePreset(0, 127); // Reject out-of-range indices before backend access.
+    ASSERT_EQ(engine->processAudio(process), 0);
+    drain();
+    EXPECT_TRUE(loaded.empty());
+
+    engine->offlineRendering(true);
+    enqueuePreset(0, 5);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    engine->offlineRendering(false);
+    drain();
+    EXPECT_TRUE(loaded.empty());
+    EXPECT_EQ(engine->droppedPluginPresetRequestCount(), 1u);
+
+    enqueuePreset(0, 6);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    ASSERT_TRUE(engine->removeTrack(0));
+    drain();
+    EXPECT_TRUE(loaded.empty());
+    enqueuePreset(0, 7);
+    ASSERT_EQ(engine->processAudio(process), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    engine.reset();
+    drain();
+    EXPECT_TRUE(loaded.empty());
 }
 
 TEST_F(SequencerEngineOutputTest, OfflineRenderIsIdenticalBeforeAndAfterTrackDAGMigration) {

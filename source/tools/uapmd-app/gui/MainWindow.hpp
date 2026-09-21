@@ -70,6 +70,7 @@ class MainWindow {
         // Device settings
         bool showDeviceSettingsWindow_ = false;
         AudioDeviceSettings audioDeviceSettings_;
+        std::string audio_worker_settings_error_;
         std::string midi_input_port_id_;
         std::string midi_output_port_id_;
 

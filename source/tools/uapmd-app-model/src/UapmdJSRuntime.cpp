@@ -1117,6 +1117,64 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 
 void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
 {
+    impl_->context.registerFunction("__remidy_audio_worker_diagnostics", [](choc::javascript::ArgumentList) {
+        auto* engine = AppModel::instance().sequencer().engine();
+        const auto d = engine->audioWorkerDiagnostic();
+        auto result = choc::value::createObject("");
+        result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkerCount()));
+        result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkerFault()));
+        result.setMember("fault", static_cast<int32_t>(d.fault));
+        result.setMember("block", static_cast<int64_t>(d.block_number));
+        result.setMember("workers", static_cast<int32_t>(d.worker_count));
+        result.setMember("frames", d.frame_count);
+        result.setMember("sampleRate", d.sample_rate);
+        result.setMember("playbackSamples", d.playback_position_samples);
+        result.setMember("callbackElapsedMs", d.elapsed_ms);
+        result.setMember("dispatchAtMs", d.dispatch_ms);
+        result.setMember("offline", d.offline);
+        const auto serialize = [&](const uapmd::AudioWorkerProgressSnapshot& snapshot) {
+            auto value = choc::value::createObject("");
+            value.setMember("trackCount", static_cast<int32_t>(snapshot.track_count));
+            value.setMember("completedJobs", static_cast<int32_t>(snapshot.completed_jobs));
+            value.setMember("pendingParticipants", static_cast<int32_t>(snapshot.pending_participants));
+            auto participants = choc::value::createEmptyArray();
+            for (uint32_t i = 0; i <= d.worker_count; ++i) {
+                const auto& p = snapshot.participants[i];
+                auto item = choc::value::createObject("");
+                item.setMember("participant", static_cast<int32_t>(i));
+                item.setMember("acknowledgedNs", static_cast<int64_t>(p.acknowledged_ns));
+                item.setMember("retiredNs", static_cast<int64_t>(p.retired_ns));
+                item.setMember("currentTrack", p.current_track);
+                item.setMember("completedJobs", static_cast<int32_t>(p.completed_jobs));
+                participants.addArrayElement(item);
+            }
+            value.setMember("participants", participants);
+            auto tracks = choc::value::createEmptyArray();
+            for (size_t i = 0; i < snapshot.tracks.size() && i < snapshot.track_count; ++i) {
+                const auto& t = snapshot.tracks[i];
+                auto item = choc::value::createObject("");
+                item.setMember("track", static_cast<int32_t>(i));
+                item.setMember("participant", t.participant);
+                item.setMember("startedNs", static_cast<int64_t>(t.started_ns));
+                item.setMember("finishedNs", static_cast<int64_t>(t.finished_ns));
+                item.setMember("status", t.status);
+                tracks.addArrayElement(item);
+            }
+            value.setMember("tracks", tracks);
+            return value;
+        };
+        result.setMember("atFault", serialize(d.at_fault));
+        result.setMember("completionAvailable", d.completion_available);
+        if (d.completion_available)
+            result.setMember("afterCompletion", serialize(d.after_completion));
+        return result;
+    });
+    impl_->context.registerFunction("__remidy_configure_audio_workers", [](choc::javascript::ArgumentList args) {
+        const auto count = args.get<int32_t>(0, -1);
+        return choc::value::createBool(count >= 0 && count <= 32 &&
+            AppModel::instance().sequencer().engine()->configureAudioWorkers(static_cast<uint32_t>(count)));
+    });
+
     impl_->context.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd_app::AppModel::instance().sequencer();

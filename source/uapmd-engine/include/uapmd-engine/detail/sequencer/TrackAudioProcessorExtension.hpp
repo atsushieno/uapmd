@@ -17,6 +17,10 @@ class TrackAudioProcessorExtension {
 public:
     virtual ~TrackAudioProcessorExtension() = default;
 
+    // In parallel mode all extension calls complete serially before any graph
+    // jobs start. Opt in only if this ordering preserves the extension's behavior.
+    virtual bool supportsParallelTrackProcessing() const noexcept { return false; }
+
     virtual bool shouldProcessAudio(
         SequencerEngine& engine,
         uapmd_track_index_t trackIndex,
