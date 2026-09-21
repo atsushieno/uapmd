@@ -290,6 +290,7 @@ namespace uapmd {
         std::atomic<bool> in_process_audio_{false};
         uint32_t structure_mutation_depth_{}; // serialized control thread only
         std::unique_ptr<AudioTrackWorkerPool> audio_workers_;
+        AudioWorkerThreadSetup audio_worker_thread_setup_;
         std::vector<AudioTrackJob> audio_track_jobs_;
         std::atomic<AudioWorkerFault> audio_worker_fault_{AudioWorkerFault::None};
         static_assert(std::atomic<AudioWorkerFault>::is_always_lock_free);
@@ -567,6 +568,13 @@ namespace uapmd {
         void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
         bool configureAudioWorkers(uint32_t workerCount) override;
+        bool setAudioWorkerThreadSetup(AudioWorkerThreadSetup setup) override {
+            StructureMutationGuard guard(*this);
+            const auto count = audioWorkerCount();
+            audio_workers_.reset();
+            audio_worker_thread_setup_ = std::move(setup);
+            return configureAudioWorkers(count);
+        }
         uint32_t audioWorkerCount() const override {
             return audio_workers_ ? audio_workers_->workerCount() : 0;
         }
@@ -1364,9 +1372,12 @@ namespace uapmd {
 #endif
         StructureMutationGuard guard(*this);
         try {
-            auto workers = workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount) : nullptr;
+            auto workers = workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount, audio_worker_thread_setup_) : nullptr;
             audio_track_jobs_.resize(tracks_.size());
             audio_workers_ = std::move(workers);
+            if (workerCount)
+                remidy::Logger::global()->logInfo("Audio workers configured: %u; platform thread setup: %s",
+                    workerCount, audio_worker_thread_setup_ ? "enabled" : "none");
             return true;
         } catch (...) {
             return false;

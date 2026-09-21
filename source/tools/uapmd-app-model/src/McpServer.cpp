@@ -1604,7 +1604,7 @@ struct McpServer::Impl {
                 if (count < 0 || count > 32)
                     throw std::invalid_argument("count must be between 0 and 32");
                 ensureJSRuntime();
-                toolResult = choc::json::parse(evalScript("__remidy_configure_audio_workers(" + std::to_string(count) + ")"));
+                toolResult = choc::json::parse(evalScript("({success: __remidy_configure_audio_workers(" + std::to_string(count) + ")})"));
             }
             else if (toolName == "get_history_state") {
                 ensureJSRuntime();

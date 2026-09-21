@@ -1,10 +1,16 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace uapmd {
+
+    // Invoked once on each worker before it accepts audio jobs. The returned
+    // token is destroyed on that same thread after its last job (e.g. to leave
+    // a platform audio workgroup). Captured device resources must be owned.
+    using AudioWorkerThreadSetup = std::function<std::shared_ptr<void>()>;
 
     enum AudioIODirections {
         UAPMD_AUDIO_DIRECTION_INPUT = 1,
@@ -37,6 +43,9 @@ namespace uapmd {
 
         virtual void setPreferredCallbackSize(uint32_t framesPerCallback) = 0;
         virtual uint32_t preferredCallbackSize() const = 0;
+
+        // Control thread only, while device callbacks are stopped.
+        virtual AudioWorkerThreadSetup audioWorkerThreadSetup() { return {}; }
 
         virtual double sampleRate() = 0;
         virtual uint32_t inputChannels() = 0;

@@ -18,6 +18,7 @@
 
 #include "uapmd-engine/uapmd-engine.hpp"
 #include "uapmd-graph/uapmd-graph.hpp"
+#include "../uapmd-engine/src/sequencer/AudioTrackWorkerPool.hpp"
 
 using namespace uapmd_graph;
 
@@ -921,6 +922,71 @@ TEST_F(SequencerEngineOutputTest, PluginOutputParametersReachMainThreadInTrackOr
     engine.reset();
     remidy::EventLoop::processQueuedTasks();
     EXPECT_EQ(notifiedTracks.size(), 2u);
+}
+
+TEST(AudioWorkerThreadSetupTest, ContextLeavesOnItsWorkerAndFailuresUnwind) {
+    std::atomic<int> entered{0}, retired{0};
+    struct Context {
+        std::thread::id owner = std::this_thread::get_id();
+        std::atomic<int>& retired;
+        explicit Context(std::atomic<int>& count) : retired(count) {}
+        ~Context() {
+            EXPECT_EQ(owner, std::this_thread::get_id());
+            retired.fetch_add(1);
+        }
+    };
+    {
+        uapmd::AudioTrackWorkerPool pool(2, [&]() -> std::shared_ptr<void> {
+            entered.fetch_add(1);
+            return std::make_shared<Context>(retired);
+        });
+        EXPECT_EQ(entered.load(), 2);
+        EXPECT_EQ(retired.load(), 0);
+    }
+    EXPECT_EQ(retired.load(), 2);
+    entered.store(0);
+    retired.store(0);
+    EXPECT_THROW((uapmd::AudioTrackWorkerPool(2, [&]() -> std::shared_ptr<void> {
+        if (entered.fetch_add(1) == 0)
+            throw std::runtime_error("platform setup failure");
+        return std::make_shared<Context>(retired);
+    })), std::runtime_error);
+    EXPECT_EQ(entered.load(), 2);
+    EXPECT_EQ(retired.load(), 1);
+}
+
+TEST(AudioBatchAdmissionTest, SleepingWorkersDoNotOwnCompletedOrReusedBatches) {
+    uapmd::AudioBatchAdmission admission;
+    EXPECT_FALSE(admission.busy());
+    admission.begin();
+    const auto sleepingWorkerTicket = admission.ticket();
+    admission.close(); // Coordinator claimed and completed every job.
+    admission.leave();
+    EXPECT_FALSE(admission.busy()); // No acknowledgement from sleeper required.
+    EXPECT_FALSE(admission.tryEnter(sleepingWorkerTicket));
+
+    // Reused job storage must remain inaccessible through an old ticket even
+    // when the next batch is open for admissions.
+    admission.begin();
+    EXPECT_FALSE(admission.tryEnter(sleepingWorkerTicket));
+    EXPECT_TRUE(admission.tryEnter(admission.ticket()));
+    admission.close();
+    admission.leave(); // Coordinator finished, but admitted worker still owns it.
+    EXPECT_TRUE(admission.busy());
+    EXPECT_EQ(admission.activeCount(), 1u);
+    admission.leave();
+    EXPECT_FALSE(admission.busy());
+
+    // If the coordinator times out before all jobs are claimed, keep admission
+    // open so a late worker can finish them while the fault retains storage.
+    admission.begin();
+    admission.leave();
+    EXPECT_EQ(admission.activeCount(), 0u);
+    EXPECT_TRUE(admission.busy());
+    EXPECT_TRUE(admission.tryEnter(admission.ticket()));
+    admission.close();
+    admission.leave();
+    EXPECT_FALSE(admission.busy());
 }
 
 TEST_F(SequencerEngineOutputTest, ParallelTracksMatchSerialOutputAndRespectExtensionOptIn) {

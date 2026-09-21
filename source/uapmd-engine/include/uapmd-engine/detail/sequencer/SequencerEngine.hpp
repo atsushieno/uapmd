@@ -71,6 +71,7 @@ namespace uapmd {
     struct AudioTrackProgress {
         uint64_t started_ns{};
         uint64_t finished_ns{};
+        uint64_t cpu_ns{}; // Thread CPU time for the completed call, 0 if unavailable.
         int32_t participant{-1}; // 0 = coordinator; workers start at 1
         int32_t status{};
     };
@@ -290,6 +291,10 @@ namespace uapmd {
         // remaining budget is reserved for mixing/master. This cannot preempt
         // a plugin already executing on the coordinator. Offline calls can wait.
         virtual bool configureAudioWorkers(uint32_t workerCount) = 0;
+        // Control thread, device stopped. Rebuilds workers with owned platform
+        // setup; falls back to serial if setup fails rather than retaining an
+        // old device workgroup.
+        virtual bool setAudioWorkerThreadSetup(AudioWorkerThreadSetup setup) = 0;
         // Control-thread query; the configured count can remain nonzero while a
         // block falls back to serial processing for compatibility.
         virtual uint32_t audioWorkerCount() const = 0;

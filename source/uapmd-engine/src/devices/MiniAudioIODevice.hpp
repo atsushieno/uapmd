@@ -58,6 +58,7 @@ namespace uapmd {
             preferred_callback_frames_ = framesPerCallback;
         }
         uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
+        AudioWorkerThreadSetup audioWorkerThreadSetup() override;
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
         double sampleRate() override;
         uint32_t inputChannels() override;

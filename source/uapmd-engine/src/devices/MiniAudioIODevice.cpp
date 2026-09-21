@@ -4,9 +4,175 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <stdexcept>
+#include <cstdlib>
+#include <cstring>
+#if defined(_WIN32)
+#include <windows.h>
+#include <avrt.h>
+#endif
+#if defined(__linux__) || defined(__ANDROID__)
+#include <errno.h>
+#include <pthread.h>
+#include <sched.h>
+#endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX || TARGET_OS_IPHONE
+#include <AudioToolbox/AudioToolbox.h>
+#include <mach/mach_time.h>
+#include <mach/mach.h>
+#include <mach/thread_policy.h>
+#include <pthread.h>
+#include <os/workgroup.h>
+#include <sys/qos.h>
+#else
+#include <pthread.h>
+#include <sys/qos.h>
+#endif
+#endif
 #include <choc/audio/choc_SampleBuffers.h>
 
 // MiniAudioIODeviceManager
+
+uapmd::AudioWorkerThreadSetup uapmd::MiniAudioIODevice::audioWorkerThreadSetup() {
+#if defined(__APPLE__)
+#if TARGET_OS_OSX
+    if (__builtin_available(macOS 11.0, *)) {
+#else
+    if (__builtin_available(iOS 14.0, *)) {
+#endif
+        // Diagnostic A/B switch, read only on the control thread. Default uses
+        // real-time scheduling and the device workgroup.
+        if (const auto* standard = std::getenv("UAPMD_AUDIO_WORKER_STANDARD_SCHEDULING");
+            standard && std::strcmp(standard, "1") == 0) {
+            Logger::global()->logWarning("Audio workers: standard scheduling requested for diagnostics");
+            return {};
+        }
+        auto* device = engine_ready_ ? ma_engine_get_device(&engine) : nullptr;
+        os_workgroup_t group{};
+        UInt32 size = sizeof(group);
+        const auto unit = device && device->pContext->backend == ma_backend_coreaudio
+            ? static_cast<AudioUnit>(device->coreaudio.audioUnitPlayback) : nullptr;
+        const auto result = unit ? AudioUnitGetProperty(unit, kAudioOutputUnitProperty_OSWorkgroup,
+            kAudioUnitScope_Global, 0, &group, &size) : kAudioUnitErr_Uninitialized;
+        if (result != noErr || !group) {
+            Logger::global()->logError("Cannot obtain audio device workgroup (%d); audio workers unavailable", result);
+#if !TARGET_OS_OSX
+            return []() -> std::shared_ptr<void> {
+                pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+                return {};
+            };
+#else
+            return []() -> std::shared_ptr<void> { throw std::runtime_error("No device audio workgroup"); };
+#endif
+        }
+        // AudioUnitGetProperty returns a +1 reference. Keep it alive through
+        // worker shutdown, independently of the device's AudioUnit lifetime.
+        std::shared_ptr<void> ownedGroup(group, [](void* value) {
+            os_release(static_cast<os_workgroup_t>(value));
+        });
+        mach_timebase_info_data_t timebase{};
+        mach_timebase_info(&timebase);
+        const auto frames = preferred_callback_frames_ ? preferred_callback_frames_ : 256;
+        const double periodNs = 1e9 * frames / sampleRate();
+        const auto periodTicks = static_cast<uint32_t>(std::clamp(
+            periodNs * timebase.denom / timebase.numer, 1.0, static_cast<double>(UINT32_MAX)));
+        thread_time_constraint_policy_data_t policy{};
+        policy.period = periodTicks;
+        policy.constraint = std::max(1u, static_cast<uint32_t>(periodTicks * 0.8));
+        policy.computation = std::max(1u, policy.constraint / 2);
+        policy.preemptible = true;
+        return [ownedGroup, policy]() -> std::shared_ptr<void> {
+            struct Membership {
+                os_workgroup_t group;
+                os_workgroup_join_token_s token{};
+                bool joined{};
+                explicit Membership(os_workgroup_t value) : group(value) {}
+                ~Membership() {
+                    if (joined)
+                        os_workgroup_leave(group, &token);
+                }
+            };
+            // Only worker startup uses Mach/workgroup APIs. No setup, logging,
+            // allocation, joining, or leaving occurs within a processing batch.
+            auto membership = std::make_shared<Membership>(static_cast<os_workgroup_t>(ownedGroup.get()));
+            auto requested = policy;
+            const auto status = thread_policy_set(pthread_mach_thread_np(pthread_self()),
+                THREAD_TIME_CONSTRAINT_POLICY, reinterpret_cast<thread_policy_t>(&requested),
+                THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+            if (status != KERN_SUCCESS) {
+                Logger::global()->logError("Audio worker real-time scheduling failed (%d)", status);
+                throw std::runtime_error("Audio worker real-time scheduling failed");
+            }
+            const auto error = os_workgroup_join(membership->group, &membership->token);
+            if (error != 0) {
+                Logger::global()->logError("Audio worker workgroup join failed (%d)", error);
+                throw std::runtime_error("Audio worker workgroup join failed");
+            }
+            membership->joined = true;
+            return membership;
+        };
+    }
+#if !TARGET_OS_OSX
+    // Older iOS versions, and devices whose audio unit does not expose the
+    // workgroup property, still get a useful QoS hint.
+    return []() -> std::shared_ptr<void> {
+        pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+        return {};
+    };
+#endif
+#elif defined(_WIN32)
+    return []() -> std::shared_ptr<void> {
+        class MmcssMembership {
+            HANDLE task_{};
+        public:
+            MmcssMembership() {
+                DWORD taskIndex = 0;
+                task_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
+                if (task_)
+                    AvSetMmThreadPriority(task_, AVRT_PRIORITY_HIGH);
+            }
+            ~MmcssMembership() {
+                if (task_)
+                    AvRevertMmThreadCharacteristics(task_);
+            }
+        };
+        return std::make_shared<MmcssMembership>();
+    };
+#elif defined(__ANDROID__)
+    return []() -> std::shared_ptr<void> {
+        class AndroidThreadSetup {
+        public:
+            AndroidThreadSetup() {
+                pthread_setname_np(pthread_self(), "uapmd-audio");
+                sched_param parameters{};
+                parameters.sched_priority = std::max(1, sched_get_priority_min(SCHED_FIFO));
+                pthread_setschedparam(pthread_self(), SCHED_FIFO, &parameters);
+            }
+        };
+        return std::make_shared<AndroidThreadSetup>();
+    };
+#elif defined(__linux__)
+    return []() -> std::shared_ptr<void> {
+        // CAP_SYS_NICE is required for SCHED_FIFO on most distributions. Keep
+        // the worker alive with its normal policy when a desktop app lacks that
+        // capability; the audio callback must not fail just because an optional
+        // priority hint was denied.
+        class LinuxThreadSetup {
+        public:
+            LinuxThreadSetup() {
+                pthread_setname_np(pthread_self(), "uapmd-audio");
+                sched_param parameters{};
+                parameters.sched_priority = std::max(1, sched_get_priority_min(SCHED_FIFO));
+                pthread_setschedparam(pthread_self(), SCHED_FIFO, &parameters);
+            }
+        };
+        return std::make_shared<LinuxThreadSetup>();
+    };
+#endif
+    return {};
+}
 
 #undef ERROR
 

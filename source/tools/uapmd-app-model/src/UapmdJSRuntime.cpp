@@ -1123,6 +1123,12 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         auto result = choc::value::createObject("");
         result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkerCount()));
         result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkerFault()));
+        const auto counters = engine->audioProcessingTimingCounters();
+        auto timing = choc::value::createObject("");
+        timing.setMember("realtimeBlocks", static_cast<int64_t>(counters.realtime_blocks));
+        timing.setMember("deadlineMisses", static_cast<int64_t>(counters.deadline_misses));
+        timing.setMember("droppedRecords", static_cast<int64_t>(counters.dropped_records));
+        result.setMember("timingCounters", timing);
         result.setMember("fault", static_cast<int32_t>(d.fault));
         result.setMember("block", static_cast<int64_t>(d.block_number));
         result.setMember("workers", static_cast<int32_t>(d.worker_count));
@@ -1157,6 +1163,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
                 item.setMember("participant", t.participant);
                 item.setMember("startedNs", static_cast<int64_t>(t.started_ns));
                 item.setMember("finishedNs", static_cast<int64_t>(t.finished_ns));
+                item.setMember("cpuNs", static_cast<int64_t>(t.cpu_ns));
                 item.setMember("status", t.status);
                 tracks.addArrayElement(item);
             }

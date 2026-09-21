@@ -191,6 +191,10 @@ target_link_libraries(uapmd-engine
         uapmd-data
 )
 
+if(WIN32)
+    target_link_libraries(uapmd-engine PRIVATE avrt)
+endif()
+
 target_sources(uapmd-engine PRIVATE
         src/devices/AudioIODevice.cpp
         src/devices/DefaultDeviceIODispatcher.cpp
