@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioWorkers.hpp"
+#include "AudioPerformanceCounter.hpp"
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -45,36 +46,6 @@ namespace uapmd {
     struct MidiPortTrackConnection {
         std::string portId;
         ProjectObjectId trackId;
-    };
-
-    enum class AudioProcessingStage {
-        Preparation,
-        Track,
-        Tracks,
-        MixAndMaster,
-        PostProcessing,
-        Callback,
-    };
-
-    struct AudioProcessingTiming {
-        uint64_t block_number{};
-        AudioProcessingStage stage{};
-        // Only meaningful for Track records; index at the time of processing.
-        int32_t track_index{-1};
-        // Track records use the clamped track frame count; other stages use the
-        // device callback frame count (the realtime deadline budget).
-        int32_t frame_count{};
-        int32_t sample_rate{};
-        uint64_t duration_nanoseconds{};
-        bool offline{};
-    };
-
-    struct AudioProcessingTimingCounters {
-        // Lifetime counters wrap modulo 2^32. Readings are individually atomic,
-        // not a coherent snapshot. Only fully processed realtime blocks count.
-        uint32_t realtime_blocks{};
-        uint32_t deadline_misses{};
-        uint32_t dropped_records{};
     };
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
@@ -237,20 +208,7 @@ namespace uapmd {
 
         virtual AudioWorkers& audioWorkers() = 0;
 
-        // Optional detailed timing, disabled by default. Enabling is sampled at
-        // block boundaries. No allocation or logging occurs in the producer.
-        // Counters remain active when detailed timing is disabled. Inactive and
-        // structurally excluded callbacks are not measured; offline processAudio
-        // calls are tagged and excluded from realtime deadline counters.
-        virtual void setAudioProcessingTimingEnabled(bool enabled) = 0;
-        // Exactly one non-RT consumer may drain records. Queue capacity is finite;
-        // full queues drop new records rather than stall audio. A block's records
-        // can therefore be incomplete. Disabling does not discard queued records.
-        // Compute percentiles and report results on the consuming thread. The
-        // callback duration includes instrumentation except final counter/record publication;
-        // stage records are nested (Track inside Tracks, all inside Callback).
-        virtual bool tryDequeueAudioProcessingTiming(AudioProcessingTiming& timing) = 0;
-        virtual AudioProcessingTimingCounters audioProcessingTimingCounters() const = 0;
+        virtual AudioPerformanceCounter& audioPerformanceCounter() = 0;
         // Bounded audio-to-UI NRPN notification handoff drops newest on overflow.
         // This lifetime counter wraps modulo 2^32. Track output capture has a
         // separate per-track counter on SequencerTrack.

@@ -21,5 +21,6 @@
 #include "detail/sequencer/SequenceProcessContext.hpp"
 #include "detail/sequencer/TimelineFacade.hpp"
 #include "detail/sequencer/AudioWorkers.hpp"
+#include "detail/sequencer/AudioPerformanceCounter.hpp"
 #include "detail/sequencer/SequencerEngine.hpp"
 #include "detail/sequencer/RealtimeSequencer.hpp"

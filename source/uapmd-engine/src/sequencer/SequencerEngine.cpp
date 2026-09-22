@@ -22,6 +22,7 @@
 #include "TailProcessManagerImpl.hpp"
 #include "TrackRoutingManager.hpp"
 #include "AudioWorkers.hpp"
+#include "AudioPerformanceCounter.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include "../devices/WebAudioWorkletIODevice.hpp"
@@ -235,12 +236,7 @@ namespace uapmd {
 
         static_assert(std::atomic<uint32_t>::is_always_lock_free);
         static_assert(std::atomic<bool>::is_always_lock_free);
-        std::atomic<bool> audio_processing_timing_enabled_{false};
-        moodycamel::ReaderWriterQueue<AudioProcessingTiming> audio_processing_timings_{4096};
-        std::atomic<uint32_t> realtime_block_count_{0};
-        std::atomic<uint32_t> audio_deadline_misses_{0};
-        std::atomic<uint32_t> dropped_timing_records_{0};
-        uint64_t timing_block_number_{0}; // processing thread only
+        AudioPerformanceCounterImpl audio_performance_counter_;
 
         // Plugin instance management
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
@@ -553,19 +549,7 @@ namespace uapmd {
         void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
         AudioWorkers& audioWorkers() override { return audio_workers_; }
-        void setAudioProcessingTimingEnabled(bool enabled) override {
-            audio_processing_timing_enabled_.store(enabled, std::memory_order_relaxed);
-        }
-        bool tryDequeueAudioProcessingTiming(AudioProcessingTiming& timing) override {
-            return audio_processing_timings_.try_dequeue(timing);
-        }
-        AudioProcessingTimingCounters audioProcessingTimingCounters() const override {
-            return {
-                realtime_block_count_.load(std::memory_order_relaxed),
-                audio_deadline_misses_.load(std::memory_order_relaxed),
-                dropped_timing_records_.load(std::memory_order_relaxed),
-            };
-        }
+        AudioPerformanceCounter& audioPerformanceCounter() override { return audio_performance_counter_; }
         uint32_t droppedPluginParameterNotificationCount() const override {
             return plugin_control_dispatch_->dropped.load(std::memory_order_relaxed);
         }
@@ -1390,9 +1374,9 @@ namespace uapmd {
             return 0;
         }
 
-        const bool captureTiming = audio_processing_timing_enabled_.load(std::memory_order_relaxed);
+        const bool captureTiming = audio_performance_counter_.enabled();
         const bool offline = offline_rendering_.load(std::memory_order_acquire);
-        const auto timingBlock = ++timing_block_number_;
+        const auto timingBlock = audio_performance_counter_.nextBlockNumber();
         const auto timingSampleRate = sampleRate;
         using TimingClock = std::chrono::steady_clock;
         const auto publishTiming = [&](AudioProcessingStage stage,
@@ -1407,8 +1391,7 @@ namespace uapmd {
                 static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()),
                 offline,
             };
-            if (!audio_processing_timings_.try_enqueue(timing))
-                dropped_timing_records_.fetch_add(1, std::memory_order_relaxed);
+            audio_performance_counter_.publish(timing);
         };
 
         // The input analyser is an ordinary pass-through node at the device
@@ -1613,11 +1596,9 @@ namespace uapmd {
                         playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
                 }
                 if (!offline) {
-                    realtime_block_count_.fetch_add(1, std::memory_order_relaxed);
-                    if (timingSampleRate > 0 &&
+                    audio_performance_counter_.recordRealtimeBlock(timingSampleRate > 0 &&
                         std::chrono::duration<double>(end - startTime).count() >
-                        static_cast<double>(process.frameCount()) / timingSampleRate)
-                        audio_deadline_misses_.fetch_add(1, std::memory_order_relaxed);
+                        static_cast<double>(process.frameCount()) / timingSampleRate);
                 }
                 publishTiming(AudioProcessingStage::Callback, startTime, end);
                 return stopEngine ? 1 : 0;
@@ -1807,11 +1788,9 @@ namespace uapmd {
             publishTiming(AudioProcessingStage::PostProcessing, postProcessingStart, TimingClock::now());
         const auto endTime = TimingClock::now();
         if (!offline) {
-            realtime_block_count_.fetch_add(1, std::memory_order_relaxed);
             const auto elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
-            if (timingSampleRate > 0 && process.frameCount() > 0 &&
-                elapsedSeconds > static_cast<double>(process.frameCount()) / timingSampleRate)
-                audio_deadline_misses_.fetch_add(1, std::memory_order_relaxed);
+            audio_performance_counter_.recordRealtimeBlock(timingSampleRate > 0 && process.frameCount() > 0 &&
+                elapsedSeconds > static_cast<double>(process.frameCount()) / timingSampleRate);
         }
         publishTiming(AudioProcessingStage::Callback, startTime, endTime);
 

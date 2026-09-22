@@ -208,6 +208,7 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/AudioWorkers.cpp
+        src/sequencer/AudioPerformanceCounter.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
         src/sequencer/StopDrainUtilities.cpp

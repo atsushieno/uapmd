@@ -1124,7 +1124,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkers().count()));
         result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkers().fault()));
         result.setMember("stopOnDeadline", engine->audioWorkers().stopOnDeadline());
-        const auto counters = engine->audioProcessingTimingCounters();
+        const auto counters = engine->audioPerformanceCounter().counters();
         auto timing = choc::value::createObject("");
         timing.setMember("realtimeBlocks", static_cast<int64_t>(counters.realtime_blocks));
         timing.setMember("deadlineMisses", static_cast<int64_t>(counters.deadline_misses));

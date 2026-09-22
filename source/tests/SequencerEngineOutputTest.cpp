@@ -777,10 +777,10 @@ TEST_F(SequencerEngineOutputTest, TimingBackpressureDoesNotInterruptAudioProcess
     // Default operation maintains counters without generating detailed records.
     ASSERT_EQ(engine->processAudio(process), 0);
     uapmd::AudioProcessingTiming timing;
-    EXPECT_FALSE(engine->tryDequeueAudioProcessingTiming(timing));
-    EXPECT_EQ(engine->audioProcessingTimingCounters().realtime_blocks, 1u);
+    EXPECT_FALSE(engine->audioPerformanceCounter().tryDequeue(timing));
+    EXPECT_EQ(engine->audioPerformanceCounter().counters().realtime_blocks, 1u);
 
-    engine->setAudioProcessingTimingEnabled(true);
+    engine->audioPerformanceCounter().setEnabled(true);
     // Deliberately stop consuming until the bounded queue overflows.
     for (int block = 0; block < 1800; ++block) {
         for (uint32_t channel = 0; channel < 2; ++channel)
@@ -790,13 +790,13 @@ TEST_F(SequencerEngineOutputTest, TimingBackpressureDoesNotInterruptAudioProcess
             for (uint32_t frame = 0; frame < bufferSize; ++frame)
                 ASSERT_FLOAT_EQ(process.getFloatOutBuffer(0, channel)[frame], 0.0f);
     }
-    const auto counters = engine->audioProcessingTimingCounters();
+    const auto counters = engine->audioPerformanceCounter().counters();
     EXPECT_EQ(counters.realtime_blocks, 1801u);
     EXPECT_GT(counters.dropped_records, 0u);
     bool sawTrack = false;
     bool sawCallback = false;
     uint64_t previousBlock = 0;
-    while (engine->tryDequeueAudioProcessingTiming(timing)) {
+    while (engine->audioPerformanceCounter().tryDequeue(timing)) {
         EXPECT_GE(timing.block_number, previousBlock);
         previousBlock = timing.block_number;
         EXPECT_EQ(timing.sample_rate, sampleRate);
@@ -815,16 +815,16 @@ TEST_F(SequencerEngineOutputTest, TimingBackpressureDoesNotInterruptAudioProcess
     // realtime deadline statistics even when detailed capture is enabled.
     engine->offlineRendering(true);
     ASSERT_EQ(engine->processAudio(process), 0);
-    ASSERT_TRUE(engine->tryDequeueAudioProcessingTiming(timing));
+    ASSERT_TRUE(engine->audioPerformanceCounter().tryDequeue(timing));
     EXPECT_TRUE(timing.offline);
-    while (engine->tryDequeueAudioProcessingTiming(timing))
+    while (engine->audioPerformanceCounter().tryDequeue(timing))
         EXPECT_TRUE(timing.offline);
-    EXPECT_EQ(engine->audioProcessingTimingCounters().realtime_blocks, counters.realtime_blocks);
-    EXPECT_EQ(engine->audioProcessingTimingCounters().deadline_misses, counters.deadline_misses);
+    EXPECT_EQ(engine->audioPerformanceCounter().counters().realtime_blocks, counters.realtime_blocks);
+    EXPECT_EQ(engine->audioPerformanceCounter().counters().deadline_misses, counters.deadline_misses);
     engine->offlineRendering(false);
-    engine->setAudioProcessingTimingEnabled(false);
+    engine->audioPerformanceCounter().setEnabled(false);
     ASSERT_EQ(engine->processAudio(process), 0);
-    EXPECT_FALSE(engine->tryDequeueAudioProcessingTiming(timing));
+    EXPECT_FALSE(engine->audioPerformanceCounter().tryDequeue(timing));
 }
 
 TEST_F(SequencerEngineOutputTest, TrackOutputCaptureCopiesMessagesAndBoundsOverflow) {
