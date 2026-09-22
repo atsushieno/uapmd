@@ -33,16 +33,15 @@ namespace uapmd_midi_service {
     }
 
     // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
-    // Enqueues the request; the actual call to plugin->loadPreset() happens on drainPresetRequests()
-    // called from the non-RT thread, because loadPreset() may allocate or block.
+    // Preset application belongs to the host's control thread, never DSP.
     void UapmdNodeUmpInputMapper::loadPreset(uint32_t index) {
-        preset_load_queue_.try_enqueue(index);
+        static_assert(std::atomic<uint32_t>::is_always_lock_free);
+        if (!preset_load_queue_.try_enqueue(index))
+            dropped_preset_requests_.fetch_add(1, std::memory_order_relaxed);
     }
 
-    void UapmdNodeUmpInputMapper::drainPresetRequests() {
-        uint32_t index;
-        while (preset_load_queue_.try_dequeue(index))
-            plugin->loadPreset(static_cast<int32_t>(index), nullptr);
+    bool UapmdNodeUmpInputMapper::tryDequeuePresetRequest(uint32_t& index) {
+        return preset_load_queue_.try_dequeue(index);
     }
 
     UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)

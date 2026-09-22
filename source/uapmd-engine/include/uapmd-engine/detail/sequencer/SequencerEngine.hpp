@@ -1,4 +1,7 @@
 #pragma once
+
+#include "AudioWorkers.hpp"
+#include "AudioPerformanceCounter.hpp"
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -54,6 +57,8 @@ namespace uapmd {
         SequencerEngine() = default;
 
     public:
+        // Destroy on the main/control event-loop thread after processing stops.
+        // Parameter notifications and plugin lifecycle operations use that thread.
         virtual ~SequencerEngine() = default;
 
         virtual void registerAddinExtensionPoints(uapmd_addin::AddinManager& manager) = 0;
@@ -200,6 +205,19 @@ namespace uapmd {
         // outputs, and runs the master track. In single-threaded builds this is called
         // after pumpAudio().
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
+
+        virtual AudioWorkers& audioWorkers() = 0;
+
+        virtual AudioPerformanceCounter& audioPerformanceCounter() = 0;
+        // Bounded audio-to-UI NRPN notification handoff drops newest on overflow.
+        // This lifetime counter wraps modulo 2^32. Track output capture has a
+        // separate per-track counter on SequencerTrack.
+        virtual uint32_t droppedPluginParameterNotificationCount() const = 0;
+        // MIDI presets are asynchronous control-thread operations. Requests from
+        // offline/freeze rendering are discarded rather than replayed later.
+        // Counts these discards and control-queue overflow (wraps modulo 2^32).
+        // Track capture overflow uses droppedPluginOutputEventCount().
+        virtual uint32_t droppedPluginPresetRequestCount() const = 0;
         // Existing-instance track rendering. begin excludes the realtime audio
         // callback; step performs bounded work on the calling thread; finish
         // restores plugin/transport state and invokes transition before audio
@@ -217,7 +235,8 @@ namespace uapmd {
             const OfflineTrackRenderSettings& settings,
             const OfflineRenderCallbacks& callbacks = {}) = 0;
 
-        // Playback control (accessed by RealtimeSequencer)
+        // Playback control (accessed by RealtimeSequencer). Mutating operations
+        // run on the serialized control thread, never inside processing callbacks.
         virtual bool isPlaybackActive() const = 0;
         virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;

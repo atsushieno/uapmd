@@ -6,8 +6,12 @@
 #include <filesystem>
 #include <optional>
 #include <ranges>
+#include <thread>
 #include <cmath>
 #include <limits>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 #include "PlatformDialogs.hpp"
 
@@ -431,7 +435,9 @@ void MainWindow::render(void* window) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             auto& appModel = uapmd_app::AppModel::instance();
             const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
-            const char* audioEngineLabel = audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off";
+            const auto audioFault = appModel.sequencer().engine()->audioWorkers().fault();
+            const char* audioEngineLabel = audioFault != uapmd::AudioWorkerFault::None
+                ? "Audio Engine: Restart" : (audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off");
             const ImVec4 onColor(0.25f, 0.58f, 0.33f, 1.0f);
             const ImVec4 onHoverColor(0.30f, 0.66f, 0.39f, 1.0f);
             const ImVec4 onActiveColor(0.20f, 0.50f, 0.26f, 1.0f);
@@ -449,7 +455,12 @@ void MainWindow::render(void* window) {
             }
             ImGui::PopStyleColor(3);
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(audioEngineEnabled ? "Click to turn off the audio engine" : "Click to turn on the audio engine");
+                if (audioFault == uapmd::AudioWorkerFault::DeadlineExceeded)
+                    ImGui::SetTooltip("Audio workers missed their deadline. Use fewer workers or a larger buffer in Settings, then click to restart.");
+                else if (audioFault == uapmd::AudioWorkerFault::PluginFailure)
+                    ImGui::SetTooltip("A plugin failed during parallel processing. Select Serial in Settings, then click to restart.");
+                else
+                    ImGui::SetTooltip(audioEngineEnabled ? "Click to turn off the audio engine" : "Click to turn on the audio engine");
             }
             ImGui::SameLine();
 
@@ -960,6 +971,42 @@ void MainWindow::renderDeviceSettingsWindow() {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
+        auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
+        const auto workerCount = engine->audioWorkers().count();
+        const auto workerLabel = workerCount == 0 ? std::string("Serial") : std::to_string(workerCount);
+        if (ImGui::BeginCombo("Audio Workers", workerLabel.c_str())) {
+            const auto cpuCount = std::thread::hardware_concurrency();
+            // Worker-pool diagnostics currently have a fixed capacity of 32
+            // workers plus the coordinator. Preserve that engine bound while
+            // making every useful machine-sized option available.
+            const auto maximumWorkers = std::min(cpuCount == 0 ? 4u : cpuCount, 32u);
+            std::array<uint32_t, 3> smallCounts{1, 2, 4};
+            const auto select = [&](uint32_t count) {
+                const auto label = count == 0 ? std::string("Serial") : std::to_string(count);
+                if (UapmdSelectable(label.c_str(), workerCount == count)) {
+                    audio_worker_settings_error_ = engine->audioWorkers().configure(count)
+                        ? "" : "Could not configure audio workers.";
+                }
+            };
+            select(0);
+            for (const auto count : smallCounts)
+                if (count <= maximumWorkers)
+                    select(count);
+            for (uint32_t count = 8; count <= maximumWorkers; count += 4)
+                select(count);
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Process independent tracks concurrently. The default uses one quarter of the machine's CPU concurrency, up to four workers. Choices include 1, 2, 4, then every multiple of 4 up to the machine's CPU count (maximum 32). Incompatible graph providers or extensions retain serial processing.");
+        if (!audio_worker_settings_error_.empty())
+            ImGui::TextWrapped("%s", audio_worker_settings_error_.c_str());
+        bool stopOnDeadline = engine->audioWorkers().stopOnDeadline();
+        if (ImGui::Checkbox("Stop audio engine on deadline overrun", &stopOnDeadline))
+            engine->audioWorkers().setStopOnDeadline(stopOnDeadline);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Off by default for this session. Late audio blocks are silenced until workers finish, then processing resumes automatically. Enable to require a manual restart after a worker deadline overrun. Overruns are always logged.");
+#endif
         ImGui::Separator();
         renderPlatformMidiConnections();
     }

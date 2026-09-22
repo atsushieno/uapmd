@@ -6,10 +6,30 @@
 #include <string>
 #include <strings.h>
 #include <sys/system_properties.h>
+#include <pthread.h>
+#include <sched.h>
 
 using namespace oboe;
 
 namespace uapmd {
+
+    AudioWorkerThreadSetup OboeAudioIODevice::audioWorkerThreadSetup() {
+        return []() -> std::shared_ptr<void> {
+            class AndroidThreadSetup {
+            public:
+                AndroidThreadSetup() {
+                    pthread_setname_np(pthread_self(), "uapmd-audio");
+                    sched_param parameters{};
+                    parameters.sched_priority = std::max(1, sched_get_priority_min(SCHED_FIFO));
+                    // Android may deny SCHED_FIFO without elevated audio
+                    // privileges. Oboe's callback remains realtime; workers
+                    // continue with their normal policy in that case.
+                    pthread_setschedparam(pthread_self(), SCHED_FIFO, &parameters);
+                }
+            };
+            return std::make_shared<AndroidThreadSetup>();
+        };
+    }
 
     // Background: current AAP instrument hosting expects the DAW/host to render a fixed
     // block size per callback. Some plugins (and AAP’s MIDI plumbing) assume each call

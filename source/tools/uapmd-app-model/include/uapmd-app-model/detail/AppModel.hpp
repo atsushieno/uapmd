@@ -272,7 +272,7 @@ namespace uapmd_app {
         uapmd_jsfx::JsfxPluginFormat* jsfxPluginFormat() { return jsfxPluginFormat_.get(); }
 #endif
         bool isScanning() const { return isScanning_; }
-        bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire); }
+        bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire) && sequencer_.engine()->audioWorkers().fault() == uapmd::AudioWorkerFault::None; }
         void setAudioEngineEnabled(bool enabled);
         void toggleAudioEngine();
         void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);

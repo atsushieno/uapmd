@@ -138,8 +138,7 @@ namespace remidy {
     }
 
     bool RemidyCLAPHost::threadCheckIsAudioThread() const noexcept {
-        auto thisId = std::this_thread::get_id();
-        return std::ranges::any_of(audioThreadIds(), [&](auto tid) { return tid == thisId; });
+        return isAudioThread();
     }
 
     bool RemidyCLAPHost::guiRequestShow() noexcept {

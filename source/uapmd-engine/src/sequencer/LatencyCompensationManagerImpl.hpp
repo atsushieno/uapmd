@@ -124,6 +124,7 @@ namespace uapmd {
             int32_t trackFrameCount);
 
         void afterTrackProcess(const TrackAudioProcessingEvent& event) noexcept override;
+        bool supportsParallelTrackProcessing() const noexcept override { return true; }
         void trackAdded(uapmd_track_index_t trackIndex) override;
         void trackRemoved(uapmd_track_index_t trackIndex) override;
         void pluginInstanceWillBeDestroyed(int32_t instanceId) override;

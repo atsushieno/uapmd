@@ -70,6 +70,7 @@ namespace uapmd {
         void clearAudioCallbacks() override;
         void setPreferredCallbackSize(uint32_t framesPerCallback) override;
         uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
+        AudioWorkerThreadSetup audioWorkerThreadSetup() override;
 
         double sampleRate() override { return sample_rate_; }
         uint32_t inputChannels() override { return input_channels_; }

@@ -5,11 +5,50 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <cstring>
 #include "uapmd-engine/uapmd-engine.hpp"
 
 using namespace uapmd_graph;
 
 namespace uapmd {
+    SequencerTrack::SequencerTrack(size_t eventBufferSizeInBytes) : plugin_output_events_(eventBufferSizeInBytes / sizeof(uapmd_ump_t)) {}
+
+    void SequencerTrack::capturePluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
+        if (!data)
+            return;
+        const auto* source = reinterpret_cast<const uint8_t*>(data);
+        size_t offset = 0;
+        while (bytes - offset >= sizeof(uapmd_ump_t)) {
+            uapmd_ump_t firstWord;
+            std::memcpy(&firstWord, source + offset, sizeof(firstWord));
+            const auto messageBytes = static_cast<size_t>(umppi::umpSizeInInts(firstWord >> 28)) * sizeof(uapmd_ump_t);
+            if (messageBytes == 0 || messageBytes > 4 * sizeof(uapmd_ump_t) || messageBytes > bytes - offset)
+                break;
+            if (plugin_output_event_count_ < plugin_output_events_.size()) {
+                auto& event = plugin_output_events_[plugin_output_event_count_++];
+                event.preset_request = false;
+                event.instance_id = instanceId;
+                event.size_in_bytes = static_cast<uint32_t>(messageBytes);
+                event.words.fill(0);
+                std::memcpy(event.words.data(), source + offset, messageBytes);
+            } else
+                dropped_plugin_output_events_.fetch_add(1, std::memory_order_relaxed);
+            offset += messageBytes;
+        }
+    }
+
+    void SequencerTrack::capturePresetRequest(int32_t instanceId, uint32_t index) {
+        if (plugin_output_event_count_ == plugin_output_events_.size()) {
+            dropped_plugin_output_events_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        auto& event = plugin_output_events_[plugin_output_event_count_++];
+        event = {};
+        event.instance_id = instanceId;
+        event.preset_request = true;
+        event.words[0] = index;
+    }
+
     constexpr std::string_view kTrackGainNodeId = "builtin:track_gain";
 
     AudioGraphNodeDescriptor createTrackGainNodeDescriptor() {
@@ -31,7 +70,7 @@ namespace uapmd {
         std::unordered_map<int32_t, uint8_t> instance_groups_{}; // instanceId → UMP group
 
     public:
-        explicit SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph);
+        explicit SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph, size_t eventBufferSizeInBytes);
         ~SequencerTrackImpl() override = default;
 
         AudioPluginGraph& graph() override { return *graph_; }
@@ -84,7 +123,8 @@ namespace uapmd {
         webaudio_compat::GainNode* ensureTrackGainNode();
     };
 
-    SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph) :
+    SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph, size_t eventBufferSizeInBytes) :
+        SequencerTrack(eventBufferSizeInBytes),
         graph_(std::move(graph)) {
     }
 
@@ -104,7 +144,7 @@ namespace uapmd {
                 return nullptr;
         }
         graph->appendBuiltInNodeSimple(createTrackGainNodeDescriptor());
-        return std::make_unique<SequencerTrackImpl>(std::move(graph));
+        return std::make_unique<SequencerTrackImpl>(std::move(graph), eventBufferSizeInBytes);
     }
 
     bool SequencerTrackImpl::replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) {

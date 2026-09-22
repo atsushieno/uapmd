@@ -41,8 +41,6 @@ ScanVerificationReport runFullVerification(uapmd_plugin_hosting::PluginScanTool&
     report.enabled = true;
 
     auto runInstancing = [&]() {
-        remidy::audioThreadIds().push_back(std::this_thread::get_id());
-
         for (auto format : scanner.formats()) {
             auto plugins = scanner.filterByFormat(scanner.catalog().getPlugins(), format->name());
             size_t index = 0;

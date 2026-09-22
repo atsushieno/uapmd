@@ -13,8 +13,7 @@ namespace uapmd_graph {
     // `AudioGraph::getExtension<GraphConnectionExtension>()`.
     class AudioPluginFullDAGraph : public AudioPluginGraph, public GraphConnectionExtension {
     protected:
-        explicit AudioPluginFullDAGraph(std::string providerId)
-            : AudioPluginGraph(std::move(providerId)) {}
+        AudioPluginFullDAGraph() = default;
 
     public:
         ~AudioPluginFullDAGraph() override = default;
@@ -22,6 +21,7 @@ namespace uapmd_graph {
         // `providerId` is stamped onto the graph so that whoever created it can
         // be identified again later without guessing from the graph's shape.
         static std::unique_ptr<AudioPluginFullDAGraph> create(size_t eventBufferSizeInBytes, std::string providerId = {});
+
     };
 
 }

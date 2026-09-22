@@ -21,6 +21,11 @@ class AudioProcessingEventHandler {
 public:
     virtual ~AudioProcessingEventHandler() = default;
 
+    // Opt in only if all before callbacks may precede all track graphs and all
+    // after callbacks may follow them. Callbacks still run serially on the
+    // coordinator. On a failed parallel batch after callbacks are skipped.
+    virtual bool supportsParallelTrackProcessing() const noexcept = 0;
+
     virtual void beforeTrackProcess(const TrackAudioProcessingEvent&) noexcept {}
     virtual void afterTrackProcess(const TrackAudioProcessingEvent&) noexcept {}
 };

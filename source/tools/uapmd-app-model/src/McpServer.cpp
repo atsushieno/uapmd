@@ -370,6 +370,16 @@ static choc::value::Value buildToolDefinitions()
 
     static const ToolDef defs[] = {
         {
+            "get_audio_worker_diagnostics",
+            "Read the last audio worker fault and eventual completion without waiting for DSP. Fault: 0=none, 1=deadline, 2=plugin failure. Participant 0 is coordinator. Timestamps are ns after dispatch plus 1; zero means unobserved. At-fault fields are individually sampled. Details cover the first 128 tracks; counts cover all tracks. No project mutation.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "configure_audio_workers",
+            "Set session-only audio worker count (0=serial, maximum 32). Control-thread operation; can wait for outstanding workers. Does not save the project or clear an engine fault.",
+            R"j({"type":"object","required":["count"],"properties":{"count":{"type":"integer","minimum":0,"maximum":32}}})j"
+        },
+        {
             "list_plugins",
             "List available plugins. Optionally filter by format (VST3, AU, LV2, CLAP).",
             R"j({"type":"object","properties":{"format":{"type":"string","description":"Format filter: VST3, AU, LV2, CLAP"}}})j"
@@ -1585,6 +1595,17 @@ struct McpServer::Impl {
 
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
+            else if (toolName == "get_audio_worker_diagnostics") {
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("__remidy_audio_worker_diagnostics()"));
+            }
+            else if (toolName == "configure_audio_workers") {
+                const auto count = getIntArg(args, "count");
+                if (count < 0 || count > 32)
+                    throw std::invalid_argument("count must be between 0 and 32");
+                ensureJSRuntime();
+                toolResult = choc::json::parse(evalScript("({success: __remidy_configure_audio_workers(" + std::to_string(count) + ")})"));
+            }
             else if (toolName == "get_history_state") {
                 ensureJSRuntime();
                 toolResult = choc::json::parse(evalScript("uapmd.sequencer.getHistoryState()"));

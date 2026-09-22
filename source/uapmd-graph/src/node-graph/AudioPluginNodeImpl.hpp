@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
-#include "uapmd-graph/detail/node-graph/AudioPluginNode.hpp"
+#include "uapmd-graph/uapmd-graph.hpp"
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -217,14 +217,15 @@ namespace uapmd_graph {
                 pending_events_.push_back(u128);
         }
 
-        void drainPresetRequests() {
-            if (ump_input_mapper_)
-                ump_input_mapper_->drainPresetRequests();
-        }
-
-        void processInputMapping(uapmd::AudioProcessContext& process) {
-            if (auto* mapper = ump_input_mapper_.get())
+        void processInputMapping(uapmd::AudioProcessContext& process,
+                                 const std::function<void(int32_t, uint32_t)>& presetCallback) {
+            if (auto* mapper = ump_input_mapper_.get()) {
                 mapper->process(process);
+                uint32_t index;
+                while (mapper->tryDequeuePresetRequest(index))
+                    if (presetCallback)
+                        presetCallback(instance_id_, index);
+            }
         }
 
         bool consumeStopFlushRequest() {

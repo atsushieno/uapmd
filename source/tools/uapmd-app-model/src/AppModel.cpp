@@ -1213,6 +1213,9 @@ void uapmd_app::AppModel::completeAudioEngineShutdown() {
     sequencer_.engine()->setEngineActive(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max<int64_t>(30, bufferPeriodMs * 2)));
     sequencer_.stopAudio();
+    // A fault can leave workers running after the device callback returned.
+    // Retire that batch before stopping or destroying any plugin instance.
+    sequencer_.engine()->audioWorkers().resetFault();
     // With the callback stopped, the plugin formats can complete their (possibly
     // deferred) stop synchronously, deactivating plugins and resetting their DSP
     // state so a restart does not resume stale voices or effect tails.
@@ -1243,6 +1246,7 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
             completeAudioEngineShutdown();
             audioEngineEnabled_.store(true, std::memory_order_release);
         }
+        sequencer_.engine()->audioWorkers().resetFault();
         for (auto id : host->instanceIds())
             host->getInstance(id)->startProcessing();
         pluginsProcessingStopped_ = false;
@@ -1257,6 +1261,11 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
         }
     } else if (sequencer_.isAudioPlaying() != 0) {
         transportController_->stop();
+        if (sequencer_.engine()->audioWorkers().fault() != uapmd::AudioWorkerFault::None) {
+            // A faulted engine cannot render a muted tail drain.
+            completeAudioEngineShutdown();
+            return;
+        }
         // stop() requested a note-off flush on every plugin node; it is delivered by
         // the next audio cycles. Mute the device output immediately, but keep the
         // engine processing so the flush lands and the release/reverb tails render
@@ -1295,7 +1304,7 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
 }
 
 void uapmd_app::AppModel::toggleAudioEngine() {
-    bool desired = !audioEngineEnabled_.load(std::memory_order_acquire);
+    bool desired = !isAudioEngineEnabled();
     setAudioEngineEnabled(desired);
 }
 

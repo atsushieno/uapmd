@@ -23,17 +23,13 @@ android {
         externalNativeBuild {
             cmake {
                 arguments.addAll(listOf(
-                    "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-                    "-DUAPMD_ENABLE_ARA=1",
-                    // Polyphonic transcription is a built-in addin, so unlike
-                    // the dynamically loaded uapmd-mir library it is reachable
-                    // here. Enabling it downloads the Apache-2.0 model at
-                    // configure time and embeds it in the .so.
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DUAPMD_ENABLE_ARA=ON",
+                    "-DUAPMD_ENABLE_MIR=ON",
                     "-DUAPMD_ENABLE_BASIC_PITCH=ON",
-                    // Demucs is a built-in addin and reachable here for the same
-                    // reason; it is opt-in because demucs.cpp vendors MPL-2.0 Eigen.
                     "-DUAPMD_ENABLE_DEMUCS_CPP=ON",
-                    // JSFX is opt-in because ysfx is Apache-2.0.
+                    "-DUAPMD_ENABLE_LIBROSA_CPP=ON",
+                    "-DUAPMD_ENABLE_DRUM_SCRIPT=ON",
                     "-DUAPMD_ENABLE_JSFX=ON",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",

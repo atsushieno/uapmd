@@ -1,24 +1,71 @@
 #pragma once
 #include <cstdint>
+#include <array>
+#include <atomic>
 #include <functional>
 #include <string>
 #include <memory>
 #include <vector>
+#include <span>
 
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-graph/uapmd-graph.hpp"
 
 namespace uapmd {
 
+    struct TrackPluginOutputEvent {
+        int32_t instance_id{};
+        uint32_t size_in_bytes{};
+        bool preset_request{}; // When true, words[0] is a preset index, not UMP.
+        std::array<uapmd_ump_t, 4> words{};
+    };
+
     class SequencerTrack {
         std::string unresolved_graph_type_{};
         std::vector<uint8_t> unresolved_graph_payload_{};
+        std::vector<TrackPluginOutputEvent> plugin_output_events_;
+        size_t plugin_output_event_count_{};
+        std::atomic<uint32_t> dropped_plugin_output_events_{0};
+        std::vector<std::pair<int32_t, uint8_t>> processing_groups_;
 
     protected:
         SequencerTrack() = default;
+        explicit SequencerTrack(size_t eventBufferSizeInBytes);
 
     public:
         virtual ~SequencerTrack() = default;
+
+        // One processing thread owns this preallocated buffer at a time. The
+        // coordinator may read/clear it only after graph processing completes.
+        // Capture copies complete UMP messages and drops newest on overflow.
+        void capturePluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+        // Preset requests share the bounded event storage and overflow counter.
+        void capturePresetRequest(int32_t instanceId, uint32_t index);
+        std::span<const TrackPluginOutputEvent> pluginOutputEvents() const { return {plugin_output_events_.data(), plugin_output_event_count_}; }
+        void clearPluginOutputEvents() { plugin_output_event_count_ = 0; }
+        // Lifetime counter, wraps modulo 2^32; readable from the control thread.
+        uint32_t droppedPluginOutputEventCount() const { return dropped_plugin_output_events_.load(std::memory_order_relaxed); }
+
+        // Configure off the processing thread. Refresh values on the coordinator
+        // before dispatch; graphs only read this cache while workers are active.
+        void configureProcessingGroups() {
+            processing_groups_.clear();
+            for (const auto instanceId : orderedInstanceIds())
+                processing_groups_.emplace_back(instanceId, 0xFF);
+        }
+        void setProcessingGroup(int32_t instanceId, uint8_t group) {
+            for (auto& entry : processing_groups_)
+                if (entry.first == instanceId) {
+                    entry.second = group;
+                    return;
+                }
+        }
+        uint8_t processingGroup(int32_t instanceId) const {
+            for (const auto& entry : processing_groups_)
+                if (entry.first == instanceId)
+                    return entry.second;
+            return 0xFF;
+        }
 
         // A graph this build could not construct, because no provider claimed
         // its type when the project loaded -- typically an addin that is

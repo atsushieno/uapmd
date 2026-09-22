@@ -34,8 +34,10 @@ namespace uapmd_midi_service {
         // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
         virtual void loadPreset(uint32_t index) = 0;
 
-        // FIXME: we should probably remove this.
-        virtual void drainPresetRequests() = 0;
+        // Transfer a queued request without touching plugin state. The host must
+        // apply it on its control thread with processing excluded.
+        virtual bool tryDequeuePresetRequest(uint32_t& index) = 0;
+        virtual uint32_t droppedPresetRequestCount() const = 0;
 
         static std::unique_ptr<UapmdUmpInputMapper> create(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
     };

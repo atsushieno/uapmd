@@ -67,11 +67,19 @@ std::string uapmd::RealtimeSequencer::getPluginFormat(int32_t instanceId) {
 }
 
 uapmd_status_t uapmd::RealtimeSequencer::startAudio() {
+    if (dispatcher->isPlaying())
+        return 0;
+    if (auto* device = dispatcher->audio())
+        if (!sequencer->audioWorkers().setThreadSetup(device->audioWorkerThreadSetup()))
+            remidy::Logger::global()->logError("Audio worker platform setup failed; using Serial audio processing");
     return dispatcher->start();
 }
 
 uapmd_status_t uapmd::RealtimeSequencer::stopAudio() {
-    return dispatcher->stop();
+    const auto status = dispatcher->stop();
+    if (status == 0)
+        sequencer->audioWorkers().wait();
+    return status;
 }
 
 uapmd_status_t uapmd::RealtimeSequencer::isAudioPlaying() {

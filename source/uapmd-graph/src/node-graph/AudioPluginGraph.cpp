@@ -17,6 +17,8 @@ namespace uapmd_graph {
         std::unique_ptr<AudioGraphRegistry> registry_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
+        std::function<void(int32_t, uint32_t)> preset_request_callback_;
+        std::string provider_id_;
 
         uint32_t currentOutputBusCount();
         uint32_t aggregateLatencyInSamples();
@@ -24,7 +26,7 @@ namespace uapmd_graph {
 
     public:
         explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes, std::string providerId = {})
-            : AudioPluginGraph(std::move(providerId))
+            : provider_id_(std::move(providerId))
             , event_buffer_size_in_bytes_(eventBufferSizeInBytes)
             , registry_(AudioGraphRegistry::createDefault()) {
         }
@@ -32,6 +34,8 @@ namespace uapmd_graph {
 
         AudioGraphExtension* getExtension(const std::type_info& type) override;
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
+        const std::string& providerId() const override { return provider_id_; }
+        void setPresetRequestCallback(std::function<void(int32_t, uint32_t)> callback) override { preset_request_callback_ = std::move(callback); }
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, uapmd_plugin_hosting::AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete, std::string nodeId = {}) override;
         uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
@@ -39,6 +43,7 @@ namespace uapmd_graph {
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(uapmd::AudioProcessContext& process) override;
+        bool supportsParallelTrackProcessing() const noexcept override { return true; }
         uint32_t outputBusCount() override;
         uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
         double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
@@ -107,7 +112,7 @@ namespace uapmd_graph {
 
                 bool bypassed = pluginNode->bypassed();
                 if (!bypassed)
-                    pluginNode->processInputMapping(process);
+                    pluginNode->processInputMapping(process, preset_request_callback_);
                 if (bypassed) {
                     process.copyInputsToOutputs();
                     if (i + 1 < nodes.size())

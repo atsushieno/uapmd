@@ -373,6 +373,8 @@ namespace uapmd_graph {
         size_t event_buffer_size_in_bytes_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
+        std::function<void(int32_t, uint32_t)> preset_request_callback_;
+        std::string provider_id_;
         std::vector<TrackOutputRoutingRule> output_routing_rules_{};
 
         NodePtr findNode(const GraphState& state, int32_t instanceId) const;
@@ -383,7 +385,8 @@ namespace uapmd_graph {
 
     public:
         explicit AudioPluginFullDAGraphImpl(size_t eventBufferSizeInBytes, std::string providerId)
-            : AudioPluginFullDAGraph(std::move(providerId))
+            : AudioPluginFullDAGraph()
+            , provider_id_(std::move(providerId))
             , registry_(AudioGraphRegistry::createDefault())
             , event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
             RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
@@ -394,6 +397,8 @@ namespace uapmd_graph {
 
         AudioGraphExtension* getExtension(const std::type_info& type) override;
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
+        const std::string& providerId() const override { return provider_id_; }
+        void setPresetRequestCallback(std::function<void(int32_t, uint32_t)> callback) override { preset_request_callback_ = std::move(callback); }
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete, std::string nodeId = {}) override;
         uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
@@ -419,6 +424,7 @@ namespace uapmd_graph {
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
+        bool supportsParallelTrackProcessing() const noexcept override { return true; }
         uint32_t outputBusCount() override;
         uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
         double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
@@ -1075,7 +1081,7 @@ namespace uapmd_graph {
                 auto* instance = pluginNode->instance();
                 const bool bypassed = instance && instance->bypassed();
                 if (!bypassed)
-                    pluginNode->processInputMapping(process);
+                    pluginNode->processInputMapping(process, preset_request_callback_);
                 if (bypassed)
                     process.copyInputsToOutputs();
                 else {
@@ -1174,9 +1180,8 @@ namespace uapmd_graph {
             }
 
             if (pluginImpl && pluginNode && instance) {
-                pluginImpl->drainPresetRequests();
                 if (!instance->bypassed())
-                    pluginImpl->processInputMapping(runtime.process);
+                    pluginImpl->processInputMapping(runtime.process, preset_request_callback_);
 
                 if (instance->bypassed()) {
                     runtime.process.copyInputsToOutputs();

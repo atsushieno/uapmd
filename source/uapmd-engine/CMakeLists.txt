@@ -191,6 +191,10 @@ target_link_libraries(uapmd-engine
         uapmd-data
 )
 
+if(WIN32)
+    target_link_libraries(uapmd-engine PRIVATE avrt)
+endif()
+
 target_sources(uapmd-engine PRIVATE
         src/devices/AudioIODevice.cpp
         src/devices/DefaultDeviceIODispatcher.cpp
@@ -203,6 +207,8 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/ProjectCommands.cpp
         src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp
+        src/sequencer/AudioWorkers.cpp
+        src/sequencer/AudioPerformanceCounter.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
         src/sequencer/StopDrainUtilities.cpp
