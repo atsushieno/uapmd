@@ -435,7 +435,7 @@ void MainWindow::render(void* window) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             auto& appModel = uapmd_app::AppModel::instance();
             const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
-            const auto audioFault = appModel.sequencer().engine()->audioWorkerFault();
+            const auto audioFault = appModel.sequencer().engine()->audioWorkers().fault();
             const char* audioEngineLabel = audioFault != uapmd::AudioWorkerFault::None
                 ? "Audio Engine: Restart" : (audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off");
             const ImVec4 onColor(0.25f, 0.58f, 0.33f, 1.0f);
@@ -973,7 +973,7 @@ void MainWindow::renderDeviceSettingsWindow() {
         audioDeviceSettings_.render();
 #if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
         auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
-        const auto workerCount = engine->audioWorkerCount();
+        const auto workerCount = engine->audioWorkers().count();
         const auto workerLabel = workerCount == 0 ? std::string("Serial") : std::to_string(workerCount);
         if (ImGui::BeginCombo("Audio Workers", workerLabel.c_str())) {
             const auto cpuCount = std::thread::hardware_concurrency();
@@ -985,7 +985,7 @@ void MainWindow::renderDeviceSettingsWindow() {
             const auto select = [&](uint32_t count) {
                 const auto label = count == 0 ? std::string("Serial") : std::to_string(count);
                 if (UapmdSelectable(label.c_str(), workerCount == count)) {
-                    audio_worker_settings_error_ = engine->configureAudioWorkers(count)
+                    audio_worker_settings_error_ = engine->audioWorkers().configure(count)
                         ? "" : "Could not configure audio workers.";
                 }
             };
@@ -1001,9 +1001,9 @@ void MainWindow::renderDeviceSettingsWindow() {
             ImGui::SetTooltip("Process independent tracks concurrently. The default uses one quarter of the machine's CPU concurrency, up to four workers. Choices include 1, 2, 4, then every multiple of 4 up to the machine's CPU count (maximum 32). Incompatible graph providers or extensions retain serial processing.");
         if (!audio_worker_settings_error_.empty())
             ImGui::TextWrapped("%s", audio_worker_settings_error_.c_str());
-        bool stopOnDeadline = engine->stopOnAudioWorkerDeadline();
+        bool stopOnDeadline = engine->audioWorkers().stopOnDeadline();
         if (ImGui::Checkbox("Stop audio engine on deadline overrun", &stopOnDeadline))
-            engine->setStopOnAudioWorkerDeadline(stopOnDeadline);
+            engine->audioWorkers().setStopOnDeadline(stopOnDeadline);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Off by default for this session. Late audio blocks are silenced until workers finish, then processing resumes automatically. Enable to require a manual restart after a worker deadline overrun. Overruns are always logged.");
 #endif

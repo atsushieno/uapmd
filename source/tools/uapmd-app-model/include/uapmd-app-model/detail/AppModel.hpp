@@ -274,7 +274,7 @@ namespace uapmd_app {
         bool isScanning() const { return isScanning_; }
         bool isAudioEngineEnabled() const {
             return audioEngineEnabled_.load(std::memory_order_acquire) &&
-                sequencer_.engine()->audioWorkerFault() == uapmd::AudioWorkerFault::None;
+                sequencer_.engine()->audioWorkers().fault() == uapmd::AudioWorkerFault::None;
         }
         void setAudioEngineEnabled(bool enabled);
         void toggleAudioEngine();

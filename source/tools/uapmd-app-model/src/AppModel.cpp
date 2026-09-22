@@ -1215,7 +1215,7 @@ void uapmd_app::AppModel::completeAudioEngineShutdown() {
     sequencer_.stopAudio();
     // A fault can leave workers running after the device callback returned.
     // Retire that batch before stopping or destroying any plugin instance.
-    sequencer_.engine()->resetAudioWorkerFault();
+    sequencer_.engine()->audioWorkers().resetFault();
     // With the callback stopped, the plugin formats can complete their (possibly
     // deferred) stop synchronously, deactivating plugins and resetting their DSP
     // state so a restart does not resume stale voices or effect tails.
@@ -1246,7 +1246,7 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
             completeAudioEngineShutdown();
             audioEngineEnabled_.store(true, std::memory_order_release);
         }
-        sequencer_.engine()->resetAudioWorkerFault();
+        sequencer_.engine()->audioWorkers().resetFault();
         for (auto id : host->instanceIds())
             host->getInstance(id)->startProcessing();
         pluginsProcessingStopped_ = false;
@@ -1261,7 +1261,7 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
         }
     } else if (sequencer_.isAudioPlaying() != 0) {
         transportController_->stop();
-        if (sequencer_.engine()->audioWorkerFault() != uapmd::AudioWorkerFault::None) {
+        if (sequencer_.engine()->audioWorkers().fault() != uapmd::AudioWorkerFault::None) {
             // A faulted engine cannot render a muted tail drain.
             completeAudioEngineShutdown();
             return;

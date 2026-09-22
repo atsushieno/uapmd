@@ -21,8 +21,7 @@
 #include "LatencyCompensationManagerImpl.hpp"
 #include "TailProcessManagerImpl.hpp"
 #include "TrackRoutingManager.hpp"
-#include "AudioTrackWorkerPool.hpp"
-#include "readerwriterqueue.h"
+#include "AudioWorkers.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include "../devices/WebAudioWorkletIODevice.hpp"
@@ -299,37 +298,12 @@ namespace uapmd {
         std::atomic<bool> structure_mutation_active_{false};
         std::atomic<bool> in_process_audio_{false};
         uint32_t structure_mutation_depth_{}; // serialized control thread only
-        std::unique_ptr<AudioTrackWorkerPool> audio_workers_;
-        AudioWorkerThreadSetup audio_worker_thread_setup_;
-        std::vector<AudioTrackJob> audio_track_jobs_;
-        std::atomic<AudioWorkerFault> audio_worker_fault_{AudioWorkerFault::None};
-        std::atomic<bool> stop_on_audio_worker_deadline_{false};
-        static_assert(std::atomic<AudioWorkerFault>::is_always_lock_free);
+        AudioWorkersImpl audio_workers_;
+        void discardLateAudioWorkerContexts();
 
-        // Callback-owned until the batch retires. Control access requires the
-        // mutation guard or stopped device callbacks, just like the pump slots.
-        bool audio_worker_batch_pending_{};
-        AudioWorkerFaultDiagnostic audio_worker_diagnostic_;
-        // Repeated recoverable overruns need separate immutable reports: logging
-        // may still be reading an earlier incident when the next batch starts.
-        // Producer roles migrate only while callbacks are excluded. Consumers
-        // are serialized by the non-RT mutex. try_enqueue never grows the queue.
-        moodycamel::ReaderWriterQueue<AudioWorkerFaultDiagnostic> audio_worker_diagnostics_{32};
-        std::atomic<uint32_t> dropped_audio_worker_diagnostics_{0};
-        AudioWorkerFaultDiagnostic last_audio_worker_diagnostic_;
-        std::mutex audio_worker_diagnostic_mutex_;
-        void publishAudioWorkerDiagnostic() {
-            if (!audio_worker_diagnostics_.try_enqueue(audio_worker_diagnostic_))
-                dropped_audio_worker_diagnostics_.fetch_add(1, std::memory_order_relaxed);
-        }
-        void retireLateAudioWorkerBatch();
-        void reportAudioWorkerFault();
-
-        void waitForAudioWorkers() override {
-            if (audio_workers_)
-                audio_workers_->waitUntilIdle();
-            retireLateAudioWorkerBatch();
-            audioWorkerDiagnostic();
+        void waitForWorkerContexts() {
+            audio_workers_.wait();
+            audio_workers_.diagnostic(!in_process_audio_.load(std::memory_order_acquire));
         }
 
         // Control-thread only, with nesting for lifecycle/transport notifications.
@@ -343,7 +317,7 @@ namespace uapmd {
                 engine.structure_mutation_active_.store(true, std::memory_order_seq_cst);
                 while (engine.in_process_audio_.load(std::memory_order_seq_cst))
                     std::this_thread::yield();
-                engine.waitForAudioWorkers();
+                engine.waitForWorkerContexts();
             }
             ~StructureMutationGuard() {
                 if (--engine.structure_mutation_depth_ == 0)
@@ -578,53 +552,7 @@ namespace uapmd {
 
         void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
-        bool configureAudioWorkers(uint32_t workerCount) override;
-        bool setAudioWorkerThreadSetup(AudioWorkerThreadSetup setup) override {
-            StructureMutationGuard guard(*this);
-            const auto count = audioWorkerCount();
-            audio_workers_.reset();
-            audio_worker_thread_setup_ = std::move(setup);
-            return configureAudioWorkers(count);
-        }
-        uint32_t audioWorkerCount() const override {
-            return audio_workers_ ? audio_workers_->workerCount() : 0;
-        }
-        AudioWorkerFault audioWorkerFault() const override {
-            return audio_worker_fault_.load(std::memory_order_acquire);
-        }
-        bool stopOnAudioWorkerDeadline() const override {
-            return stop_on_audio_worker_deadline_.load(std::memory_order_relaxed);
-        }
-        void setStopOnAudioWorkerDeadline(bool enabled) override {
-            stop_on_audio_worker_deadline_.store(enabled, std::memory_order_relaxed);
-        }
-        AudioWorkerFaultDiagnostic audioWorkerDiagnostic() override {
-            // A latched stop prevents another batch from reusing progress storage.
-            // Observe callback exit before inspecting that batch. Recoverable
-            // incidents publish completion through the queue before reuse instead.
-            const bool faultPublished = audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None &&
-                !in_process_audio_.load(std::memory_order_acquire);
-            reportAudioWorkerFault();
-            std::lock_guard lock(audio_worker_diagnostic_mutex_);
-            if (faultPublished && audio_workers_ && !audio_workers_->busy() &&
-                last_audio_worker_diagnostic_.block_number == audio_worker_diagnostic_.block_number &&
-                last_audio_worker_diagnostic_.engine_stopped &&
-                !last_audio_worker_diagnostic_.completion_available) {
-                last_audio_worker_diagnostic_.after_completion = audio_workers_->progressSnapshot();
-                last_audio_worker_diagnostic_.completion_available = true;
-            }
-            return last_audio_worker_diagnostic_;
-        }
-        void resetAudioWorkerFault() override {
-            StructureMutationGuard guard(*this);
-            if (audio_worker_fault_.load(std::memory_order_acquire) == AudioWorkerFault::None)
-                return;
-            engine_active_.store(false, std::memory_order_release);
-            resetProcessingState();
-            requestAllNotesOff();
-            reportAudioWorkerFault();
-            audio_worker_fault_.store(AudioWorkerFault::None, std::memory_order_release);
-        }
+        AudioWorkers& audioWorkers() override { return audio_workers_; }
         void setAudioProcessingTimingEnabled(bool enabled) override {
             audio_processing_timing_enabled_.store(enabled, std::memory_order_relaxed);
         }
@@ -907,20 +835,29 @@ namespace uapmd {
         audio_preprocess_callback_ = [this](AudioProcessContext& process) {
             timeline_->processTracksAudio(process, pump_sequence_);
         };
+        audio_workers_.setResetHandler([this] {
+            StructureMutationGuard guard(*this);
+            if (audio_workers_.fault() == AudioWorkerFault::None)
+                return;
+            engine_active_.store(false, std::memory_order_release);
+            resetProcessingState();
+            requestAllNotesOff();
+            audio_workers_.reportDiagnostics();
+        });
+        audio_workers_.setWaitHandler([this] { discardLateAudioWorkerContexts(); });
         notifyAudioProcessingConfigurationChanged();
-        configureAudioWorkers(defaultAudioWorkerCount());
+        audio_workers_.configure(defaultAudioWorkerCount(), tracks_.size());
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
-        waitForAudioWorkers();
-        audio_workers_.reset();
+        waitForWorkerContexts();
         plugin_control_dispatch_->owner = nullptr;
         clearPlatformMidiInputRoute();
         clearPlatformMidiOutputRoute();
         platform_midi_output_worker_running_.store(false, std::memory_order_release);
         if (platform_midi_output_worker_.joinable())
             platform_midi_output_worker_.join();
-        reportAudioWorkerFault();
+        audio_workers_.reportDiagnostics();
         if (frozen_track_manager_) {
             removeTrackAudioProcessorExtension(frozen_track_manager_->audioProcessorExtension());
             timeline_->removeProjectSerializationExtension(frozen_track_manager_->projectSerializationExtension());
@@ -1215,7 +1152,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::resetProcessingState() {
-        waitForAudioWorkers();
+        waitForWorkerContexts();
         transport_generation_.fetch_add(1, std::memory_order_acq_rel);
         auto clearContextBuffers = [](AudioProcessContext* ctx) {
             if (!ctx)
@@ -1383,47 +1320,11 @@ namespace uapmd {
                 pump_rings_[t]->filled.try_enqueue(pump_slot_indices_[t]);
     }
 
-    bool SequencerEngineImpl::configureAudioWorkers(uint32_t workerCount) {
-        if (workerCount > 32)
-            return false;
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
-        if (workerCount != 0)
-            return false;
-#endif
-        StructureMutationGuard guard(*this);
-        try {
-            auto workers = workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount, audio_worker_thread_setup_) : nullptr;
-            audio_track_jobs_.resize(tracks_.size());
-            audio_workers_ = std::move(workers);
-            if (workerCount)
-                remidy::Logger::global()->logInfo("Audio workers configured: %u; platform thread setup: %s",
-                    workerCount, audio_worker_thread_setup_ ? "enabled" : "none");
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-
-    void SequencerEngineImpl::retireLateAudioWorkerBatch() {
-        if (!audio_worker_batch_pending_)
+    void SequencerEngineImpl::discardLateAudioWorkerContexts() {
+        if (!audio_workers_.batchPending())
             return;
-        // Caller has observed idle with acquire semantics. Never read job results
-        // or recycle contexts until every admitted participant has retired.
-        audio_worker_diagnostic_.after_completion = audio_workers_->progressSnapshot();
-        audio_worker_diagnostic_.completion_available = true;
-        for (uint32_t i = 0; i < audio_worker_diagnostic_.track_count; ++i)
-            if (audio_track_jobs_[i].status != 0) {
-                // A late job may also have failed. Deadline recovery must not
-                // hide that error or restart a broken plugin automatically.
-                audio_worker_diagnostic_.fault = AudioWorkerFault::PluginFailure;
-                audio_worker_diagnostic_.failed_track = static_cast<int32_t>(i);
-                audio_worker_diagnostic_.plugin_status = audio_track_jobs_[i].status;
-                audio_worker_diagnostic_.engine_stopped = true;
-                audio_worker_fault_.store(AudioWorkerFault::PluginFailure, std::memory_order_release);
-                engine_active_.store(false, std::memory_order_release);
-                break;
-            }
-        publishAudioWorkerDiagnostic();
+        if (audio_workers_.retireLateBatch())
+            engine_active_.store(false, std::memory_order_release);
         for (auto& flag : track_processing_flags_)
             flag->store(false, std::memory_order_release);
         // Discard the late block, including events, without processing any job
@@ -1438,7 +1339,6 @@ namespace uapmd {
                 pump_rings_[i]->free_slots.try_enqueue(rt_dequeued_slots_[i]);
                 rt_dequeued_slots_[i] = SIZE_MAX;
             }
-        audio_worker_batch_pending_ = false;
     }
 
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
@@ -1452,22 +1352,22 @@ namespace uapmd {
         InProcessAudioScope inProcessAudio(in_process_audio_);
         if (structure_mutation_active_.load(std::memory_order_seq_cst) ||
             track_freeze_render_active_.load(std::memory_order_seq_cst) ||
-            audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None) {
+            audio_workers_.fault() != AudioWorkerFault::None) {
             process.clearAudioOutputs();
             process.eventOut().position(0);
             return 0;
         }
 
-        if (audio_worker_batch_pending_) {
-            if (audio_workers_->busy()) {
+        if (audio_workers_.batchPending()) {
+            if (audio_workers_.busy()) {
                 // Workers still own the previous block's contexts, events and
                 // shared transport. Do not pump or dispatch another batch yet.
                 process.clearAudioOutputs();
                 process.eventOut().position(0);
                 return 0;
             }
-            retireLateAudioWorkerBatch();
-            if (audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None) {
+            discardLateAudioWorkerContexts();
+            if (audio_workers_.fault() != AudioWorkerFault::None) {
                 process.clearAudioOutputs();
                 process.eventOut().position(0);
                 return 1;
@@ -1571,7 +1471,7 @@ namespace uapmd {
             track_processing_flags_.size());
         auto eventHandlers = audio_processing_event_handlers_.protect();
         auto extensions = track_audio_processor_extensions_.protect();
-        bool parallel = audio_workers_ && processTrackCount > 1;
+        bool parallel = audio_workers_.enabled() && processTrackCount > 1;
         for (size_t i = 0; parallel && i < processTrackCount; ++i)
             if (!tracks_[i]->graph().supportsParallelTrackProcessing())
                 parallel = false;
@@ -1643,7 +1543,7 @@ namespace uapmd {
             }
             const bool processGraph = !processedByExtension && !tracks_[i]->bypassed();
             if (parallel) {
-                auto& job = audio_track_jobs_[i];
+                auto& job = audio_workers_.job(i);
                 job = {processGraph ? &tracks_[i]->graph() : nullptr, &tp, 0, 0};
                 if (!processGraph && !processedByExtension)
                     tp.clearAudioOutputs();
@@ -1661,20 +1561,20 @@ namespace uapmd {
 
         if (parallel) {
             const auto dispatchTime = TimingClock::now();
-            audio_workers_->start(audio_track_jobs_.data(), static_cast<uint32_t>(processTrackCount), captureTiming);
-            audio_workers_->participate(offline ? TimingClock::time_point::max() : workerDeadline);
+            audio_workers_.start(static_cast<uint32_t>(processTrackCount), captureTiming);
+            audio_workers_.participate(offline ? TimingClock::time_point::max() : workerDeadline);
             if (offline)
-                audio_workers_->waitUntilIdle();
-            const bool complete = offline || audio_workers_->completeBefore(workerDeadline);
+                audio_workers_.waitUntilIdle();
+            const bool complete = offline || audio_workers_.completeBefore(workerDeadline);
             auto fault = complete ? AudioWorkerFault::None : AudioWorkerFault::DeadlineExceeded;
             int32_t failedTrack = -1;
             int32_t pluginStatus = 0;
             if (complete)
                 for (size_t i = 0; i < processTrackCount; ++i)
-                    if (audio_track_jobs_[i].status != 0) {
+                    if (audio_workers_.job(i).status != 0) {
                         fault = AudioWorkerFault::PluginFailure;
                         failedTrack = static_cast<int32_t>(i);
-                        pluginStatus = audio_track_jobs_[i].status;
+                        pluginStatus = audio_workers_.job(i).status;
                         break;
                     }
             if (fault != AudioWorkerFault::None) {
@@ -1682,26 +1582,27 @@ namespace uapmd {
                 // A recoverable deadline keeps the engine enabled. Subsequent
                 // callbacks silence output until the old batch can be retired.
                 const bool stopEngine = fault != AudioWorkerFault::DeadlineExceeded ||
-                    stopOnAudioWorkerDeadline();
-                audio_worker_batch_pending_ = true;
+                    audio_workers_.stopOnDeadline();
+                audio_workers_.setBatchPending(true);
                 if (stopEngine) {
-                    audio_worker_fault_.store(fault, std::memory_order_release);
+                    audio_workers_.setFault(fault);
                     engine_active_.store(false, std::memory_order_release);
                 }
                 process.clearAudioOutputs();
                 process.eventOut().position(0);
                 const auto end = TimingClock::now();
-                audio_worker_diagnostic_ = {
-                    fault, timingBlock, audio_workers_->workerCount(),
-                    static_cast<uint32_t>(processTrackCount), audio_workers_->pendingParticipants(),
+                auto& diagnostic = audio_workers_.diagnosticForWrite();
+                diagnostic = {
+                    fault, timingBlock, audio_workers_.count(),
+                    static_cast<uint32_t>(processTrackCount), audio_workers_.pendingParticipants(),
                     process.frameCount(), timingSampleRate, failedTrack, pluginStatus,
                     std::chrono::duration<double, std::milli>(end - startTime).count(),
                     std::chrono::duration<double, std::milli>(dispatchTime - startTime).count(), offline,
                 };
-                audio_worker_diagnostic_.playback_position_samples = playback_position_samples_.load(std::memory_order_acquire);
-                audio_worker_diagnostic_.at_fault = audio_workers_->progressSnapshot();
-                audio_worker_diagnostic_.engine_stopped = stopEngine;
-                publishAudioWorkerDiagnostic();
+                diagnostic.playback_position_samples = playback_position_samples_.load(std::memory_order_acquire);
+                diagnostic.at_fault = audio_workers_.progressSnapshot();
+                diagnostic.engine_stopped = stopEngine;
+                audio_workers_.publishDiagnostic();
                 if (!stopEngine && isPlaybackActive) {
                     // This timeline block was already fed to the plugins. Advance
                     // it once so recovery cannot replay its notes/automation.
@@ -1726,7 +1627,7 @@ namespace uapmd {
                 // spent on other tracks or waiting for workers is not attributed.
                 const auto start = captureTiming ? TimingClock::now() -
                     std::chrono::duration_cast<TimingClock::duration>(
-                        std::chrono::nanoseconds(audio_track_jobs_[i].duration_nanoseconds)) : TimingClock::time_point{};
+                        std::chrono::nanoseconds(audio_workers_.job(i).duration_nanoseconds)) : TimingClock::time_point{};
                 finishTrack(i, start);
             }
         }
@@ -2017,7 +1918,7 @@ namespace uapmd {
                 true, std::memory_order_seq_cst);
             while (in_process_audio_.load(std::memory_order_seq_cst))
                 std::this_thread::yield();
-            waitForAudioWorkers();
+            waitForWorkerContexts();
             tail_process_manager_->holdStoppedOutputSilent();
 
             auto* track = tracks_[static_cast<size_t>(settings.trackIndex)].get();
@@ -2457,7 +2358,7 @@ namespace uapmd {
         auto trackIndex = insertionIndex;
 
         // Keep pre-allocated work vectors in sync.
-        audio_track_jobs_.resize(tracks_.size());
+        audio_workers_.resizeJobs(tracks_.size());
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
 
@@ -2514,6 +2415,7 @@ namespace uapmd {
         for (auto* listener : processing_lifecycle_listeners_)
             if (listener)
                 listener->trackRemoved(index);
+        audio_workers_.resizeJobs(tracks_.size());
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
@@ -2800,6 +2702,7 @@ namespace uapmd {
         for (auto* listener : processing_lifecycle_listeners_)
             if (listener)
                 listener->trackRemoved(static_cast<uapmd_track_index_t>(index));
+        audio_workers_.resizeJobs(tracks_.size());
         timeline_->onTrackRemoved(index);
         refreshPlatformMidiTrackIndices();
         notifyPluginGraphChanged();
@@ -3071,7 +2974,7 @@ namespace uapmd {
         if (notification.generation != transport_generation_.load(std::memory_order_acquire) ||
             offline_rendering_.load(std::memory_order_acquire) ||
             track_freeze_render_active_.load(std::memory_order_acquire) ||
-            audio_worker_fault_.load(std::memory_order_acquire) != AudioWorkerFault::None)
+            audio_workers_.fault() != AudioWorkerFault::None)
             return;
         auto* instance = getPluginInstance(notification.instance_id);
         if (!instance || frozen_track_manager_->isInstanceBusy(notification.instance_id))
@@ -3397,58 +3300,9 @@ namespace uapmd {
                 }
     }
 
-    void SequencerEngineImpl::reportAudioWorkerFault() {
-        std::lock_guard lock(audio_worker_diagnostic_mutex_);
-        AudioWorkerFaultDiagnostic diagnostic;
-        // Bound each non-RT reporting pass even if incidents keep arriving.
-        for (uint32_t count = 0; count < 32 && audio_worker_diagnostics_.try_dequeue(diagnostic); ++count) {
-            const bool completionOnly = diagnostic.completion_available &&
-                diagnostic.block_number == last_audio_worker_diagnostic_.block_number &&
-                diagnostic.fault == last_audio_worker_diagnostic_.fault;
-            last_audio_worker_diagnostic_ = diagnostic;
-            if (completionOnly)
-                continue;
-            const double periodMs = diagnostic.sample_rate > 0
-                ? 1000.0 * diagnostic.frame_count / diagnostic.sample_rate : 0.0;
-            remidy::Logger::global()->logError(
-                "%s: %s; block=%llu, mode=%s, workers=%u (+ coordinator), tracks=%u, "
-                "frames=%d, sample_rate=%d Hz, callback_elapsed=%.3f ms, block_period=%.3f ms, "
-                "worker_budget=%.3f ms (%s), dispatch_at=%.3f ms, "
-                "pending_workers=%u, failed_track=%d (zero-based; -1=unknown), plugin_status=%d. "
-                "%s Try Serial/fewer workers or a larger audio buffer if deadline overruns recur.",
-                diagnostic.engine_stopped ? "Audio engine stopped" : "Audio deadline overrun",
-                diagnostic.fault == AudioWorkerFault::DeadlineExceeded
-                    ? "audio worker completion deadline exceeded" : "plugin processing failed",
-                static_cast<unsigned long long>(diagnostic.block_number),
-                diagnostic.offline ? "offline" : "realtime", diagnostic.worker_count, diagnostic.track_count,
-                diagnostic.frame_count, diagnostic.sample_rate, diagnostic.elapsed_ms, periodMs,
-                diagnostic.offline ? 0.0 : 0.8 * periodMs,
-                diagnostic.offline ? "disabled offline" : "80% of block", diagnostic.dispatch_ms,
-                diagnostic.pending_participants, diagnostic.failed_track, diagnostic.plugin_status,
-                diagnostic.engine_stopped
-                    ? "Output is silenced; restart the audio engine to resume."
-                    : "Engine remains enabled; output is silenced until late workers finish, then processing resumes automatically.");
-            uint32_t acknowledged = 0;
-            for (uint32_t i = 1; i <= diagnostic.worker_count; ++i)
-                if (diagnostic.at_fault.participants[i].acknowledged_ns != 0)
-                    ++acknowledged;
-            remidy::Logger::global()->logError(
-                "Audio worker snapshot: block=%llu, playback_samples=%lld, workers_acknowledged=%u/%u, "
-                "jobs_completed=%u/%u. Query get_audio_worker_diagnostics via MCP for per-worker/track details.",
-                static_cast<unsigned long long>(diagnostic.block_number),
-                static_cast<long long>(diagnostic.playback_position_samples), acknowledged, diagnostic.worker_count,
-                diagnostic.at_fault.completed_jobs, diagnostic.track_count);
-        }
-        const auto dropped = dropped_audio_worker_diagnostics_.exchange(0, std::memory_order_relaxed);
-        if (dropped != 0)
-            remidy::Logger::global()->logError(
-                "Audio worker diagnostics: %u incident/completion reports dropped because the diagnostic queue was full.",
-                dropped);
-    }
-
     void SequencerEngineImpl::runPlatformMidiOutputWorker() {
         while (platform_midi_output_worker_running_.load(std::memory_order_acquire)) {
-            reportAudioWorkerFault();
+            audio_workers_.reportDiagnostics();
             bool sent = false;
             auto& dispatch = *plugin_control_dispatch_;
             if (!dispatch.pending.load(std::memory_order_acquire) &&

@@ -1119,11 +1119,11 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
 {
     impl_->context.registerFunction("__remidy_audio_worker_diagnostics", [](choc::javascript::ArgumentList) {
         auto* engine = AppModel::instance().sequencer().engine();
-        const auto d = engine->audioWorkerDiagnostic();
+        const auto d = engine->audioWorkers().diagnostic();
         auto result = choc::value::createObject("");
-        result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkerCount()));
-        result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkerFault()));
-        result.setMember("stopOnDeadline", engine->stopOnAudioWorkerDeadline());
+        result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkers().count()));
+        result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkers().fault()));
+        result.setMember("stopOnDeadline", engine->audioWorkers().stopOnDeadline());
         const auto counters = engine->audioProcessingTimingCounters();
         auto timing = choc::value::createObject("");
         timing.setMember("realtimeBlocks", static_cast<int64_t>(counters.realtime_blocks));
@@ -1181,10 +1181,10 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
     impl_->context.registerFunction("__remidy_configure_audio_workers", [](choc::javascript::ArgumentList args) {
         const auto count = args.get<int32_t>(0, -1);
         return choc::value::createBool(count >= 0 && count <= 32 &&
-            AppModel::instance().sequencer().engine()->configureAudioWorkers(static_cast<uint32_t>(count)));
+            AppModel::instance().sequencer().engine()->audioWorkers().configure(static_cast<uint32_t>(count)));
     });
     impl_->context.registerFunction("__remidy_set_stop_on_audio_worker_deadline", [](choc::javascript::ArgumentList args) {
-        AppModel::instance().sequencer().engine()->setStopOnAudioWorkerDeadline(args.get<bool>(0, false));
+        AppModel::instance().sequencer().engine()->audioWorkers().setStopOnDeadline(args.get<bool>(0, false));
         return choc::value::createBool(true);
     });
 

@@ -70,7 +70,7 @@ uapmd_status_t uapmd::RealtimeSequencer::startAudio() {
     if (dispatcher->isPlaying())
         return 0;
     if (auto* device = dispatcher->audio())
-        if (!sequencer->setAudioWorkerThreadSetup(device->audioWorkerThreadSetup()))
+        if (!sequencer->audioWorkers().setThreadSetup(device->audioWorkerThreadSetup()))
             remidy::Logger::global()->logError("Audio worker platform setup failed; using Serial audio processing");
     return dispatcher->start();
 }
@@ -78,7 +78,7 @@ uapmd_status_t uapmd::RealtimeSequencer::startAudio() {
 uapmd_status_t uapmd::RealtimeSequencer::stopAudio() {
     const auto status = dispatcher->stop();
     if (status == 0)
-        sequencer->waitForAudioWorkers();
+        sequencer->audioWorkers().wait();
     return status;
 }
 
