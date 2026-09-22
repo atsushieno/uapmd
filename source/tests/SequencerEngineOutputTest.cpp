@@ -11,6 +11,7 @@
 #include <numbers>
 #include <queue>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -76,6 +77,24 @@ public:
 private:
     remidy::EventLoop* previous_;
     TestEventLoop event_loop_;
+};
+
+// Joins on scope exit, including early ASSERT_* returns; std::jthread is missing on the macOS CI libc++.
+class ScopedThread final {
+public:
+    template<typename Fn>
+    explicit ScopedThread(Fn&& fn) : thread_(std::forward<Fn>(fn)) {}
+
+    ScopedThread(const ScopedThread&) = delete;
+    ScopedThread& operator=(const ScopedThread&) = delete;
+
+    ~ScopedThread() {
+        if (thread_.joinable())
+            thread_.join();
+    }
+
+private:
+    std::thread thread_;
 };
 
 struct RenderedAudio {
@@ -1027,6 +1046,8 @@ TEST_F(SequencerEngineOutputTest, ParallelTracksMatchSerialOutputAndRespectExten
     class SerialHandler final : public uapmd::AudioProcessingEventHandler {
     public:
         std::vector<int32_t> order;
+        // Opting out forces the serial path, which interleaves before/after per track.
+        bool supportsParallelTrackProcessing() const noexcept override { return false; }
         void beforeTrackProcess(const uapmd::TrackAudioProcessingEvent& event) noexcept override {
             order.push_back(event.track_index * 2);
         }
@@ -1078,7 +1099,7 @@ TEST_F(SequencerEngineOutputTest, LateWorkerRetainsBuffersUntilControlThreadReco
         });
     // Always release the deliberately stalled fake plugin, including failure
     // paths. Production plugins are never canceled or processed twice.
-    std::jthread release([&] {
+    ScopedThread release([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         releaseWorker.store(true);
     });
@@ -1162,7 +1183,7 @@ TEST_F(SequencerEngineOutputTest, DeadlineOverrunsResumeAutomaticallyAndStillDet
                         std::this_thread::yield();
                 }
             });
-        std::jthread watchdog([&] {
+        ScopedThread watchdog([&] {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             releaseWorker.store(true);
         });
