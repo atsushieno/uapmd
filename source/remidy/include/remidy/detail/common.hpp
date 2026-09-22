@@ -83,8 +83,7 @@ namespace remidy {
         virtual ~PluginExtensibility() = default;
     };
 
-    // Logical processing role, scoped to the calling thread. Nested scopes are
-    // supported; no shared registry, allocation, or synchronization is required.
+    // Logical processing role scoped to the calling thread.
     class AudioThreadScope {
         bool previous_;
     public:
