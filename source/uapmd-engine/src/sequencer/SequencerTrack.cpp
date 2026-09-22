@@ -11,10 +11,7 @@
 using namespace uapmd_graph;
 
 namespace uapmd {
-    SequencerTrack::SequencerTrack(size_t eventBufferSizeInBytes)
-        : plugin_output_events_(eventBufferSizeInBytes / sizeof(uapmd_ump_t)) {
-        static_assert(std::atomic<uint32_t>::is_always_lock_free);
-    }
+    SequencerTrack::SequencerTrack(size_t eventBufferSizeInBytes) : plugin_output_events_(eventBufferSizeInBytes / sizeof(uapmd_ump_t)) {}
 
     void SequencerTrack::capturePluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
         if (!data)

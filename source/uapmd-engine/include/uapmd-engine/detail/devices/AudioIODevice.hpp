@@ -45,7 +45,7 @@ namespace uapmd {
         virtual uint32_t preferredCallbackSize() const = 0;
 
         // Control thread only, while device callbacks are stopped.
-        virtual AudioWorkerThreadSetup audioWorkerThreadSetup() { return {}; }
+        virtual AudioWorkerThreadSetup audioWorkerThreadSetup() = 0;
 
         virtual double sampleRate() = 0;
         virtual uint32_t inputChannels() = 0;

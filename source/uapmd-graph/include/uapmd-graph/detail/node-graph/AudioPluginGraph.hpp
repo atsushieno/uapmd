@@ -29,9 +29,7 @@ namespace uapmd_graph {
     // or whatever that removes `AudioPluginNode`, to help this mechanism.
     class AudioPluginGraph : public AudioGraph {
     protected:
-        std::function<void(int32_t, uint32_t)> preset_request_callback_;
-        explicit AudioPluginGraph(std::string providerId = {})
-            : AudioGraph(std::move(providerId)) {}
+        AudioPluginGraph() = default;
 
     public:
         virtual ~AudioPluginGraph() = default;
@@ -39,9 +37,7 @@ namespace uapmd_graph {
         // Configure while processing is excluded. Called on the graph's DSP
         // thread; the callback must only capture into bounded host-owned storage.
         // Preset application is asynchronous and is not sample-accurate.
-        void setPresetRequestCallback(std::function<void(int32_t, uint32_t)> callback) {
-            preset_request_callback_ = std::move(callback);
-        }
+        virtual void setPresetRequestCallback(std::function<void(int32_t, uint32_t)> callback) = 0;
 
         // `nodeId` is the node's persistent identity, as stored in the project.
         // Pass it when restoring a saved graph so that the node comes back

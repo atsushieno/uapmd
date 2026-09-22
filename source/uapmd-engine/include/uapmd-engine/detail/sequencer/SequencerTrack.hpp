@@ -41,14 +41,10 @@ namespace uapmd {
         void capturePluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
         // Preset requests share the bounded event storage and overflow counter.
         void capturePresetRequest(int32_t instanceId, uint32_t index);
-        std::span<const TrackPluginOutputEvent> pluginOutputEvents() const {
-            return {plugin_output_events_.data(), plugin_output_event_count_};
-        }
+        std::span<const TrackPluginOutputEvent> pluginOutputEvents() const { return {plugin_output_events_.data(), plugin_output_event_count_}; }
         void clearPluginOutputEvents() { plugin_output_event_count_ = 0; }
         // Lifetime counter, wraps modulo 2^32; readable from the control thread.
-        uint32_t droppedPluginOutputEventCount() const {
-            return dropped_plugin_output_events_.load(std::memory_order_relaxed);
-        }
+        uint32_t droppedPluginOutputEventCount() const { return dropped_plugin_output_events_.load(std::memory_order_relaxed); }
 
         // Configure off the processing thread. Refresh values on the coordinator
         // before dispatch; graphs only read this cache while workers are active.

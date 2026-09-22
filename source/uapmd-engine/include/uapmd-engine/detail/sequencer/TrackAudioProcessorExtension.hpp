@@ -19,7 +19,7 @@ public:
 
     // In parallel mode all extension calls complete serially before any graph
     // jobs start. Opt in only if this ordering preserves the extension's behavior.
-    virtual bool supportsParallelTrackProcessing() const noexcept { return false; }
+    virtual bool supportsParallelTrackProcessing() const noexcept = 0;
 
     virtual bool shouldProcessAudio(
         SequencerEngine& engine,

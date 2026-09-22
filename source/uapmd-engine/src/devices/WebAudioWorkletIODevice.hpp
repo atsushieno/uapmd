@@ -102,6 +102,7 @@ namespace uapmd {
 
     class WebAudioWorkletIODevice : public AudioIODevice {
     public:
+        AudioWorkerThreadSetup audioWorkerThreadSetup() override { return {}; }
         WebAudioWorkletIODevice(uint32_t sampleRate, uint32_t bufferSize);
         ~WebAudioWorkletIODevice() override;
 
