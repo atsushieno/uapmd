@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <ranges>
+#include <thread>
 #include <cmath>
 #include <limits>
 #if defined(__APPLE__)
@@ -974,20 +975,37 @@ void MainWindow::renderDeviceSettingsWindow() {
         auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
         const auto workerCount = engine->audioWorkerCount();
         const auto workerLabel = workerCount == 0 ? std::string("Serial") : std::to_string(workerCount);
-        if (ImGui::BeginCombo("Audio Workers (experimental)", workerLabel.c_str())) {
-            for (const uint32_t count : {0u, 1u, 2u, 4u, 8u}) {
+        if (ImGui::BeginCombo("Audio Workers", workerLabel.c_str())) {
+            const auto cpuCount = std::thread::hardware_concurrency();
+            // Worker-pool diagnostics currently have a fixed capacity of 32
+            // workers plus the coordinator. Preserve that engine bound while
+            // making every useful machine-sized option available.
+            const auto maximumWorkers = std::min(cpuCount == 0 ? 4u : cpuCount, 32u);
+            std::array<uint32_t, 3> smallCounts{1, 2, 4};
+            const auto select = [&](uint32_t count) {
                 const auto label = count == 0 ? std::string("Serial") : std::to_string(count);
                 if (UapmdSelectable(label.c_str(), workerCount == count)) {
                     audio_worker_settings_error_ = engine->configureAudioWorkers(count)
                         ? "" : "Could not configure audio workers.";
                 }
-            }
+            };
+            select(0);
+            for (const auto count : smallCounts)
+                if (count <= maximumWorkers)
+                    select(count);
+            for (uint32_t count = 8; count <= maximumWorkers; count += 4)
+                select(count);
             ImGui::EndCombo();
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Process independent tracks concurrently. This session-only setting defaults to Serial; incompatible graph providers or extensions retain serial processing.");
+            ImGui::SetTooltip("Process independent tracks concurrently. The default uses one quarter of the machine's CPU concurrency, up to four workers. Choices include 1, 2, 4, then every multiple of 4 up to the machine's CPU count (maximum 32). Incompatible graph providers or extensions retain serial processing.");
         if (!audio_worker_settings_error_.empty())
             ImGui::TextWrapped("%s", audio_worker_settings_error_.c_str());
+        bool stopOnDeadline = engine->stopOnAudioWorkerDeadline();
+        if (ImGui::Checkbox("Stop audio engine on deadline overrun", &stopOnDeadline))
+            engine->setStopOnAudioWorkerDeadline(stopOnDeadline);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Off by default for this session. Late audio blocks are silenced until workers finish, then processing resumes automatically. Enable to require a manual restart after a worker deadline overrun. Overruns are always logged.");
 #endif
         ImGui::Separator();
         renderPlatformMidiConnections();

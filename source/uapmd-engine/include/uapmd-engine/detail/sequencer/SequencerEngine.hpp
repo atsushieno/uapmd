@@ -101,6 +101,8 @@ namespace uapmd {
         AudioWorkerProgressSnapshot at_fault{};
         bool completion_available{};
         AudioWorkerProgressSnapshot after_completion{};
+        // True only when this incident latched a fault requiring engine restart.
+        bool engine_stopped{};
     };
 
     struct AudioProcessingTiming {
@@ -282,7 +284,7 @@ namespace uapmd {
         // after pumpAudio().
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
 
-        // Opt-in desktop track parallelism; default is zero workers (serial).
+        // Desktop track parallelism defaults to a conservative CPU-derived count; zero selects Serial.
         // Serialized control thread only. Configuring may wait for outstanding work and
         // create/join threads. Maximum 32 workers; unsupported platforms reject
         // nonzero counts. The coordinator also processes jobs. Unknown extensions
@@ -298,15 +300,22 @@ namespace uapmd {
         // Control-thread query; the configured count can remain nonzero while a
         // block falls back to serial processing for compatibility.
         virtual uint32_t audioWorkerCount() const = 0;
+        // Session setting, false by default. Sampled when a deadline is missed.
+        // Otherwise the late block is silenced and processing resumes once all
+        // its workers retire. Plugin failures always require an explicit reset.
+        virtual bool stopOnAudioWorkerDeadline() const = 0;
+        virtual void setStopOnAudioWorkerDeadline(bool enabled) = 0;
         // Control thread, after device callbacks have stopped: drain any workers
         // retained by a faulted callback before directly accessing plugin state.
         virtual void waitForAudioWorkers() = 0;
+        // Latched stop reason; recoverable deadline overruns do not latch it.
         virtual AudioWorkerFault audioWorkerFault() const = 0;
         // Serialized control thread, nonblocking with respect to DSP. Retains
         // the last fault across reset. Snapshot fields are individually sampled.
         virtual AudioWorkerFaultDiagnostic audioWorkerDiagnostic() = 0;
-        // A late/failed batch silences output and deactivates processing. Buffers
-        // remain owned until workers retire. Control-thread reset waits for them,
+        // A fatal batch (plugin failure or opt-in deadline stop) silences output
+        // and deactivates processing. Buffers remain owned until workers retire.
+        // Control-thread reset waits for them,
         // clears processing buffers and requests a note flush. Enable the engine
         // separately after reset; enabling alone cannot clear a fault.
         virtual void resetAudioWorkerFault() = 0;

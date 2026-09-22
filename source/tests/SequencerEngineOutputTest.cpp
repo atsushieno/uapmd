@@ -1056,6 +1056,8 @@ TEST_F(SequencerEngineOutputTest, LateWorkerRetainsBuffersUntilControlThreadReco
     std::vector<MutableTimingPlugin*> plugins;
     auto engine = createWorkerTestEngine(256, plugins);
     ASSERT_NE(engine, nullptr);
+    engine->setStopOnAudioWorkerDeadline(true);
+    EXPECT_TRUE(engine->stopOnAudioWorkerDeadline());
     ASSERT_TRUE(engine->configureAudioWorkers(1));
     std::atomic<bool> workerEntered{false};
     std::atomic<bool> releaseWorker{false};
@@ -1090,6 +1092,7 @@ TEST_F(SequencerEngineOutputTest, LateWorkerRetainsBuffersUntilControlThreadReco
     EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::DeadlineExceeded);
     const auto diagnostic = engine->audioWorkerDiagnostic();
     EXPECT_EQ(diagnostic.fault, uapmd::AudioWorkerFault::DeadlineExceeded);
+    EXPECT_TRUE(diagnostic.engine_stopped);
     EXPECT_EQ(diagnostic.at_fault.track_count, 2u);
     EXPECT_EQ(diagnostic.at_fault.completed_jobs, 1u);
     EXPECT_GT(diagnostic.at_fault.participants[1].acknowledged_ns, 0u);
@@ -1117,6 +1120,111 @@ TEST_F(SequencerEngineOutputTest, LateWorkerRetainsBuffersUntilControlThreadReco
     EXPECT_EQ(engine->processAudio(process), 0);
     EXPECT_EQ(calls.load(), 3);
     EXPECT_FALSE(remidy::isAudioThread());
+}
+
+TEST_F(SequencerEngineOutputTest, DeadlineOverrunsResumeAutomaticallyAndStillDetectLatePluginFailures) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<MutableTimingPlugin*> plugins;
+    auto engine = createWorkerTestEngine(256, plugins);
+    ASSERT_NE(engine, nullptr);
+    EXPECT_FALSE(engine->stopOnAudioWorkerDeadline());
+    ASSERT_TRUE(engine->configureAudioWorkers(1));
+    engine->startPlayback();
+    remidy::AudioProcessContext process(engine->data().masterContext(), 4096);
+    process.configureMainBus(2, 2, 256);
+    process.frameCount(256);
+    process.clearAudioInputs();
+    const auto coordinator = std::this_thread::get_id();
+    uint64_t previousBlock = 0;
+
+    // Exercise repeated recovery, enough blocks to reuse every pump slot, then
+    // a plugin exception that only becomes visible after the missed deadline.
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const bool failLateJob = attempt == 2;
+        std::atomic<bool> workerEntered{false};
+        std::atomic<bool> releaseWorker{false};
+        std::atomic<bool> stall{true};
+        std::atomic<int> calls{0};
+        for (auto* plugin : plugins)
+            plugin->onProcess([&] {
+                ++calls;
+                if (!stall.load())
+                    return;
+                if (std::this_thread::get_id() != coordinator) {
+                    workerEntered.store(true);
+                    while (!releaseWorker.load())
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    if (failLateJob)
+                        throw std::runtime_error("late DSP failure");
+                } else {
+                    const auto limit = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+                    while (!workerEntered.load() && std::chrono::steady_clock::now() < limit)
+                        std::this_thread::yield();
+                }
+            });
+        std::jthread watchdog([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            releaseWorker.store(true);
+        });
+        const auto position = engine->renderPlaybackPosition();
+        EXPECT_EQ(engine->processAudio(process), 0);
+        EXPECT_TRUE(workerEntered.load());
+        EXPECT_FALSE(releaseWorker.load());
+        EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+        EXPECT_EQ(engine->renderPlaybackPosition(), position + 256);
+        const auto diagnostic = engine->audioWorkerDiagnostic();
+        EXPECT_EQ(diagnostic.fault, uapmd::AudioWorkerFault::DeadlineExceeded);
+        EXPECT_FALSE(diagnostic.engine_stopped);
+        EXPECT_FALSE(diagnostic.completion_available);
+        EXPECT_GT(diagnostic.block_number, previousBlock);
+        previousBlock = diagnostic.block_number;
+        const auto contexts = engine->data().tracks;
+        for (int block = 0; block < 3; ++block) {
+            process.eventOut().position(sizeof(uint32_t));
+            EXPECT_EQ(engine->processAudio(process), 0);
+            EXPECT_EQ(process.eventOut().position(), 0u);
+            EXPECT_EQ(calls.load(), 2);
+            EXPECT_EQ(engine->data().tracks, contexts);
+            EXPECT_EQ(engine->renderPlaybackPosition(), position + 256);
+            for (int frame = 0; frame < 256; ++frame)
+                EXPECT_FLOAT_EQ(process.getFloatOutBuffer(0, 0)[frame], 0.0f);
+        }
+        stall.store(false);
+        releaseWorker.store(true);
+        const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (calls.load() == 2 && engine->audioWorkerFault() == uapmd::AudioWorkerFault::None &&
+               std::chrono::steady_clock::now() < limit) {
+            engine->processAudio(process);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        const auto completed = engine->audioWorkerDiagnostic();
+        EXPECT_EQ(completed.block_number, diagnostic.block_number);
+        EXPECT_TRUE(completed.completion_available);
+        EXPECT_EQ(completed.after_completion.completed_jobs, 2u);
+        EXPECT_EQ(completed.after_completion.pending_participants, 0u);
+        if (failLateJob) {
+            EXPECT_EQ(calls.load(), 2);
+            EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::PluginFailure);
+            EXPECT_EQ(completed.fault, uapmd::AudioWorkerFault::PluginFailure);
+            EXPECT_TRUE(completed.engine_stopped);
+            EXPECT_GE(completed.failed_track, 0);
+        } else {
+            EXPECT_EQ(calls.load(), 4);
+            EXPECT_EQ(engine->audioWorkerFault(), uapmd::AudioWorkerFault::None);
+            EXPECT_FALSE(completed.engine_stopped);
+            EXPECT_GT(*std::max_element(process.getFloatOutBuffer(0, 0),
+                                       process.getFloatOutBuffer(0, 0) + 256), 0.01f);
+            EXPECT_EQ(engine->renderPlaybackPosition(), position + 512);
+            for (int block = 0; block < 10; ++block)
+                EXPECT_EQ(engine->processAudio(process), 0);
+            EXPECT_EQ(calls.load(), 24);
+        }
+        // Safe teardown even on assertion failures: closures must not outlive
+        // their local synchronization state or mutate a running std::function.
+        engine->waitForAudioWorkers();
+        for (auto* plugin : plugins)
+            plugin->onProcess({});
+    }
 }
 
 TEST_F(SequencerEngineOutputTest, MidiPresetsAreAppliedOnControlThreadAndCanceledOnReset) {

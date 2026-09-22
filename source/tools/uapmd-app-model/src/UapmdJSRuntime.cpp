@@ -1123,6 +1123,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         auto result = choc::value::createObject("");
         result.setMember("configuredWorkers", static_cast<int32_t>(engine->audioWorkerCount()));
         result.setMember("currentFault", static_cast<int32_t>(engine->audioWorkerFault()));
+        result.setMember("stopOnDeadline", engine->stopOnAudioWorkerDeadline());
         const auto counters = engine->audioProcessingTimingCounters();
         auto timing = choc::value::createObject("");
         timing.setMember("realtimeBlocks", static_cast<int64_t>(counters.realtime_blocks));
@@ -1138,6 +1139,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         result.setMember("callbackElapsedMs", d.elapsed_ms);
         result.setMember("dispatchAtMs", d.dispatch_ms);
         result.setMember("offline", d.offline);
+        result.setMember("engineStopped", d.engine_stopped);
         const auto serialize = [&](const uapmd::AudioWorkerProgressSnapshot& snapshot) {
             auto value = choc::value::createObject("");
             value.setMember("trackCount", static_cast<int32_t>(snapshot.track_count));
@@ -1180,6 +1182,10 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         const auto count = args.get<int32_t>(0, -1);
         return choc::value::createBool(count >= 0 && count <= 32 &&
             AppModel::instance().sequencer().engine()->configureAudioWorkers(static_cast<uint32_t>(count)));
+    });
+    impl_->context.registerFunction("__remidy_set_stop_on_audio_worker_deadline", [](choc::javascript::ArgumentList args) {
+        AppModel::instance().sequencer().engine()->setStopOnAudioWorkerDeadline(args.get<bool>(0, false));
+        return choc::value::createBool(true);
     });
 
     impl_->context.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
