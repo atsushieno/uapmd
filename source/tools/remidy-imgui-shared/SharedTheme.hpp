@@ -31,7 +31,11 @@ inline void SetupImGuiStyle(ThemeMode mode = ThemeMode::Dark)
 	style.CellPadding = ImVec2(4.0f, 2.0f);
 	style.IndentSpacing = 21.0f;
 	style.ColumnsMinSpacing = 6.0f;
+#if defined(__ANDROID__)
+	style.ScrollbarSize = 32.0f; // wide enough to be grabbed by touch
+#else
 	style.ScrollbarSize = 14.0f;
+#endif
 	style.ScrollbarRounding = 9.0f;
 	style.GrabMinSize = 10.0f;
 	style.GrabRounding = 0.0f;
