@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 namespace remidy_imgui {
 
 enum class ThemeMode {
@@ -35,6 +39,9 @@ inline void SetupImGuiStyle(ThemeMode mode = ThemeMode::Dark)
 	style.ScrollbarSize = 32.0f; // wide enough to be grabbed by touch
 #else
 	style.ScrollbarSize = 14.0f;
+#endif
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+	style.TouchExtraPadding = ImVec2(8.0f, 8.0f); // makes small widgets such as titlebar close buttons touchable
 #endif
 	style.ScrollbarRounding = 9.0f;
 	style.GrabMinSize = 10.0f;
