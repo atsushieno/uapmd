@@ -37,11 +37,11 @@ only, so transcription is currently desktop-only there.
 
 | | one clip | whole project |
 |---|---|---|
-| extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/command/v1` |
+| extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/project-command/v1` |
 | id | `uapmd-pitch.transcribe-audio-clip` | `uapmd-pitch.transcribe-all-audio-clips` |
 | title | "Transcribe to mono MIDI2 clip (pitch-detection)" | "Transcribe all audio clips to mono MIDI2 clip (pitch-detection)" |
 | order | 100 | 1100 |
-| offered in | the clip context menu, on audio clips only | the Command menu |
+| offered in | the clip context menu, on audio clips only | the Project menu |
 
 Both drive the same worker thread, so neither can start while the other is
 running, and both report progress by changing their own menu title while they

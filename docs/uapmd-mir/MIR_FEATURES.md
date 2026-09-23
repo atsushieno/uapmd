@@ -19,7 +19,7 @@ stem separation addins.
 | command order | 1000 | 1001 |
 | built when | `UAPMD_ENABLE_MIR` **and** `UAPMD_ENABLE_LIBSONARE` | `UAPMD_ENABLE_MIR` |
 
-Both addins register on the `/uapmd/app/command/v1` extension point and obtain
+Both addins register on the `/uapmd/app/project-command/v1` extension point and obtain
 the engine from `/uapmd/engine/v1`. They are added to the library's exported
 `AddinEntry` by `src/AddinEntry.cpp`, which owns `uapmd_addin_entry` and
 includes them only under `UAPMD_ENABLE_MIR_ANALYSIS`; the library exists, and

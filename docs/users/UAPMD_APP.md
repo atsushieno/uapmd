@@ -72,39 +72,40 @@ The leftmost button reports and toggles the audio engine. It is **green when on*
 off**. Turning it off releases the audio device and disables the transport buttons; turning it
 back on re-activates the device and the plugins on it.
 
-### Command
+### System
 
-![The Command menu](../images/uapmd-app-guide-command-menu.png)
+![The System menu](../images/uapmd-app-guide-command-menu.png)
 
-`Command` is the catch-all menu:
+`System` is the catch-all menu:
 
 - **Undo / Redo** at the top, labelled with the operation they will reverse (for example
   "Undo Add track"). They are greyed out when there is nothing to undo, and a
   "History operation in progress..." note appears while one is still running.
   The keyboard shortcuts work anywhere outside a text field:
   `Ctrl+Z` / `Cmd+Z` to undo, `Ctrl+Shift+Z` / `Cmd+Shift+Z` or `Ctrl+Y` to redo.
-- **Show / Hide Device Settings**, **Addins**, **Script**, and **MCP Settings** -- toggles for
-  the four floating panels described later in this document.
-- **Commands contributed by addins**, below the separator. What appears here depends on which
-  addins are enabled; in the screenshot above they are master-track population (libsonare and
-  librosa.cpp) and audio-to-MIDI transcription (pitch-detection for monophonic, basic-pitch for
-  polyphonic material).
+- **Device Settings**, **UAPMD Addins**, **Scripting**, and **MCP Settings** -- toggles
+  for the four floating panels described later in this document. A check mark shows which of
+  them are open.
+- **JSFX Settings** and **application commands contributed by addins**, below the separator.
 
-### Transport
+### Project
 
-Three buttons, all disabled while the audio engine is off:
+![The Project menu](../images/uapmd-app-guide-project-menu.png)
 
-| Button | Behaviour |
-| --- | --- |
-| Play / Stop | One button that shows a triangle when idle and a square while the transport is engaged. Stopping also cancels a paused state. |
-| Record | Records into the **currently selected MIDI clip**. Select a clip on the timeline first, otherwise the button does nothing. It turns red while recording; press it again to stop. |
-| Pause / Resume | Enabled only while the transport is engaged. Shows a pause glyph while playing and a play glyph while paused. |
+`Project` offers:
 
-![Playback in progress](../images/uapmd-app-guide-playback.png)
-
-During playback the playhead marker moves along the ruler, a vertical line tracks it in the
-position controller, and the two spectrum analyzers at the right end of the toolbar show input
-and output activity.
+- **New Project**, **Load Project**, and **Save Project**. Starting a new project or closing the
+  app while there are unsaved changes prompts you first, unless you launched with
+  `--no-confirm-on-quit`.
+- **[Render To File](#rendering-to-a-file)**.
+- **Import MIDI Tracks (SMF)** -- pick a MIDI 1.0 `.mid` file; each of its tracks becomes a
+  track holding a MIDI 2.0 clip.
+- **Import Split Audio Tracks** -- opens the split-audio import window. This item only appears
+  while at least one stem separation addin is enabled.
+- **Project commands contributed by addins**. What appears here depends on which addins are
+  enabled: master-track population (libsonare and librosa.cpp) and audio-to-MIDI transcription
+  of all audio clips (pitch-detection for monophonic, basic-pitch for polyphonic, DrumScript for
+  drum material).
 
 ### Scale and theme
 
@@ -112,22 +113,25 @@ and output activity.
 Changing it rescales every widget and font, and resizes the window to match. The button next to
 it (a half-filled circle) switches between the dark and light themes.
 
-### Plugins, Import, Project
+### Plugins
 
-![The Import menu](../images/uapmd-app-guide-import-menu.png)
+`Plugins` toggles the [Plugin Selector](#plugins).
 
-`Plugins` toggles the [Plugin Selector](#plugins). `Import` offers:
+### Transport
 
-- **Import MIDI Tracks (SMF)** -- pick a MIDI 1.0 `.mid` file; each of its tracks becomes a
-  track holding a MIDI 2.0 clip.
-- **Import Split Audio Tracks** -- opens the split-audio import window. This item only appears
-  while at least one stem separation addin is enabled.
+Three buttons, all disabled while the audio engine is off:
 
-![The Project menu](../images/uapmd-app-guide-project-menu.png)
+| Button | Behaviour |
+| --- | --- |
+| Record | Records into the **currently selected MIDI clip**. Select a clip on the timeline first, otherwise the button does nothing. It turns red while recording; press it again to stop. |
+| Play / Stop | One button that shows a triangle when idle and a square while the transport is engaged. Stopping also cancels a paused state. |
+| Pause / Resume | Enabled only while the transport is engaged. Shows a pause glyph while playing and a play glyph while paused. |
 
-`Project` covers **New Project**, **Load Project**, **Save Project**, and
-**[Render To File](#rendering-to-a-file)**. Starting a new project or closing the app while there
-are unsaved changes prompts you first, unless you launched with `--no-confirm-on-quit`.
+![Playback in progress](../images/uapmd-app-guide-playback.png)
+
+During playback the playhead marker moves along the ruler, a vertical line tracks it in the
+position controller, and the two spectrum analyzers right after the transport buttons show input
+and output activity.
 
 ### Spectrum analyzers
 
@@ -407,7 +411,7 @@ graph outgrows the window.
 
 ![The Virtual MIDI Devices window](../images/uapmd-app-guide-audio-graph-editor.png)
 
-`Virtual MIDI Devices` in the `Command` menu opens a flat list of every plugin instance in the project,
+`Virtual MIDI Devices` in the `System` menu opens a flat list of every plugin instance in the project,
 grouped by track, showing the format and the virtual UMP device each is exposed as. `Disable`
 unregisters its virtual MIDI device and `Show` opens its details window.
 
@@ -465,7 +469,7 @@ A progress bar sits above **Start Render**, which becomes a stop button while a 
 
 ![The Settings window](../images/uapmd-app-guide-settings.png)
 
-`Command` -> `Show Device Settings` opens audio and MIDI configuration:
+`System` -> `Device Settings` opens audio and MIDI configuration:
 
 - **Input Device** and **Output Device**, with their **Sample Rate** selectors.
 - **Buffer Size**, or `Use Platform Buffer Size` to let the platform decide.
@@ -488,7 +492,7 @@ BS-Roformer stem separators, Basic Pitch), or come from a shared library placed 
 directories named at the top of the window.
 
 Disabling an addin removes what it contributes -- turn off both stem separators, for example,
-and `Import Split Audio Tracks` disappears from the `Import` menu.
+and `Import Split Audio Tracks` disappears from the `Project` menu.
 
 
 ## Automating the app
@@ -500,7 +504,7 @@ driven for anything repetitive.
 
 ![The Script Editor](../images/uapmd-app-guide-script-editor.png)
 
-`Command` -> `Show Script` opens a JavaScript editor with `Run` and `Load`, plus `Preset` with
+`System` -> `Scripting` opens a JavaScript editor with `Run` and `Load`, plus `Preset` with
 the bundled `Demo`, `PluginState`, and `TestDAG` scripts. The demo script documents the API:
 
 | Object | Covers |
@@ -518,7 +522,7 @@ There is also an object-oriented wrapper (`PluginScanTool`, `sequencer`) importe
 
 ![MCP Settings](../images/uapmd-app-guide-mcp-settings.png)
 
-`Command` -> `Show MCP Settings` exposes the app as an MCP server, so an agent can inspect and
+`System` -> `MCP Settings` exposes the app as an MCP server, so an agent can inspect and
 edit the project.
 
 - **Server** mode listens on a port on `127.0.0.1` -- desktop only.

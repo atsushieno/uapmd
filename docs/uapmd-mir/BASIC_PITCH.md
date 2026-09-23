@@ -60,7 +60,7 @@ the ones where dynamic addin loading is unavailable.
 
 | | one clip | whole project |
 |---|---|---|
-| extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/command/v1` |
+| extension point | `/uapmd/app/clip-command/v1` | `/uapmd/app/project-command/v1` |
 | id | `uapmd-basic-pitch.transcribe-audio-clip` | `uapmd-basic-pitch.transcribe-all-audio-clips` |
 | title | "Transcribe to poly MIDI2 clip (basic-pitch)" | "Transcribe all audio clips to poly MIDI2 clip (basic-pitch)" |
 | order | 101 | 1200 |

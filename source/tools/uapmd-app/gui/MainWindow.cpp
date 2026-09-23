@@ -56,6 +56,7 @@ MainWindow::MainWindow(GuiDefaults defaults)
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     engine->registerAddinExtensionPoints(addinRuntime_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/command/v1", &commandRegistry_);
+    addinRuntime_.registerExtensionPoint("/uapmd/app/project-command/v1", &projectCommandRegistry_);
     addinRuntime_.registerExtensionPoint("/uapmd/app/panel/v1", &panel_registry_);
 #if UAPMD_HAS_AUGENE2
     uapmd_augene2::registerProjectService(engine->timeline(), panel_registry_);
@@ -464,9 +465,9 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
-            if (contextActionButton("Command"))
-                ImGui::OpenPopup("CommandActions");
-            if (ImGui::BeginPopup("CommandActions")) {
+            if (contextActionButton("System"))
+                ImGui::OpenPopup("SystemActions");
+            if (ImGui::BeginPopup("SystemActions")) {
                 const auto history = appModel.historyState();
                 const auto undoLabel = history.undoDescription.empty()
                     ? std::string{"Undo"}
@@ -490,17 +491,17 @@ void MainWindow::render(void* window) {
                     ImGui::TextDisabled("History operation in progress...");
                 ImGui::Separator();
 
-                if (contextActionMenuItem(showDeviceSettingsWindow_ ? "Hide Device Settings" : "Show Device Settings"))
+                if (contextActionMenuItem("Device Settings", showDeviceSettingsWindow_))
                     showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
 
-                if (contextActionMenuItem(addinManagerWindow_.isOpen() ? "Hide Addins" : "Show Addins")) {
+                if (contextActionMenuItem("UAPMD Addins", addinManagerWindow_.isOpen())) {
                     if (addinManagerWindow_.isOpen())
                         addinManagerWindow_.hide();
                     else
                         addinManagerWindow_.show();
                 }
 
-                if (contextActionMenuItem(scriptEditor_.isOpen() ? "Hide Script" : "Show Script")) {
+                if (contextActionMenuItem("Scripting", scriptEditor_.isOpen())) {
                     if (scriptEditor_.isOpen())
                         scriptEditor_.hide();
                     else
@@ -508,26 +509,11 @@ void MainWindow::render(void* window) {
                 }
 
 #ifdef UAPMD_HAS_MCP_SERVER
-                if (contextActionMenuItem(showMcpSettings_ ? "Hide MCP Settings" : "Show MCP Settings"))
+                if (contextActionMenuItem("MCP Settings", showMcpSettings_))
                     showMcpSettings_ = !showMcpSettings_;
 #endif
 
-                const auto commands = commandRegistry_.commands();
-                if (!commands.empty()) {
-                    ImGui::Separator();
-                    for (auto* command : commands) {
-                        if (!command)
-                            continue;
-                        const bool enabled = command->enabled();
-                        if (!enabled)
-                            ImGui::BeginDisabled();
-                        const auto label = std::string(command->title()) + "##" + std::string(command->id());
-                        if (contextActionMenuItem(label.c_str()))
-                            command->invoke();
-                        if (!enabled)
-                            ImGui::EndDisabled();
-                    }
-                }
+                renderCommandMenuItems(commandRegistry_);
                 ImGui::EndPopup();
             }
             ImGui::SameLine();
@@ -549,77 +535,37 @@ void MainWindow::render(void* window) {
                 && history.canRedo && !history.busy)
                 handleRedo();
 
-            // Transport controls
-            auto& transport = appModel.transport();
-            // Read the transport once for the whole toolbar. isPlaying() is a
-            // live query into the engine, and the buttons below change what it
-            // answers -- so re-reading it around a BeginDisabled()/EndDisabled()
-            // pair can open the scope and then fail to close it, or close one
-            // that was never opened, which aborts in ImGui.
-            const bool transportPlaying = transport.isPlaying();
-            const bool transportPaused = transport.isPaused();
-            // Pausing clears isPlaybackActive(), so "playing" alone would call a
-            // paused transport idle -- which would offer Play instead of Stop
-            // and disable the button that resumes it.
-            const bool transportEngaged = transportPlaying || transportPaused;
-            if (!audioEngineEnabled)
-                ImGui::BeginDisabled();
-            const bool recording = transport.isRecording();
-            if (recording)
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88f, 0.20f, 0.20f, 1.0f));
-            if (ImGui::Button(icons::Record)) {
-                auto* engine = appModel.sequencer().engine();
-                auto* recorder = dynamic_cast<uapmd::MidiRecorder*>(
-                    engine->findPlaybackEngineExtension("midi-recorder"));
-                if (recorder && recording) {
-                    recorder->stop();
-                    transport.record();
-                } else if (const auto selected = timelineEditor_.selectedMidiClip(); recorder && selected) {
-                    const auto tracks = appModel.getTimelineTracks();
-                    const auto [trackIndex, clipId] = *selected;
-                    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) &&
-                        tracks[static_cast<size_t>(trackIndex)] &&
-                        recorder->start({tracks[static_cast<size_t>(trackIndex)]->referenceId(), clipId}))
-                        transport.record();
+            if (contextActionButton("Project")) {
+                ImGui::OpenPopup("ProjectActions");
+            }
+            if (ImGui::BeginPopup("ProjectActions")) {
+                if (contextActionMenuItem("New Project")) {
+                    handleNewProject();
                 }
+                if (contextActionMenuItem("Load Project")) {
+                    handleLoadProject();
+                }
+                if (contextActionMenuItem("Save Project")) {
+                    handleSaveProject();
+                }
+                ImGui::Separator();
+                if (contextActionMenuItem("Render To File")) {
+                    exporterWindow_.open();
+                }
+                ImGui::Separator();
+                if (contextActionMenuItem("Import MIDI Tracks (SMF)")) {
+                    timelineEditor_.importMidiTracksWithPicker();
+                }
+                if (!stemSeparatorRegistry_.empty()) {
+                    if (contextActionMenuItem("Import Split Audio Tracks")) {
+                        audioImportWindow_.open();
+                    }
+                }
+                renderCommandMenuItems(projectCommandRegistry_);
+                ImGui::EndPopup();
             }
-            if (recording)
-                ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(recording ? "Stop recording" : "Record into the selected MIDI clip");
             ImGui::SameLine();
 
-            // The trailing ##id keeps the two play glyphs distinct when the
-            // transport is paused: an icon label alone is the whole ImGui ID.
-            const auto playStopLabel =
-                std::string(transportEngaged ? icons::Stop : icons::Play)
-                    + "##TransportPlayStop";
-            if (ImGui::Button(playStopLabel.c_str())) {
-                if (transportEngaged)
-                    transport.stop();
-                else
-                    transport.play();
-            }
-            ImGui::SameLine();
-
-            if (!transportEngaged)
-                ImGui::BeginDisabled();
-            const auto pauseResumeLabel =
-                std::string(transportPaused ? icons::Play : icons::Pause)
-                    + "##TransportPauseResume";
-            if (ImGui::Button(pauseResumeLabel.c_str())) {
-                if (transportPaused)
-                    transport.resume();
-                else
-                    transport.pause();
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(transportPaused ? "Resume playback" : "Pause playback");
-            if (!transportEngaged)
-                ImGui::EndDisabled();
-            if (!audioEngineEnabled)
-                ImGui::EndDisabled();
-            ImGui::SameLine();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted("Scale:");
             ImGui::SameLine();
@@ -741,45 +687,76 @@ void MainWindow::render(void* window) {
 #endif // __EMSCRIPTEN__
             }
 #endif // UAPMD_HAS_MCP_SERVER
-            bool openImportPopup = false;
-            if (contextActionButton("Import")) {
-                openImportPopup = true;
+            // Transport controls
+            auto& transport = appModel.transport();
+            // Read the transport once for the whole toolbar. isPlaying() is a
+            // live query into the engine, and the buttons below change what it
+            // answers -- so re-reading it around a BeginDisabled()/EndDisabled()
+            // pair can open the scope and then fail to close it, or close one
+            // that was never opened, which aborts in ImGui.
+            const bool transportPlaying = transport.isPlaying();
+            const bool transportPaused = transport.isPaused();
+            // Pausing clears isPlaybackActive(), so "playing" alone would call a
+            // paused transport idle -- which would offer Play instead of Stop
+            // and disable the button that resumes it.
+            const bool transportEngaged = transportPlaying || transportPaused;
+            if (!audioEngineEnabled)
+                ImGui::BeginDisabled();
+            const bool recording = transport.isRecording();
+            if (recording)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88f, 0.20f, 0.20f, 1.0f));
+            if (ImGui::Button(icons::Record)) {
+                auto* engine = appModel.sequencer().engine();
+                auto* recorder = dynamic_cast<uapmd::MidiRecorder*>(
+                    engine->findPlaybackEngineExtension("midi-recorder"));
+                if (recorder && recording) {
+                    recorder->stop();
+                    transport.record();
+                } else if (const auto selected = timelineEditor_.selectedMidiClip(); recorder && selected) {
+                    const auto tracks = appModel.getTimelineTracks();
+                    const auto [trackIndex, clipId] = *selected;
+                    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) &&
+                        tracks[static_cast<size_t>(trackIndex)] &&
+                        recorder->start({tracks[static_cast<size_t>(trackIndex)]->referenceId(), clipId}))
+                        transport.record();
+                }
             }
-            if (openImportPopup)
-                ImGui::OpenPopup("ImportActions");
-            if (ImGui::BeginPopup("ImportActions")) {
-                if (contextActionMenuItem("Import MIDI Tracks (SMF)")) {
-                    timelineEditor_.importMidiTracksWithPicker();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!stemSeparatorRegistry_.empty()) {
-                    if (contextActionMenuItem("Import Split Audio Tracks")) {
-                        audioImportWindow_.open();
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
+            if (recording)
+                ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(recording ? "Stop recording" : "Record into the selected MIDI clip");
+            ImGui::SameLine();
+
+            // The trailing ##id keeps the two play glyphs distinct when the
+            // transport is paused: an icon label alone is the whole ImGui ID.
+            const auto playStopLabel =
+                std::string(transportEngaged ? icons::Stop : icons::Play)
+                    + "##TransportPlayStop";
+            if (ImGui::Button(playStopLabel.c_str())) {
+                if (transportEngaged)
+                    transport.stop();
+                else
+                    transport.play();
             }
             ImGui::SameLine();
-            if (contextActionButton("Project")) {
-                ImGui::OpenPopup("ProjectActions");
+
+            if (!transportEngaged)
+                ImGui::BeginDisabled();
+            const auto pauseResumeLabel =
+                std::string(transportPaused ? icons::Play : icons::Pause)
+                    + "##TransportPauseResume";
+            if (ImGui::Button(pauseResumeLabel.c_str())) {
+                if (transportPaused)
+                    transport.resume();
+                else
+                    transport.pause();
             }
-            if (ImGui::BeginPopup("ProjectActions")) {
-                if (contextActionMenuItem("New Project")) {
-                    handleNewProject();
-                }
-                if (contextActionMenuItem("Load Project")) {
-                    handleLoadProject();
-                }
-                if (contextActionMenuItem("Save Project")) {
-                    handleSaveProject();
-                }
-                ImGui::Separator();
-                if (contextActionMenuItem("Render To File")) {
-                    exporterWindow_.open();
-                }
-                ImGui::EndPopup();
-            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(transportPaused ? "Resume playback" : "Pause playback");
+            if (!transportEngaged)
+                ImGui::EndDisabled();
+            if (!audioEngineEnabled)
+                ImGui::EndDisabled();
             ImGui::SameLine();
 
             // Spectrum analyzers - shrunken to half size
@@ -1194,6 +1171,25 @@ void MainWindow::renderVirtualMidiDevicesWindow() {
 void MainWindow::handleTrackLayoutChange(const uapmd_app::AppModel::TrackLayoutChange& change) {
     timelineEditor_.handleTrackLayoutChange(change);
     trackList_.markDirty();
+}
+
+void MainWindow::renderCommandMenuItems(const uapmd_addin::CommandRegistry& registry) {
+    const auto commands = registry.commands();
+    if (commands.empty())
+        return;
+    ImGui::Separator();
+    for (auto* command : commands) {
+        if (!command)
+            continue;
+        const bool enabled = command->enabled();
+        if (!enabled)
+            ImGui::BeginDisabled();
+        const auto label = std::string(command->title()) + "##" + std::string(command->id());
+        if (contextActionMenuItem(label.c_str()))
+            command->invoke();
+        if (!enabled)
+            ImGui::EndDisabled();
+    }
 }
 
 void MainWindow::handleUndo() {

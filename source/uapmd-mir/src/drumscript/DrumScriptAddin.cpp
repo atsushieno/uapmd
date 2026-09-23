@@ -20,7 +20,7 @@ using namespace uapmd_addin;
 
 namespace {
 
-constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/command/v1"};
+constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/project-command/v1"};
 constexpr std::string_view kClipCommandExtensionPoint{"/uapmd/app/clip-command/v1"};
 constexpr std::string_view kEngineExtensionPoint{"/uapmd/engine/v1"};
 

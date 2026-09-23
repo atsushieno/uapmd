@@ -25,7 +25,7 @@ using namespace uapmd_addin;
 
 namespace {
 
-constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/command/v1"};
+constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/project-command/v1"};
 constexpr uint32_t kDefaultTickResolution = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;

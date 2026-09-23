@@ -95,6 +95,7 @@ class MainWindow {
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
         uapmd_addin::CommandRegistry commandRegistry_;
+        uapmd_addin::CommandRegistry projectCommandRegistry_;
         uapmd_addin::PanelRegistry panel_registry_;
         uapmd_addin::ClipCommandRegistry clipCommandRegistry_;
         uapmd_addin::ClipEditorRegistry clipEditorRegistry_;
@@ -125,7 +126,7 @@ class MainWindow {
         public:
             explicit JsfxResourcesCommand(MainWindow& owner) : owner_(owner) {}
             std::string_view id() const noexcept override { return "uapmd.jsfx.resources"; }
-            std::string_view title() const noexcept override { return "JSFX Effects..."; }
+            std::string_view title() const noexcept override { return "JSFX Settings"; }
             void invoke() noexcept override { owner_.jsfxResourcesWindow_.toggle(); }
         };
         JsfxResourcesCommand jsfxResourcesCommand_{*this};
@@ -221,6 +222,7 @@ class MainWindow {
         void startNewProject();
         void handleUndo();
         void handleRedo();
+        void renderCommandMenuItems(const uapmd_addin::CommandRegistry& registry);
 
         void renderDeviceSettingsWindow();
         void applyUiScale(float scale);

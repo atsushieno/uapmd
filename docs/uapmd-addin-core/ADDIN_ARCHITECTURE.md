@@ -45,9 +45,14 @@ The stem separation backends for audio import are built-in addins: BS-Roformer i
 that apply to the application as a whole. An addin registers a
 `uapmd_addin::Command` and must unregister it during `cleanup()`. The host
 decides where commands appear; the application lists them at the foot of its
-Command menu. `title()` is read every frame, so a command that starts a
+System menu. `title()` is read every frame, so a command that starts a
 long-running job reports its progress by returning a different title while it
 runs, and refuses re-entry through `enabled()`.
+
+`/uapmd/app/project-command/v1` exposes a second `uapmd_addin::CommandRegistry`
+with the same contract, for actions that operate on the project's content
+(such as analysis or transcription across all clips). The application lists
+them in its Project menu.
 
 `/uapmd/app/clip-command/v1` exposes the `uapmd_addin::ClipCommandRegistry`, for
 actions that apply to a single clip. It follows the same contribute-and-remove

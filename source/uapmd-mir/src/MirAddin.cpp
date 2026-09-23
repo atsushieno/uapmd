@@ -33,7 +33,7 @@ namespace {
 
 #if UAPMD_ENABLE_LIBSONARE
 
-constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/command/v1"};
+constexpr std::string_view kCommandExtensionPoint{"/uapmd/app/project-command/v1"};
 constexpr uint32_t kDefaultTickResolution = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
@@ -544,7 +544,7 @@ public:
     }
 
     std::string_view path() const noexcept override {
-        return "/uapmd/app/command/v1";
+        return kCommandExtensionPoint;
     }
 
     bool initialize(AddinHost& host) noexcept override {
