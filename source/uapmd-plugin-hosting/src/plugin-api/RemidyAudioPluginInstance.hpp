@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "remidy/remidy.hpp"
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
@@ -92,6 +93,11 @@ namespace uapmd_plugin_hosting {
         };
 
         bool bypassed_{true};
+        struct AsyncPresetState {
+            std::mutex mutex;
+            remidy::PluginInstance* instance{};
+        };
+        std::shared_ptr<AsyncPresetState> async_preset_state_{std::make_shared<AsyncPresetState>()};
         std::unique_ptr<remidy::PluginInstance> owned_instance_{};
         remidy::PluginInstance* instance{};
 #ifdef UAPMD_HAS_ARA
@@ -117,8 +123,13 @@ namespace uapmd_plugin_hosting {
         explicit RemidyAudioPluginInstance(std::unique_ptr<remidy::PluginInstance> instance)
           : owned_instance_(std::move(instance)), instance(owned_instance_.get()) {
             bypassed_ = false;
+            async_preset_state_->instance = this->instance;
         }
         ~RemidyAudioPluginInstance() override {
+            {
+                std::lock_guard lock(async_preset_state_->mutex);
+                async_preset_state_->instance = nullptr;
+            }
             bypassed_ = true;
             if (ui_support) {
                 if (uiVisible)
@@ -277,10 +288,12 @@ namespace uapmd_plugin_hosting {
         void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
             const auto previousLatency = instance->latencyInSamples();
             const auto previousTail = instance->tailLengthInSeconds();
-            instance->presets()->loadPreset(presetIndex, [this, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
-                if (error.empty())
-                    notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
-                if (error.empty())
+            instance->presets()->loadPreset(presetIndex, [state = async_preset_state_, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
+                {
+                    std::lock_guard lock(state->mutex);
+                    if (error.empty() && state->instance)
+                        notifyTimingInfoChangeIfNeeded(*state->instance, previousLatency, previousTail);
+                }
                 if (completed)
                     completed(std::move(error), callbackContext);
             });

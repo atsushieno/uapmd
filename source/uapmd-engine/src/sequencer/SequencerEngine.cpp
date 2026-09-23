@@ -2947,8 +2947,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::applyPluginPresetRequest(const PluginControlNotification& notification) {
-        // Main/control thread only. Hold exclusion through the synchronous load;
-        // the async backend overload could outlive both this guard and the node.
+        // Main/control thread only; the backend may complete the request later.
         StructureMutationGuard guard(*this);
         if (notification.generation != transport_generation_.load(std::memory_order_acquire) ||
             offline_rendering_.load(std::memory_order_acquire) ||
@@ -2959,10 +2958,12 @@ namespace uapmd {
         if (!instance || frozen_track_manager_->isInstanceBusy(notification.instance_id))
             return;
         try {
-            const auto presets = instance->presetMetadataList();
-            if (notification.parameter_id < 0 || static_cast<size_t>(notification.parameter_id) >= presets.size())
+            if (notification.parameter_id < 0)
                 return;
-            instance->loadPreset(notification.parameter_id);
+            instance->loadPreset(notification.parameter_id, [](std::string error, void*) {
+                if (!error.empty())
+                    remidy::Logger::global()->logError("MIDI preset load failed: %s", error.c_str());
+            });
         } catch (const std::exception& error) {
             remidy::Logger::global()->logError("MIDI preset load failed: %s", error.what());
         } catch (...) {
