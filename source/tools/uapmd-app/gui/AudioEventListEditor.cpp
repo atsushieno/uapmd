@@ -590,6 +590,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                     sortMarkerRows(state, referenceOptions, sortSpecs);
                     sortSpecs->SpecsDirty = false;
                 }
+                ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
                 for (size_t i = 0; i < state.markerRows.size();) {
@@ -687,6 +688,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                     sortWarpRows(state, referenceOptions, sortSpecs);
                     sortSpecs->SpecsDirty = false;
                 }
+                ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
                 for (size_t i = 0; i < state.warpRows.size();) {

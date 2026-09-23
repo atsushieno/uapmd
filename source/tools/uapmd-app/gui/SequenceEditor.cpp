@@ -312,6 +312,7 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
             ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("Filename",  ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
+            ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
 
             for (const auto& clip : state.displayClips) {

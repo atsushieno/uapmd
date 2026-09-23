@@ -208,12 +208,16 @@ void PluginSelector::render() {
             if (ImGui::Button("Clear blocklist")) {
                 appModel.clearPluginBlocklist();
             }
-            ImGui::BeginTable("blocked_plugins_table", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable);
+            const float rowHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().CellPadding.y * 2.0f;
+            const float tableHeight = rowHeight * static_cast<float>(std::min<size_t>(blocklist.size() + 1, 8));
+            ImGui::BeginTable("blocked_plugins_table", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                              ImVec2(0, tableHeight));
             ImGui::TableSetupColumn("Format");
             ImGui::TableSetupColumn("Bundle");
             ImGui::TableSetupColumn("Reason");
             ImGui::TableSetupColumn("Timestamp");
             ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
             for (const auto& entry : blocklist) {
                 ImGui::TableNextRow();
@@ -297,10 +301,12 @@ void PluginSelector::render() {
                 ImGui::SameLine();
                 ImGui::TextUnformatted("Table preview");
 
-                if (ImGui::BeginTable("ScanReportTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingStretchProp)) {
+                if (ImGui::BeginTable("ScanReportTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp,
+                                      ImVec2(0, ImGui::GetContentRegionAvail().y * 0.5f))) {
                     ImGui::TableSetupColumn("Bundle", ImGuiTableColumnFlags_WidthStretch, 0.5f);
                     ImGui::TableSetupColumn("Scan Time (s)", ImGuiTableColumnFlags_WidthFixed, 120.0f);
                     ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+                    ImGui::TableSetupScrollFreeze(0, 1);
                     ImGui::TableHeadersRow();
                     for (const auto& row : parsedRows) {
                         ImGui::TableNextRow();

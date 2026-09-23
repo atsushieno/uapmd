@@ -57,6 +57,7 @@ void AddinManagerWindow::render(float uiScale) {
         ImGui::TableSetupColumn("Path");
         ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 92.0f * uiScale);
         ImGui::TableSetupColumn("Library");
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
         const auto addins = runtime_.addins();

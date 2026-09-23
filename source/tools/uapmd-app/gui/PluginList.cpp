@@ -29,6 +29,7 @@ void PluginList::render() {
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Vendor", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
         std::vector<int> indices = filterAndBuildIndices();

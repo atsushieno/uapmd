@@ -747,6 +747,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                 ImGui::TableSetupColumn("Time [Tick]", ImGuiTableColumnFlags_WidthFixed, 150.0f * context.uiScale);
                 ImGui::TableSetupColumn("Delta Time", ImGuiTableColumnFlags_WidthFixed, 105.0f * context.uiScale);
                 ImGui::TableSetupColumn("Message Bytes", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
                 int pendingDelete = -1;

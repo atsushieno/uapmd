@@ -53,12 +53,13 @@ void TrackList::render() {
         }
     }
 
-    if (ImGui::BeginTable("##InstanceTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("##InstanceTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_ScrollY)) {
         ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("UMP Device", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
         // Render instances grouped by track

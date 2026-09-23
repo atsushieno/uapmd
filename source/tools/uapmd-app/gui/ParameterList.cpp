@@ -203,7 +203,7 @@ void ParameterList::render() {
 
     const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                                                 ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate |
-                                                ImGuiTableFlags_NoSavedSettings;
+                                                ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_ScrollY;
     if (ImGui::BeginTable("ParameterTable", 6, parameterTableFlags)) {
         ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthFixed, 30.0f);
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
@@ -213,6 +213,7 @@ void ParameterList::render() {
         ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthStretch, 0.0f, 0);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 180.0f);
         ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
         std::vector<size_t> visibleParameterIndices = filterAndBuildIndices();

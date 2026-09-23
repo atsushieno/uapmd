@@ -1048,9 +1048,13 @@ void MainWindow::renderPlatformMidiConnections() {
         };
 
         ImGui::TextUnformatted(title);
-        if (ImGui::BeginTable(tableId, 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        const float rowHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().CellPadding.y * 2.0f;
+        const float tableHeight = rowHeight * static_cast<float>(std::min<size_t>(connections.size() + 2, 8));
+        if (ImGui::BeginTable(tableId, 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_ScrollY,
+                              ImVec2(0, tableHeight))) {
             ImGui::TableSetupColumn("Port");
             ImGui::TableSetupColumn("Action / Track");
+            ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
             for (size_t row = 0; row < connections.size(); ++row) {
                 const auto& connection = connections[row];

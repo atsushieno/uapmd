@@ -130,6 +130,7 @@ void MixerMonitorWindow::render(float uiScale) {
         ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 85.0f * uiScale);
         ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 68.0f * uiScale);
         ImGui::TableSetupColumn("Per-Bus Timing / Route", ImGuiTableColumnFlags_WidthStretch, 1.8f);
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
 
         auto renderTrackRow = [engine, latencyManager, &appModel](const char* label, int32_t trackIndex, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
