@@ -12,6 +12,10 @@ class AudioDeviceSettings {
 public:
     using DeviceChangedCallback = std::function<void()>;
 
+    // Matches uapmd::AudioIODeviceManager::kNoDeviceIndex; kept as a local literal here
+    // to avoid pulling an engine header into this GUI widget.
+    static constexpr int kInputDisabledIndex = -2;
+
 private:
     std::vector<std::string> inputDevices_;
     std::vector<std::string> outputDevices_;

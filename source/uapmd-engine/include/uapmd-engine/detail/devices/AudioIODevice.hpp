@@ -67,6 +67,10 @@ namespace uapmd {
     public:
         virtual ~AudioIODeviceManager() = default;
 
+        // Passed as inputDeviceIndex/outputDeviceIndex to request that direction be
+        // left closed entirely, rather than falling back to the system default (-1).
+        static constexpr int kNoDeviceIndex = -2;
+
         using DeviceChangeCallback = std::function<void(int32_t deviceId, AudioIODeviceChange change)>;
 
         static AudioIODeviceManager* instance(const std::string& driverName = "");

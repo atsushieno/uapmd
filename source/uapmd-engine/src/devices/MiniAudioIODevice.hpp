@@ -71,13 +71,14 @@ namespace uapmd {
         bool useAutoBufferSize() override { return false; }
         bool useAutoBufferSize(bool) override { return false; }
 
-        // Reconfigure the device with new device IDs and sample rate
-        bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0);
+        // Reconfigure the device with new device IDs and sample rate. enableInput=false
+        // opens a playback-only device instead of a duplex one (e.g. audio input disabled).
+        bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0, bool enableInput = true);
 
         [[nodiscard]] MiniAudioIODeviceManager* getManager() const { return manager_; }
 
     private:
-        bool initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate);
+        bool initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate, bool enableInput);
         // Uninitializes the engine *and* the ma_device we allocated for it. ma_engine_uninit()
         // alone does not release the device, see the implementation for details.
         void releaseEngine();

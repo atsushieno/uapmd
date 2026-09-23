@@ -342,13 +342,15 @@ uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::onOpen(int inputDeviceInd
     ma_uint32 playbackCount, captureCount;
     ma_context_get_devices(&context, &playbackDevices, &playbackCount, &captureDevices, &captureCount);
 
-    // Find device IDs by index (-1 means use default device, i.e., nullptr)
+    // Find device IDs by index (-1 means use default device, i.e., nullptr;
+    // kNoDeviceIndex means the direction should not be opened at all)
     const ma_device_id* inputId = nullptr;
     const ma_device_id* outputId = nullptr;
+    const bool enableInput = inputDeviceIndex != AudioIODeviceManager::kNoDeviceIndex;
 
-    if (inputDeviceIndex >= 0 && static_cast<ma_uint32>(inputDeviceIndex) < captureCount) {
+    if (enableInput && inputDeviceIndex >= 0 && static_cast<ma_uint32>(inputDeviceIndex) < captureCount) {
         inputId = &captureDevices[inputDeviceIndex].id;
-    } else if (inputDeviceIndex >= 0) {
+    } else if (enableInput && inputDeviceIndex >= 0) {
         remidy_logger->logWarning("Input device index {} out of range (max {}), using default", inputDeviceIndex, captureCount - 1);
     }
 
@@ -359,7 +361,7 @@ uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::onOpen(int inputDeviceInd
     }
 
     // Reconfigure the device with the new IDs and sample rate
-    if (!audio.reconfigure(inputId, outputId, sampleRate)) {
+    if (!audio.reconfigure(inputId, outputId, sampleRate, enableInput)) {
         remidy_logger->logError("Failed to reconfigure audio device");
         return nullptr;
     }
@@ -482,7 +484,7 @@ void uapmd::MiniAudioIODevice::releaseEngine() {
     engine.pDevice = nullptr;
 }
 
-bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
+bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate, bool enableInput) {
     // Stop the engine if it's running
     if (isPlaying())
         stop();
@@ -494,7 +496,7 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
     releaseEngine();
 
     // Reinitialize the engine with the requested device configuration
-    if (!initializeDuplexDevice(inputDeviceId, outputDeviceId, sampleRate)) {
+    if (!initializeDuplexDevice(inputDeviceId, outputDeviceId, sampleRate, enableInput)) {
         return false;
     }
 
@@ -508,13 +510,17 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
     return true;
 }
 
-bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
+bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate, bool enableInput) {
 #if ANDROID || defined(__EMSCRIPTEN__)
+    (void) inputDeviceId;
+    (void) enableInput;
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
 #else
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
-    deviceConfig.capture.pDeviceID = inputDeviceId;
-    deviceConfig.capture.format = ma_format_f32;
+    ma_device_config deviceConfig = ma_device_config_init(enableInput ? ma_device_type_duplex : ma_device_type_playback);
+    if (enableInput) {
+        deviceConfig.capture.pDeviceID = inputDeviceId;
+        deviceConfig.capture.format = ma_format_f32;
+    }
 #endif
     deviceConfig.playback.pDeviceID = outputDeviceId;
     deviceConfig.playback.format = ma_format_f32;

@@ -1459,14 +1459,18 @@ void MainWindow::updateAudioDeviceSettingsData() {
     std::string inputDeviceName;
     std::string outputDeviceName;
 
-    int inputIndex = 0;
-    for (auto& d : devices) {
-        if (d.directions & UAPMD_AUDIO_DIRECTION_INPUT) {
-            if (inputIndex == selectedInput) {
-                inputDeviceName = d.name;
-                break;
+    const bool inputDisabled = selectedInput == uapmd_app_gui::AudioDeviceSettings::kInputDisabledIndex;
+
+    if (!inputDisabled) {
+        int inputIndex = 0;
+        for (auto& d : devices) {
+            if (d.directions & UAPMD_AUDIO_DIRECTION_INPUT) {
+                if (inputIndex == selectedInput) {
+                    inputDeviceName = d.name;
+                    break;
+                }
+                inputIndex++;
             }
-            inputIndex++;
         }
     }
 
@@ -1481,8 +1485,10 @@ void MainWindow::updateAudioDeviceSettingsData() {
         }
     }
 
-    // Get sample rates for selected devices
-    auto inputSampleRates = manager->getDeviceSampleRates(inputDeviceName, UAPMD_AUDIO_DIRECTION_INPUT);
+    // Get sample rates for selected devices. No input device is queried when input is disabled.
+    auto inputSampleRates = inputDisabled
+        ? std::vector<uint32_t>{}
+        : manager->getDeviceSampleRates(inputDeviceName, UAPMD_AUDIO_DIRECTION_INPUT);
     auto outputSampleRates = manager->getDeviceSampleRates(outputDeviceName, UAPMD_AUDIO_DIRECTION_OUTPUT);
 
     audioDeviceSettings_.setInputAvailableSampleRates(inputSampleRates);
