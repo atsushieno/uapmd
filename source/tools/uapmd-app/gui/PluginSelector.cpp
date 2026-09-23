@@ -251,7 +251,8 @@ void PluginSelector::render() {
 
     // Render the plugin list component
     ImGui::TextDisabled("Missing plugins? They may appear after a manual scan.");
-    pluginList_.render();
+    float footerHeight = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing();
+    pluginList_.render(footerHeight);
 
     // Plugin instantiation controls
     auto selection = pluginList_.getSelection();
@@ -273,17 +274,6 @@ void PluginSelector::render() {
         ImGui::TextUnformatted("Destination: Master Track");
     } else if (targetTrackIndex_ < 0) {
         ImGui::TextUnformatted("Destination: New Track (new UMP device)");
-        // Show device configuration for new track
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Device Name:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(200.0f);
-        ImGui::InputText("##device_name", deviceNameInput_, sizeof(deviceNameInput_));
-        ImGui::SameLine();
-        ImGui::TextUnformatted("API:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
-        ImGui::InputText("##api", apiInput_, sizeof(apiInput_));
     } else {
         ImGui::Text("Destination: Track %d", targetTrackIndex_ + 1);
     }

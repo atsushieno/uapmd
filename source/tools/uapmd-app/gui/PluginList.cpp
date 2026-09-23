@@ -64,9 +64,9 @@ void PluginList::setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugin
     rowsDirty_ = true;
 }
 
-void PluginList::render() {
+void PluginList::render(float reservedHeight) {
     renderToolbar();
-    renderTable();
+    renderTable(reservedHeight);
 }
 
 void PluginList::renderToolbar() {
@@ -111,15 +111,16 @@ void PluginList::renderToolbar() {
     }
 }
 
-void PluginList::renderTable() {
+void PluginList::renderTable(float reservedHeight) {
     auto columns = activeColumns();
     bool grouped = groupMode_ != GroupMode::None;
     ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY;
     if (!grouped)
         flags |= ImGuiTableFlags_Sortable;
 
+    float height = std::max(ImGui::GetContentRegionAvail().y - reservedHeight, ImGui::GetTextLineHeightWithSpacing() * 8.0f);
     ImGui::PushID(static_cast<int>(groupMode_));
-    if (ImGui::BeginTable("PluginTable", static_cast<int>(columns.size()), flags, ImVec2(0, 300))) {
+    if (ImGui::BeginTable("PluginTable", static_cast<int>(columns.size()), flags, ImVec2(0, height))) {
         for (auto column : columns) {
             switch (column) {
                 case Column::Format: ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f); break;

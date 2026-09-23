@@ -75,7 +75,8 @@ public:
     PluginList();
 
     void setPlugins(const std::vector<remidy_imgui::PluginEntry>& plugins);
-    void render();
+    // reservedHeight keeps room below the table for the caller's own controls
+    void render(float reservedHeight = 0.0f);
 
     void setOnPluginSelected(std::function<void(const std::string& format, const std::string& pluginId, const std::string& name)> callback);
 
@@ -91,7 +92,7 @@ public:
 
 private:
     void renderToolbar();
-    void renderTable();
+    void renderTable(float reservedHeight);
     void renderGroupRow(int groupIndex, bool& toggled);
     void renderPluginRow(int pluginIndex, const std::vector<Column>& columns, bool indent);
     void renderCell(Column column, int pluginIndex);

@@ -1789,13 +1789,7 @@ void MainWindow::loadPluginState(int32_t instanceId) {
 }
 
 void MainWindow::createPluginInstance(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
-    // Prepare configuration
     uapmd_app::AppModel::PluginInstanceConfig config;
-    config.apiName = std::string(timelineEditor_.pluginSelector().getApiInput());
-    if (config.apiName.empty()) {
-        config.apiName = "default";
-    }
-    config.deviceName = std::string(timelineEditor_.pluginSelector().getDeviceNameInput());  // Empty = auto-generate
 
     // Use AppModel's unified creation method with a completion callback
     // to show details window for GUI-initiated creation

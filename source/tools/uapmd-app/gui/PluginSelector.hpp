@@ -31,8 +31,6 @@ public:
     bool isMasterTrackTarget() const { return targetIsMasterTrack_; }
 
     // Access to input fields
-    const char* getDeviceNameInput() const { return deviceNameInput_; }
-    const char* getApiInput() const { return apiInput_; }
 
 private:
     PluginList pluginList_;
@@ -47,8 +45,6 @@ private:
     // Track selection for plugin instantiation
     int32_t targetTrackIndex_ = -1;
     bool targetIsMasterTrack_ = false;
-    char deviceNameInput_[128] = "";  // Empty by default, will use plugin name if not filled
-    char apiInput_[64] = "default";
 
     // Callbacks
     std::function<void(const std::string& format, const std::string& pluginId, int32_t trackIndex)> onInstantiatePlugin_;
