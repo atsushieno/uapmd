@@ -16,6 +16,7 @@ struct PluginEntry {
     std::string id;          // Plugin ID (VST3 UID, CLAP ID, etc.)
     std::string name;        // Display name
     std::string vendor;      // Manufacturer/vendor name
+    std::string bundle;      // Bundle path (or AAP package name); empty if not applicable
 };
 
 /**

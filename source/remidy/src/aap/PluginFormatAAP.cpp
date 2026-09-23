@@ -109,6 +109,7 @@ PluginScanningAAP::getAllFastScannablePlugins() {
         e.pluginId(id);
         e.displayName(plugin->getDisplayName());
         e.vendorName(plugin->getDeveloperName());
+        e.bundlePath(std::filesystem::path{plugin->getPluginPackageName()});
         ret.push_back(std::move(e));
     }
     return ret;

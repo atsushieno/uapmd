@@ -1723,7 +1723,8 @@ void MainWindow::refreshPluginList() {
             .format = plugin.format(),
             .id = plugin.pluginId(),
             .name = plugin.displayName(),
-            .vendor = plugin.vendorName()
+            .vendor = plugin.vendorName(),
+            .bundle = plugin.bundlePath().string()
         });
     }
 
