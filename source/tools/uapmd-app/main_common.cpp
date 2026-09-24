@@ -539,6 +539,11 @@ int runMainLoop(int argc, char** argv) {
 #endif
     }
 
+    // A scan still running would call back into the UI torn down below, and its
+    // worker would outlive the model. It is canceled and waited for here, while all
+    // of that still exists.
+    uapmd_app::AppModel::instance().stopPluginScanning();
+
     // Addins must clean up while the application host and UI are still alive.
     mainWindow.shutdown();
 

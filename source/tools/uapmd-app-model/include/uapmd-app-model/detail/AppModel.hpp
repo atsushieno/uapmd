@@ -177,7 +177,8 @@ namespace uapmd_app {
         // Muted shutdown drain for the audio engine switch (see setAudioEngineEnabled).
         std::thread audioShutdownThread_{};
         std::atomic<bool> audioShutdownCancel_{false};
-        bool shutting_down_{false};
+        // Read by the scan worker, so atomic.
+        std::atomic<bool> shutting_down_{false};
         bool pluginsProcessingStopped_{false}; // main-thread only
         std::atomic<bool> initialPluginScanStarted_{false};
         mutable std::mutex devicesMutex_;
@@ -209,6 +210,12 @@ namespace uapmd_app {
         mutable std::mutex startupScanMutex_;
         mutable std::mutex scanMetricsMutex_;
         std::unordered_map<std::string, double> lastScanBundleDurations_;
+        // Plugin scanning and the fast catalog refresh run on this worker, one at a time
+        // (isScanning_ guards that). It stays joinable so that stopPluginScanning() can
+        // wait for it: a detached one would outlive the model it scans for.
+        std::thread scan_worker_{};
+        std::mutex scan_worker_mutex_;
+        std::atomic<bool> scan_worker_running_{false};
 
 
         // Audio processing callback (called by SequencerEngine)
@@ -223,6 +230,7 @@ namespace uapmd_app {
         bool pauseTransportForPluginMutation();
         void resumeTransportAfterPluginMutation(bool resumeTransport);
         void joinAudioShutdownWorker();
+        void startScanWorker(std::function<void()> work);
         void completeAudioEngineShutdown();
         void handlePluginStateChange(int32_t instanceId);
 
@@ -279,6 +287,11 @@ namespace uapmd_app {
         void setAutoBufferSizeEnabled(bool enabled);
         bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
         void cancelPluginScanning();
+        // Cancels a scan in progress and waits until its worker has finished. Main thread
+        // only: scanning can wait on tasks it queued there, so those are processed while
+        // waiting. Call it before tearing down anything the scan's completion callbacks
+        // reach; the destructor calls it too, as a last resort.
+        void stopPluginScanning();
         std::string generateScanReport();
         void notifyUiReady();
         void notifyPersistentStorageReady();

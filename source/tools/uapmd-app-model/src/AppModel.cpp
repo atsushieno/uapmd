@@ -459,6 +459,11 @@ void uapmd_app::AppModel::maybeStartInitialPluginScan() {
 }
 
 uapmd_app::AppModel::~AppModel() {
+    // First, before anything a scan uses goes away. The flag also keeps a scan that
+    // is still finishing from calling back into a UI that is being torn down.
+    shutting_down_ = true;
+    stopPluginScanning();
+
     if (clip_enablement_extension_)
         sequencer_.engine()->timeline().removeProjectSerializationExtension(*clip_enablement_extension_);
     {
@@ -468,7 +473,6 @@ uapmd_app::AppModel::~AppModel() {
     if (plugin_state_change_listener_id_ != 0)
         sequencer_.engine()->pluginHost()->removePluginStateChangeListener(plugin_state_change_listener_id_);
 
-    shutting_down_ = true;
     audioEngineEnabled_.store(false, std::memory_order_release);
     completeAudioEngineShutdown();
 
@@ -819,6 +823,40 @@ void uapmd_app::AppModel::cancelPluginScanning() {
     scanCancelRequested_.store(true, std::memory_order_release);
 }
 
+void uapmd_app::AppModel::stopPluginScanning() {
+    {
+        std::lock_guard lock(scan_worker_mutex_);
+        if (!scan_worker_.joinable())
+            return;
+    }
+    scanCancelRequested_.store(true, std::memory_order_release);
+    // Not a bare join(): an in-process scan loads bundles through tasks it queues on
+    // this thread and waits for, so they have to keep running until the worker is done.
+    while (scan_worker_running_.load(std::memory_order_acquire)) {
+        remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    {
+        std::lock_guard lock(scan_worker_mutex_);
+        if (scan_worker_.joinable())
+            scan_worker_.join();
+    }
+    scanCancelRequested_.store(false, std::memory_order_release);
+}
+
+void uapmd_app::AppModel::startScanWorker(std::function<void()> work) {
+    // Scans can be requested from any thread. The previous worker has already cleared
+    // isScanning_, so all that can be left of it is its return.
+    std::lock_guard lock(scan_worker_mutex_);
+    if (scan_worker_.joinable())
+        scan_worker_.join();
+    scan_worker_running_.store(true, std::memory_order_release);
+    scan_worker_ = std::thread([this, work = std::move(work)] {
+        work();
+        scan_worker_running_.store(false, std::memory_order_release);
+    });
+}
+
 void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
                                             PluginScanRequest request,
                                             double remoteTimeoutSeconds,
@@ -850,7 +888,7 @@ void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
     }
 
     // Run scanning in a separate thread to avoid blocking the UI
-    std::thread scanningThread([this, forceRescan, request, remoteTimeoutSeconds, requireFastScanning]() {
+    startScanWorker([this, forceRescan, request, remoteTimeoutSeconds, requireFastScanning]() {
         try {
             bool success = false;
             std::string errorMsg;
@@ -945,13 +983,13 @@ void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
 
             std::cout << "Plugin scanning completed " << (success ? "successfully" : "with errors") << std::endl;
 
-            for (auto& callback : scanningCompleted) {
-                callback(success, errorMsg);
-            }
-            if (success) {
-                for (auto& callback : scanReportReady) {
-                    callback(reportText);
-                }
+            // Canceled by teardown: whoever registered these is going away.
+            if (!shutting_down_) {
+                for (auto& callback : scanningCompleted)
+                    callback(success, errorMsg);
+                if (success)
+                    for (auto& callback : scanReportReady)
+                        callback(reportText);
             }
 
             isScanning_ = false;
@@ -960,16 +998,14 @@ void uapmd_app::AppModel::performPluginScanning(bool forceRescan,
             std::cout << "Plugin scanning failed with exception: " << e.what() << std::endl;
 
             // Notify callbacks of failure
-            for (auto& callback : scanningCompleted) {
-                callback(false, std::string("Exception during scanning: ") + e.what());
-            }
+            if (!shutting_down_)
+                for (auto& callback : scanningCompleted)
+                    callback(false, std::string("Exception during scanning: ") + e.what());
 
             isScanning_ = false;
             scanCancelRequested_.store(false, std::memory_order_release);
         }
     });
-
-    scanningThread.detach();
 }
 
 #if UAPMD_HAS_JSFX
@@ -1115,8 +1151,8 @@ void uapmd_app::AppModel::refreshFastScannedPlugins(std::function<void(std::stri
 void uapmd_app::AppModel::startFastCatalogRefresh(std::function<void(std::string)> completed,
                                                   std::string syncError) {
     // Reading a few hundred script headers is not instant, and this runs from the UI.
-    std::thread refreshThread([this, completed = std::move(completed),
-                               syncError = std::move(syncError)]() mutable {
+    startScanWorker([this, completed = std::move(completed),
+                     syncError = std::move(syncError)]() mutable {
         std::string error;
         bool success = true;
         try {
@@ -1135,19 +1171,19 @@ void uapmd_app::AppModel::startFastCatalogRefresh(std::function<void(std::string
             error = std::string("Exception while refreshing the plugin list: ") + e.what();
         }
 
-        for (auto& callback : scanningCompleted)
-            callback(success, error);
+        if (!shutting_down_)
+            for (auto& callback : scanningCompleted)
+                callback(success, error);
 
         isScanning_ = false;
 
         // On the main thread, because whoever asked is showing it to someone.
-        if (completed)
+        if (completed && !shutting_down_)
             remidy::EventLoop::enqueueTaskOnMainThread(
                     [completed = std::move(completed), syncError = std::move(syncError)]() mutable {
                         completed(std::move(syncError));
                     });
     });
-    refreshThread.detach();
 }
 
 uapmd_app::AppModel::SlowScanProgressState uapmd_app::AppModel::slowScanProgress() const {
