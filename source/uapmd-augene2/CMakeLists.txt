@@ -3,7 +3,7 @@
 CPMAddPackage(
     NAME augene2
     GIT_REPOSITORY https://github.com/atsushieno/augene2
-    GIT_TAG 64f3af2d1fc6d3508a1e175288885c442e537478
+    GIT_TAG d3ce24bb29bf561c0dd0ed513f6bea0d1398760e
     DOWNLOAD_ONLY YES
 )
 set(_augene_source "${CMAKE_CURRENT_BINARY_DIR}/compiler")
