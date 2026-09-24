@@ -567,7 +567,7 @@ void MainWindow::render(void* window) {
             ImGui::SameLine();
 
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted("Scale:");
+            ImGui::TextUnformatted("UI:");
             ImGui::SameLine();
             int currentScaleIndex = 0;
             for (size_t i = 0; i < kUiScaleOptions.size(); ++i) {

@@ -41,6 +41,13 @@ const char* groupModeLabel(PluginList::GroupMode mode) {
     return "";
 }
 
+// Roughly one point up at typical sizes (11pt -> 12pt, 16pt -> 18pt)
+constexpr float kPrimaryCellFontScale = 1.125f;
+
+void pushPrimaryCellFont() {
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kPrimaryCellFontScale);
+}
+
 }
 
 PluginList::PluginList() {
@@ -193,7 +200,14 @@ void PluginList::renderPluginRow(int pluginIndex, const std::vector<Column>& col
     ImGui::PushID(pluginIndex);
     if (indent)
         ImGui::Indent(ImGui::GetTreeNodeToLabelSpacing());
-    if (ImGui::Selectable("##row", isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
+    // Size the row highlight to the enlarged text
+    const bool enlargedFirst = isPrimaryColumn(columns[0]);
+    if (enlargedFirst)
+        pushPrimaryCellFont();
+    const bool clicked = ImGui::Selectable("##row", isSelected, ImGuiSelectableFlags_SpanAllColumns);
+    if (enlargedFirst)
+        ImGui::PopFont();
+    if (clicked) {
         selectedPluginFormat_ = plugin.format;
         selectedPluginId_ = plugin.id;
         std::cout << "[GUI] Selected plugin: format='" << plugin.format << "', id='" << plugin.id
@@ -214,8 +228,15 @@ void PluginList::renderPluginRow(int pluginIndex, const std::vector<Column>& col
     }
 }
 
+bool PluginList::isPrimaryColumn(Column column) {
+    return column == Column::Format || column == Column::Name || column == Column::Vendor;
+}
+
 void PluginList::renderCell(Column column, int pluginIndex) {
     const auto& plugin = availablePlugins_[static_cast<size_t>(pluginIndex)];
+    const bool enlarged = isPrimaryColumn(column);
+    if (enlarged)
+        pushPrimaryCellFont();
     switch (column) {
         case Column::Format: ImGui::TextUnformatted(plugin.format.c_str()); break;
         case Column::Name: ImGui::TextUnformatted(plugin.name.c_str()); break;
@@ -227,6 +248,8 @@ void PluginList::renderCell(Column column, int pluginIndex) {
                 ImGui::SetTooltip("%s", plugin.bundle.c_str());
             break;
     }
+    if (enlarged)
+        ImGui::PopFont();
 }
 
 std::vector<PluginList::Column> PluginList::activeColumns() const {

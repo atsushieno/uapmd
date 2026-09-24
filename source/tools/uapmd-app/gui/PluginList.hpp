@@ -96,6 +96,7 @@ private:
     void renderGroupRow(int groupIndex, bool& toggled);
     void renderPluginRow(int pluginIndex, const std::vector<Column>& columns, bool indent);
     void renderCell(Column column, int pluginIndex);
+    static bool isPrimaryColumn(Column column);
     std::vector<Column> activeColumns() const;
     bool searchActive() const { return searchFilter_[0] != '\0'; }
     bool isGroupExpanded(const std::string& key) const;

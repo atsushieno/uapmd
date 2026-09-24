@@ -109,7 +109,7 @@ back on re-activates the device and the plugins on it.
 
 ### Scale and theme
 
-`Scale:` picks the UI scale factor -- `x0.5`, `x0.8`, `x1.0`, `x1.2`, `x1.5`, `x2.0`, `x4.0`.
+`UI:` picks the UI scale factor -- `x0.5`, `x0.8`, `x1.0`, `x1.2`, `x1.5`, `x2.0`, `x4.0`.
 Changing it rescales every widget and font, and resizes the window to match. The button next to
 it (a half-filled circle) switches between the dark and light themes.
 
@@ -194,7 +194,7 @@ Each track legend has two rows of controls.
 | Control | Behaviour |
 | --- | --- |
 | Snowflake icon | Track freezing. Off by default; clicking renders the track and freezes it. While rendering the icon becomes a spinner and clicking cancels; a queued freeze shows amber and a completed one blue. If a freeze fails, the tooltip carries the error and clicking turns the policy off. |
-| Plugin button | Shows the name of the track's first plugin, or `Add Plugin` when the track is empty. Opens the [plugin menu](#the-plugin-menu-on-a-track). |
+| Plugin button | Shows the name of the track's first plugin and opens the [plugin menu](#the-plugin-menu-on-a-track). When the track is empty it reads `Add Plugin` and opens the Plugin Selector directly. |
 | `⋮` | More track actions. |
 
 ![More track actions](../images/uapmd-app-guide-track-more-menu.png)

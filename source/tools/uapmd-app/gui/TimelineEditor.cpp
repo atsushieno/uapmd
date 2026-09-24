@@ -1481,6 +1481,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             pluginLabel = instance->displayName();
 
     std::string popupId = std::format("TrackActions##{}", trackIndex);
+    auto openPluginSelector = [&] {
+        if (trackIndex == uapmd::kMasterTrackIndex)
+            pluginSelector_.setTargetMasterTrack(trackIndex);
+        else
+            pluginSelector_.setTargetTrackIndex(trackIndex);
+        showPluginSelectorWindow_ = true;
+    };
     std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
     std::string miscPopupId = std::format("TrackMiscActions##{}", trackIndex);
 
@@ -1670,7 +1677,11 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     }
     if (trackBusy)
         ImGui::BeginDisabled();
-    if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
+    // With no plugin, the menu would offer nothing but Add Plugin, so go straight to the selector
+    if (validInstances.empty()) {
+        if (contextActionButton(std::format("{}##LegPlug{}", pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
+            openPluginSelector();
+    } else if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
     if (miscButtonWidth > 0.0f) {
         ImGui::SameLine();
@@ -1773,11 +1784,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ? "Add Master Plugin"
             : "Add Plugin";
         if (contextActionMenuItem(addPluginLabel)) {
-            if (trackIndex == uapmd::kMasterTrackIndex)
-                pluginSelector_.setTargetMasterTrack(trackIndex);
-            else
-                pluginSelector_.setTargetTrackIndex(trackIndex);
-            showPluginSelectorWindow_ = true;
+            openPluginSelector();
             ImGui::CloseCurrentPopup();
         }
         if (trackBusy)
