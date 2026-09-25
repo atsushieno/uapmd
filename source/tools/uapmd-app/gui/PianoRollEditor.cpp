@@ -18,6 +18,18 @@ namespace uapmd_app_gui {
 
 namespace {
 
+constexpr const char* kSnapLabels[] = {
+    "Free", "1/8", "1/16", "1/24", "1/32", "1/48", "1/64",
+};
+// Durations are expressed in quarter-note beats. Each label denotes a fraction
+// of a whole note, so (for example) a 1/16 note spans 4/16 of a quarter-note beat.
+constexpr float kSnapValues[] = {
+    0.0f, 4.0f / 8.0f, 4.0f / 16.0f, 4.0f / 24.0f,
+    4.0f / 32.0f, 4.0f / 48.0f, 4.0f / 64.0f,
+};
+constexpr int kSnapOptionCount = static_cast<int>(sizeof(kSnapLabels) / sizeof(kSnapLabels[0]));
+static_assert(kSnapOptionCount == static_cast<int>(sizeof(kSnapValues) / sizeof(kSnapValues[0])));
+
 ImVec4 withAlpha(const ImVec4& color, float alpha) {
     return ImVec4(color.x, color.y, color.z, alpha);
 }
@@ -271,11 +283,8 @@ void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
     ImGui::SameLine();
 
     // Snap grid selector
-    static constexpr const char* kSnapLabels[] = {
-        "Free","1/1","1/2","1/4","1/8","1/16","1/32"
-    };
     ImGui::SetNextItemWidth(70.0f * uiScale);
-    ImGui::Combo("Snap##pr_snap", &state.view.snapIdx, kSnapLabels, 7);
+    ImGui::Combo("Snap##pr_snap", &state.view.snapIdx, kSnapLabels, kSnapOptionCount);
 
     if (state.preview) {
         ImGui::SameLine();
@@ -431,14 +440,12 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     }
 
     // ── Drag update (runs every frame before notes are drawn) ─────────────────
-    // Snap values match the kSnapLabels[] order in renderControls.
-    static constexpr float  kSnapValues[7]   = { 0.f, 1.f, 0.5f, 0.25f, 0.125f, 0.0625f, 0.03125f };
     static constexpr double kMinNoteDuration = 0.01; // seconds
     if (state.drag.active) {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const float  dx        = ImGui::GetIO().MousePos.x - state.drag.startMouseX;
             const float  dy        = ImGui::GetIO().MousePos.y - state.drag.startMouseY;
-            const float  snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, 6)];
+            const float  snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, kSnapOptionCount - 1)];
             const double snapSec   = (snapBeats > 0.0f && bpm > 0.0)
                                      ? static_cast<double>(snapBeats) * 60.0 / bpm : 0.0;
 
@@ -500,7 +507,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         if (mouseRightClick)
             state.marquee_active = false;
         if (mouseRightClick || pasteKey) {
-            const float snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, 6)];
+            const float snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, kSnapOptionCount - 1)];
             const double snapSeconds = snapBeats * 60.0 / bpm;
             double seconds = (pointer.x - origin.x + hScroll) / pxPerSec;
             if (snapSeconds > 0.0)
@@ -752,7 +759,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 const double noteDuration = (bpm > 0.0) ? 60.0 / bpm : 0.5;
 
                 // Snap to active grid
-                const float snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, 6)];
+                const float snapBeats = kSnapValues[std::clamp(state.view.snapIdx, 0, kSnapOptionCount - 1)];
                 if (snapBeats > 0.0f && bpm > 0.0) {
                     const double snapSec = static_cast<double>(snapBeats) * 60.0 / bpm;
                     time = std::round(time / snapSec) * snapSec;

@@ -277,8 +277,11 @@ clipboard is cleared when the project is cleared.
 ![The piano roll editor](../images/uapmd-app-guide-piano-roll.png)
 
 The piano roll edits the notes of a MIDI 2.0 clip. Its toolbar carries `H Zoom` in pixels per
-second, `V Zoom` as the height of one semitone row, and a `Snap` division. The header also
-reports the clip length, the note count, and how many clip-level events it holds.
+second, `V Zoom` as the height of one semitone row, and a `Snap` division. Snap defaults to
+`1/16`, with `Free`, `1/8`, `1/16`, `1/24`, `1/32`, `1/48`, and `1/64` available. The header
+also reports the clip length, the note count, and how many clip-level events it holds. Snap
+labels denote musical note durations relative to a whole note; for example, `1/16` is a
+sixteenth-note grid.
 
 Drag across empty grid space to select notes. Shift-click or Shift-drag adds notes;
 Ctrl-click (Cmd-click on macOS) toggles a note. Clicking an unselected note selects it alone.
