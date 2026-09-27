@@ -3,7 +3,9 @@
 #if UAPMD_HAS_JSFX
 
 #include <array>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <uapmd-file/IDocumentProvider.hpp>
@@ -27,6 +29,7 @@ namespace uapmd_app {
         bool open_{false};
         bool paths_loaded_{false};
         bool use_defaults_{true};
+        int duplicate_listing_{0};
         std::vector<std::string> search_paths_{};
         // A name the user invents for a set of effects inside our own storage -- not a
         // path they have to know, so it is typable on every platform.
@@ -37,6 +40,7 @@ namespace uapmd_app {
         // Set while the catalog is being rebuilt, which is the slow part: a registered
         // folder is re-read and re-copied before anything is scanned.
         bool busy_{false};
+        std::function<void()> listing_policy_changed_{};
 
         // Registered folders, as the window last read them.
         std::vector<uapmd_jsfx::JsfxRegisteredFolder> registered_folders_{};
@@ -60,6 +64,9 @@ namespace uapmd_app {
         void show() { open_ = true; paths_loaded_ = false; }
         void hide() { open_ = false; }
         void toggle() { if (open_) hide(); else show(); }
+        void onListingPolicyChanged(std::function<void()> callback) {
+            listing_policy_changed_ = std::move(callback);
+        }
 
         void render();
     };

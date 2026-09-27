@@ -9,6 +9,12 @@
 
 namespace uapmd_jsfx {
 
+    enum class JsfxDuplicateListing {
+        PreferLatestVersion,
+        HideExactDuplicates,
+        ShowAll,
+    };
+
     // Gives the JSFX editor a font to draw with.
     //
     // On Windows, macOS and Linux the editor uses the platform's own fonts, exactly as
@@ -157,6 +163,17 @@ namespace uapmd_jsfx {
         // iOS and the web, which have no REAPER installation to borrow from; there the
         // application supplies a location of its own through searchPaths().
         std::vector<std::filesystem::path> defaultSearchPaths() const;
+
+        // Controls only which JSFX entries an application presents to the user. Every
+        // discovered entry remains in the plugin catalog, so a project can still restore
+        // an exact path that the list has hidden as a duplicate.
+        JsfxDuplicateListing duplicateListing() const;
+        void duplicateListing(JsfxDuplicateListing value);
+
+        // Applies duplicateListing() to a copy of the complete catalog before it is handed
+        // to a generic plugin list. Entries belonging to other formats are left alone.
+        void filterPluginList(
+                std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries) const;
     };
 
 }

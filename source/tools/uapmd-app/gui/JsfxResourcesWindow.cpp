@@ -73,6 +73,17 @@ namespace uapmd_app {
             return;
         search_paths_ = jsfx->searchPaths();
         use_defaults_ = jsfx->useDefaultSearchPaths();
+        switch (jsfx->duplicateListing()) {
+            case uapmd_jsfx::JsfxDuplicateListing::PreferLatestVersion:
+                duplicate_listing_ = 0;
+                break;
+            case uapmd_jsfx::JsfxDuplicateListing::HideExactDuplicates:
+                duplicate_listing_ = 1;
+                break;
+            case uapmd_jsfx::JsfxDuplicateListing::ShowAll:
+                duplicate_listing_ = 2;
+                break;
+        }
     }
 
     void JsfxResourcesWindow::registerPickedFolder(const uapmd::FolderPickResult& picked) {
@@ -394,6 +405,29 @@ namespace uapmd_app {
             applyToFormat();
             report("Removed a folder. Looking again for effects...", false);
         }
+
+        ImGui::SeparatorText("Plugin list");
+        const char* duplicateListings[] = {
+            "Prefer latest version",
+            "Hide exact copies only",
+            "Show every script",
+        };
+        ImGui::SetNextItemWidth(220 * ImGui::GetFontSize() / 13.0f);
+        if (ImGui::Combo("Duplicate scripts", &duplicate_listing_, duplicateListings,
+                         static_cast<int>(std::size(duplicateListings)))) {
+            const auto policy = duplicate_listing_ == 0
+                    ? uapmd_jsfx::JsfxDuplicateListing::PreferLatestVersion
+                    : duplicate_listing_ == 1
+                        ? uapmd_jsfx::JsfxDuplicateListing::HideExactDuplicates
+                        : uapmd_jsfx::JsfxDuplicateListing::ShowAll;
+            jsfx->duplicateListing(policy);
+            if (listing_policy_changed_)
+                listing_policy_changed_();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Prefer latest version collapses paths that differ only by a\n"
+                              "semantic-version directory. Hidden paths remain available\n"
+                              "to projects.");
 
         if (!status_.empty()) {
             ImGui::Separator();

@@ -118,6 +118,9 @@ MainWindow::MainWindow(GuiDefaults defaults)
     handleAudioDeviceChange();
     refreshInstances();
     refreshPluginList();
+#if UAPMD_HAS_JSFX
+    jsfxResourcesWindow_.onListingPolicyChanged([this] { refreshPluginList(); });
+#endif
 
 #ifdef UAPMD_HAS_MCP_SERVER
 #ifdef __EMSCRIPTEN__
@@ -1713,6 +1716,10 @@ void MainWindow::refreshPluginList() {
     }
 
     auto rawEntries = host->pluginCatalogEntries();
+#if UAPMD_HAS_JSFX
+    if (auto* jsfx = uapmd_app::AppModel::instance().jsfxPluginFormat())
+        jsfx->filterPluginList(rawEntries);
+#endif
     plugins.reserve(rawEntries.size());
     for (auto& plugin : rawEntries) {
         plugins.push_back({

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <system_error>
 
 #include "ysfx.h"
@@ -41,6 +42,27 @@ namespace uapmd_jsfx {
         // Effects are text. The largest in a stock install is about 120 KB, so anything far
         // beyond that is something else that happens to live in the tree.
         constexpr std::uintmax_t kMaxCandidateBytes = 4u * 1024u * 1024u;
+
+        bool hasExplicitDescription(const std::filesystem::path& path) {
+            std::ifstream stream{path, std::ios::binary};
+            if (!stream)
+                return false;
+            std::string line;
+            bool firstLine = true;
+            while (std::getline(stream, line)) {
+                if (!line.empty() && line.back() == '\r')
+                    line.pop_back();
+                if (firstLine && line.starts_with("\xEF\xBB\xBF"))
+                    line.erase(0, 3);
+                firstLine = false;
+                if (line.starts_with("@"))
+                    break;
+                if (line.starts_with("desc:") &&
+                    line.find_first_not_of(" \t", 5) != std::string::npos)
+                    return true;
+            }
+            return false;
+        }
 
         std::string environmentPath(const char* name) {
             const char* value = std::getenv(name);
@@ -149,7 +171,10 @@ namespace uapmd_jsfx {
             return {};
 
         const char* name = ysfx_get_name(fx.get());
-        const bool named = name && *name;
+        // ysfx substitutes the filename when `desc:` is absent, so a non-empty name is
+        // not evidence that arbitrary extensionless text is an effect. LICENSE files and
+        // binary data otherwise parse as header-only JSFX and leak into the plugin list.
+        const bool named = hasExplicitDescription(path);
         const bool hasCode =
                 ysfx_has_section(fx.get(), ysfx_section_init) ||
                 ysfx_has_section(fx.get(), ysfx_section_slider) ||
@@ -164,7 +189,7 @@ namespace uapmd_jsfx {
         entry.pluginId(pluginId);
         // Some older effects carry no `desc:` line; the file name is what REAPER shows for
         // those, so it is what we show too.
-        entry.displayName(named ? name : path.filename().string());
+        entry.displayName(named && name && *name ? name : path.filename().string());
         const char* author = ysfx_get_author(fx.get());
         entry.vendorName(author ? author : "");
         entry.bundlePath(path);
