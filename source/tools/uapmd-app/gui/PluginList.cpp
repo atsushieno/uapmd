@@ -108,6 +108,7 @@ void PluginList::renderToolbar() {
             collapseAllGroups();
     }
 
+    ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Search:");
     ImGui::SameLine();
