@@ -35,6 +35,9 @@ namespace uapmd {
         // Clip modifications (UI thread)
         bool moveClip(int32_t clipId, const TimelinePosition& newPosition);
         bool resizeClip(int32_t clipId, int64_t newDuration);
+        bool setClipSourceOffset(int32_t clipId, int64_t sourceOffsetSamples);
+        // Anchor, source offset, duration, markers and warps in one snapshot.
+        bool setClipExtent(int32_t clipId, const ClipExtent& extent, int32_t sampleRate);
         bool setClipGain(int32_t clipId, double gain);
         bool setClipMuted(int32_t clipId, bool muted);
         bool setClipEnabled(int32_t clipId, bool enabled);

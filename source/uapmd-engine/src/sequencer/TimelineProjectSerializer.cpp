@@ -861,8 +861,28 @@ namespace uapmd::timeline_detail {
                     continue;
                 if (!restoreTrackClip(run, *clip, trackIndex))
                     return;
+                restoreClipExtent(run, *clip);
             }
         }
+    }
+
+    // The clip's own source offset and length. Loading a clip gives it its
+    // source's full length from the beginning; a trimmed or resized clip was
+    // saved with something else.
+    void TimelineProjectSerializer::restoreClipExtent(
+        ProjectLoadRun& run,
+        UapmdProjectClipData& clip) {
+        const auto it = run.loadedClips.find(&clip);
+        if (it == run.loadedClips.end() || !it->second.track)
+            return;
+        auto& manager = it->second.track->clipManager();
+        const auto* loaded = manager.getClip(it->second.clipId);
+        if (!loaded)
+            return;
+        if (clip.sourceOffsetSamples() > 0)
+            manager.setClipSourceOffset(it->second.clipId, clip.sourceOffsetSamples());
+        if (clip.durationSamples() > 0 && clip.durationSamples() != loaded->durationSamples)
+            manager.resizeClip(it->second.clipId, clip.durationSamples());
     }
 
     // Recreates one clip on an already-created track. Returns false when the

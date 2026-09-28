@@ -475,6 +475,40 @@ namespace uapmd::timeline_detail {
         }
     };
 
+    // Where a clip starts, where in its source it starts, and how long it
+    // runs, as one value: trimming the start changes all three, and markers
+    // and warps with them. One property keeps that a single undo step.
+    struct ClipExtentProperty : ClipPropertyDescriptor<ClipExtentProperty, ClipExtent> {
+        static constexpr std::string_view commandId{"clip.setExtent"};
+        static constexpr std::string_view changeType{"clip-extent-changed"};
+        static constexpr std::string_view label{"Trim clip"};
+
+        static ClipExtent read(PropertyCommandTarget& target, const ClipSubject& subject) {
+            return ClipExtent{
+                .anchor = subject.clip->timeReference(target.timelineSampleRate()),
+                .sourceOffsetSamples = subject.clip->sourceOffsetSamples,
+                .durationSamples = subject.clip->durationSamples,
+                .markers = subject.clip->markers,
+                .audioWarps = subject.clip->audioWarps
+            };
+        }
+
+        static bool equal(const Value& lhs, const Value& rhs) {
+            return clipExtentEqual(lhs, rhs);
+        }
+
+        static bool write(
+            PropertyCommandTarget& target,
+            const ClipSubject& subject,
+            const ClipExtent& value) {
+            if (!subject.track->clipManager().setClipExtent(
+                    subject.clipId, value, target.timelineSampleRate()))
+                return false;
+            target.resolveClipAnchors();
+            return true;
+        }
+    };
+
     struct ClipNameProperty : ClipPropertyDescriptor<ClipNameProperty, std::string> {
         static constexpr std::string_view commandId{"clip.setName"};
         static constexpr std::string_view changeType{"clip-name-changed"};

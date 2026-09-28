@@ -1,4 +1,5 @@
 #include <choc/text/choc_JSON.h>
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <map>
@@ -185,6 +186,9 @@ namespace uapmd {
         }
         if (clipObj.hasObjectMember("duration_samples"))
             clip->durationSamples(clipObj["duration_samples"].getWithDefault<int64_t>(0));
+        if (clipObj.hasObjectMember("source_offset_samples"))
+            clip->sourceOffsetSamples(std::max<int64_t>(
+                0, clipObj["source_offset_samples"].getWithDefault<int64_t>(0)));
 
         // Parse MIDI-specific metadata
         if (clipObj.hasObjectMember("tick_resolution")) {

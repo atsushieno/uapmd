@@ -32,6 +32,47 @@ namespace uapmd {
         return executeClip<ClipDurationProperty>(trackIndex, clipId, newDurationSamples, origin);
     }
 
+    bool ProjectCommandsImpl::trimClipStart(
+        int32_t trackIndex, int32_t clipId, int64_t deltaSamples, ProjectMutationOrigin origin) {
+        auto address = target_.addresses().clipAddress(trackIndex, clipId);
+        if (!address)
+            return false;
+        auto subject = ClipExtentProperty::resolve(target_, *address);
+        if (!subject)
+            return false;
+        const auto& clip = *subject->clip;
+        auto extent = ClipExtentProperty::read(target_, *subject);
+
+        // Neither before the source's first sample nor down to nothing.
+        const int64_t delta = std::clamp<int64_t>(
+            deltaSamples,
+            -extent.sourceOffsetSamples,
+            std::max<int64_t>(0, extent.durationSamples - 1));
+        const double sampleRate = target_.timelineSampleRate();
+        if (sampleRate <= 0.0)
+            return false;
+        const double deltaSeconds = static_cast<double>(delta) / sampleRate;
+
+        // The anchor offset is added to whatever the clip is anchored to, so
+        // moving it moves the start by the same amount for every anchor kind.
+        extent.anchor.offset += deltaSeconds;
+        extent.sourceOffsetSamples += delta;
+        extent.durationSamples -= delta;
+
+        const auto isOwnStart = [&clip](AudioWarpReferenceType type, const std::string& referenceClipId) {
+            return (type == AudioWarpReferenceType::ClipStart || type == AudioWarpReferenceType::Manual)
+                && (referenceClipId.empty() || referenceClipId == clip.referenceId);
+        };
+        for (auto& marker : extent.markers)
+            if (isOwnStart(marker.referenceType, marker.referenceClipId))
+                marker.clipPositionOffset -= deltaSeconds;
+        for (auto& warp : extent.audioWarps)
+            if (isOwnStart(warp.referenceType, warp.referenceClipId))
+                warp.clipPositionOffset -= deltaSeconds;
+
+        return execute<ClipExtentProperty>(std::move(*address), std::move(extent), origin);
+    }
+
     bool ProjectCommandsImpl::setClipName(
         int32_t trackIndex, int32_t clipId, const std::string& name, ProjectMutationOrigin origin) {
         return executeClip<ClipNameProperty>(trackIndex, clipId, name, origin);

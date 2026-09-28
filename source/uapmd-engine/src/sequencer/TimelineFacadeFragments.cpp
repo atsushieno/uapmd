@@ -625,7 +625,7 @@ namespace uapmd {
         } else {std::unique_ptr<AudioFileReader> reader;
             if (source.filepath.empty()) {
                 reader = std::make_unique<SilentAudioFileReader>(
-                    static_cast<uint64_t>(std::max<int64_t>(1, source.durationSamples)),
+                    static_cast<uint64_t>(std::max<int64_t>(1, source.sourceOffsetSamples + source.durationSamples)),
                     std::max<uint32_t>(1, targetTrack->channelCount()),
                     static_cast<uint32_t>(std::max(1, sampleRate_)));
             } else {reader = createAudioFileReaderFromPath(source.filepath);
@@ -666,6 +666,9 @@ namespace uapmd {
         commands_.setClipEnabled(
             trackIndex, result.clipId, source.enabled,
             ProjectMutationOrigin::Internal);
+        // The offset first: with it, the content end the MIDI tempo refresh
+        // measures against is already the trimmed one.
+        clips.setClipSourceOffset(result.clipId, source.sourceOffsetSamples);
         commands_.resizeClip(
             trackIndex, result.clipId, source.durationSamples,
             ProjectMutationOrigin::Internal);

@@ -400,6 +400,10 @@ namespace uapmd {
         std::string referenceId;
         TimelinePosition position;          // Absolute position on timeline (calculated from anchor)
         int64_t durationSamples{0};         // Duration of clip (full file length)
+        // Where in the source the clip's first sample comes from. Non-zero once
+        // the start has been trimmed: the clip then begins part way into its
+        // audio file or MIDI content instead of at its beginning.
+        int64_t sourceOffsetSamples{0};
         int32_t sourceNodeInstanceId{-1};  // Which source node plays this clip
 
         // Playback properties
@@ -457,8 +461,8 @@ namespace uapmd {
             anchorOffset = TimelinePosition::fromSeconds(reference.offset, sampleRate);
         }
 
-        // Note: Clip regions, looping, automation, and time-stretch NOT included in this phase
-        // Each clip plays the entire audio file from start to finish
+        // Note: looping, automation, and time-stretch NOT included in this phase.
+        // A clip plays its source from sourceOffsetSamples for durationSamples.
 
         ClipData() = default;
 
@@ -473,7 +477,7 @@ namespace uapmd {
         int64_t getSourcePosition(const TimelinePosition& timelinePos) const {
             if (!contains(timelinePos))
                 return -1;
-            return timelinePos.samples - position.samples;
+            return sourceOffsetSamples + timelinePos.samples - position.samples;
         }
 
         // Get the position within the source file, calculating absolute position from anchors
@@ -482,7 +486,7 @@ namespace uapmd {
             if (timelinePos.samples < absPos.samples ||
                 timelinePos.samples >= absPos.samples + durationSamples)
                 return -1;
-            return timelinePos.samples - absPos.samples;
+            return sourceOffsetSamples + timelinePos.samples - absPos.samples;
         }
 
         // Helper: Calculate absolute position from anchor
@@ -517,6 +521,19 @@ namespace uapmd {
 
             return anchorPoint + anchorOffset;
         }
+    };
+
+    // The part of a clip that a start trim changes, applied as one value so
+    // the audio thread never sees the start moved without the source offset
+    // that keeps the content in place.
+    struct ClipExtent {
+        TimeReference anchor;
+        int64_t sourceOffsetSamples{0};
+        int64_t durationSamples{0};
+        // Clip-relative positions, which a trim shifts so they stay on the
+        // content rather than on the clip's edge.
+        std::vector<ClipMarker> markers;
+        std::vector<AudioWarpPoint> audioWarps;
     };
 
     // Global timeline state

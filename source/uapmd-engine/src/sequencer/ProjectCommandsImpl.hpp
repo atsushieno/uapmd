@@ -37,6 +37,7 @@ namespace uapmd {
         bool setClipGain(int32_t, int32_t, double, ProjectMutationOrigin) override;
         bool setClipMuted(int32_t, int32_t, bool, ProjectMutationOrigin) override;
         bool resizeClip(int32_t, int32_t, int64_t, ProjectMutationOrigin) override;
+        bool trimClipStart(int32_t, int32_t, int64_t, ProjectMutationOrigin) override;
         bool setClipName(int32_t, int32_t, const std::string&, ProjectMutationOrigin) override;
         bool setClipFilepath(int32_t, int32_t, const std::string&, ProjectMutationOrigin) override;
         bool setClipNeedsFileSave(int32_t, int32_t, bool, ProjectMutationOrigin) override;

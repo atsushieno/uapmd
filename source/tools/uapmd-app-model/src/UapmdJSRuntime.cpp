@@ -1899,6 +1899,7 @@ void UapmdJSRuntime::registerTimelineAPI()
             obj.setMember ("clipId", clip.clipId);
             obj.setMember ("positionSamples", choc::value::createInt64 (clip.position.samples));
             obj.setMember ("durationSamples", choc::value::createInt64 (clip.durationSamples));
+            obj.setMember ("sourceOffsetSamples", choc::value::createInt64 (clip.sourceOffsetSamples));
             obj.setMember ("name", clip.name);
             obj.setMember ("filepath", clip.filepath);
             obj.setMember ("clipType", clip.clipType == uapmd::ClipType::Midi ? std::string ("midi") : std::string ("audio"));

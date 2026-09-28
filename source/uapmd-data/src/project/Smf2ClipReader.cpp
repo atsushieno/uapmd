@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <uapmd-data/uapmd-data.hpp>
@@ -384,9 +385,16 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
                 auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
                 if (!midiNode)
                     continue;
+                // Whether the clip runs to the end of its content, measured before
+                // the schedule below changes what "the end" is.
+                const bool spansToContentEnd =
+                    clip.sourceOffsetSamples + clip.durationSamples == midiNode->totalLength();
+                // The content, not the clip, is what sits on the tempo map: a clip
+                // whose start was trimmed begins part way into it.
+                const int64_t contentStartSamples = clip.position.samples - clip.sourceOffsetSamples;
                 if (hasMasterTempo)
                     midiNode->setTimelineTempoMap(
-                        meta.tempoMap, static_cast<double>(clip.position.samples) / sr);
+                        meta.tempoMap, static_cast<double>(contentStartSamples) / sr);
                 else
                     midiNode->clearPlaybackTempoMap();
 
@@ -395,8 +403,12 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
                 // this clip's own (possibly flat/stripped, e.g. after a save/reload cycle) tempo
                 // before the master map above corrected it. Refresh it now so
                 // content-bounds/render-length calculations match the corrected schedule instead
-                // of silently truncating or extending playback.
-                const int64_t correctedDuration = midiNode->totalLength();
+                // of silently truncating or extending playback. A clip the user has resized
+                // no longer ends with its content, and keeps the length it was given.
+                if (!spansToContentEnd)
+                    continue;
+                const int64_t correctedDuration = std::max<int64_t>(
+                    1, midiNode->totalLength() - clip.sourceOffsetSamples);
                 if (correctedDuration != clip.durationSamples)
                     track->clipManager().resizeClip(clip.clipId, correctedDuration);
             }

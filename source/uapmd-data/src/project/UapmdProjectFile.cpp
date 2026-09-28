@@ -18,6 +18,7 @@ namespace uapmd {
         std::vector<ClipMarker> markers_{};
         std::vector<AudioWarpPoint> audio_warps_{};
         int64_t duration_samples_{0};
+        int64_t source_offset_samples_{0};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -47,6 +48,9 @@ namespace uapmd {
 
         int64_t durationSamples() override { return duration_samples_; }
         void durationSamples(int64_t samples) override { duration_samples_ = samples; }
+
+        int64_t sourceOffsetSamples() override { return source_offset_samples_; }
+        void sourceOffsetSamples(int64_t samples) override { source_offset_samples_ = samples; }
 
     };
 

@@ -43,6 +43,15 @@ public:
                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool resizeClip(int32_t trackIndex, int32_t clipId, int64_t newDurationSamples,
                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    // Moves a clip's start by deltaSamples while its content stays where it
+    // is on the timeline: a positive delta cuts the beginning off, a negative
+    // one brings back what an earlier trim cut. The end does not move. The
+    // delta is clamped so the clip neither starts before its source nor
+    // becomes empty. Clip-start-relative markers and warps of the clip itself
+    // are shifted to stay on the content; anything anchored to the clip's
+    // start follows it, as it does for a move.
+    virtual bool trimClipStart(int32_t trackIndex, int32_t clipId, int64_t deltaSamples,
+                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setClipName(int32_t trackIndex, int32_t clipId, const std::string& name,
                              ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setClipFilepath(int32_t trackIndex, int32_t clipId, const std::string& filepath,

@@ -335,6 +335,7 @@ namespace uapmd::sequencer_detail {
         projectClip->markers(clip.markers);
         projectClip->audioWarps(clip.audioWarps);
         projectClip->durationSamples(clip.durationSamples);
+        projectClip->sourceOffsetSamples(clip.sourceOffsetSamples);
 
         std::filesystem::path clipPath = clip.filepath;
         if (clip.clipType == ClipType::Midi) {

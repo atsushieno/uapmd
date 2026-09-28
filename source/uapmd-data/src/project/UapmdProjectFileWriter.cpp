@@ -108,6 +108,9 @@ namespace uapmd {
 
         if (clip->durationSamples() > 0)
             obj.addMember("duration_samples", clip->durationSamples());
+        // Written only when trimmed, so untrimmed projects read as before.
+        if (clip->sourceOffsetSamples() > 0)
+            obj.addMember("source_offset_samples", clip->sourceOffsetSamples());
 
         auto markers = clip->markers();
         if (!markers.empty()) {

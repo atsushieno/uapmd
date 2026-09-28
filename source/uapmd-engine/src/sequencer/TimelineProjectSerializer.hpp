@@ -189,6 +189,7 @@ namespace uapmd::timeline_detail {
             ProjectLoadRun& run,
             UapmdProjectClipData& clip,
             int32_t trackIndex);
+        void restoreClipExtent(ProjectLoadRun& run, UapmdProjectClipData& clip);
         void restoreMasterTrackClips(ProjectLoadRun& run);
         void applyLoadedClipAnchors(ProjectLoadRun& run);
         void installLoadCompletion(ProjectLoadRun& run);

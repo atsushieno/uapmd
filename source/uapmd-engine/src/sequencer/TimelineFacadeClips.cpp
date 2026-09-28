@@ -457,7 +457,9 @@ namespace uapmd {
             clips.setClipMarkers(clipId, std::move(markers));
             clips.setAudioWarps(clipId, std::move(audioWarps));
             if (!filepath.empty()) {
+                // Another file is another source: nothing of it has been trimmed.
                 clips.setClipFilepath(clipId, filepath);
+                clips.setClipSourceOffset(clipId, 0);
                 clips.resizeClip(clipId, sourceDuration);
             }
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
@@ -509,7 +511,9 @@ namespace uapmd {
             ProjectDocumentTransaction transaction(project_document_events_);
             if (!targetTrack->replaceClipSourceNode(clipId, std::move(replacement)))
                 return false;
-            targetTrack->clipManager().resizeClip(clipId, newDuration);
+            // Edited notes keep the clip's trim; it runs from there to the new end.
+            targetTrack->clipManager().resizeClip(
+                clipId, std::max<int64_t>(1, newDuration - clip->sourceOffsetSamples));
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
             notifyTimelineChanged();
         }
@@ -541,7 +545,8 @@ namespace uapmd {
                 return false;
             clip->clipTempo = content.tempo;
             clip->needsFileSave = true;
-            track->clipManager().resizeClip(clipId, duration);
+            track->clipManager().resizeClip(
+                clipId, std::max<int64_t>(1, duration - clip->sourceOffsetSamples));
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
             notifyTimelineChanged();
         }

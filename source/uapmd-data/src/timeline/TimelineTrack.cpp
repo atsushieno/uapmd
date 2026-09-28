@@ -148,7 +148,8 @@ namespace uapmd {
 
         // Update the clip's source node reference and duration
         clip->sourceNodeInstanceId = newSourceNodeId;
-        clip_manager_.resizeClip(clipId, sharedNode->totalLength());
+        // A trimmed clip keeps its trim; it runs from there to the new end.
+        clip_manager_.resizeClip(clipId, std::max<int64_t>(1, sharedNode->totalLength() - clip->sourceOffsetSamples));
 
         return true;
     }
@@ -182,7 +183,8 @@ namespace uapmd {
         }
 
         clip->sourceNodeInstanceId = newSourceNodeId;
-        clip_manager_.resizeClip(clipId, sharedNode->totalLength());
+        // A trimmed clip keeps its trim; it runs from there to the new end.
+        clip_manager_.resizeClip(clipId, std::max<int64_t>(1, sharedNode->totalLength() - clip->sourceOffsetSamples));
         return true;
     }
 
@@ -387,7 +389,7 @@ namespace uapmd {
                 if (!audioSourceNode)
                     continue;
 
-                audioSourceNode->seek(renderWindow->sourceStartSample);
+                audioSourceNode->seek(clip.sourceOffsetSamples + renderWindow->sourceStartSample);
                 audioSourceNode->setPlaying(renderTimeline.isPlaying);
 
                 // Zero pre-allocated scratch buffers and process
@@ -429,7 +431,7 @@ namespace uapmd {
                 if (!midiNode)
                     continue;
 
-                midiNode->seek(renderWindow->sourceStartSample);
+                midiNode->seek(clip.sourceOffsetSamples + renderWindow->sourceStartSample);
                 midiNode->setPlaying(renderTimeline.isPlaying);
 
                 midiNode->processEvents(

@@ -813,7 +813,9 @@ bool PianoRollSession::commit(AppModel& app) {
     const auto tracks = app.getTimelineTracks();
     const auto* clip = trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size())
         && tracks[trackIndex] ? tracks[trackIndex]->clipManager().getClip(clipId) : nullptr;
-    const double committedDuration = clip ? static_cast<double>(clip->durationSamples)
+    // The editor shows the content, which for a start-trimmed clip begins
+    // before the clip does; its end is where the clip ends.
+    const double committedDuration = clip ? static_cast<double>(clip->sourceOffsetSamples + clip->durationSamples)
         / std::max(1.0, static_cast<double>(app.sampleRate())) : noteEnd;
     clipDurationSeconds = std::max(0.01, committedDuration);
     return true;
@@ -863,7 +865,7 @@ PianoRollClipSnapshot AppModel::pianoRollClipSnapshot(
 ) {
     PianoRollClipSnapshot snapshot;
 
-    double durationSeconds = static_cast<double>(clipData.durationSamples) /
+    double durationSeconds = static_cast<double>(clipData.sourceOffsetSamples + clipData.durationSamples) /
         std::max(1.0, static_cast<double>(sampleRate()));
     if (durationSeconds <= 0.0) {
         durationSeconds = fallbackDurationSeconds;

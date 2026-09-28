@@ -235,4 +235,19 @@ namespace uapmd::timeline_detail {
             && std::equal(lhs.begin(), lhs.end(), rhs.begin(), audioWarpPointEqual);
     }
 
+    inline bool clipExtentEqual(const ClipExtent& lhs, const ClipExtent& rhs) {
+        return lhs.anchor == rhs.anchor
+            && lhs.sourceOffsetSamples == rhs.sourceOffsetSamples
+            && lhs.durationSamples == rhs.durationSamples
+            && clipMarkersEqual(lhs.markers, rhs.markers)
+            && audioWarpPointsEqual(lhs.audioWarps, rhs.audioWarps);
+    }
+
+    inline size_t retainedValueSize(const ClipExtent& value) {
+        return sizeof(value)
+            + value.anchor.referenceId.capacity()
+            + retainedValueSize(value.markers)
+            + retainedValueSize(value.audioWarps);
+    }
+
 } // namespace uapmd::timeline_detail

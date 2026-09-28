@@ -200,6 +200,39 @@ namespace uapmd {
         return true;
     }
 
+    bool ClipManager::setClipSourceOffset(int32_t clipId, int64_t sourceOffsetSamples) {
+        if (sourceOffsetSamples < 0)
+            return false;
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.sourceOffsetSamples = sourceOffsetSamples;
+        rebuildSnapshotLocked();
+        return true;
+    }
+
+    bool ClipManager::setClipExtent(int32_t clipId, const ClipExtent& extent, int32_t sampleRate) {
+        if (extent.sourceOffsetSamples < 0 || extent.durationSamples <= 0)
+            return false;
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        if (wouldCreateLocalAnchorCycle(clips_, clipId, it->second.referenceId, extent.anchor.referenceId))
+            return false;
+
+        it->second.setTimeReference(extent.anchor, sampleRate);
+        it->second.sourceOffsetSamples = extent.sourceOffsetSamples;
+        it->second.durationSamples = extent.durationSamples;
+        it->second.markers = extent.markers;
+        it->second.audioWarps = extent.audioWarps;
+        rebuildSnapshotLocked();
+        return true;
+    }
+
     bool ClipManager::setClipGain(int32_t clipId, double gain) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);

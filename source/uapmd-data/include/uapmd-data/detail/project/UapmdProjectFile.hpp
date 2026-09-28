@@ -74,6 +74,9 @@ namespace uapmd {
         // Used to restore fileless audio clips, such as an empty audio clip.
         virtual int64_t durationSamples() = 0;
         virtual void durationSamples(int64_t samples) = 0;
+        // Where in the source the clip starts; non-zero for a start-trimmed clip.
+        virtual int64_t sourceOffsetSamples() = 0;
+        virtual void sourceOffsetSamples(int64_t samples) = 0;
 
         static std::unique_ptr<UapmdProjectClipData> create();
     };
