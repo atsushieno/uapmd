@@ -514,6 +514,10 @@ namespace uapmd {
             // Edited notes keep the clip's trim; it runs from there to the new end.
             targetTrack->clipManager().resizeClip(
                 clipId, std::max<int64_t>(1, newDuration - clip->sourceOffsetSamples));
+            // The new node is timed by the clip's own tempo until the project's
+            // tempo map is put back on it; without that, a tempo-mapped project
+            // hears the content shift in time on every edit.
+            applyMasterTempoMapToMusicalClips();
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
             notifyTimelineChanged();
         }
@@ -547,6 +551,7 @@ namespace uapmd {
             clip->needsFileSave = true;
             track->clipManager().resizeClip(
                 clipId, std::max<int64_t>(1, duration - clip->sourceOffsetSamples));
+            applyMasterTempoMapToMusicalClips();
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
             notifyTimelineChanged();
         }

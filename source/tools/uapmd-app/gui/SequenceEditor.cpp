@@ -120,6 +120,181 @@ void SequenceEditor::setAxisMode(TimelineAxisMode mode) {
     timeline_.dirty = true;
 }
 
+void SequenceEditor::renderSnapCombo(const RenderContext& context) {
+    // Wide enough for the longest label, so the navigator beside it keeps its room.
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Free").x + ImGui::GetFrameHeight() +
+                            ImGui::GetStyle().FramePadding.x * 2.0f + 4.0f * context.uiScale);
+    ImGui::Combo("##timeline_snap", &snapIndex_, kSnapLabels, kSnapOptionCount);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Snap for moving and resizing clips. Hold Alt while dragging to place freely.");
+}
+
+double SequenceEditor::snapToGrid(double seconds) const {
+    if (ImGui::GetIO().KeyAlt)
+        return seconds;
+    return std::max(0.0, axis_.snapSeconds(
+        seconds, kSnapValues[std::clamp(snapIndex_, 0, kSnapOptionCount - 1)]));
+}
+
+bool SequenceEditor::renderClipGrips(const RenderContext& context,
+                                     const std::vector<TimelineClipHitBox>& boxes,
+                                     ImVec2 areaMin, ImVec2 areaMax, bool acceptsInput) {
+    const float gripWidth = 14.0f * context.uiScale;
+    std::vector<ClipSpan> spans;
+    spans.reserve(boxes.size());
+    for (const auto& box : boxes)
+        spans.push_back({box.target.track_index, box.target.clip_id,
+                         box.visual_min.y, box.visual_min.x, box.visual_max.x});
+    const auto grips = layoutClipGrips(spans, gripWidth);
+    auto boxOf = [&](int32_t trackIndex, int32_t clipId) -> const TimelineClipHitBox* {
+        for (const auto& box : boxes)
+            if (box.target.track_index == trackIndex && box.target.clip_id == clipId)
+                return &box;
+        return nullptr;
+    };
+
+    // The grip under a point, and whether the point is in its upper (resize) half. Where a
+    // short clip's grips overlap, the one whose edge is nearer wins.
+    struct Hit { const ClipGrip* grip; bool upperHalf; };
+    auto hitAt = [&](ImVec2 p) -> std::optional<Hit> {
+        std::optional<Hit> best;
+        for (const auto& grip : grips) {
+            const auto* box = boxOf(grip.trackIndex, grip.clipId);
+            if (!box || p.x < grip.left || p.x > grip.right || p.y < box->visual_min.y || p.y > box->visual_max.y)
+                continue;
+            if (!best || std::abs(grip.edgeX - p.x) < std::abs(best->grip->edgeX - p.x))
+                best = Hit{&grip, p.y < (box->visual_min.y + box->visual_max.y) * 0.5f};
+        }
+        return best;
+    };
+
+    auto* draw = timelineSelectionDrawList();
+    draw->PushClipRect(areaMin, areaMax, true);
+    auto& drag = timeline_.gripDrag;
+
+    // Each grip is a tab split across the middle: a resize mark in its upper half and a move
+    // mark in its lower half, so which half does what is visible before anything is dragged.
+    // Translucent, as uapmd-cmp's: the grips mark the clip's ends without blotting out the lane.
+    const ImU32 fill = ImGui::GetColorU32(ImGuiCol_ButtonHovered, 0.45f);
+    const ImU32 fillActive = ImGui::GetColorU32(ImGuiCol_ButtonActive, 0.7f);
+    const ImU32 mark = ImGui::GetColorU32(ImGuiCol_Text, 0.8f);
+    for (const auto& grip : grips) {
+        const auto* box = boxOf(grip.trackIndex, grip.clipId);
+        if (!box)
+            continue;
+        const bool active = drag.active && drag.trackIndex == grip.trackIndex && drag.clipId == grip.clipId;
+        const float top = box->visual_min.y, bottom = box->visual_max.y, mid = (top + bottom) * 0.5f;
+        draw->AddRectFilled({grip.left, top}, {grip.right, bottom}, active ? fillActive : fill);
+        draw->AddLine({grip.left, mid}, {grip.right, mid}, mark);
+        const float cx = (grip.left + grip.right) * 0.5f;
+        const float unit = std::max(1.0f, (grip.right - grip.left) / 6.0f);
+        const float upperMid = top + (bottom - top) * 0.25f;
+        const float barHalf = std::min((bottom - top) / 8.0f, unit * 3.0f);
+        draw->AddLine({cx - unit, upperMid - barHalf}, {cx - unit, upperMid + barHalf}, mark, 1.5f);
+        draw->AddLine({cx + unit, upperMid - barHalf}, {cx + unit, upperMid + barHalf}, mark, 1.5f);
+        const float lowerMid = top + (bottom - top) * 0.75f;
+        for (int row = -1; row <= 1; ++row)
+            for (int col : {-1, 1})
+                draw->AddCircleFilled({cx + col * unit, lowerMid + row * unit * 1.6f}, unit * 0.6f, mark);
+    }
+
+    const ImVec2 mouse = ImGui::GetMousePos();
+    auto& appModel = uapmd_app::AppModel::instance();
+    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
+    bool owns = drag.active;
+    if (!drag.active && acceptsInput) {
+        if (const auto hit = hitAt(mouse)) {
+            ImGui::SetMouseCursor(hit->upperHalf ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeAll);
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                const auto tracks = appModel.getTimelineTracks();
+                const auto trackIndex = hit->grip->trackIndex;
+                const auto* clip = trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]
+                    ? tracks[trackIndex]->clipManager().getClip(hit->grip->clipId) : nullptr;
+                if (clip) {
+                    const double start = static_cast<double>(clip->position.samples) / sampleRate;
+                    const double end = static_cast<double>(clip->position.samples + clip->durationSamples) / sampleRate;
+                    drag = {};
+                    drag.active = true;
+                    drag.trackIndex = trackIndex;
+                    drag.clipId = hit->grip->clipId;
+                    drag.action = gripAction(hit->grip->edge, hit->upperHalf);
+                    drag.pressX = mouse.x;
+                    drag.original = {start, end};
+                    // A MIDI clip's content shifts along past its start; audio has nothing there.
+                    drag.earliestStart = clip->clipType == uapmd::ClipType::Midi
+                        ? 0.0 : start - static_cast<double>(clip->sourceOffsetSamples) / sampleRate;
+                    drag.minLength = 1.0 / sampleRate;
+                    owns = true;
+                    // A press on a grip selects its clip, as a press on the clip would.
+                    auto& actions = context.clipActions;
+                    if (actions.isSelected && actions.select && !actions.isSelected(trackIndex, drag.clipId))
+                        actions.select({{trackIndex, drag.clipId}}, false, false);
+                }
+            }
+        }
+    }
+
+    if (drag.active) {
+        ImGui::SetMouseCursor(drag.action == GripAction::Move ? ImGuiMouseCursor_ResizeAll : ImGuiMouseCursor_ResizeEW);
+        const float scale = timeline_.widget->GetScale();
+        const float dx = mouse.x - drag.pressX;
+        const bool pastDeadZone = std::abs(dx) >= 4.0f * context.uiScale;
+        const double editedEdge = drag.action == GripAction::ResizeEnd ? drag.original.end : drag.original.start;
+        const double draggedEdge = scale > 0.0f
+            ? axis_.secondsFromFrame(static_cast<double>(axis_.frameFromSeconds(editedEdge)) + dx / scale)
+            : editedEdge;
+        const auto proposal = proposeClipEdit(drag.action, drag.original, drag.earliestStart, draggedEdge,
+            [this](double seconds) { return snapToGrid(seconds); }, drag.minLength);
+
+        const auto* box = boxOf(drag.trackIndex, drag.clipId);
+        if (pastDeadZone && box && scale > 0.0f) {
+            // Where the clip was, and where it is going.
+            const double originFrame = axis_.frameFromSeconds(drag.original.start);
+            auto xOf = [&](double seconds) {
+                return box->visual_min.x +
+                    static_cast<float>(static_cast<double>(axis_.frameFromSeconds(seconds)) - originFrame) * scale;
+            };
+            const float x1 = xOf(proposal.start), x2 = std::max(xOf(proposal.end), x1 + 2.0f);
+            draw->AddRect(box->visual_min, box->visual_max, ImGui::GetColorU32(ImGuiCol_Text, 0.4f));
+            draw->AddRectFilled({x1, box->visual_min.y}, {x2, box->visual_max.y}, ImGui::GetColorU32(ImGuiCol_HeaderActive, 0.3f));
+            draw->AddRect({x1, box->visual_min.y}, {x2, box->visual_max.y},
+                          ImGui::GetColorU32(ImGuiCol_PlotLinesHovered), 0.0f, 0, 2.0f * context.uiScale);
+            const double edge = drag.action == GripAction::ResizeEnd ? proposal.end : proposal.start;
+            const float edgeX = drag.action == GripAction::ResizeEnd ? x2 : x1;
+            draw->AddText({edgeX + 3.0f * context.uiScale, box->visual_min.y},
+                          ImGui::GetColorU32(ImGuiCol_Text),
+                          std::format("{:.2f} {}", axis_.unitsFromSeconds(edge), axis_.unitsLabel()).c_str());
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            drag = {};
+        } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const auto trackIndex = drag.trackIndex, clipId = drag.clipId;
+            if (pastDeadZone && !(proposal == drag.original)) {
+                switch (drag.action) {
+                    case GripAction::Move:
+                        if (context.moveClipAbsolute)
+                            context.moveClipAbsolute(trackIndex, clipId, proposal.start);
+                        break;
+                    case GripAction::ResizeEnd:
+                        if (context.resizeClip)
+                            context.resizeClip(trackIndex, clipId, std::max<int64_t>(1,
+                                std::llround((proposal.end - proposal.start) * sampleRate)));
+                        break;
+                    case GripAction::ResizeStart:
+                        if (context.trimClipStart)
+                            context.trimClipStart(trackIndex, clipId,
+                                std::llround((proposal.start - drag.original.start) * sampleRate));
+                        break;
+                }
+            }
+            drag = {};
+        }
+    }
+    draw->PopClipRect();
+    return owns;
+}
+
 void SequenceEditor::showWindow(int32_t trackIndex) {
     auto [it, inserted] = windows_.try_emplace(trackIndex);
     it->second.visible = true;
@@ -452,16 +627,24 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
             io.MouseWheel = 0.0f; io.MouseWheelH = 0.0f;
         }
 
-        // Empty-space selection owns the gesture even when it crosses a clip.
-        // ImTimeline otherwise starts dragging whichever node the held mouse enters.
-        const bool selectingRange = timeline_.marquee.active || timeline_.rangeDrag.active;
+        // ImTimeline never sees a press that starts in the clip lanes: it would drag whichever
+        // clip the press lands on, and clips move only through their grips (below). Presses on
+        // the ruler and the scrollbar still reach it. Empty-space selection owns its gesture
+        // the same way, even when it crosses a clip.
+        const ImVec2 pressedAt = io.MouseClickedPos[0];
+        const bool pressInLanes = io.MouseDown[0] && !scrollbarDragging &&
+            pressedAt.x >= clipAreaMinX && pressedAt.x <= clipAreaMaxX &&
+            pressedAt.y >= clipAreaMinY &&
+            pressedAt.y <= clipAreaMaxY - static_cast<float>(timeline_.style.ScrollbarThickness);
+        const bool hideFromTimeline = pressInLanes || timeline_.marquee.active ||
+            timeline_.rangeDrag.active || timeline_.gripDrag.active;
         const bool savedSelectionMouseDown = io.MouseDown[0];
-        if (selectingRange)
+        if (hideFromTimeline)
             io.MouseDown[0] = false;
         if (!timeline_.widget->IsDragging())
             timeline_.widget->SelectNode(nullptr);
         timeline_.widget->DrawTimeline();
-        if (selectingRange)
+        if (hideFromTimeline)
             io.MouseDown[0] = savedSelectionMouseDown;
 
         if (shouldBlockInput) {
@@ -486,32 +669,6 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                     static_cast<double>(timeline_.widget->GetStartTimestamp()) +
                     static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
                 uapmd_app::AppModel::instance().transport().jump(axis_.secondsFromFrame(frame));
-            }
-        }
-
-        // Drag tracking
-        if (timeline_.widget->mDragData.DragState == eDragState::DragNode &&
-            timeline_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered) {
-            timeline_.activeDragNodeId = timeline_.widget->mDragData.DragNode.GetID();
-            timeline_.active_drag_start = timeline_.widget->mDragData.DragNode.start;
-        }
-        if (timeline_.activeDragNodeId != InvalidNodeID && shouldBlockInput)
-            timeline_.activeDragNodeId = InvalidNodeID;
-
-        // Drag completion
-        if (timeline_.activeDragNodeId != InvalidNodeID &&
-            timeline_.widget->mDragData.DragState == eDragState::None &&
-            !timeline_.widget->IsDragging()) {
-            const NodeID nodeId = timeline_.activeDragNodeId;
-            timeline_.activeDragNodeId = InvalidNodeID;
-            auto clipIt = timeline_.nodeToClip.find(nodeId);
-            if (clipIt != timeline_.nodeToClip.end() && clipIt->second.clipId >= 0) {
-                auto* node = timeline_.widget->FindNodeByNodeID(nodeId);
-                if (node && node->start != timeline_.active_drag_start && context.moveClipAbsolute) {
-                    const double newStartSeconds =
-                        axis_.secondsFromFrame(static_cast<double>(node->start));
-                    context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
-                }
             }
         }
 
@@ -606,14 +763,17 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                 {min.x + visualOffsetX, visualTop}, {max.x + visualOffsetX, visualTop + visualHeight},
                 node->displayProperties.BorderRadius, node->displayProperties.BorderThickness});
         }
+        const bool gripOwnsGesture = renderClipGrips(context, selectionBoxes,
+            {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
+            timelineHovered && mouseInClipArea && !shouldBlockInput);
         const auto marqueeSelected = timeline_.marquee.render(context.clipActions, selectionBoxes,
             {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
-            timelineHovered && !shouldBlockInput, context.uiScale);
+            timelineHovered && !shouldBlockInput && !gripOwnsGesture, context.uiScale);
 
         // A long press opens the menus the desktop reaches by right-click, and takes the
         // gesture away from the selection drag it had started out as.
         const bool longPress = timeline_.longPress.fired(
-            timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 && !shouldBlockInput);
+            timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 && !shouldBlockInput && !gripOwnsGesture);
         if (longPress) {
             timeline_.marquee.active = false;
             timeline_.rangeDrag = {};
@@ -669,8 +829,7 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                     startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale)));
 
                 const bool mouseClicked = timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
-                    !shouldBlockInput && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                    timeline_.widget->mDragData.DragState == eDragState::None;
+                    !shouldBlockInput && !gripOwnsGesture && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
                 const bool overNode = mouseClicked && isOverClipNode(hoveredTrackIndex, mousePos, scale, startFrame, nullptr);
 
                 updateRangeSelectionDrag(timeline_.rangeDrag, ImGui::IsMouseDown(ImGuiMouseButton_Left),
@@ -910,7 +1069,7 @@ void SequenceEditor::rebuildTimeline(const RenderContext& context) {
         : (timeline_.widget ? timeline_.widget->GetScale() : timeline_.keptScale);
     timeline_.widget = std::make_unique<ImTimeline::Timeline>();
     timeline_.nodeToClip.clear();
-    timeline_.activeDragNodeId = InvalidNodeID;
+    timeline_.gripDrag = {};
     timeline_.sectionToTrack.clear();
 
     timeline_.widget->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);

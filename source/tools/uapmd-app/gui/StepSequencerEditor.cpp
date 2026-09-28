@@ -1,4 +1,5 @@
 #include "StepSequencerEditor.hpp"
+#include "TouchInput.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -463,7 +464,7 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
                 const bool stepHovered = ImGui::IsItemHovered();
                 const bool openOnDoubleClick = stepHovered &&
                     ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-                const bool openOnLongPress = ImGui::IsItemActive() &&
+                const bool openOnLongPress = kLongPressOpensContextMenu && ImGui::IsItemActive() &&
                     ImGui::GetIO().MouseDownDuration[ImGuiMouseButton_Left] >= 0.5f &&
                     !state_.longPressOpened;
                 if (openOnDoubleClick || openOnLongPress) {

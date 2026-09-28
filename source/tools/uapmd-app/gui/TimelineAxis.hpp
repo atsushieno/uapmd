@@ -60,6 +60,11 @@ public:
     int32_t frameFromSeconds(double seconds) const { return frameFromUnits(unitsFromSeconds(seconds)); }
     double secondsFromFrame(double frame) const { return secondsFromUnits(unitsFromFrame(frame)); }
 
+    // seconds moved to the nearest multiple of unitBeats quarter-note beats from the timeline's
+    // start, through the tempo map so the grid follows tempo changes, in either mode. A unit of
+    // zero or less leaves seconds as it is.
+    double snapSeconds(double seconds, double unitBeats) const;
+
     // All in pixels per frame, which is what ImTimeline::SetScale takes.
     float defaultScale(float uiScale) const;
     float minScale() const { return kMinScalePerUnit / static_cast<float>(framesPerUnit()); }

@@ -150,9 +150,17 @@ absolute time and musical time. The two views are independent -- each keeps its 
 
 ![The beats/ticks view](../images/uapmd-app-guide-beats-view.png)
 
+### Snap
+
+The combo beside the view switcher is the **timeline snap**. When you move or resize a clip with
+its grips, the edge you drag -- the start, for a move -- lands on the nearest multiple of that note
+length, counted from the start of the timeline through the tempo map, in either view. It offers
+the piano roll's divisions -- `Free`, `1/8`, `1/16`, `1/24`, `1/32`, `1/48`, and `1/64` -- and
+defaults to `1/16`. `Free` turns snapping off, and holding Alt while dragging places freely.
+
 ### Zoom and position
 
-The slider next to the view switcher is the **timeline zoom**, showing pixels per unit. It is
+The slider after the snap combo is the **timeline zoom**, showing pixels per unit. It is
 logarithmic and spans four orders of magnitude, so small drags near the left end still move a
 useful amount.
 
@@ -234,8 +242,9 @@ The master track offers the same menu minus the audio-clip and `Clear All` entri
 
 ![The clip context menu](../images/uapmd-app-guide-clip-context.png)
 
-Drag across empty space in either timeline view to select the clips the rectangle crosses.
-A drag that crosses no clips is a range instead, and offers **Add New MIDI Clip** and
+Drag across the lanes in either timeline view -- from empty space or from a clip -- to select
+the clips the rectangle crosses. A drag that starts on empty space and crosses no clips is a
+range instead, and offers **Add New MIDI Clip** and
 **Add Empty Audio Clip** sized to the dragged span on release; in the beats view the range
 snaps to the nearest quarter-note beat. Alt-drag always takes the range reading and leaves the
 selection alone. Shift-click or Shift-drag adds to the selection; Ctrl-click (Cmd-click on
@@ -243,10 +252,20 @@ macOS) toggles a clip. Click an unselected clip to select it alone. Click empty 
 Escape while hovering the timeline, to clear selection. The track's Clips and More menus
 include **Select All Clips**.
 
-**Right-click, double-click, or press and hold a clip** to open its context menu. Opening the
-menu on a selected clip keeps the other clips selected, so the commands below that act on the
-selection act on all of it. Press and hold is how touch devices reach these menus: hold for half
-a second without moving, and the press opens the menu instead of selecting:
+Clips move and resize through the **grips** at their two ends, never by dragging the clip itself.
+The upper half of a grip resizes that end; the lower half moves the whole clip. A grip sits just
+outside its clip, or just inside it where the clip meets a neighbour or the start of the
+timeline. Resizing the start keeps the content where it is on the timeline: shortening it hides
+the beginning, and lengthening it brings that back. A MIDI clip can be lengthened past the start
+of its content, down to the start of the timeline, and the content shifts along so the new space
+can hold notes; an audio clip stops at the start of its file. While you drag, an outline shows
+where the clip will go, and every edge follows the [snap](#snap).
+
+**Right-click or double-click a clip** to open its context menu; on Android and iOS, press and
+hold it too. Opening the menu on a selected clip keeps the other clips selected, so the commands
+below that act on the selection act on all of it. Press and hold is how touch devices reach these
+menus: hold for half a second without moving, and the press opens the menu instead of selecting.
+The desktop has no press-and-hold menu, since a held press is how a drag starts there:
 
 - **Show Dump List** -- the [MIDI event list editor](#the-midi-event-list).
 - **Edit Audio Events** -- the audio marker and warp editor. Enabled for audio clips only.
@@ -290,7 +309,7 @@ the note rectangles, and selected notes remain selected when an edit changes the
 Reloading changed clip content, including undo/redo, clears note selection; refreshing unchanged
 content preserves it.
 
-Right-click or long-press a note or empty grid space for **Cut**, **Copy**, **Paste here**,
+Right-click a note or empty grid space (long-press on Android and iOS) for **Cut**, **Copy**, **Paste here**,
 **Delete**, and **Select All Notes**. Opening a menu on a selected note preserves the selection.
 The clipboard belongs to that open clip: it does not transfer notes between clips, and closing
 the piano-roll window discards it. Paste preserves pitches, durations, relative timing, MIDI

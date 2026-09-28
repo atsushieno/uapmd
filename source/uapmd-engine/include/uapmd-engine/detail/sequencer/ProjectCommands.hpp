@@ -45,9 +45,10 @@ public:
                             ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     // Moves a clip's start by deltaSamples while its content stays where it
     // is on the timeline: a positive delta cuts the beginning off, a negative
-    // one brings back what an earlier trim cut. The end does not move. The
-    // delta is clamped so the clip neither starts before its source nor
-    // becomes empty. Clip-start-relative markers and warps of the clip itself
+    // one brings back what an earlier trim cut. The end does not move. Past
+    // the start of a MIDI clip's content, the content is shifted along so the
+    // new room becomes part of it, as far as the timeline's start; an audio
+    // clip cannot start before its source. The clip never becomes empty. Clip-start-relative markers and warps of the clip itself
     // are shifted to stay on the content; anything anchored to the clip's
     // start follows it, as it does for a move.
     virtual bool trimClipStart(int32_t trackIndex, int32_t clipId, int64_t deltaSamples,

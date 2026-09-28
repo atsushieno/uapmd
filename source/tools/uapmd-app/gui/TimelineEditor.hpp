@@ -91,6 +91,8 @@ public:
     void updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name);
     void changeClipFile(int32_t trackIndex, int32_t clipId);
     void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
+    void resizeClip(int32_t trackIndex, int32_t clipId, int64_t durationSamples);
+    void trimClipStart(int32_t trackIndex, int32_t clipId, int64_t deltaSamples);
 
     // MIDI dump
     void showMidiClipDump(int32_t trackIndex, int32_t clipId);

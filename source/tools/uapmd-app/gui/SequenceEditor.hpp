@@ -16,6 +16,8 @@
 #include "TimelineClipSelection.hpp"
 #include "TimelineNavigator.hpp"
 #include "TimelineAxis.hpp"
+#include "SnapDivisions.hpp"
+#include "TimelineClipGrips.hpp"
 
 namespace uapmd_app_gui {
 
@@ -66,6 +68,10 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& name)> updateClipName;
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
+        // The clip grips' resizes: the end by a new length, the start by how far it moves
+        // (ProjectCommands::trimClipStart, which keeps the content where it is).
+        std::function<void(int32_t trackIndex, int32_t clipId, int64_t durationSamples)> resizeClip;
+        std::function<void(int32_t trackIndex, int32_t clipId, int64_t deltaSamples)> trimClipStart;
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
         std::function<void(int32_t trackIndex, int32_t clipId)> showAudioClipEvents;
         std::function<void(int32_t trackIndex, int32_t clipId)> showPianoRoll;
@@ -89,6 +95,9 @@ public:
     TimelineAxis& axis() { return axis_; }
     const TimelineAxis& axis() const { return axis_; }
     void setAxisMode(TimelineAxisMode mode);
+    // The division a dragged clip's start snaps to, as the piano roll's Snap combo; the
+    // combo sits in the timeline toolbar. Holding Alt while dropping places freely.
+    void renderSnapCombo(const RenderContext& context);
 
     void showWindow(int32_t trackIndex);
     void hideWindow(int32_t trackIndex);
@@ -137,8 +146,19 @@ private:
         ImTimelineStyle style{};
         bool dirty = true;
         std::unordered_map<NodeID, NodeClipRef> nodeToClip;
-        NodeID activeDragNodeId = InvalidNodeID;
-        int32_t active_drag_start = 0;
+        // A grip drag in progress. ImTimeline never sees a press that starts in the clip
+        // lanes, so this is the only way a clip moves or resizes on the timeline.
+        struct GripDrag {
+            bool active = false;
+            int32_t trackIndex = -1;
+            int32_t clipId = -1;
+            GripAction action = GripAction::Move;
+            float pressX = 0.0f;
+            float edgeX = 0.0f;          // the dragged edge (the start, for a move) at the press
+            ClipExtentSeconds original{0.0, 0.0};
+            double earliestStart = 0.0;  // how far a start resize may reach
+            double minLength = 0.0;
+        } gripDrag;
         std::vector<int32_t> sectionToTrack; // section index -> track index
         float computedTimelineHeight = 0.0f;  // actual height after lane expansion; 0 = use estimate
         RangeSelectionDrag rangeDrag;
@@ -152,6 +172,14 @@ private:
     };
     TimelineState timeline_;
     TimelineAxis axis_;
+    int snapIndex_{kDefaultSnapIndex};
+
+    // seconds snapped to the Snap division, or as it is with Free or while Alt is held.
+    double snapToGrid(double seconds) const;
+    // Draws every clip's grips and runs a grip drag. True while a grip owns the gesture, so
+    // the marquee and range selection leave it alone.
+    bool renderClipGrips(const RenderContext& context, const std::vector<TimelineClipHitBox>& boxes,
+                         ImVec2 areaMin, ImVec2 areaMax, bool acceptsInput);
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);

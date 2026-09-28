@@ -266,6 +266,10 @@ namespace uapmd {
 
     void TimelineFacadeImpl::resolveClipAnchors() {
         resolveAllClipAnchors();
+        // A MIDI clip's events are timed through the tempo map from where its
+        // content starts, so a clip that moved (or took others with it through
+        // their anchors) needs them timed from where it is now.
+        applyMasterTempoMapToMusicalClips();
     }
 
 } // namespace uapmd

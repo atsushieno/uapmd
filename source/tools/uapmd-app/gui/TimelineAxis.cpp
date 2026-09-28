@@ -73,6 +73,18 @@ double TimelineAxis::secondsFromUnits(double units) const {
     return std::max(0.0, units) * (60.0 / kFallbackBpm);
 }
 
+double TimelineAxis::snapSeconds(double seconds, double unitBeats) const {
+    if (!(unitBeats > 0.0))
+        return seconds;
+    const double beats = tempoMap_
+        ? tempoMap_->secondsToBeats(seconds)
+        : std::max(0.0, seconds) * (kFallbackBpm / 60.0);
+    const double snapped = std::round(beats / unitBeats) * unitBeats;
+    return tempoMap_
+        ? tempoMap_->beatsToSeconds(snapped)
+        : std::max(0.0, snapped) * (60.0 / kFallbackBpm);
+}
+
 int32_t TimelineAxis::frameFromUnits(double units) const {
     if (!std::isfinite(units))
         return 0;

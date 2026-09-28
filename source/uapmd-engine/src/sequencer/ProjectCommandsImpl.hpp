@@ -80,6 +80,16 @@ namespace uapmd {
             const LatencyCompensationProjectSettings&, ProjectMutationOrigin) override;
 
     private:
+        // A start extended before a MIDI clip's content: the content is moved
+        // later to start at the new start, so the new room holds notes.
+        bool extendMidiClipStart(
+            int32_t trackIndex,
+            int32_t clipId,
+            const ClipData& clip,
+            ClipAddress address,
+            ClipExtent extent,
+            ProjectMutationOrigin origin);
+
         // Builds the command for one property and runs it through the
         // dispatcher. This is the whole of the per-property boilerplate.
         template<typename Property>

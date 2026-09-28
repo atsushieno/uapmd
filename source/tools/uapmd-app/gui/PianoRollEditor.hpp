@@ -76,7 +76,7 @@ private:
         float rowScrollbarDragOffset{0.0f};
         bool  timelineScrollbarDragging{false};
         float timelineScrollbarDragOffset{0.0f};
-        int   snapIdx{2};         // Defaults to 1/16; options are defined in PianoRollEditor.cpp.
+        int   snapIdx{2};         // Defaults to 1/16; options are defined in SnapDivisions.hpp.
     };
 
     // Tracks an in-flight note drag across frames.

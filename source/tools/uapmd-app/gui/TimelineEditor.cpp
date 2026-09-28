@@ -857,6 +857,12 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
             moveClipAbsolute(trackIndex, clipId, seconds);
         },
+        .resizeClip = [this](int32_t trackIndex, int32_t clipId, int64_t durationSamples) {
+            resizeClip(trackIndex, clipId, durationSamples);
+        },
+        .trimClipStart = [this](int32_t trackIndex, int32_t clipId, int64_t deltaSamples) {
+            trimClipStart(trackIndex, clipId, deltaSamples);
+        },
         .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
             showMidiClipDump(trackIndex, clipId);
         },
@@ -1292,6 +1298,8 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Switch between absolute-time and bars/beats rulers");
+    ImGui::SameLine();
+    sequenceEditor_.renderSnapCombo(context);
     ImGui::SameLine();
     ImGui::SetCursorPosY(navRowTopY);
     sequenceEditor_.renderNavigator(context, navBarStartX);
@@ -2420,6 +2428,26 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         clipId,
         uapmd::TimeReference::fromContainerStart({}, seconds));
     if (changed)
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
+    invalidateMasterTrackSnapshot();
+    refreshAllSequenceEditorTracks();
+}
+
+void TimelineEditor::resizeClip(int32_t trackIndex, int32_t clipId, int64_t durationSamples) {
+    auto& appModel = uapmd_app::AppModel::instance();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(appModel.getTimelineTracks().size()))
+        return;
+    if (appModel.sequencer().engine()->commands().resizeClip(trackIndex, clipId, std::max<int64_t>(1, durationSamples)))
+        appModel.sequencer().engine()->markTrackDirty(trackIndex);
+    invalidateMasterTrackSnapshot();
+    refreshAllSequenceEditorTracks();
+}
+
+void TimelineEditor::trimClipStart(int32_t trackIndex, int32_t clipId, int64_t deltaSamples) {
+    auto& appModel = uapmd_app::AppModel::instance();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(appModel.getTimelineTracks().size()))
+        return;
+    if (appModel.sequencer().engine()->commands().trimClipStart(trackIndex, clipId, deltaSamples))
         appModel.sequencer().engine()->markTrackDirty(trackIndex);
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();

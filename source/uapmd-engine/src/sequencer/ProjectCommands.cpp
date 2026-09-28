@@ -1,4 +1,5 @@
 #include "ProjectCommandsImpl.hpp"
+#include <cmath>
 
 // Every undoable project edit. Each one names its property descriptor and
 // its address; the shared machinery does the rest.
@@ -43,11 +44,15 @@ namespace uapmd {
         const auto& clip = *subject->clip;
         auto extent = ClipExtentProperty::read(target_, *subject);
 
-        // Neither before the source's first sample nor down to nothing.
+        // Never down to nothing. A MIDI clip can grow back past the start of its
+        // content, which then moves along with it (see extendMidiClipStart), as
+        // far as the timeline's start; an audio clip cannot start before its
+        // source's first sample.
+        const int64_t earliest = clip.clipType == ClipType::Midi
+            ? std::min<int64_t>(0, -clip.position.samples)
+            : -extent.sourceOffsetSamples;
         const int64_t delta = std::clamp<int64_t>(
-            deltaSamples,
-            -extent.sourceOffsetSamples,
-            std::max<int64_t>(0, extent.durationSamples - 1));
+            deltaSamples, earliest, std::max<int64_t>(0, extent.durationSamples - 1));
         const double sampleRate = target_.timelineSampleRate();
         if (sampleRate <= 0.0)
             return false;
@@ -70,7 +75,57 @@ namespace uapmd {
             if (isOwnStart(warp.referenceType, warp.referenceClipId))
                 warp.clipPositionOffset -= deltaSeconds;
 
+        // Past the start of its content, a MIDI clip's content is shifted along
+        // so it starts at the new start: the new room is part of the content.
+        if (clip.clipType == ClipType::Midi && extent.sourceOffsetSamples < 0)
+            return extendMidiClipStart(trackIndex, clipId, clip, std::move(*address), std::move(extent), origin);
         return execute<ClipExtentProperty>(std::move(*address), std::move(extent), origin);
+    }
+
+    bool ProjectCommandsImpl::extendMidiClipStart(
+        int32_t trackIndex,
+        int32_t clipId,
+        const ClipData& clip,
+        ClipAddress address,
+        ClipExtent extent,
+        ProjectMutationOrigin origin) {
+        auto& timeline = engine_.timeline();
+        auto fragment = timeline.captureClipFragment(trackIndex, clipId);
+        if (!fragment || !fragment->isMidi())
+            return false;
+
+        // How far the content has to move, in its own ticks: the beats between
+        // where it starts now and where the clip is to start.
+        const double sampleRate = target_.timelineSampleRate();
+        const double contentStart =
+            static_cast<double>(clip.position.samples - clip.sourceOffsetSamples) / sampleRate;
+        const double newStart = contentStart + static_cast<double>(extent.sourceOffsetSamples) / sampleRate;
+        const auto& tempoMap = timeline.masterTempoMap();
+        const double leadBeats = tempoMap.hasTempoData()
+            ? tempoMap.secondsToBeats(contentStart) - tempoMap.secondsToBeats(newStart)
+            : (contentStart - newStart) * (clip.clipTempo > 0.0 ? clip.clipTempo : 120.0) / 60.0;
+        const auto leadTicks = static_cast<uint64_t>(std::llround(
+            std::max(0.0, leadBeats) * static_cast<double>(clip.tickResolution > 0 ? clip.tickResolution : 480)));
+        auto ticks = fragment->umpTickTimestamps;
+        for (auto& tick : ticks)
+            tick += leadTicks;
+        extent.sourceOffsetSamples = 0;
+
+        // One undo step for both halves, unless a caller already has one open.
+        const bool records = origin == ProjectMutationOrigin::User || origin == ProjectMutationOrigin::Remote;
+        const bool ownsStep = records && !dispatch_.state().compoundOpen;
+        if (ownsStep && !dispatch_.beginStep("Extend clip", origin).succeeded())
+            return false;
+        const bool done =
+            timeline.replaceMidiClipContent(trackIndex, clipId, fragment->umpEvents, std::move(ticks), origin)
+            && execute<ClipExtentProperty>(std::move(address), std::move(extent), origin);
+        if (ownsStep) {
+            if (done)
+                dispatch_.endStep();
+            else
+                dispatch_.cancelStep();
+        }
+        return done;
     }
 
     bool ProjectCommandsImpl::setClipName(

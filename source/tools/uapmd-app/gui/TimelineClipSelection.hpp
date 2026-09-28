@@ -8,6 +8,8 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include "TouchInput.hpp"
+
 namespace uapmd_app_gui {
 
 struct TimelineClipTarget {
@@ -44,6 +46,9 @@ inline ImDrawList* timelineSelectionDrawList() {
 struct TimelineClipMarquee {
     bool active = false;
     bool additive = false;
+    // A press on a clip selects it and may still turn into a band: clips move through their
+    // grips, so a drag over a clip's body is a selection like any other.
+    bool startedOnClip = false;
     ImVec2 anchor;
 
     // Returns how many clips a marquee gesture caught, on the frame one completes.
@@ -68,11 +73,11 @@ struct TimelineClipMarquee {
                 const bool toggle = io.KeyCtrl || io.KeySuper;
                 if (toggle || io.KeyShift || !actions.isSelected(hit->target.track_index, hit->target.clip_id))
                     actions.select({hit->target}, io.KeyShift || toggle, toggle);
-            } else {
-                active = true;
-                additive = io.KeyShift;
-                anchor = mouse;
             }
+            active = true;
+            additive = io.KeyShift;
+            startedOnClip = hit != boxes.end();
+            anchor = mouse;
         }
         auto* draw = timelineSelectionDrawList();
         draw->PushClipRect(areaMin, areaMax, true);
@@ -95,14 +100,18 @@ struct TimelineClipMarquee {
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
                 active = false;
             else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                std::vector<TimelineClipTarget> targets;
-                if (max.x - min.x >= 4.0f * uiScale || max.y - min.y >= 4.0f * uiScale)
-                    for (const auto& box : boxes)
-                        if (box.max.x > min.x && box.min.x < max.x &&
-                                box.max.y > min.y && box.min.y < max.y)
-                            targets.push_back(box.target);
-                actions.select(targets, additive, false);
-                completed = targets.size();
+                const bool band = max.x - min.x >= 4.0f * uiScale || max.y - min.y >= 4.0f * uiScale;
+                // A click on a clip was a selection of that clip, already made on the press.
+                if (band || !startedOnClip) {
+                    std::vector<TimelineClipTarget> targets;
+                    if (band)
+                        for (const auto& box : boxes)
+                            if (box.max.x > min.x && box.min.x < max.x &&
+                                    box.max.y > min.y && box.min.y < max.y)
+                                targets.push_back(box.target);
+                    actions.select(targets, additive, false);
+                    completed = targets.size();
+                }
                 active = false;
             }
         } else if (acceptsInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -114,6 +123,7 @@ struct TimelineClipMarquee {
 
 // Touch has no right button, and a double tap is an awkward gesture to land on a clip. A press
 // held in place opens the same context menus instead, matching the step sequencer's note editor.
+// Touch platforms only; see kLongPressOpensContextMenu.
 struct TimelineLongPress {
     static constexpr float kHoldSeconds = 0.5f;
 
@@ -127,7 +137,8 @@ struct TimelineLongPress {
             opened = false;
             return false;
         }
-        if (opened || !acceptsInput || io.MouseDownDuration[ImGuiMouseButton_Left] < kHoldSeconds)
+        if (!kLongPressOpensContextMenu || opened || !acceptsInput ||
+            io.MouseDownDuration[ImGuiMouseButton_Left] < kHoldSeconds)
             return false;
         // Past the platform drag threshold (widened on touch) this press is a drag, and stays
         // one for the rest of its life -- IsMouseDragging latches until the button comes up.
