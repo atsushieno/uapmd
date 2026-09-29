@@ -12,7 +12,7 @@ espressoCore = "3.7.0"
 appcompat = "1.7.1"
 material = "1.13.0"
 startup-runtime = "1.2.0"
-oboe = "1.10.0"
+oboe = "1.11.0"
 
 [libraries]
 androidaudioplugin = { module = "org.androidaudioplugin:androidaudioplugin", version.ref = "androidaudioplugin" }

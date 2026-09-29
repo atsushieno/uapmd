@@ -299,6 +299,7 @@ namespace uapmd {
             return -1;
         }
         playing_ = true;
+        stream_->setPerformanceHintEnabled(true);
         return 0;
     }
 
