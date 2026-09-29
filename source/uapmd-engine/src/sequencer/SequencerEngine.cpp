@@ -2540,6 +2540,7 @@ namespace uapmd {
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 timeline_->onTrackGraphChanged(targetMaster ? kMasterTrackIndex : trackIndex);
+                remidy::PerformanceHintCoordinator::notifyWorkload(remidy::PerformanceWorkloadHint::Increase);
 
                 callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
             };
@@ -2595,6 +2596,7 @@ namespace uapmd {
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 timeline_->onTrackGraphChanged(static_cast<int32_t>(i));
+                remidy::PerformanceHintCoordinator::notifyWorkload(remidy::PerformanceWorkloadHint::Reset);
                 return true;
             }
         }
@@ -2605,6 +2607,7 @@ namespace uapmd {
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
             timeline_->onTrackGraphChanged(kMasterTrackIndex);
+            remidy::PerformanceHintCoordinator::notifyWorkload(remidy::PerformanceWorkloadHint::Reset);
             return true;
         }
         return false;

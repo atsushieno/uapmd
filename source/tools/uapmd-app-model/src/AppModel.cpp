@@ -1355,6 +1355,20 @@ void uapmd_app::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t
         audio_buffer_size_ = bufferSize;
 }
 
+void uapmd_app::AppModel::setPerformanceHintEnabled(bool enabled) {
+    if (remidy::PerformanceHintCoordinator::enabled() == enabled)
+        return;
+    remidy::PerformanceHintCoordinator::enabled(enabled);
+    if (isAudioEngineEnabled()) {
+        setAudioEngineEnabled(false);
+        setAudioEngineEnabled(true);
+    }
+}
+
+bool uapmd_app::AppModel::performanceHintEnabled() const {
+    return remidy::PerformanceHintCoordinator::enabled();
+}
+
 void uapmd_app::AppModel::setAutoBufferSizeEnabled(bool enabled) {
     sequencer_.setUseAutoBufferSize(enabled);
     auto_buffer_size_enabled_ = sequencer_.useAutoBufferSize();

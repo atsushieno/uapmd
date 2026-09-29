@@ -332,6 +332,10 @@ MainWindow::MainWindow(GuiDefaults defaults)
     audioDeviceSettings_.setOnDeviceChanged([this]() {
         handleAudioDeviceChange();
     });
+    audioDeviceSettings_.setPerformanceHintEnabled(uapmd_app::AppModel::instance().performanceHintEnabled());
+    audioDeviceSettings_.setOnPerformanceHintChanged([](bool enabled) {
+        uapmd_app::AppModel::instance().setPerformanceHintEnabled(enabled);
+    });
 
     // Register device change listener with AudioIODeviceManager
     auto audioManager = uapmd::AudioIODeviceManager::instance();

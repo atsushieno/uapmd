@@ -2,6 +2,7 @@
 
 #include "OboeAudioIODevice.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <string>
 #include <strings.h>
@@ -298,6 +299,8 @@ namespace uapmd {
             closeStream();
             return -1;
         }
+        if (remidy::PerformanceHintCoordinator::enabled())
+            performance_hint_.start(callbackPeriodNanos(stream_->getFramesPerBurst()) * 9 / 10);
         playing_ = true;
         return 0;
     }
@@ -312,8 +315,17 @@ namespace uapmd {
             stream_->close();
             stream_.reset();
         }
+        performance_hint_.stop();
         playing_ = false;
         return 0;
+    }
+
+    int64_t OboeAudioIODevice::callbackPeriodNanos(int32_t numFrames) const {
+        if (sample_rate_ <= 0)
+            return 0;
+        // A stabilized-mode callback may render a whole engine block, which the FIFO lets span multiple bursts.
+        const auto frames = std::max<int64_t>(numFrames, needsStabilizedMode() ? preferred_callback_frames_ : 0);
+        return static_cast<int64_t>(static_cast<double>(frames) * 1e9 / sample_rate_);
     }
 
     DataCallbackResult OboeAudioIODevice::onAudioReady(AudioStream *audioStream,
@@ -322,9 +334,14 @@ namespace uapmd {
         if (!audioData || numFrames <= 0)
             return DataCallbackResult::Stop;
 
-        if (preferred_callback_frames_ == 0)
-            return processImmediate(audioStream, static_cast<float*>(audioData), numFrames);
-        return processStabilized(audioStream, static_cast<float*>(audioData), numFrames);
+        const auto callbackBegin = std::chrono::steady_clock::now();
+        performance_hint_.beginCallback();
+        const auto result = preferred_callback_frames_ == 0
+            ? processImmediate(audioStream, static_cast<float*>(audioData), numFrames)
+            : processStabilized(audioStream, static_cast<float*>(audioData), numFrames);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - callbackBegin).count();
+        performance_hint_.endCallback(elapsed, callbackPeriodNanos(numFrames));
+        return result;
     }
 
     DataCallbackResult OboeAudioIODevice::processImmediate(AudioStream* audioStream,

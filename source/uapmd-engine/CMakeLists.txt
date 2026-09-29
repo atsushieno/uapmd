@@ -241,6 +241,7 @@ if(EMSCRIPTEN)
     )
 elseif(ANDROID)
     target_sources(uapmd-engine PRIVATE
+            src/devices/AndroidPerformanceHintSession.cpp
             src/devices/OboeAudioIODevice.cpp
             src/devices/MiniAudioImpl.cpp
     )

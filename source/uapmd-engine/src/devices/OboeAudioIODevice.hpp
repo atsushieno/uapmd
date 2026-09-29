@@ -4,6 +4,7 @@
 
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
+#include "AndroidPerformanceHintSession.hpp"
 #include <oboe/Oboe.h>
 #include <atomic>
 #include <functional>
@@ -33,6 +34,7 @@ namespace uapmd {
         uint32_t stabilized_block_frames_{0};
         std::mutex stream_mutex_{};
         std::atomic<bool> should_restart_after_error_{false};
+        AndroidPerformanceHintSession performance_hint_{};
 
         uint32_t requested_sample_rate_{48000};
         uint32_t requested_output_channels_{2};
@@ -61,6 +63,7 @@ namespace uapmd {
         void consumeStabilizedFrames(float* dst, size_t frames, size_t hardwareChannels);
         void primeStabilizedBuffer();
         bool needsStabilizedMode() const { return preferred_callback_frames_ > 0; }
+        int64_t callbackPeriodNanos(int32_t numFrames) const;
 
     public:
         explicit OboeAudioIODevice(Logger* logger);

@@ -397,6 +397,20 @@ namespace remidy {
         int32_t aap_port_midi2_in{-1};
         int32_t aap_port_midi2_out{-1};
 
+        // performance hint (ADPF) state driven by the AAP performance-hint extension
+        uint32_t configured_frames_{0};
+        uint32_t configured_sample_rate_{0};
+        bool configured_offline_{false};
+        int32_t performance_hint_status_{0};
+        int64_t performance_hint_sent_target_nanos_{0};
+        uint32_t performance_hint_workload_serial_{0};
+        uint32_t performance_hint_query_countdown_{0};
+
+        int64_t blockDurationNanos() const;
+        bool serviceSupportsPerformanceHint() const;
+        void configurePerformanceHint(bool enabled);
+        int64_t sendPerformanceHintRequests();
+
     public:
         PluginInstanceAAP(PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance);
         ~PluginInstanceAAP() override;

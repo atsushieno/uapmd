@@ -7,6 +7,7 @@
 
 #include "detail/audio-bus-configuration.hpp"
 #include "detail/processing-context.hpp"
+#include "detail/performance-hint.hpp"
 
 #include "detail/event-loop.hpp"
 #include "detail/ump-dispatcher.hpp"

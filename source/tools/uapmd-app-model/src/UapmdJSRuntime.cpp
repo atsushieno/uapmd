@@ -1244,6 +1244,17 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
     {
         return choc::value::createBool (uapmd_app::AppModel::instance().isAudioEngineEnabled());
     });
+
+    impl_->context.registerFunction ("__remidy_set_performance_hint_enabled", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        uapmd_app::AppModel::instance().setPerformanceHintEnabled (args.get<bool> (0, false));
+        return choc::value::createBool (uapmd_app::AppModel::instance().performanceHintEnabled());
+    });
+
+    impl_->context.registerFunction ("__remidy_is_performance_hint_enabled", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        return choc::value::createBool (uapmd_app::AppModel::instance().performanceHintEnabled());
+    });
 }
 
 void UapmdJSRuntime::registerParameterListener(int32_t instanceId)

@@ -34,12 +34,14 @@ private:
 #endif
     bool platformProvidesAutoBufferSize_ = false;
     bool useAutoBufferSize_ = false;
+    bool performanceHintEnabled_ = false;
     int inputSampleRate_ = 48000;
     int outputSampleRate_ = 48000;
     int selectedInputSampleRateIndex_ = 0;
     int selectedOutputSampleRateIndex_ = 0;
 
     DeviceChangedCallback onDeviceChanged_;
+    std::function<void(bool)> onPerformanceHintChanged_;
 
 public:
     AudioDeviceSettings();
@@ -68,6 +70,9 @@ public:
     void render();
 
     void setOnDeviceChanged(DeviceChangedCallback callback);
+
+    void setPerformanceHintEnabled(bool enabled) { performanceHintEnabled_ = enabled; }
+    void setOnPerformanceHintChanged(std::function<void(bool)> callback) { onPerformanceHintChanged_ = std::move(callback); }
 };
 
 }

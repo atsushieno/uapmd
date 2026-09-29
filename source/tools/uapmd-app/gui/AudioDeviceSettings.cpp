@@ -213,6 +213,13 @@ void AudioDeviceSettings::render() {
     if (platformProvidesAutoBufferSize_ && useAutoBufferSize_)
         ImGui::EndDisabled();
 
+#if defined(__ANDROID__)
+    if (ImGui::Checkbox("Use ADPF Performance Hints", &performanceHintEnabled_) && onPerformanceHintChanged_)
+        onPerformanceHintChanged_(performanceHintEnabled_);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Lets Android adjust CPU performance for the audio thread and AAP plugin services. Restarts the audio engine.");
+#endif
+
     // Input sample rate dropdown
     std::string inputSampleRateLabel = selectedInputSampleRateIndex_ < static_cast<int>(inputAvailableSampleRates_.size())
         ? std::to_string(inputAvailableSampleRates_[selectedInputSampleRateIndex_]) + " Hz"

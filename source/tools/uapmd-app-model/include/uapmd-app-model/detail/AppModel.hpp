@@ -286,6 +286,9 @@ namespace uapmd_app {
         void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);
         void setAutoBufferSizeEnabled(bool enabled);
         bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
+        // ADPF performance hint sessions (Android); toggling restarts a running audio engine so that the device and plugins reopen or close their sessions.
+        void setPerformanceHintEnabled(bool enabled);
+        bool performanceHintEnabled() const;
         void cancelPluginScanning();
         // Cancels a scan in progress and waits until its worker has finished. Main thread
         // only: scanning can wait on tasks it queued there, so those are processed while

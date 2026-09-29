@@ -204,7 +204,9 @@ globalThis.uapmd = {
     // project) so the realtime render thread does not compete for CPU; re-enable after.
     audio: {
         setEngineEnabled: (enabled) => __remidy_set_audio_engine_enabled(enabled),
-        isEngineEnabled: () => __remidy_is_audio_engine_enabled()
+        isEngineEnabled: () => __remidy_is_audio_engine_enabled(),
+        setPerformanceHintEnabled: (enabled) => __remidy_set_performance_hint_enabled(enabled),
+        isPerformanceHintEnabled: () => __remidy_is_performance_hint_enabled()
     },
 
     // Sequencer API - Audio engine control and queries
