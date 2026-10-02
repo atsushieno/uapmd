@@ -15,6 +15,16 @@ if(NOT DEFINED vst3sdk_SOURCE_DIR AND DEFINED CPM_PACKAGE_vst3sdk_SOURCE_DIR)
     set(vst3sdk_SOURCE_DIR "${CPM_PACKAGE_vst3sdk_SOURCE_DIR}")
 endif()
 
+if(ANDROID)
+    find_package(androidaudioplugin REQUIRED CONFIG)
+    find_package(androidaudioplugin-ara REQUIRED CONFIG)
+    target_include_directories(uapmd-ara PRIVATE ${AAP_DIR}/include)
+    target_sources(uapmd-ara PRIVATE src/AraAap.cpp)
+    target_link_libraries(uapmd-ara PRIVATE
+            androidaudioplugin::androidaudioplugin
+            androidaudioplugin-ara::androidaudioplugin-ara)
+endif()
+
 if(APPLE)
     target_sources(uapmd-ara PRIVATE src/AraAudioUnit.cpp)
 endif()

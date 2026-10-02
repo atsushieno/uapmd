@@ -14,6 +14,10 @@
 #include <jni.h>
 #endif
 
+#if UAPMD_HAS_ARA
+#include <uapmd-ara/ara-plugin-instance-handles.hpp>
+#endif
+
 namespace remidy {
     class PluginFormatAAPImpl;
     class PluginInstanceAAP;
@@ -37,6 +41,20 @@ namespace remidy {
     };
 
     class PluginInstanceAAP : public PluginInstance {
+#if UAPMD_HAS_ARA
+        class AraHandleExtension final
+            : public PluginExtensibility<PluginInstance>
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
+            PluginInstanceAAP& owner;
+        public:
+            explicit AraHandleExtension(PluginInstanceAAP& owner) : PluginExtensibility(owner), owner(owner) {}
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
+                return kind == uapmd::ara::AraPluginInstanceHandleKind::AAPRemotePluginInstance
+                    ? dynamic_cast<aap::RemotePluginInstance*>(owner.aapInstance()) : nullptr;
+            }
+        };
+        AraHandleExtension ara_handle_extension{*this};
+#endif
         class Extensibility : public PluginInstanceAAPExt {
             PluginInstanceAAP& owner_;
             std::string plugin_package_name_{};
@@ -403,6 +421,10 @@ namespace remidy {
 
         aap::PluginInstance* aapInstance() { return instance; };
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+#if UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#endif
             if (extensionId != kAAPPluginInstanceExtensionId)
                 return nullptr;
             return (extensibility_ ? extensibility_ : extensibility_ = std::make_unique<Extensibility>(*this)).get();

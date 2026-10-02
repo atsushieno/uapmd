@@ -1,4 +1,5 @@
 #include "AraFormatBinding.hpp"
+#include "AraHostDocumentController.hpp"
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -16,6 +17,10 @@ using namespace uapmd_plugin_hosting;
 
 namespace uapmd::ara {
 
+    std::unique_ptr<AraDocumentController> AraFormatBinding::createDocumentController(std::string documentName) {
+        return factory() ? std::make_unique<AraHostDocumentController>(*factory(), std::move(documentName)) : nullptr;
+    }
+
     namespace {
         AraPluginInstanceHandleExtension* araHandleExtension(AudioPluginInstanceAPI& pluginInstance) {
             auto* extension = pluginInstance.extension(kAraPluginInstanceHandleExtensionId);
@@ -28,9 +33,8 @@ namespace uapmd::ara {
         if (!araHandles)
             return nullptr;
 #if ANDROID
-        // FIXME: implement
-        //if (auto binding = createAapAraBinding(*araHandles))
-        //    return binding;
+        if (auto binding = createAapAraBinding(*araHandles))
+            return binding;
 #endif
 #if UAPMD_ARA_HAS_VST3_AND_CLAP
         if (auto binding = createVst3AraBinding(*araHandles))

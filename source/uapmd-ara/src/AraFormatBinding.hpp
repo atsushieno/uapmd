@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include <ARA_API/ARAInterface.h>
@@ -10,12 +11,15 @@
 
 namespace uapmd::ara {
 
+    class AraDocumentController;
+
     class AraFormatBinding {
     public:
         virtual ~AraFormatBinding() = default;
 
         virtual std::string_view formatName() const = 0;
         virtual const ARA::ARAFactory* factory() const = 0;
+        virtual std::unique_ptr<AraDocumentController> createDocumentController(std::string documentName);
 
         virtual const ARA::ARAPlugInExtensionInstance* bindToDocumentController(
             ARA::ARADocumentControllerRef documentControllerRef,
@@ -23,6 +27,7 @@ namespace uapmd::ara {
             ARA::ARAPlugInInstanceRoleFlags assignedRoles) = 0;
     };
 
+    std::unique_ptr<AraFormatBinding> createAapAraBinding(AraPluginInstanceHandleExtension& araHandles);
     std::unique_ptr<AraFormatBinding> createVst3AraBinding(AraPluginInstanceHandleExtension& araHandles);
     std::unique_ptr<AraFormatBinding> createClapAraBinding(AraPluginInstanceHandleExtension& araHandles);
     std::unique_ptr<AraFormatBinding> createAudioUnitAraBinding(AraPluginInstanceHandleExtension& araHandles);

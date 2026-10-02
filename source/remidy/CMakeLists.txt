@@ -55,6 +55,10 @@ if (${REMIDY_SUPPORT_AAP})
     set(aap_LIBRARIES androidaudioplugin)
 
     find_package(androidaudioplugin REQUIRED CONFIG)
+    if(UAPMD_ENABLE_ARA)
+        find_package(androidaudioplugin-ara REQUIRED CONFIG)
+        target_link_libraries(remidy PRIVATE androidaudioplugin-ara::androidaudioplugin-ara)
+    endif()
 endif ()
 
 if (${REMIDY_LINUX_DESKTOP})

@@ -4,12 +4,12 @@ plugins {
 
 val cpmSourceCacheDir = System.getenv("HOME") + "/.cache/CPM/uapmd"
 
-val aapDir = project.projectDir.parentFile.listFiles {
-    it.name == "external" }.firstOrNull()?.listFiles { it.name == "aap-core" }?.firstOrNull()
+val aapDir = providers.gradleProperty("aapDir").orElse("../external/aap-core").get().let { file(it).absolutePath }
 
 android {
     namespace = "dev.atsushieno.uapmd"
     compileSdk = libs.versions.androidCompileSdk.get().toInt()
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "dev.atsushieno.uapmd"
@@ -76,6 +76,7 @@ dependencies {
     implementation(files("../external/SDL3-3.4.0.aar"))
     implementation(libs.androidaudioplugin)
     implementation(libs.androidaudioplugin.manager)
+    implementation(libs.androidaudioplugin.ara)
     implementation(libs.oboe)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

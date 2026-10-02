@@ -28,6 +28,7 @@ namespace uapmd {
         TimelinePosition position;
         double sampleRate{0.0};
         int64_t durationSamples{0};
+        int64_t sourceOffsetSamples{0};
         uint32_t tickResolution{0};
         double clipTempo{120.0};
         std::vector<ClipMarker> markers;

@@ -4,6 +4,10 @@
 #include <aap/core/host/plugin-client-system.h>
 #include <aap/core/host/android/audio-plugin-host-android.h>
 
+#if UAPMD_HAS_ARA
+#include <aap/ara/registry.h>
+#endif
+
 namespace remidy {
 
 std::unique_ptr<PluginFormatAAP>
@@ -12,6 +16,9 @@ PluginFormatAAP::create() {
 }
 
 PluginFormatAAPImpl::PluginFormatAAPImpl() {
+#if UAPMD_HAS_ARA
+    aap::ara::addToRegistry(*aap::xs::AAPXSDefinitionRegistry::getStandardExtensions());
+#endif
     plugin_list_snapshot = aap::PluginListSnapshot::queryServices();
     // FIXME: retrieve serviceConnectorInstanceId, not 0
     plugin_client_connections = aap::getPluginConnectionListByConnectorInstanceId(0, true);

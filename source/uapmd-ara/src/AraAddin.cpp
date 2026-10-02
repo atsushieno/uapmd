@@ -1,5 +1,6 @@
 #include <array>
 #include <set>
+#include <iostream>
 
 #include <uapmd-addin-core/uapmd-addin-core.hpp>
 #include <uapmd-ara/uapmd-ara.hpp>
@@ -64,8 +65,12 @@ public:
         uapmd_plugin_hosting::AudioPluginInstanceAPI& instance) override {
         if (!support_)
             return;
-        if (support_->attachPlugin(instanceId, instance) == uapmd::ara::AraStatus::Ok)
+        const auto status = support_->attachPlugin(instanceId, instance);
+        if (status == uapmd::ara::AraStatus::Ok)
             attached_instances_.insert(instanceId);
+        else if (status != uapmd::ara::AraStatus::UnsupportedPlugin)
+            std::cerr << "Failed to attach ARA document for plugin instance " << instanceId
+                      << " (status " << static_cast<int>(status) << ")." << std::endl;
     }
 
     void pluginInstanceWillBeDestroyed(int32_t instanceId) override {

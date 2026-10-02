@@ -15,7 +15,8 @@ namespace uapmd::ara {
         CLAPPlugin,
         AudioUnitV2,
         AudioUnitV3,
-        AudioUnitV3BridgedV2
+        AudioUnitV3BridgedV2,
+        AAPRemotePluginInstance
     };
 
     class AraPluginInstanceHandleExtension {

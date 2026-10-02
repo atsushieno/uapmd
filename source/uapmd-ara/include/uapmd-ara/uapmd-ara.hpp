@@ -195,6 +195,9 @@ namespace uapmd::ara {
             uapmd_plugin_hosting::AudioPluginInstanceAPI& pluginInstance) = 0;
         virtual void detachPlugin(int32_t pluginInstanceId) = 0;
 
+        // Includes AAP-native documents as well as SDK document controllers.
+        virtual bool hasAraBinding(int32_t pluginInstanceId) const = 0;
+        // SDK handles below are unavailable for AAP-native documents.
         virtual bool hasNativeAraBinding(int32_t pluginInstanceId) const = 0;
         virtual const ARA::ARAFactory* nativeAraFactory(int32_t pluginInstanceId) const = 0;
         virtual const ARA::ARAPlugInExtensionInstance* bindNativeAraPlugin(

@@ -39,6 +39,11 @@ on:
         required: false
         type: string
         default: 'main'
+      aap_ara_ref:
+        description: 'aap-ara git ref to build Android against (branch / tag / sha)'
+        required: false
+        type: string
+        default: 'main'
 
 jobs:
   build:
@@ -168,6 +173,7 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       aap_core_ref: ${{ inputs.aap_core_ref }}
+      aap_ara_ref: ${{ inputs.aap_ara_ref }}
     secrets: inherit
 
   release:

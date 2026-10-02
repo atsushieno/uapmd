@@ -181,6 +181,7 @@ namespace uapmd {
             .position = clip.position,
             .sampleRate = static_cast<double>(sampleRate_),
             .durationSamples = clip.durationSamples,
+            .sourceOffsetSamples = clip.sourceOffsetSamples,
             .tickResolution = clip.tickResolution,
             .clipTempo = clip.clipTempo,
             .markers = clip.markers,

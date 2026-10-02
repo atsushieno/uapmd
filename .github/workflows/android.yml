@@ -1,8 +1,8 @@
 name: build android
 
 # Opt-in only: Android build depends on an unpublished aap-core, so we do not
-# run it on every push. Trigger manually from the Actions tab when aap-core's
-# `main` (or the ref you choose) is in a state where uapmd builds.
+# run it on every push. The ARA backend also builds the unpublished aap-ara.
+# Trigger manually with compatible refs for both repositories.
 
 on:
   workflow_call:
@@ -12,10 +12,20 @@ on:
         required: false
         type: string
         default: 'main'
+      aap_ara_ref:
+        description: 'aap-ara git ref to build against (branch / tag / sha)'
+        required: false
+        type: string
+        default: 'main'
   workflow_dispatch:
     inputs:
       aap_core_ref:
         description: 'aap-core git ref to build against (branch / tag / sha)'
+        required: false
+        type: string
+        default: 'main'
+      aap_ara_ref:
+        description: 'aap-ara git ref to build against (branch / tag / sha)'
         required: false
         type: string
         default: 'main'
@@ -41,6 +51,14 @@ jobs:
         submodules: recursive
         path: android/external/aap-core
 
+    - name: checkout aap-ara
+      uses: actions/checkout@v6
+      with:
+        repository: atsushieno/aap-ara
+        ref: ${{ inputs.aap_ara_ref }}
+        submodules: recursive
+        path: android/external/aap-ara
+
     - name: set up JDK 17
       uses: actions/setup-java@v4
       with:
@@ -53,7 +71,7 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-android-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties', 'android/external/aap-core/**/*.gradle*') }}
+        key: ${{ runner.os }}-gradle-android-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties', 'android/external/aap-core/**/*.gradle*', 'android/external/aap-ara/**/*.gradle*') }}
         restore-keys: ${{ runner.os }}-gradle-android-
 
     # uapmd-app's native side pulls dependencies via CPM during the CMake
@@ -68,6 +86,10 @@ jobs:
     - name: publish aap-core to mavenLocal
       working-directory: android/external/aap-core
       run: ./gradlew --no-daemon publishToMavenLocal
+
+    - name: publish aap-ara to mavenLocal
+      working-directory: android/external/aap-ara
+      run: ./gradlew --no-daemon :androidaudioplugin-ara:publishToMavenLocal
 
     - name: bump Android versionCode
       uses: chkfung/android-version-actions@v1.2.1

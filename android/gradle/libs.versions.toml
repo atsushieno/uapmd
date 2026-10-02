@@ -4,7 +4,8 @@ androidCompileSdk = "37"
 androidMinSdk = "31"
 androidSdkTools = "36.1"
 agp = "9.1.1"
-androidaudioplugin = "0.11.2"
+androidaudioplugin = "0.12.0"
+aapAra = "0.1.0-SNAPSHOT"
 coreKtx = "1.18.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
@@ -15,6 +16,7 @@ startup-runtime = "1.2.0"
 oboe = "1.11.0"
 
 [libraries]
+androidaudioplugin-ara = { module = "org.androidaudioplugin:androidaudioplugin-ara", version.ref = "aapAra" }
 androidaudioplugin = { module = "org.androidaudioplugin:androidaudioplugin", version.ref = "androidaudioplugin" }
 androidaudioplugin-manager = { module = "org.androidaudioplugin:androidaudioplugin-manager", version.ref = "androidaudioplugin" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

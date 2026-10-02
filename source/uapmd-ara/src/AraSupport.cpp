@@ -1,7 +1,7 @@
 #include "uapmd-ara/uapmd-ara.hpp"
 
 #include "AraFormatBinding.hpp"
-#include "AraHostDocumentController.hpp"
+#include "AraDocumentController.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -31,9 +31,9 @@ namespace uapmd::ara {
             : public AraSupport
             , public ProjectDocumentEventListener
             , public ProjectSerializationExtension {
-            struct NativeAraDocument {
+            struct BoundAraDocument {
                 std::unique_ptr<AraFormatBinding> binding{};
-                std::unique_ptr<AraHostDocumentController> controller{};
+                std::unique_ptr<AraDocumentController> controller{};
                 const ARA::ARAPlugInExtensionInstance* plugin_extension{};
             };
 
@@ -41,14 +41,14 @@ namespace uapmd::ara {
             std::unique_ptr<AraSession> session_;
             ProjectDocumentEventSource* event_source_{};
             ProjectDocumentEventListenerToken event_listener_token_{};
-            std::map<int32_t, NativeAraDocument> native_ara_documents_{};
+            std::map<int32_t, BoundAraDocument> ara_documents_{};
             // Archive bytes plus the plug-in archive identifier they were written
             // under; ARA refuses a restore that cannot name its own format.
             struct PendingArchive {
                 std::string archive_id;
                 std::vector<uint8_t> bytes;
             };
-            std::map<int32_t, PendingArchive> pending_native_archives_{};
+            std::map<int32_t, PendingArchive> pending_archives_{};
 
             // ARA archives are stored against a plugin's persistent graph node
             // identity rather than its runtime instance id, which is allocated
@@ -67,7 +67,7 @@ namespace uapmd::ara {
             }
 
             int32_t instanceIdForNodeId(const std::string& nodeId) {
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) document;
                     if (nodeIdForInstance(pluginInstanceId) == nodeId)
                         return pluginInstanceId;
@@ -120,9 +120,9 @@ namespace uapmd::ara {
 
             static constexpr uint32_t kFragmentSlotVersion = 1;
 
-            void resyncNativeAraDocuments() {
+            void resyncBoundAraDocuments() {
                 auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->resyncFromProjectDocument(
@@ -131,9 +131,9 @@ namespace uapmd::ara {
                 }
             }
 
-            void applyNativeAraProjectEvent(const ProjectDocumentEvent& event) {
+            void applyAraProjectEvent(const ProjectDocumentEvent& event) {
                 auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->applyProjectDocumentEvent(
@@ -184,14 +184,12 @@ namespace uapmd::ara {
                 if (status != AraStatus::UnsupportedPlugin)
                     return status;
 
-                auto nativeBinding = createAraFormatBinding(pluginInstance);
-                if (!nativeBinding)
+                auto binding = createAraFormatBinding(pluginInstance);
+                if (!binding)
                     return AraStatus::UnsupportedPlugin;
 
-                auto controller = std::make_unique<AraHostDocumentController>(
-                    *nativeBinding->factory(),
-                    "uapmd");
-                if (!controller->valid())
+                auto controller = binding->createDocumentController("uapmd");
+                if (!controller || !controller->valid())
                     return AraStatus::BackendError;
 
                 // An ARA plug-in editing a region changes what the track
@@ -219,28 +217,29 @@ namespace uapmd::ara {
                         engine_.timeline().buildMasterTrackSnapshot()))
                     return AraStatus::BackendError;
 
-                if (auto pendingIt = pending_native_archives_.find(pluginInstanceId); pendingIt != pending_native_archives_.end()) {
+                if (auto pendingIt = pending_archives_.find(pluginInstanceId); pendingIt != pending_archives_.end()) {
                     if (!controller->loadArchiveState(pendingIt->second.bytes, pendingIt->second.archive_id))
                         return AraStatus::BackendError;
-                    pending_native_archives_.erase(pendingIt);
+                    pending_archives_.erase(pendingIt);
                 }
 
                 const auto knownRoles =
                     ARA::kARAPlaybackRendererRole |
                     ARA::kARAEditorRendererRole |
                     ARA::kARAEditorViewRole;
-                auto* pluginExtension = nativeBinding->bindToDocumentController(
-                    controller->documentControllerRef(),
-                    knownRoles,
-                    knownRoles);
-                if (!pluginExtension)
-                    return AraStatus::BackendError;
-                controller->bindPluginExtension(pluginExtension);
+                const ARA::ARAPlugInExtensionInstance* pluginExtension = nullptr;
+                if (binding->factory()) {
+                    pluginExtension = binding->bindToDocumentController(
+                        controller->documentControllerRef(), knownRoles, knownRoles);
+                    if (!pluginExtension)
+                        return AraStatus::BackendError;
+                    controller->bindPluginExtension(pluginExtension);
+                }
 
-                native_ara_documents_.emplace(
+                ara_documents_.emplace(
                     pluginInstanceId,
-                    NativeAraDocument{
-                        .binding = std::move(nativeBinding),
+                    BoundAraDocument{
+                        .binding = std::move(binding),
                         .controller = std::move(controller),
                         .plugin_extension = pluginExtension
                     });
@@ -248,21 +247,26 @@ namespace uapmd::ara {
             }
 
             void detachPlugin(int32_t pluginInstanceId) override {
-                if (auto it = native_ara_documents_.find(pluginInstanceId); it != native_ara_documents_.end()) {
+                if (auto it = ara_documents_.find(pluginInstanceId); it != ara_documents_.end()) {
                     if (it->second.controller)
                         it->second.controller->bindPluginExtension(nullptr);
-                    native_ara_documents_.erase(it);
+                    ara_documents_.erase(it);
                 }
                 session_->detachPlugin(pluginInstanceId);
             }
 
+            bool hasAraBinding(int32_t pluginInstanceId) const override {
+                return ara_documents_.contains(pluginInstanceId) || session_->pluginDocument(pluginInstanceId);
+            }
+
             bool hasNativeAraBinding(int32_t pluginInstanceId) const override {
-                return native_ara_documents_.contains(pluginInstanceId);
+                auto it = ara_documents_.find(pluginInstanceId);
+                return it != ara_documents_.end() && it->second.binding->factory();
             }
 
             const ARA::ARAFactory* nativeAraFactory(int32_t pluginInstanceId) const override {
-                auto it = native_ara_documents_.find(pluginInstanceId);
-                if (it == native_ara_documents_.end())
+                auto it = ara_documents_.find(pluginInstanceId);
+                if (it == ara_documents_.end())
                     return nullptr;
                 return it->second.binding->factory();
             }
@@ -272,8 +276,8 @@ namespace uapmd::ara {
                 ARA::ARADocumentControllerRef documentControllerRef,
                 ARA::ARAPlugInInstanceRoleFlags knownRoles,
                 ARA::ARAPlugInInstanceRoleFlags assignedRoles) override {
-                auto it = native_ara_documents_.find(pluginInstanceId);
-                if (it == native_ara_documents_.end())
+                auto it = ara_documents_.find(pluginInstanceId);
+                if (it == ara_documents_.end())
                     return nullptr;
                 if (!documentControllerRef)
                     return it->second.plugin_extension;
@@ -285,8 +289,8 @@ namespace uapmd::ara {
                 AraContentScope scope,
                 const ProjectObjectId& objectId,
                 AraContentKind kind) override {
-                auto it = native_ara_documents_.find(pluginInstanceId);
-                if (it == native_ara_documents_.end() || !it->second.controller)
+                auto it = ara_documents_.find(pluginInstanceId);
+                if (it == ara_documents_.end() || !it->second.controller)
                     return std::nullopt;
                 return it->second.controller->readContent(scope, objectId, kind);
             }
@@ -295,8 +299,8 @@ namespace uapmd::ara {
                 int32_t pluginInstanceId,
                 AraAnalysisRequest request,
                 AraAnalysisCallback callback) override {
-                auto nativeIt = native_ara_documents_.find(pluginInstanceId);
-                if (nativeIt != native_ara_documents_.end() && nativeIt->second.controller)
+                auto nativeIt = ara_documents_.find(pluginInstanceId);
+                if (nativeIt != ara_documents_.end() && nativeIt->second.controller)
                     return nativeIt->second.controller->requestAnalysis(
                         std::move(request),
                         std::move(callback));
@@ -308,8 +312,8 @@ namespace uapmd::ara {
             }
 
             void cancelAnalysis(int32_t pluginInstanceId, AraRequestId requestId) override {
-                auto nativeIt = native_ara_documents_.find(pluginInstanceId);
-                if (nativeIt != native_ara_documents_.end() && nativeIt->second.controller) {
+                auto nativeIt = ara_documents_.find(pluginInstanceId);
+                if (nativeIt != ara_documents_.end() && nativeIt->second.controller) {
                     nativeIt->second.controller->cancelAnalysis(requestId);
                     return;
                 }
@@ -332,7 +336,7 @@ namespace uapmd::ara {
                 manifest << "uapmd-ara-state-v2\n";
 
                 size_t archiveIndex = 0;
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     if (!document.controller)
                         continue;
 
@@ -349,7 +353,7 @@ namespace uapmd::ara {
                     std::vector<uint8_t> archive;
                     std::string archiveId;
                     if (!document.controller->saveArchiveState(archive, archiveId)) {
-                        error = std::format("Failed to archive native ARA document for plugin instance {}.", pluginInstanceId);
+                        error = std::format("Failed to archive ARA document for plugin instance {}.", pluginInstanceId);
                         return false;
                     }
                     if (archive.empty())
@@ -379,7 +383,7 @@ namespace uapmd::ara {
                 std::vector<uint8_t> entries;
                 uint32_t entryCount = 0;
 
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     if (!document.controller)
                         continue;
                     const auto nodeId = nodeIdForInstance(pluginInstanceId);
@@ -465,11 +469,16 @@ namespace uapmd::ara {
                     const auto instanceId = instanceIdForNodeId(nodeId);
                     if (instanceId < 0)
                         continue;
-                    auto documentIt = native_ara_documents_.find(instanceId);
-                    if (documentIt == native_ara_documents_.end() || !documentIt->second.controller)
+                    auto documentIt = ara_documents_.find(instanceId);
+                    if (documentIt == ara_documents_.end() || !documentIt->second.controller)
                         continue;
 
-                    if (!documentIt->second.controller->restoreArchiveStateForClip(
+                    // Fragment attachment queues document events until its transaction
+                    // ends. Create the new ARA objects before restoring their private state.
+                    if (!documentIt->second.controller->resyncFromProjectDocument(
+                            engine_.timeline().projectDocumentView(),
+                            engine_.timeline().buildMasterTrackSnapshot())
+                        || !documentIt->second.controller->restoreArchiveStateForClip(
                             clipId, archiveId, audioSourceId, modificationId, archive)) {
                         error = std::format(
                             "Failed to restore ARA state for clip {} onto plugin instance {}.",
@@ -487,7 +496,7 @@ namespace uapmd::ara {
                 std::vector<uint8_t> entries;
                 uint32_t entryCount = 0;
 
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     if (!document.controller)
                         continue;
                     const auto nodeId = nodeIdForInstance(pluginInstanceId);
@@ -565,11 +574,14 @@ namespace uapmd::ara {
                     const auto instanceId = instanceIdForNodeId(nodeId);
                     if (instanceId < 0)
                         continue;
-                    auto documentIt = native_ara_documents_.find(instanceId);
-                    if (documentIt == native_ara_documents_.end() || !documentIt->second.controller)
+                    auto documentIt = ara_documents_.find(instanceId);
+                    if (documentIt == ara_documents_.end() || !documentIt->second.controller)
                         continue;
 
-                    if (!documentIt->second.controller->restoreArchiveStateForTrack(
+                    if (!documentIt->second.controller->resyncFromProjectDocument(
+                            engine_.timeline().projectDocumentView(),
+                            engine_.timeline().buildMasterTrackSnapshot())
+                        || !documentIt->second.controller->restoreArchiveStateForTrack(
                             trackId, archiveId, regionSequenceId, archive)) {
                         error = std::format(
                             "Failed to restore ARA state for track {} onto plugin instance {}.",
@@ -583,7 +595,7 @@ namespace uapmd::ara {
             bool loadProjectExtensionData(
                 ProjectSerializationReadContext& context,
                 std::string& error) override {
-                pending_native_archives_.clear();
+                pending_archives_.clear();
 
                 auto manifestBytes = context.readExtensionFile(extensionId(), "manifest.txt", error);
                 if (!manifestBytes) {
@@ -635,14 +647,14 @@ namespace uapmd::ara {
                     if (!archiveBytes)
                         return false;
 
-                    auto documentIt = native_ara_documents_.find(pluginInstanceId);
-                    if (documentIt != native_ara_documents_.end() && documentIt->second.controller) {
+                    auto documentIt = ara_documents_.find(pluginInstanceId);
+                    if (documentIt != ara_documents_.end() && documentIt->second.controller) {
                         if (!documentIt->second.controller->loadArchiveState(*archiveBytes, archiveId)) {
-                            error = std::format("Failed to restore native ARA document for plugin instance {}.", pluginInstanceId);
+                            error = std::format("Failed to restore ARA document for plugin instance {}.", pluginInstanceId);
                             return false;
                         }
                     } else {
-                        pending_native_archives_[pluginInstanceId] =
+                        pending_archives_[pluginInstanceId] =
                             PendingArchive{std::move(archiveId), std::move(*archiveBytes)};
                     }
                 }
@@ -652,19 +664,19 @@ namespace uapmd::ara {
 
             void projectLoaded(const ProjectDocumentEvent& event) override {
                 (void) event;
-                resyncNativeAraDocuments();
+                resyncBoundAraDocuments();
             }
 
             void projectClosing(const ProjectDocumentEvent& event) override {
                 (void) event;
-                resyncNativeAraDocuments();
+                resyncBoundAraDocuments();
             }
 
             // Hold one ARA edit cycle open for the whole batch, so that a
             // multi-step edit is applied atomically rather than as one cycle
             // per event.
             void transactionBegan() override {
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->beginProjectDocumentTransaction();
@@ -672,7 +684,7 @@ namespace uapmd::ara {
             }
 
             void transactionEnded() override {
-                for (auto& [pluginInstanceId, document] : native_ara_documents_) {
+                for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->endProjectDocumentTransaction();
@@ -680,43 +692,43 @@ namespace uapmd::ara {
             }
 
             void masterTrackChanged(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void trackAdded(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void trackRemoved(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void trackChanged(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void clipAdded(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void clipRemoved(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void clipChanged(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void audioSourceAdded(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void audioSourceRemoved(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
 
             void audioSourceChanged(const ProjectDocumentEvent& event) override {
-                applyNativeAraProjectEvent(event);
+                applyAraProjectEvent(event);
             }
         };
     } // namespace
