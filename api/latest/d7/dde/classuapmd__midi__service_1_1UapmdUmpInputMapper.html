@@ -98,9 +98,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPerNoteCon
 <tr class="memitem:a36ca67a7aa3c59a6c5c51f0e6271ac74" id="r_a36ca67a7aa3c59a6c5c51f0e6271ac74"><td class="memItemLeft" align="right" valign="top"><a id="a36ca67a7aa3c59a6c5c51f0e6271ac74" name="a36ca67a7aa3c59a6c5c51f0e6271ac74"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadPreset</b> (uint32_t index)=0</td></tr>
 <tr class="separator:a36ca67a7aa3c59a6c5c51f0e6271ac74"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5a9e3870b733c65c80eb61655366ffaf" id="r_a5a9e3870b733c65c80eb61655366ffaf"><td class="memItemLeft" align="right" valign="top"><a id="a5a9e3870b733c65c80eb61655366ffaf" name="a5a9e3870b733c65c80eb61655366ffaf"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>drainPresetRequests</b> ()=0</td></tr>
-<tr class="separator:a5a9e3870b733c65c80eb61655366ffaf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7eb19df69dcd6d9a068fd842c2d654da" id="r_a7eb19df69dcd6d9a068fd842c2d654da"><td class="memItemLeft" align="right" valign="top"><a id="a7eb19df69dcd6d9a068fd842c2d654da" name="a7eb19df69dcd6d9a068fd842c2d654da"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>tryDequeuePresetRequest</b> (uint32_t &amp;index)=0</td></tr>
+<tr class="separator:a7eb19df69dcd6d9a068fd842c2d654da"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a160c1ba438be6a4944eb2914f3e6ece0" id="r_a160c1ba438be6a4944eb2914f3e6ece0"><td class="memItemLeft" align="right" valign="top"><a id="a160c1ba438be6a4944eb2914f3e6ece0" name="a160c1ba438be6a4944eb2914f3e6ece0"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>droppedPresetRequestCount</b> () const =0</td></tr>
+<tr class="separator:a160c1ba438be6a4944eb2914f3e6ece0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>

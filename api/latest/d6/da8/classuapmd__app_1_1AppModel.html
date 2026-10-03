@@ -79,6 +79,7 @@ $(function() {
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="#pub-attribs">Public Attributes</a> &#124;
+<a href="#friends">Friends</a> &#124;
 <a href="../../d7/dfd/classuapmd__app_1_1AppModel-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">uapmd_app::AppModel Class Reference</div></div>
 </div><!--header-->
@@ -270,6 +271,9 @@ bool&#160;</td><td class="memItemRight" valign="bottom"><b>autoBufferSizeEnabled
 <tr class="memitem:a93ca9a678cef3d27aaa76c7b0c43de88" id="r_a93ca9a678cef3d27aaa76c7b0c43de88"><td class="memItemLeft" align="right" valign="top"><a id="a93ca9a678cef3d27aaa76c7b0c43de88" name="a93ca9a678cef3d27aaa76c7b0c43de88"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>cancelPluginScanning</b> ()</td></tr>
 <tr class="separator:a93ca9a678cef3d27aaa76c7b0c43de88"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8b21f10be4433b6f3a282453f62af4fd" id="r_a8b21f10be4433b6f3a282453f62af4fd"><td class="memItemLeft" align="right" valign="top"><a id="a8b21f10be4433b6f3a282453f62af4fd" name="a8b21f10be4433b6f3a282453f62af4fd"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>stopPluginScanning</b> ()</td></tr>
+<tr class="separator:a8b21f10be4433b6f3a282453f62af4fd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad1db5ea4b2e317dfb746d70fe2817ccf" id="r_ad1db5ea4b2e317dfb746d70fe2817ccf"><td class="memItemLeft" align="right" valign="top"><a id="ad1db5ea4b2e317dfb746d70fe2817ccf" name="ad1db5ea4b2e317dfb746d70fe2817ccf"></a>
 std::string&#160;</td><td class="memItemRight" valign="bottom"><b>generateScanReport</b> ()</td></tr>
 <tr class="separator:ad1db5ea4b2e317dfb746d70fe2817ccf"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -315,6 +319,15 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>removePluginInstance<
 <tr class="memitem:afd0c346eccbbf3a28f715a9e07fdd898" id="r_afd0c346eccbbf3a28f715a9e07fdd898"><td class="memItemLeft" align="right" valign="top"><a id="afd0c346eccbbf3a28f715a9e07fdd898" name="afd0c346eccbbf3a28f715a9e07fdd898"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>enableUmpDevice</b> (int32_t instanceId, const std::string &amp;deviceName)</td></tr>
 <tr class="separator:afd0c346eccbbf3a28f715a9e07fdd898"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a74d009655a7d47821dd5381778776383" id="r_a74d009655a7d47821dd5381778776383"><td class="memItemLeft" align="right" valign="top"><a id="a74d009655a7d47821dd5381778776383" name="a74d009655a7d47821dd5381778776383"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>virtualMidiDevicesEnabled</b> () const</td></tr>
+<tr class="separator:a74d009655a7d47821dd5381778776383"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a35c95a6481b0e1a748f57546a91e855a" id="r_a35c95a6481b0e1a748f57546a91e855a"><td class="memItemLeft" align="right" valign="top"><a id="a35c95a6481b0e1a748f57546a91e855a" name="a35c95a6481b0e1a748f57546a91e855a"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>autoCreateVirtualMidiDevices</b> () const</td></tr>
+<tr class="separator:a35c95a6481b0e1a748f57546a91e855a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adad3c8f59b1b1a3840880fb8a6fc6e22" id="r_adad3c8f59b1b1a3840880fb8a6fc6e22"><td class="memItemLeft" align="right" valign="top"><a id="adad3c8f59b1b1a3840880fb8a6fc6e22" name="adad3c8f59b1b1a3840880fb8a6fc6e22"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>setAutoCreateVirtualMidiDevices</b> (bool enabled)</td></tr>
+<tr class="separator:adad3c8f59b1b1a3840880fb8a6fc6e22"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3de500185251afbbbb1e2e731cb86daf" id="r_a3de500185251afbbbb1e2e731cb86daf"><td class="memItemLeft" align="right" valign="top"><a id="a3de500185251afbbbb1e2e731cb86daf" name="a3de500185251afbbbb1e2e731cb86daf"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>disableUmpDevice</b> (int32_t instanceId)</td></tr>
 <tr class="separator:a3de500185251afbbbb1e2e731cb86daf"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -552,6 +565,9 @@ std::vector&lt; std::function&lt; void(const <a class="el" href="../../df/d87/st
 <tr class="memitem:a6b3f8cef001985f9247e1669ac13a046" id="r_a6b3f8cef001985f9247e1669ac13a046"><td class="memItemLeft" align="right" valign="top"><a id="a6b3f8cef001985f9247e1669ac13a046" name="a6b3f8cef001985f9247e1669ac13a046"></a>
 std::vector&lt; std::function&lt; void()&gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>projectLoaded</b> {}</td></tr>
 <tr class="separator:a6b3f8cef001985f9247e1669ac13a046"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a096ffe6c66c5d2ff4308d32dd61f5f8a" id="r_a096ffe6c66c5d2ff4308d32dd61f5f8a"><td class="memItemLeft" align="right" valign="top"><a id="a096ffe6c66c5d2ff4308d32dd61f5f8a" name="a096ffe6c66c5d2ff4308d32dd61f5f8a"></a>
+std::function&lt; void()&gt;&#160;</td><td class="memItemRight" valign="bottom"><b>showVirtualMidiDevices</b></td></tr>
+<tr class="separator:a096ffe6c66c5d2ff4308d32dd61f5f8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a49684b609c15eb20d01d763139820d25" id="r_a49684b609c15eb20d01d763139820d25"><td class="memItemLeft" align="right" valign="top"><a id="a49684b609c15eb20d01d763139820d25" name="a49684b609c15eb20d01d763139820d25"></a>
 std::vector&lt; std::function&lt; void(const <a class="el" href="../../d6/dcc/structuapmd__app_1_1AppModel_1_1UIStateResult.html">UIStateResult</a> &amp;)&gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>uiShown</b> {}</td></tr>
 <tr class="separator:a49684b609c15eb20d01d763139820d25"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -567,6 +583,12 @@ std::vector&lt; std::function&lt; void(int32_t instanceId)&gt; &gt;&#160;</td><t
 <tr class="memitem:a5fb7e76e1fe98afa0ac33c48de1ad532" id="r_a5fb7e76e1fe98afa0ac33c48de1ad532"><td class="memItemLeft" align="right" valign="top"><a id="a5fb7e76e1fe98afa0ac33c48de1ad532" name="a5fb7e76e1fe98afa0ac33c48de1ad532"></a>
 std::vector&lt; std::function&lt; void(int32_t trackIndex)&gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>trackGraphShowRequested</b> {}</td></tr>
 <tr class="separator:a5fb7e76e1fe98afa0ac33c48de1ad532"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="friends" name="friends"></a>
+Friends</h2></td></tr>
+<tr class="memitem:a7c4342a28f270ffd90833ce59c734966" id="r_a7c4342a28f270ffd90833ce59c734966"><td class="memItemLeft" align="right" valign="top"><a id="a7c4342a28f270ffd90833ce59c734966" name="a7c4342a28f270ffd90833ce59c734966"></a>
+class&#160;</td><td class="memItemRight" valign="bottom"><b>VirtualMidiDevicesAddin</b></td></tr>
+<tr class="separator:a7c4342a28f270ffd90833ce59c734966"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/tools/uapmd-app-model/include/uapmd-app-model/detail/<a class="el" href="../../d0/d19/AppModel_8hpp_source.html">AppModel.hpp</a></li>

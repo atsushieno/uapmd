@@ -80,10 +80,11 @@ separation addins.</p>
 </tr>
 </tbody>
 </table>
-<p>Both addins register on the <code>/uapmd/app/command/v1</code>
-extension point and obtain the engine from
-<code>/uapmd/engine/v1</code>. They are added to the library's exported
-<code>AddinEntry</code> by <code>src/AddinEntry.cpp</code>, which owns
+<p>Both addins register on the
+<code>/uapmd/app/project-command/v1</code> extension point and obtain
+the engine from <code>/uapmd/engine/v1</code>. They are added to the
+library's exported <code>AddinEntry</code> by
+<code>src/AddinEntry.cpp</code>, which owns
 <code>uapmd_addin_entry</code> and includes them only under
 <code>UAPMD_ENABLE_MIR_ANALYSIS</code>; the library exists, and carries
 <a href="PITCH_TRANSCRIPTION.html">pitch transcription</a>, either

@@ -19,7 +19,8 @@ var searchData=
   ['tracklayoutchange_16',['TrackLayoutChange',['../df/d87/structuapmd__app_1_1AppModel_1_1TrackLayoutChange.html',1,'uapmd_app::AppModel']]],
   ['trackoutputroutingrule_17',['TrackOutputRoutingRule',['../d0/da4/structuapmd__graph_1_1TrackOutputRoutingRule.html',1,'uapmd_graph']]],
   ['trackoutputroutingtarget_18',['TrackOutputRoutingTarget',['../d9/df2/structuapmd__graph_1_1TrackOutputRoutingTarget.html',1,'uapmd_graph']]],
-  ['trackresult_19',['TrackResult',['../d5/d7c/structuapmd__app_1_1AppModel_1_1MidiTracksImportResult_1_1TrackResult.html',1,'uapmd_app::AppModel::MidiTracksImportResult']]],
-  ['transportcontroller_20',['TransportController',['../dd/d39/classuapmd__app_1_1TransportController.html',1,'uapmd_app']]],
-  ['typedumpinputdispatcher_21',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
+  ['trackpluginoutputevent_19',['TrackPluginOutputEvent',['../db/d15/structuapmd_1_1TrackPluginOutputEvent.html',1,'uapmd']]],
+  ['trackresult_20',['TrackResult',['../d5/d7c/structuapmd__app_1_1AppModel_1_1MidiTracksImportResult_1_1TrackResult.html',1,'uapmd_app::AppModel::MidiTracksImportResult']]],
+  ['transportcontroller_21',['TransportController',['../dd/d39/classuapmd__app_1_1TransportController.html',1,'uapmd_app']]],
+  ['typedumpinputdispatcher_22',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
 ];

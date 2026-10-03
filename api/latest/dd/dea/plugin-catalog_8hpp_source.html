@@ -194,7 +194,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span> </div>
 <div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>        RetentionPolicy getRetentionPolicy();</div>
 <div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>        <span class="keywordtype">void</span> setRetentionPolicy(RetentionPolicy value);</div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>        <span class="comment">// Returns either HMODULE, CFBundle*, or dlopen-ed library.</span></div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>        <span class="comment">// Returns an opaque module handle owned by the format-specific loader.</span></div>
 <div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>        <span class="keywordtype">void</span>* loadOrAddReference(std::filesystem::path&amp; moduleBundlePath, <span class="keywordtype">bool</span>* loadedAsNew);</div>
 <div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>        StatusCode removeReference(std::filesystem::path&amp; moduleBundlePath);</div>
 <div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span> </div>

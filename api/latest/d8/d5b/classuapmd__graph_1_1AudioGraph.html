@@ -93,9 +93,9 @@ Inheritance diagram for uapmd_graph::AudioGraph:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a5a66c1af77fb18f7688e7c1f825f766c" id="r_a5a66c1af77fb18f7688e7c1f825f766c"><td class="memItemLeft" align="right" valign="top"><a id="a5a66c1af77fb18f7688e7c1f825f766c" name="a5a66c1af77fb18f7688e7c1f825f766c"></a>
-const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>providerId</b> () const</td></tr>
-<tr class="separator:a5a66c1af77fb18f7688e7c1f825f766c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abe63b769cac736d2752d978860fa5681" id="r_abe63b769cac736d2752d978860fa5681"><td class="memItemLeft" align="right" valign="top"><a id="abe63b769cac736d2752d978860fa5681" name="abe63b769cac736d2752d978860fa5681"></a>
+virtual const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>providerId</b> () const =0</td></tr>
+<tr class="separator:abe63b769cac736d2752d978860fa5681"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af7c18cfaf23e0b4b8e15df91be61f05d" id="r_af7c18cfaf23e0b4b8e15df91be61f05d"><td class="memItemLeft" align="right" valign="top"><a id="af7c18cfaf23e0b4b8e15df91be61f05d" name="af7c18cfaf23e0b4b8e15df91be61f05d"></a>
 virtual std::map&lt; std::string, <a class="el" href="../../db/dcb/classuapmd__graph_1_1AudioGraphNode.html">AudioGraphNode</a> * &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>nodes</b> ()=0</td></tr>
 <tr class="separator:af7c18cfaf23e0b4b8e15df91be61f05d"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -111,6 +111,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setEventOutpu
 <tr class="memitem:a177fdebb0840631045d837c20fd40c7e" id="r_a177fdebb0840631045d837c20fd40c7e"><td class="memItemLeft" align="right" valign="top"><a id="a177fdebb0840631045d837c20fd40c7e" name="a177fdebb0840631045d837c20fd40c7e"></a>
 virtual int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">uapmd::AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:a177fdebb0840631045d837c20fd40c7e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af3b3db44f3be285ce32f9965dc2117b8" id="r_af3b3db44f3be285ce32f9965dc2117b8"><td class="memItemLeft" align="right" valign="top"><a id="af3b3db44f3be285ce32f9965dc2117b8" name="af3b3db44f3be285ce32f9965dc2117b8"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>supportsParallelTrackProcessing</b> () const noexcept=0</td></tr>
+<tr class="separator:af3b3db44f3be285ce32f9965dc2117b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af6ca3c9ee445954781b86179b14f36f0" id="r_af6ca3c9ee445954781b86179b14f36f0"><td class="memItemLeft" align="right" valign="top"><a id="af6ca3c9ee445954781b86179b14f36f0" name="af6ca3c9ee445954781b86179b14f36f0"></a>
 virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputBusCount</b> ()=0</td></tr>
 <tr class="separator:af6ca3c9ee445954781b86179b14f36f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -140,9 +143,6 @@ template&lt;typename T &gt; </td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
 Protected Member Functions</h2></td></tr>
-<tr class="memitem:a03d485b833c34875f8661cd21a531f54" id="r_a03d485b833c34875f8661cd21a531f54"><td class="memItemLeft" align="right" valign="top"><a id="a03d485b833c34875f8661cd21a531f54" name="a03d485b833c34875f8661cd21a531f54"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>AudioGraph</b> (std::string providerId={})</td></tr>
-<tr class="separator:a03d485b833c34875f8661cd21a531f54"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a37a2be3fcb92f24a88cd720a773df1d4" id="r_a37a2be3fcb92f24a88cd720a773df1d4"><td class="memItemLeft" align="right" valign="top"><a id="a37a2be3fcb92f24a88cd720a773df1d4" name="a37a2be3fcb92f24a88cd720a773df1d4"></a>
 virtual <a class="el" href="../../df/dcb/classuapmd__graph_1_1AudioGraphExtension.html">AudioGraphExtension</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getExtension</b> (const std::type_info &amp;type)=0</td></tr>
 <tr class="separator:a37a2be3fcb92f24a88cd720a773df1d4"><td class="memSeparator" colspan="2">&#160;</td></tr>

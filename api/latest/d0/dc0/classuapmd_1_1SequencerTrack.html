@@ -76,6 +76,7 @@ $(function() {
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
+<a href="#pro-methods">Protected Member Functions</a> &#124;
 <a href="../../d9/db1/classuapmd_1_1SequencerTrack-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">uapmd::SequencerTrack Class Reference<span class="mlabels"><span class="mlabel">abstract</span></span></div></div>
 </div><!--header-->
@@ -83,6 +84,30 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:aedc1866d47ccc08ec895570cef469a2c" id="r_aedc1866d47ccc08ec895570cef469a2c"><td class="memItemLeft" align="right" valign="top"><a id="aedc1866d47ccc08ec895570cef469a2c" name="aedc1866d47ccc08ec895570cef469a2c"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>capturePluginOutput</b> (int32_t instanceId, const uapmd_ump_t *data, size_t bytes)</td></tr>
+<tr class="separator:aedc1866d47ccc08ec895570cef469a2c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3b1410cf9cbd3619e7ed70d21f2562bf" id="r_a3b1410cf9cbd3619e7ed70d21f2562bf"><td class="memItemLeft" align="right" valign="top"><a id="a3b1410cf9cbd3619e7ed70d21f2562bf" name="a3b1410cf9cbd3619e7ed70d21f2562bf"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>capturePresetRequest</b> (int32_t instanceId, uint32_t index)</td></tr>
+<tr class="separator:a3b1410cf9cbd3619e7ed70d21f2562bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a366cba7e3538e5b55a9e59bbee137345" id="r_a366cba7e3538e5b55a9e59bbee137345"><td class="memItemLeft" align="right" valign="top"><a id="a366cba7e3538e5b55a9e59bbee137345" name="a366cba7e3538e5b55a9e59bbee137345"></a>
+std::span&lt; const <a class="el" href="../../db/d15/structuapmd_1_1TrackPluginOutputEvent.html">TrackPluginOutputEvent</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginOutputEvents</b> () const</td></tr>
+<tr class="separator:a366cba7e3538e5b55a9e59bbee137345"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af7bd190b9e1b61928d911cdaeb97e26a" id="r_af7bd190b9e1b61928d911cdaeb97e26a"><td class="memItemLeft" align="right" valign="top"><a id="af7bd190b9e1b61928d911cdaeb97e26a" name="af7bd190b9e1b61928d911cdaeb97e26a"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPluginOutputEvents</b> ()</td></tr>
+<tr class="separator:af7bd190b9e1b61928d911cdaeb97e26a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7dce216e5fc965b548222e7f20b91f65" id="r_a7dce216e5fc965b548222e7f20b91f65"><td class="memItemLeft" align="right" valign="top"><a id="a7dce216e5fc965b548222e7f20b91f65" name="a7dce216e5fc965b548222e7f20b91f65"></a>
+uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>droppedPluginOutputEventCount</b> () const</td></tr>
+<tr class="separator:a7dce216e5fc965b548222e7f20b91f65"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5493ca3a0596de35f7fb9e6d237f80c1" id="r_a5493ca3a0596de35f7fb9e6d237f80c1"><td class="memItemLeft" align="right" valign="top"><a id="a5493ca3a0596de35f7fb9e6d237f80c1" name="a5493ca3a0596de35f7fb9e6d237f80c1"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>configureProcessingGroups</b> ()</td></tr>
+<tr class="separator:a5493ca3a0596de35f7fb9e6d237f80c1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a743fcc5a28e32ba124f55b6d60d817bb" id="r_a743fcc5a28e32ba124f55b6d60d817bb"><td class="memItemLeft" align="right" valign="top"><a id="a743fcc5a28e32ba124f55b6d60d817bb" name="a743fcc5a28e32ba124f55b6d60d817bb"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>setProcessingGroup</b> (int32_t instanceId, uint8_t group)</td></tr>
+<tr class="separator:a743fcc5a28e32ba124f55b6d60d817bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad0352f82d8b884a754e0ca6ce3323cce" id="r_ad0352f82d8b884a754e0ca6ce3323cce"><td class="memItemLeft" align="right" valign="top"><a id="ad0352f82d8b884a754e0ca6ce3323cce" name="ad0352f82d8b884a754e0ca6ce3323cce"></a>
+uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>processingGroup</b> (int32_t instanceId) const</td></tr>
+<tr class="separator:ad0352f82d8b884a754e0ca6ce3323cce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a53203b66db95d4531440e99715903ae4" id="r_a53203b66db95d4531440e99715903ae4"><td class="memItemLeft" align="right" valign="top"><a id="a53203b66db95d4531440e99715903ae4" name="a53203b66db95d4531440e99715903ae4"></a>
 const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>unresolvedGraphType</b> () const</td></tr>
 <tr class="separator:a53203b66db95d4531440e99715903ae4"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -161,6 +186,12 @@ Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a4e3800ac07ce2e379f65940824ab67d7" id="r_a4e3800ac07ce2e379f65940824ab67d7"><td class="memItemLeft" align="right" valign="top"><a id="a4e3800ac07ce2e379f65940824ab67d7" name="a4e3800ac07ce2e379f65940824ab67d7"></a>
 static std::unique_ptr&lt; <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (const <a class="el" href="../../dd/dd3/classuapmd_1_1AudioGraphProviderRegistry.html">AudioGraphProviderRegistry</a> &amp;registry, size_t eventBufferSizeInBytes, const std::string &amp;graphProviderId)</td></tr>
 <tr class="separator:a4e3800ac07ce2e379f65940824ab67d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
+Protected Member Functions</h2></td></tr>
+<tr class="memitem:a586b0e7086f0a1bd1dd1877f79b14c54" id="r_a586b0e7086f0a1bd1dd1877f79b14c54"><td class="memItemLeft" align="right" valign="top"><a id="a586b0e7086f0a1bd1dd1877f79b14c54" name="a586b0e7086f0a1bd1dd1877f79b14c54"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>SequencerTrack</b> (size_t eventBufferSizeInBytes)</td></tr>
+<tr class="separator:a586b0e7086f0a1bd1dd1877f79b14c54"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../d3/d99/SequencerTrack_8hpp_source.html">SequencerTrack.hpp</a></li>

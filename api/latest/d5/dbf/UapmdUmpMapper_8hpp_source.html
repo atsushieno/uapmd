@@ -118,27 +118,29 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>        <span class="comment">// Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.</span></div>
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> loadPreset(uint32_t index) = 0;</div>
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="comment">// FIXME: we should probably remove this.</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> drainPresetRequests() = 0;</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        <span class="keyword">static</span> std::unique_ptr&lt;UapmdUmpInputMapper&gt; create(<a class="code hl_class" href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">uapmd_plugin_hosting::AudioPluginInstanceAPI</a>* plugin);</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    };</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="comment">// Transfer a queued request without touching plugin state. The host must</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="comment">// apply it on its control thread with processing excluded.</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> tryDequeuePresetRequest(uint32_t&amp; index) = 0;</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        <span class="keyword">virtual</span> uint32_t droppedPresetRequestCount() <span class="keyword">const</span> = 0;</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>        <span class="keyword">static</span> std::unique_ptr&lt;UapmdUmpInputMapper&gt; create(<a class="code hl_class" href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">uapmd_plugin_hosting::AudioPluginInstanceAPI</a>* plugin);</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    };</div>
 </div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
-<div class="foldopen" id="foldopen00043" data-start="{" data-end="};">
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno"><a class="line" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">   43</a></span>    <span class="keyword">class </span><a class="code hl_class" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">UapmdUmpOutputMapper</a> {</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keyword">public</span>:</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">~UapmdUmpOutputMapper</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendParameterValue(uint16_t index, <span class="keywordtype">double</span> value) = 0;</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendPerNoteControllerValue(uint8_t note, uint8_t index, <span class="keywordtype">double</span> value) = 0;</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendPresetIndexChange(uint32_t index) = 0;</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    };</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span> </div>
+<div class="foldopen" id="foldopen00045" data-start="{" data-end="};">
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">   45</a></span>    <span class="keyword">class </span><a class="code hl_class" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">UapmdUmpOutputMapper</a> {</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">public</span>:</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">virtual</span> <a class="code hl_class" href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">~UapmdUmpOutputMapper</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendParameterValue(uint16_t index, <span class="keywordtype">double</span> value) = 0;</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendPerNoteControllerValue(uint8_t note, uint8_t index, <span class="keywordtype">double</span> value) = 0;</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="keyword">virtual</span> <span class="keywordtype">void</span> sendPresetIndexChange(uint32_t index) = 0;</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    };</div>
 </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>}</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>}</div>
 <div class="ttc" id="aclassremidy_1_1AudioProcessContext_html"><div class="ttname"><a href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a></div><div class="ttdef"><b>Definition</b> processing-context.hpp:97</div></div>
 <div class="ttc" id="aclassuapmd__midi__service_1_1UapmdUmpInputMapper_html"><div class="ttname"><a href="../../d7/dde/classuapmd__midi__service_1_1UapmdUmpInputMapper.html">uapmd_midi_service::UapmdUmpInputMapper</a></div><div class="ttdef"><b>Definition</b> UapmdUmpMapper.hpp:15</div></div>
-<div class="ttc" id="aclassuapmd__midi__service_1_1UapmdUmpOutputMapper_html"><div class="ttname"><a href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">uapmd_midi_service::UapmdUmpOutputMapper</a></div><div class="ttdef"><b>Definition</b> UapmdUmpMapper.hpp:43</div></div>
+<div class="ttc" id="aclassuapmd__midi__service_1_1UapmdUmpOutputMapper_html"><div class="ttname"><a href="../../dc/dfb/classuapmd__midi__service_1_1UapmdUmpOutputMapper.html">uapmd_midi_service::UapmdUmpOutputMapper</a></div><div class="ttdef"><b>Definition</b> UapmdUmpMapper.hpp:45</div></div>
 <div class="ttc" id="aclassuapmd__plugin__hosting_1_1AudioPluginInstanceAPI_html"><div class="ttname"><a href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">uapmd_plugin_hosting::AudioPluginInstanceAPI</a></div><div class="ttdef"><b>Definition</b> AudioPluginInstanceAPI.hpp:54</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->

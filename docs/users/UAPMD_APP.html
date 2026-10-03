@@ -94,7 +94,7 @@ zoom slider, and the whole-song position controller.</li>
 <li><strong>The track list</strong> -- the master track followed by your
 tracks, each with a legend on the left and its clips on the right.</li>
 <li><strong>The footer</strong> -- add a track, and open the Mixer
-Monitor and Plugin Instances windows.</li>
+Monitor window.</li>
 </ol>
 <p>Auxiliary windows (Settings, Plugin Selector, editors, and so on)
 open as floating panels inside the main window. They can be moved and
@@ -110,10 +110,10 @@ already running.</p>
 Turning it off releases the audio device and disables the transport
 buttons; turning it back on re-activates the device and the plugins on
 it.</p>
-<h3 id="command">Command</h3>
+<h3 id="system">System</h3>
 <p><img src="../images/uapmd-app-guide-command-menu.png"
-alt="The Command menu" /></p>
-<p><code>Command</code> is the catch-all menu:</p>
+alt="The System menu" /></p>
+<p><code>System</code> is the catch-all menu:</p>
 <ul>
 <li><strong>Undo / Redo</strong> at the top, labelled with the operation
 they will reverse (for example "Undo Add track"). They are greyed out
@@ -122,16 +122,46 @@ note appears while one is still running. The keyboard shortcuts work
 anywhere outside a text field: <code>Ctrl+Z</code> / <code>Cmd+Z</code>
 to undo, <code>Ctrl+Shift+Z</code> / <code>Cmd+Shift+Z</code> or
 <code>Ctrl+Y</code> to redo.</li>
-<li><strong>Show / Hide Device Settings</strong>,
-<strong>Addins</strong>, <strong>Script</strong>, and <strong>MCP
-Settings</strong> -- toggles for the four floating panels described
-later in this document.</li>
-<li><strong>Commands contributed by addins</strong>, below the
-separator. What appears here depends on which addins are enabled; in the
-screenshot above they are master-track population (libsonare and
-librosa.cpp) and audio-to-MIDI transcription (pitch-detection for
-monophonic, basic-pitch for polyphonic material).</li>
+<li><strong>Device Settings</strong>, <strong>UAPMD Addins</strong>,
+<strong>Scripting</strong>, and <strong>MCP Settings</strong> -- toggles
+for the four floating panels described later in this document. A check
+mark shows which of them are open.</li>
+<li><strong>JSFX Settings</strong> and <strong>application commands
+contributed by addins</strong>, below the separator.</li>
 </ul>
+<h3 id="project">Project</h3>
+<p><img src="../images/uapmd-app-guide-project-menu.png"
+alt="The Project menu" /></p>
+<p><code>Project</code> offers:</p>
+<ul>
+<li><strong>New Project</strong>, <strong>Load Project</strong>, and
+<strong>Save Project</strong>. Starting a new project or closing the app
+while there are unsaved changes prompts you first, unless you launched
+with <code>--no-confirm-on-quit</code>.</li>
+<li><strong><a href="#rendering-to-a-file">Render To
+File</a></strong>.</li>
+<li><strong>Import MIDI Tracks (SMF)</strong> -- pick a MIDI 1.0
+<code>.mid</code> file; each of its tracks becomes a track holding a
+MIDI 2.0 clip.</li>
+<li><strong>Import Split Audio Tracks</strong> -- opens the split-audio
+import window. This item only appears while at least one stem separation
+addin is enabled.</li>
+<li><strong>Project commands contributed by addins</strong>. What
+appears here depends on which addins are enabled: master-track
+population (libsonare and librosa.cpp) and audio-to-MIDI transcription
+of all audio clips (pitch-detection for monophonic, basic-pitch for
+polyphonic, DrumScript for drum material).</li>
+</ul>
+<h3 id="scale-and-theme">Scale and theme</h3>
+<p><code>UI:</code> picks the UI scale factor -- <code>x0.5</code>,
+<code>x0.8</code>, <code>x1.0</code>, <code>x1.2</code>,
+<code>x1.5</code>, <code>x2.0</code>, <code>x4.0</code>. Changing it
+rescales every widget and font, and resizes the window to match. The
+button next to it (a half-filled circle) switches between the dark and
+light themes.</p>
+<h3 id="plugins">Plugins</h3>
+<p><code>Plugins</code> toggles the <a href="#plugins">Plugin
+Selector</a>.</p>
 <h3 id="transport">Transport</h3>
 <p>Three buttons, all disabled while the audio engine is off:</p>
 <table>
@@ -143,15 +173,15 @@ monophonic, basic-pitch for polyphonic material).</li>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Play / Stop</td>
-<td>One button that shows a triangle when idle and a square while the
-transport is engaged. Stopping also cancels a paused state.</td>
-</tr>
-<tr class="even">
 <td>Record</td>
 <td>Records into the <strong>currently selected MIDI clip</strong>.
 Select a clip on the timeline first, otherwise the button does nothing.
 It turns red while recording; press it again to stop.</td>
+</tr>
+<tr class="even">
+<td>Play / Stop</td>
+<td>One button that shows a triangle when idle and a square while the
+transport is engaged. Stopping also cancels a paused state.</td>
 </tr>
 <tr class="odd">
 <td>Pause / Resume</td>
@@ -164,36 +194,8 @@ while playing and a play glyph while paused.</td>
 alt="Playback in progress" /></p>
 <p>During playback the playhead marker moves along the ruler, a vertical
 line tracks it in the position controller, and the two spectrum
-analyzers at the right end of the toolbar show input and output
+analyzers right after the transport buttons show input and output
 activity.</p>
-<h3 id="scale-and-theme">Scale and theme</h3>
-<p><code>Scale:</code> picks the UI scale factor -- <code>x0.5</code>,
-<code>x0.8</code>, <code>x1.0</code>, <code>x1.2</code>,
-<code>x1.5</code>, <code>x2.0</code>, <code>x4.0</code>. Changing it
-rescales every widget and font, and resizes the window to match. The
-button next to it (a half-filled circle) switches between the dark and
-light themes.</p>
-<h3 id="plugins-import-project">Plugins, Import, Project</h3>
-<p><img src="../images/uapmd-app-guide-import-menu.png"
-alt="The Import menu" /></p>
-<p><code>Plugins</code> toggles the <a href="#plugins">Plugin
-Selector</a>. <code>Import</code> offers:</p>
-<ul>
-<li><strong>Import MIDI Tracks (SMF)</strong> -- pick a MIDI 1.0
-<code>.mid</code> file; each of its tracks becomes a track holding a
-MIDI 2.0 clip.</li>
-<li><strong>Import Split Audio Tracks</strong> -- opens the split-audio
-import window. This item only appears while at least one stem separation
-addin is enabled.</li>
-</ul>
-<p><img src="../images/uapmd-app-guide-project-menu.png"
-alt="The Project menu" /></p>
-<p><code>Project</code> covers <strong>New Project</strong>,
-<strong>Load Project</strong>, <strong>Save Project</strong>, and
-<strong><a href="#rendering-to-a-file">Render To File</a></strong>.
-Starting a new project or closing the app while there are unsaved
-changes prompts you first, unless you launched with
-<code>--no-confirm-on-quit</code>.</p>
 <h3 id="spectrum-analyzers">Spectrum analyzers</h3>
 <p><code>In</code> and <code>Out</code> at the right end are live
 spectrum displays of the audio input and the final output bus.</p>
@@ -207,8 +209,19 @@ musical time. The two views are independent -- each keeps its own
 zoom.</p>
 <p><img src="../images/uapmd-app-guide-beats-view.png"
 alt="The beats/ticks view" /></p>
+<h3 id="snap">Snap</h3>
+<p>The combo beside the view switcher is the <strong>timeline
+snap</strong>. When you move or resize a clip with its grips, the edge
+you drag -- the start, for a move -- lands on the nearest multiple of
+that note length, counted from the start of the timeline through the
+tempo map, in either view. It offers the piano roll's divisions --
+<code>Free</code>, <code>1/8</code>, <code>1/16</code>,
+<code>1/24</code>, <code>1/32</code>, <code>1/48</code>, and
+<code>1/64</code> -- and defaults to <code>1/16</code>.
+<code>Free</code> turns snapping off, and holding Alt while dragging
+places freely.</p>
 <h3 id="zoom-and-position">Zoom and position</h3>
-<p>The slider next to the view switcher is the <strong>timeline
+<p>The slider after the snap combo is the <strong>timeline
 zoom</strong>, showing pixels per unit. It is logarithmic and spans four
 orders of magnitude, so small drags near the left end still move a
 useful amount.</p>
@@ -222,8 +235,8 @@ time-signature meta events that the beats view is built from, and it can
 host its own plugin chain via <strong>Add Master Plugin</strong>. It has
 a gain slider but no mute or solo.</p>
 <h3 id="the-footer">The footer</h3>
-<p><code>+</code> adds an empty track. <code>Mixer Monitor</code> and
-<code>Plugin Instances</code> open the two windows described below.</p>
+<p><code>+</code> adds an empty track. <code>Mixer Monitor</code> opens
+the mixer window described below.</p>
 <h2 id="tracks">Tracks</h2>
 <p>A track owns an audio plugin graph and a set of clips. It is not "a
 plugin" -- a track typically holds one instrument plugin followed by
@@ -285,9 +298,10 @@ policy off.</td>
 </tr>
 <tr class="even">
 <td>Plugin button</td>
-<td>Shows the name of the track's first plugin, or
-<code>Add Plugin</code> when the track is empty. Opens the <a
-href="#the-plugin-menu-on-a-track">plugin menu</a>.</td>
+<td>Shows the name of the track's first plugin and opens the <a
+href="#the-plugin-menu-on-a-track">plugin menu</a>. When the track is
+empty it reads <code>Add Plugin</code> and opens the Plugin Selector
+directly.</td>
 </tr>
 <tr class="odd">
 <td><code>⋮</code></td>
@@ -333,23 +347,36 @@ a confirmation.</li>
 <h3 id="selecting-and-editing-clips">Selecting and editing clips</h3>
 <p><img src="../images/uapmd-app-guide-clip-context.png"
 alt="The clip context menu" /></p>
-<p>Drag across empty space in either timeline view to select the clips
-the rectangle crosses. A drag that crosses no clips is a range instead,
-and offers <strong>Add New MIDI Clip</strong> and <strong>Add Empty
-Audio Clip</strong> sized to the dragged span on release; in the beats
-view the range snaps to the nearest quarter-note beat. Alt-drag always
-takes the range reading and leaves the selection alone. Shift-click or
+<p>Drag across the lanes in either timeline view -- from empty space or
+from a clip -- to select the clips the rectangle crosses. A drag that
+starts on empty space and crosses no clips is a range instead, and
+offers <strong>Add New MIDI Clip</strong> and <strong>Add Empty Audio
+Clip</strong> sized to the dragged span on release; in the beats view
+the range snaps to the nearest quarter-note beat. Alt-drag always takes
+the range reading and leaves the selection alone. Shift-click or
 Shift-drag adds to the selection; Ctrl-click (Cmd-click on macOS)
 toggles a clip. Click an unselected clip to select it alone. Click empty
 space, or press Escape while hovering the timeline, to clear selection.
 The track's Clips and More menus include <strong>Select All
 Clips</strong>.</p>
-<p><strong>Right-click, double-click, or press and hold a clip</strong>
-to open its context menu. Opening the menu on a selected clip keeps the
-other clips selected, so the commands below that act on the selection
-act on all of it. Press and hold is how touch devices reach these menus:
-hold for half a second without moving, and the press opens the menu
-instead of selecting:</p>
+<p>Clips move and resize through the <strong>grips</strong> at their two
+ends, never by dragging the clip itself. The upper half of a grip
+resizes that end; the lower half moves the whole clip. A grip sits just
+outside its clip, or just inside it where the clip meets a neighbour or
+the start of the timeline. Resizing the start keeps the content where it
+is on the timeline: shortening it hides the beginning, and lengthening
+it brings that back. A MIDI clip can be lengthened past the start of its
+content, down to the start of the timeline, and the content shifts along
+so the new space can hold notes; an audio clip stops at the start of its
+file. While you drag, an outline shows where the clip will go, and every
+edge follows the <a href="#snap">snap</a>.</p>
+<p><strong>Right-click or double-click a clip</strong> to open its
+context menu; on Android and iOS, press and hold it too. Opening the
+menu on a selected clip keeps the other clips selected, so the commands
+below that act on the selection act on all of it. Press and hold is how
+touch devices reach these menus: hold for half a second without moving,
+and the press opens the menu instead of selecting. The desktop has no
+press-and-hold menu, since a held press is how a drag starts there:</p>
 <ul>
 <li><strong>Show Dump List</strong> -- the <a
 href="#the-midi-event-list">MIDI event list editor</a>.</li>
@@ -387,9 +414,13 @@ clip clipboard is cleared when the project is cleared.</p>
 alt="The piano roll editor" /></p>
 <p>The piano roll edits the notes of a MIDI 2.0 clip. Its toolbar
 carries <code>H Zoom</code> in pixels per second, <code>V Zoom</code> as
-the height of one semitone row, and a <code>Snap</code> division. The
-header also reports the clip length, the note count, and how many
-clip-level events it holds.</p>
+the height of one semitone row, and a <code>Snap</code> division. Snap
+defaults to <code>1/16</code>, with <code>Free</code>, <code>1/8</code>,
+<code>1/16</code>, <code>1/24</code>, <code>1/32</code>,
+<code>1/48</code>, and <code>1/64</code> available. The header also
+reports the clip length, the note count, and how many clip-level events
+it holds. Snap labels denote musical note durations relative to a whole
+note; for example, <code>1/16</code> is a sixteenth-note grid.</p>
 <p>Drag across empty grid space to select notes. Shift-click or
 Shift-drag adds notes; Ctrl-click (Cmd-click on macOS) toggles a note.
 Clicking an unselected note selects it alone. Click empty space or press
@@ -397,8 +428,8 @@ Escape over the grid to clear selection. Selection highlights use the
 note rectangles, and selected notes remain selected when an edit changes
 their event order. Reloading changed clip content, including undo/redo,
 clears note selection; refreshing unchanged content preserves it.</p>
-<p>Right-click or long-press a note or empty grid space for
-<strong>Cut</strong>, <strong>Copy</strong>, <strong>Paste
+<p>Right-click a note or empty grid space (long-press on Android and
+iOS) for <strong>Cut</strong>, <strong>Copy</strong>, <strong>Paste
 here</strong>, <strong>Delete</strong>, and <strong>Select All
 Notes</strong>. Opening a menu on a selected note preserves the
 selection. The clipboard belongs to that open clip: it does not transfer
@@ -444,7 +475,7 @@ Markers name a position in the clip; warps map a position in the clip to
 a position on the timeline. Both are edited as lists, with
 <code>Add Marker</code> / <code>Add Warp</code>, and applied with
 <code>Apply</code>.</p>
-<h2 id="plugins">Plugins</h2>
+<h2 id="plugins-1">Plugins</h2>
 <h3 id="finding-and-loading-plugins">Finding and loading plugins</h3>
 <p><img src="../images/uapmd-app-guide-plugin-selector.png"
 alt="The Plugin Selector" /></p>
@@ -530,14 +561,28 @@ directly.</p>
 it into a general DAG. <strong>Revert to Simple Graph</strong> puts it
 back to a plain chain. A minimap in the corner helps when the graph
 outgrows the window.</p>
-<h3 id="plugin-instances">Plugin instances</h3>
+<h3 id="virtual-midi-devices">Virtual MIDI devices</h3>
 <p><img src="../images/uapmd-app-guide-audio-graph-editor.png"
-alt="The Audio Graph Editor window" /></p>
-<p><code>Plugin Instances</code> in the footer opens a flat list of
-every plugin instance in the project, grouped by track, showing the
-format and the virtual UMP device each is exposed as.
-<code>Disable</code> bypasses an instance and <code>Show</code> opens
-its details window.</p>
+alt="The Virtual MIDI Devices window" /></p>
+<p><code>Virtual MIDI Devices</code> in the <code>System</code> menu
+opens a flat list of every plugin instance in the project, grouped by
+track, showing the format and the virtual UMP device each is exposed as.
+<code>Disable</code> unregisters its virtual MIDI device and
+<code>Show</code> opens its details window.</p>
+<p><code>Create virtual MIDI 2.0 devices automatically</code> is off by
+default. Turn it on to create devices for subsequently instantiated
+plugins, including plugins loaded from projects. Changing the checkbox
+leaves existing devices unchanged; use each row's <code>Enable</code> or
+<code>Disable</code> button to control them manually.
+<code>Enable All</code> and <code>Disable All</code> apply to all
+current instances without changing the automatic creation setting.
+<code>Enable All</code> uses the names entered in the device list.
+Default device names include a track suffix, such as
+<code>sforzando [VST3] T1</code>; master-track devices use
+<code>Master</code>. Custom device names are kept as entered.</p>
+<p>Disabling the Virtual MIDI Devices addin unregisters its devices and
+removes the command. Re-enabling the addin creates devices for existing
+instances only when automatic creation is on.</p>
 <p>Note that this window lists plugin <em>instances</em>, not tracks --
 one track with two plugins appears as two rows.</p>
 <h3 id="the-mixer-monitor">The mixer monitor</h3>
@@ -580,8 +625,8 @@ becomes a stop button while a render runs.</p>
 <h2 id="settings">Settings</h2>
 <p><img src="../images/uapmd-app-guide-settings.png"
 alt="The Settings window" /></p>
-<p><code>Command</code> -&gt; <code>Show Device Settings</code> opens
-audio and MIDI configuration:</p>
+<p><code>System</code> -&gt; <code>Device Settings</code> opens audio
+and MIDI configuration:</p>
 <ul>
 <li><strong>Input Device</strong> and <strong>Output Device</strong>,
 with their <strong>Sample Rate</strong> selectors.</li>
@@ -607,15 +652,15 @@ come from a shared library placed in one of the directories named at the
 top of the window.</p>
 <p>Disabling an addin removes what it contributes -- turn off both stem
 separators, for example, and <code>Import Split Audio Tracks</code>
-disappears from the <code>Import</code> menu.</p>
+disappears from the <code>Project</code> menu.</p>
 <h2 id="automating-the-app">Automating the app</h2>
 <p>Everything the UI does is also reachable programmatically, which is
 how UAPMD is meant to be driven for anything repetitive.</p>
 <h3 id="the-script-editor">The script editor</h3>
 <p><img src="../images/uapmd-app-guide-script-editor.png"
 alt="The Script Editor" /></p>
-<p><code>Command</code> -&gt; <code>Show Script</code> opens a
-JavaScript editor with <code>Run</code> and <code>Load</code>, plus
+<p><code>System</code> -&gt; <code>Scripting</code> opens a JavaScript
+editor with <code>Run</code> and <code>Load</code>, plus
 <code>Preset</code> with the bundled <code>Demo</code>,
 <code>PluginState</code>, and <code>TestDAG</code> scripts. The demo
 script documents the API:</p>
@@ -656,8 +701,8 @@ script documents the API:</p>
 <h3 id="mcp">MCP</h3>
 <p><img src="../images/uapmd-app-guide-mcp-settings.png"
 alt="MCP Settings" /></p>
-<p><code>Command</code> -&gt; <code>Show MCP Settings</code> exposes the
-app as an MCP server, so an agent can inspect and edit the project.</p>
+<p><code>System</code> -&gt; <code>MCP Settings</code> exposes the app
+as an MCP server, so an agent can inspect and edit the project.</p>
 <ul>
 <li><strong>Server</strong> mode listens on a port on
 <code>127.0.0.1</code> -- desktop only.</li>

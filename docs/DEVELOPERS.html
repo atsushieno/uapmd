@@ -101,6 +101,12 @@ Controllers (NRPNs)</li>
 Change</li>
 <li><code>State</code> to save and load the plugin states.</li>
 </ul>
+<p>The app model provides the built-in <strong>Virtual MIDI
+Devices</strong> addin. It subscribes to control-thread plugin lifecycle
+events and unregisters its endpoints when disabled. Automatic endpoint
+creation is off by default and can be enabled in its window; individual
+endpoints can also be enabled manually. The window is exposed through
+the application command registry.</p>
 <h3 id="uapmd-data">uapmd-data</h3>
 <p><code>uapmd-data</code> offers the project data model such as tracks,
 clips, audio clips, MIDI2 clips, plugin states, and audio graphs. Then
@@ -161,6 +167,11 @@ Demucs.cpp</li>
 </ul></li>
 <li><code>UAPMD_ENABLE_ARA</code>: enables the ARA host integration
 (opt-in Apache2-licensed module)</li>
+<li><code>UAPMD_ENABLE_AUGENE2</code>: enables the Augene2 MML
+integration addin (MIT; ANTLR parser generation requires Java at build
+time). See <a
+href="../AUGENE2_INTEGRATION_PLAN.html#usage-and-build-notes">Augene2
+integration</a>.</li>
 </ul>
 <h2 id="release-workflow">Release workflow</h2>
 <p>(Only for the release maintainers.)</p>

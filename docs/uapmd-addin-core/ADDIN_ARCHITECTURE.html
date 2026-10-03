@@ -105,10 +105,15 @@ definition for that architecture.</p>
 application as a whole. An addin registers a
 <code>uapmd_addin::Command</code> and must unregister it during
 <code>cleanup()</code>. The host decides where commands appear; the
-application lists them at the foot of its Command menu.
+application lists them at the foot of its System menu.
 <code>title()</code> is read every frame, so a command that starts a
 long-running job reports its progress by returning a different title
 while it runs, and refuses re-entry through <code>enabled()</code>.</p>
+<p><code>/uapmd/app/project-command/v1</code> exposes a second
+<code>uapmd_addin::CommandRegistry</code> with the same contract, for
+actions that operate on the project's content (such as analysis or
+transcription across all clips). The application lists them in its
+Project menu.</p>
 <p><code>/uapmd/app/clip-command/v1</code> exposes the
 <code>uapmd_addin::ClipCommandRegistry</code>, for actions that apply to
 a single clip. It follows the same contribute-and-remove rule, with
