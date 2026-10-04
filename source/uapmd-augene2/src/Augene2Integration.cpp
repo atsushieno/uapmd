@@ -97,10 +97,11 @@ choc::value::Value manifest(const State& state) {
     return root;
 }
 
-class Integration final : public uapmd_addin::Panel,
-                          public ProjectSerializationExtension,
-                          public ProjectDocumentEventListener,
-                          public std::enable_shared_from_this<Integration> {
+class IntegrationService final : public Integration,
+                                 public uapmd_addin::Panel,
+                                 public ProjectSerializationExtension,
+                                 public ProjectDocumentEventListener,
+                                 public std::enable_shared_from_this<IntegrationService> {
     TimelineFacade& timeline;
     std::shared_ptr<Store> store{std::make_shared<Store>()};
     ProjectDocumentEventListenerToken listener{};
@@ -114,15 +115,15 @@ class Integration final : public uapmd_addin::Panel,
     std::optional<Compilation> ready;
     uint64_t ready_generation{};
     std::vector<Source> last_observed;
-    std::string status;
-    std::vector<std::string> diagnostics;
+    std::string status_;
+    std::vector<std::string> diagnostics_;
     std::array<char, 512> import_folder{};
 
     bool setState(State state) {
         auto result = timeline.commands().history().executeSynchronously(
             std::make_shared<SetState>(store, std::move(state)));
         if (!result.succeeded())
-            status = result.error;
+            status_ = result.error;
         return result.succeeded();
     }
 
@@ -144,7 +145,7 @@ class Integration final : public uapmd_addin::Panel,
         });
         job = task.get_future();
         std::thread(std::move(task)).detach();
-        status = "Compiling...";
+        status_ = "Compiling...";
     }
 
     struct Application {
@@ -157,9 +158,9 @@ class Integration final : public uapmd_addin::Panel,
     void failApply(std::string error) {
         timeline.commands().history().cancelStep([self = shared_from_this(), error = std::move(error)](ProjectCommandResult rollback) {
             self->applying = false;
-            self->status = error;
+            self->status_ = error;
             if (!rollback.succeeded())
-                self->status += " Rollback failed: " + rollback.error;
+                self->status_ += " Rollback failed: " + rollback.error;
         });
     }
 
@@ -184,7 +185,7 @@ class Integration final : public uapmd_addin::Panel,
         }
         timeline.commands().history().endStep([self = shared_from_this()](ProjectCommandResult result) {
             self->applying = false;
-            self->status = result.succeeded() ? "Compilation applied." : result.error;
+            self->status_ = result.succeeded() ? "Compilation applied." : result.error;
         });
     }
 
@@ -273,7 +274,7 @@ class Integration final : public uapmd_addin::Panel,
     void apply(Compilation compilation) {
         auto result = timeline.commands().history().beginStep("Compile MML");
         if (!result.succeeded()) {
-            status = result.error;
+            status_ = result.error;
             return;
         }
         applying = true;
@@ -295,7 +296,7 @@ class Integration final : public uapmd_addin::Panel,
             if (!self || self->session != picked_session)
                 return;
             if (!result.success) {
-                self->status = result.error;
+                self->status_ = result.error;
                 self->picking = false;
                 return;
             }
@@ -307,7 +308,7 @@ class Integration final : public uapmd_addin::Panel,
                     return;
                 self->picking = false;
                 if (!self->idleHistory()) {
-                    self->status = "Project is busy; import the file again when the current edit finishes.";
+                    self->status_ = "Project is busy; import the file again when the current edit finishes.";
                     return;
                 }
                 State state = self->store->state;
@@ -324,13 +325,13 @@ class Integration final : public uapmd_addin::Panel,
                         : std::filesystem::path(external).relative_path();
                     auto path = (std::filesystem::path("sources") / destination / relative).lexically_normal().generic_string();
                     if (!safePath(path)) {
-                        self->status = "Choose a project-relative resource folder.";
+                        self->status_ = "Choose a project-relative resource folder.";
                         return;
                     }
                     auto source = std::ranges::find(state.sources, path, &Source::path);
                     if (source != state.sources.end()) {
                         if (source->external_path != external) {
-                            self->status = "A different resource already uses that path.";
+                            self->status_ = "A different resource already uses that path.";
                             return;
                         }
                         source->compile = source->compile || compile;
@@ -340,7 +341,7 @@ class Integration final : public uapmd_addin::Panel,
                 }
                 if (self->setState(std::move(state))) {
                     self->last_observed.clear();
-                    self->status = "MML resources imported.";
+                    self->status_ = "MML resources imported.";
                     if (remaining && !remaining->empty()) {
                         auto next = std::move(remaining->back());
                         remaining->pop_back();
@@ -372,7 +373,7 @@ class Integration final : public uapmd_addin::Panel,
                 if (auto self = weak.lock(); self && self->session == picked_session) {
                     if (!picked.success || picked.handles.empty()) {
                         self->picking = false;
-                        self->status = picked.error;
+                        self->status_ = picked.error;
                         return;
                     }
                     // Read sequentially so all selected resources are registered
@@ -387,11 +388,11 @@ class Integration final : public uapmd_addin::Panel,
     }
 
 public:
-    explicit Integration(TimelineFacade& facade) : timeline(facade) {
+    explicit IntegrationService(TimelineFacade& facade) : timeline(facade) {
         listener = timeline.projectDocumentEvents().addProjectDocumentEventListener(*this);
         timeline.addProjectSerializationExtension(*this);
     }
-    ~Integration() override {
+    ~IntegrationService() override {
         // Disabling only detaches the panel; the retained project service is
         // destroyed at application shutdown, before compiler resources vanish.
         if (job.valid())
@@ -399,7 +400,53 @@ public:
         timeline.removeProjectSerializationExtension(*this);
         timeline.projectDocumentEvents().removeProjectDocumentEventListener(listener);
     }
-    void show() { open = true; }
+    bool isOpen() const override { return open; }
+    void setOpen(bool value) override { open = value; }
+    bool busy() const override { return picking || applying || !idleHistory(); }
+    bool compiling() const override { return job.valid(); }
+    std::vector<IntegrationSource> sources() const override {
+        std::vector<IntegrationSource> result;
+        for (const auto& source : store->state.sources)
+            result.push_back({source.path, source.external_path, source.compile});
+        return result;
+    }
+    std::vector<IntegrationTrackMapping> trackMappings() const override {
+        std::vector<IntegrationTrackMapping> result;
+        for (const auto& [key, binding] : store->state.bindings)
+            result.push_back({key, timeline.addresses().trackIndex(binding.track)});
+        return result;
+    }
+    std::string status() const override { return status_; }
+    std::vector<std::string> diagnostics() const override { return diagnostics_; }
+    std::string resourceFolder() const override { return import_folder.data(); }
+    void setResourceFolder(const std::string& folder) override {
+        if (busy())
+            return;
+        import_folder = {};
+        folder.copy(import_folder.data(), import_folder.size() - 1);
+    }
+    void importSources(bool compile) override {
+        if (!busy())
+            pick(compile);
+    }
+    void relinkSource(const std::string& path) override {
+        if (busy())
+            return;
+        auto source = std::ranges::find(store->state.sources, path, &Source::path);
+        if (source != store->state.sources.end())
+            pick(source->compile, path);
+    }
+    void removeSource(const std::string& path) override {
+        if (busy())
+            return;
+        auto state = store->state;
+        if (std::erase_if(state.sources, [&path](const Source& source) { return source.path == path; }))
+            setState(std::move(state));
+    }
+    void compile() override {
+        if (!busy())
+            manual_pending = true;
+    }
     void deactivate() {
         ++session;
         ++store->generation;
@@ -413,9 +460,9 @@ public:
         if (job.valid() && job.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             auto result = job.get();
             if (job_generation == store->generation && !result.diagnostics.empty())
-                diagnostics = result.diagnostics;
+                diagnostics_ = result.diagnostics;
             if (job_generation == store->generation && result.attempted) {
-                diagnostics = result.diagnostics;
+                diagnostics_ = result.diagnostics;
                 // Undo must not be immediately overwritten by an unchanged
                 // external snapshot. Manual Compile always remains available.
                 if (!result.success || result.sources != last_observed || manual_pending) {
@@ -441,27 +488,29 @@ public:
             if (result.success)
                 apply(std::move(result));
             else
-                status = "Compilation failed; previous clips retained.";
+                status_ = "Compilation failed; previous clips retained.";
             manual_pending = false;
         }
         if (!job.valid() && !applying && manual_pending)
             startCompile();
     }
 
+    // The ImGui presentation of the public Integration model; other toolkits
+    // present the same members.
     void render() override {
         if (!open)
             return;
         ImGui::SetNextWindowSize(ImVec2(720, 480), ImGuiCond_FirstUseEver);
         if (ImGui::Begin("Augene2 Integration", &open)) {
-            ImGui::BeginDisabled(picking || applying || !idleHistory());
+            ImGui::BeginDisabled(busy());
             if (ImGui::Button("Import MMLs..."))
-                pick(true);
+                importSources(true);
             ImGui::SameLine();
             if (ImGui::Button("Import included MML..."))
-                pick(false);
+                importSources(false);
             ImGui::SameLine();
             if (ImGui::Button("Compile"))
-                manual_pending = true;
+                compile();
             // Preserve saved preferences, but leave synchronization inactive
             // until an event-based filesystem watcher is implemented.
             bool automatic = false;
@@ -471,8 +520,9 @@ public:
             ImGui::TextWrapped("Automatic synchronization is currently unavailable. Use Compile to refresh linked files.");
             ImGui::InputText("Resource folder (optional)", import_folder.data(), import_folder.size());
             ImGui::Separator();
-            for (size_t i = 0; i < store->state.sources.size(); ++i) {
-                const auto source = store->state.sources[i];
+            const auto listed = sources();
+            for (size_t i = 0; i < listed.size(); ++i) {
+                const auto& source = listed[i];
                 ImGui::PushID(static_cast<int>(i));
                 ImGui::TextUnformatted(source.compile ? "Input" : "Include");
                 ImGui::SameLine();
@@ -482,12 +532,10 @@ public:
                 else
                     ImGui::TextUnformatted("Bundled copy");
                 if (ImGui::SmallButton("Relink..."))
-                    pick(source.compile, source.path);
+                    relinkSource(source.path);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove")) {
-                    auto state = store->state;
-                    state.sources.erase(state.sources.begin() + static_cast<std::ptrdiff_t>(i));
-                    setState(std::move(state));
+                    removeSource(source.path);
                     ImGui::PopID();
                     break;
                 }
@@ -495,17 +543,18 @@ public:
             }
             ImGui::EndDisabled();
             ImGui::Separator();
-            if (job.valid())
+            if (compiling())
                 ImGui::TextUnformatted("Checking / compiling sources...");
-            ImGui::TextWrapped("%s", status.c_str());
-            for (const auto& diagnostic : diagnostics)
+            ImGui::TextWrapped("%s", status_.c_str());
+            for (const auto& diagnostic : diagnostics_)
                 ImGui::TextWrapped("%s", diagnostic.c_str());
-            if (!store->state.bindings.empty() && ImGui::CollapsingHeader("Track mapping"))
-                for (const auto& [key, binding] : store->state.bindings) {
-                    const auto index = timeline.addresses().trackIndex(binding.track);
+            const auto mappings = trackMappings();
+            if (!mappings.empty() && ImGui::CollapsingHeader("Track mapping"))
+                for (const auto& mapping : mappings) {
+                    const auto index = mapping.track_index;
                     const auto destination = index == kMasterTrackIndex ? "Master track"
                         : index >= 0 ? "Track " + std::to_string(index + 1) : "Track unavailable";
-                    ImGui::Text("MML %s -> %s", key.c_str(), destination.c_str());
+                    ImGui::Text("MML %s -> %s", mapping.key.c_str(), destination.c_str());
                 }
         }
         ImGui::End();
@@ -576,15 +625,15 @@ public:
         last_observed.clear();
         picking = false;
         manual_pending = false;
-        status.clear();
-        diagnostics.clear();
+        status_.clear();
+        diagnostics_.clear();
     }
 };
 
-std::weak_ptr<Integration> project_integration;
+std::weak_ptr<IntegrationService> project_integration;
 
 class Addin final : public uapmd_addin::Addin, public uapmd_addin::Command {
-    std::shared_ptr<Integration> integration;
+    std::shared_ptr<IntegrationService> integration;
     uapmd_addin::CommandRegistry* commands{};
     uapmd_addin::PanelRegistry* panels{};
 public:
@@ -593,7 +642,7 @@ public:
     std::string_view path() const noexcept override { return "/uapmd/app/panel/v1"; }
     std::string_view id() const noexcept override { return "augene2.integration"; }
     std::string_view title() const noexcept override { return "Augene2 Integration"; }
-    void invoke() noexcept override { if (integration) integration->show(); }
+    void invoke() noexcept override { if (integration) integration->setOpen(true); }
     bool initialize(uapmd_addin::AddinHost& host) noexcept override {
         try {
             auto* engine = static_cast<SequencerEngine*>(host.extensionPoint("/uapmd/engine/v1"));
@@ -603,7 +652,7 @@ public:
                 return false;
             integration = project_integration.lock();
             if (!integration) {
-                integration = std::make_shared<Integration>(engine->timeline());
+                integration = std::make_shared<IntegrationService>(engine->timeline());
                 panels->retainPanel(integration);
                 project_integration = integration;
             }
@@ -641,9 +690,13 @@ Entry entry;
 }
 
 void registerProjectService(uapmd::TimelineFacade& timeline, uapmd_addin::PanelRegistry& panels) {
-    auto integration = std::make_shared<Integration>(timeline);
+    auto integration = std::make_shared<IntegrationService>(timeline);
     project_integration = integration;
     panels.retainPanel(std::move(integration));
+}
+
+std::shared_ptr<Integration> integration() {
+    return project_integration.lock();
 }
 
 }
