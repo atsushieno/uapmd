@@ -634,10 +634,14 @@ namespace uapmd::ara {
             __android_log_print(ANDROID_LOG_DEBUG, "uapmd-ara", "No AAP remote instance handle");
             return nullptr;
         }
+        // The dispatcher also contains host-registered definitions. Require the
+        // plugin's advertised support before creating an ARA client.
+        auto* information = instance->getPluginInformation();
+        if (!information || !information->hasExtension(AAP_ARA_EXTENSION_URI))
+            return nullptr;
         auto* plugin = instance->getPlugin();
         auto* initiator = instance->getAAPXSDispatcher().getPluginAAPXSByUri(AAP_ARA_EXTENSION_URI);
-        // AAP's proxy resolver assumes the dispatcher contains the extension.
-        // Most AAP plugins do not declare ARA, so check before asking for its proxy.
+        // AAP's proxy resolver requires a configured dispatcher entry.
         if (!plugin || !initiator || !initiator->serialization)
             return nullptr;
         auto* extension = static_cast<aap_ara_extension_t*>(plugin->get_extension(plugin, AAP_ARA_EXTENSION_URI));
