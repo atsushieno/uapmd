@@ -236,11 +236,14 @@ namespace uapmd {
         stabilized_render_scratch_.clear();
         stabilized_buffered_frames_ = 0;
 
-        // Set Oboe ring-buffer (latency buffer between app and hardware).
-        // Must be at least 2 * framesPerBurst for reliable playback — using
-        // only the user's requested_buffer_size_ can starve the hardware
-        // when framesPerBurst > requested_buffer_size_.
-        const uint32_t minLatencyFrames = framesPerBurst > 0 ? framesPerBurst * 2u : 512u;
+        // Keep two rendering quanta in the output ring. Stabilized rendering
+        // can take longer than a hardware burst even when it fits its own
+        // block period, so its larger engine block must determine the minimum.
+        const uint32_t burstFrames = framesPerBurst > 0 ? framesPerBurst : 256u;
+        const uint32_t renderBlockFrames = needsStabilizedMode()
+            ? std::min(preferred_callback_frames_, buffer_capacity_frames_)
+            : burstFrames;
+        const uint32_t minLatencyFrames = std::max(burstFrames, renderBlockFrames) * 2u;
         const uint32_t latencyFrames = manualBufferRequest
             ? std::max(requested_buffer_size_, minLatencyFrames)
             : minLatencyFrames;
