@@ -128,7 +128,11 @@ std::string stringToVst3Tuid(std::string s) {
 // It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
 void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
 #if _WIN32
+    // Fail quietly instead of letting the loader show system error dialogs (e.g. "Bad Image").
+    DWORD previousErrorMode{};
+    SetThreadErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX, &previousErrorMode);
     auto ret = LoadLibraryW(pluginDirOrFile.c_str());
+    SetThreadErrorMode(previousErrorMode, nullptr);
 #elif __APPLE__
     auto module = std::make_unique<MacOSModule>();
     auto executablePath = pluginDirOrFile;

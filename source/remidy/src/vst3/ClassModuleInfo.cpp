@@ -4,6 +4,9 @@
 #include <sstream>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
+#include <string_view>
+#include <type_traits>
 #include "ClassModuleInfo.hpp"
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -18,6 +21,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #elif defined(__linux__)
 #include <dlfcn.h>
+#include <sys/utsname.h>
 #endif
 
 namespace remidy_vst3 {
@@ -78,13 +82,87 @@ namespace remidy_vst3 {
     typedef bool (*vst3_init_dll_func)();
     typedef bool (*vst3_exit_dll_func)();
 
-    std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
-        if (!is_directory(pluginPath)) // self-contained plugin DLL
-            return pluginPath;
+    bool hasExtensionIgnoreCase(const std::filesystem::path& file, std::string_view lowerExt) {
+        const auto extPath = file.extension();
+        const auto& ext = extPath.native();
+        if (ext.size() != lowerExt.size())
+            return false;
+        for (size_t i = 0; i < ext.size(); i++) {
+            auto c = static_cast<std::make_unsigned_t<std::filesystem::path::value_type>>(ext[i]);
+            if (c > 0x7F || std::tolower(static_cast<int>(c)) != lowerExt[i])
+                return false;
+        }
+        return true;
+    }
+
+    // Sorted, as directory enumeration order is unspecified.
+    std::vector<std::filesystem::path> findFilesWithExtension(const std::filesystem::path& dir, std::string_view lowerExt, bool recursive) {
+        std::vector<std::filesystem::path> ret;
+        auto collect = [&](const std::filesystem::directory_entry& entry) {
+            std::error_code ec;
+            if (entry.is_regular_file(ec) && hasExtensionIgnoreCase(entry.path(), lowerExt))
+                ret.emplace_back(entry.path());
+        };
+        std::error_code ec;
+        if (recursive) {
+            for (std::filesystem::recursive_directory_iterator it{dir, std::filesystem::directory_options::skip_permission_denied, ec}, end; !ec && it != end; it.increment(ec))
+                collect(*it);
+        } else {
+            for (std::filesystem::directory_iterator it{dir, ec}, end; !ec && it != end; it.increment(ec))
+                collect(*it);
+        }
+        std::ranges::sort(ret);
+        return ret;
+    }
+
+    void appendCandidate(std::vector<std::filesystem::path>& list, const std::filesystem::path& file) {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(file, ec) && std::ranges::find(list, file) == list.end())
+            list.emplace_back(file);
+    }
+
+    bool exportsPluginFactory(void* module) {
+#if _WIN32
+        return GetProcAddress((HMODULE) module, "GetPluginFactory") != nullptr;
+#elif __APPLE__
+        return getLibrarySymbol(module, "GetPluginFactory") != nullptr;
+#else
+        return dlsym(module, "GetPluginFactory") != nullptr;
+#endif
+    }
+
+    void releaseLibrary(void* module) {
+#if _WIN32
+        FreeLibrary((HMODULE) module);
+#elif __APPLE__
+        unloadLibrary(module);
+#else
+        dlclose(module);
+#endif
+    }
+
+    // Only a library that exports GetPluginFactory is accepted as a VST3 module.
+    void* loadPluginLibrary(std::filesystem::path file) {
+        auto module = loadLibraryFromBinary(file);
+        if (!module)
+            return nullptr;
+        if (exportsPluginFactory(module))
+            return module;
+        releaseLibrary(module);
+        return nullptr;
+    }
+
+#if !__APPLE__
+    // Candidates in order of preference: the spec-compliant binary first, then lenient fallbacks.
+    std::vector<std::filesystem::path> getPluginCodeFileCandidates(const std::filesystem::path& pluginPath) {
+        std::error_code ec;
+        if (!std::filesystem::is_directory(pluginPath, ec)) // self-contained plugin DLL
+            return {pluginPath};
         // The ABI subdirectory name is VST3 specific. Therefore, this function is only usable with VST3.
         // But similar code structure would be usable with other plugin formats.
 
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
+        std::vector<std::filesystem::path> ret;
 #if _WIN32
 #if defined(__x86_64) || defined(__x86_64__) || defined(__amd64) || defined(_M_X64) || defined(__amd64__) || defined(_M_AMD64)
         auto abiDirName = "x86_64-win";
@@ -96,32 +174,46 @@ namespace remidy_vst3 {
 #else // at this state we assume the only remaining platform is arm32.
         auto abiDirName = "arm32-win";
 #endif
-        auto binDir = pluginPath.append("Contents").append(abiDirName);
-#elif __APPLE__
-        auto binDir = pluginPath.append("Contents").append("MacOS");
+        auto binDir = pluginPath / "Contents" / abiDirName;
+        // The spec requires the binary to have the same name as the bundle.
+        appendCandidate(ret, binDir / pluginPath.filename());
+        // Renamed bundles, and then any .vst3 binary in the bundle, as JUCE-based hosts accept them.
+        for (auto& file : findFilesWithExtension(binDir, ".vst3", false))
+            appendCandidate(ret, file);
+        for (auto& file : findFilesWithExtension(pluginPath, ".vst3", true))
+            appendCandidate(ret, file);
 #else
-#if __x86_64__
-        auto binDir = pluginPath.append("Contents").append("x86_64-linux");
-#else
-        auto binDir = pluginPath.append("Contents").append("i386-linux");
+        // The ABI directory is named after the machine hardware name, as the SDK and JUCE do.
+        utsname unameData{};
+        if (uname(&unameData) != 0)
+            return ret;
+        auto binDir = pluginPath / "Contents" / (std::string{unameData.machine} + "-linux");
+        // The spec requires the shared library to have the same name as the bundle.
+        auto specFile = binDir / pluginPath.stem();
+        specFile += ".so";
+        appendCandidate(ret, specFile);
+        // Renamed bundles.
+        for (auto& file : findFilesWithExtension(binDir, ".so", false))
+            appendCandidate(ret, file);
 #endif
-#endif
-        for (auto& entry : std::filesystem::directory_iterator(binDir))
-            return entry.path();
-        return {};
+        return ret;
     }
+#endif
 
     // may return nullptr if it failed to load.
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
-        return loadLibraryFromBinary(vst3Dir);
+        return loadPluginLibrary(vst3Dir);
 #else
-        auto libraryFilePath = getPluginCodeFile(vst3Dir);
-        if (!libraryFilePath.empty()) {
-            return loadLibraryFromBinary(libraryFilePath);
+        for (auto& file : getPluginCodeFileCandidates(vst3Dir)) {
+            if (auto module = loadPluginLibrary(file)) {
+#if !_WIN32
+                dlerror(); // clear errors left by rejected candidates, as initializeModule() checks dlerror().
+#endif
+                return module;
+            }
         }
-        else
-            return nullptr;
+        return nullptr;
 #endif
     }
 
