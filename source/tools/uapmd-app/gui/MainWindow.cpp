@@ -41,6 +41,34 @@ float snapScaleToOption(float scale) {
     }
     return snapped;
 }
+
+// The meter region a beat falls in, and how many bars precede that region.
+std::pair<uapmd::TempoMap::EffectiveSignature, long long> signatureAt(const uapmd::TempoMap& tempoMap, double beat) {
+    const auto& signatures = tempoMap.effectiveSignatures();
+    if (signatures.empty())
+        return {uapmd::TempoMap::EffectiveSignature{}, 0};
+    long long barsBefore = 0;
+    size_t region = 0;
+    for (size_t i = 1; i < signatures.size() && signatures[i].startBeat <= beat; ++i) {
+        const double length = uapmd::TempoMap::barLengthBeats(signatures[i - 1]);
+        if (length > 0.0)
+            barsBefore += std::llround((signatures[i].startBeat - signatures[i - 1].startBeat) / length);
+        region = i;
+    }
+    return {signatures[region], barsBefore};
+}
+
+// bar:beat, both counted from 1, with the beat in the meter's own note value.
+std::string barBeatLabel(const uapmd::TempoMap& tempoMap, double seconds) {
+    const double beat = tempoMap.secondsToBeats(seconds);
+    const auto [signature, barsBefore] = signatureAt(tempoMap, beat);
+    const double barLength = uapmd::TempoMap::barLengthBeats(signature);
+    const double into = beat - signature.startBeat;
+    const auto bar = barLength > 0.0 ? static_cast<long long>(std::floor(into / barLength)) : 0LL;
+    const double beatInBar = into - static_cast<double>(bar) * barLength;
+    const double signatureBeat = beatInBar / (4.0 / std::max<int>(signature.denominator, 1));
+    return std::format("{}:{:.1f}", barsBefore + bar + 1, signatureBeat + 1.0);
+}
 } // namespace
 
 #if UAPMD_HAS_AUGENE2
@@ -777,6 +805,8 @@ void MainWindow::render(void* window) {
             ImGui::Text("Out");
             ImGui::SameLine();
             outputSpectrumAnalyzer_.render("##OutputSpectrum");
+            ImGui::SameLine();
+            renderTimeStatus();
         }
         ImGui::EndChild();
 
@@ -843,6 +873,29 @@ void MainWindow::render(void* window) {
 #endif
 
     uiScaleDirty_ = false;
+}
+
+void MainWindow::renderTimeStatus() {
+    auto& appModel = uapmd_app::AppModel::instance();
+    const int32_t sampleRate = appModel.sampleRate();
+    const auto& state = appModel.timeline();
+    const double playheadSeconds = sampleRate > 0 ? std::max(0.0, state.playheadPosition.toSeconds(sampleRate)) : 0.0;
+    const auto bounds = appModel.timelineContentBounds();
+    const double endSeconds = bounds.hasContent ? bounds.endSeconds : 0.0;
+
+    std::string status;
+    if (timelineEditor_.sequenceEditor().axis().isBeats()) {
+        const auto& tempoMap = timelineEditor_.tempoMap();
+        const auto [signature, barsBefore] = signatureAt(tempoMap, tempoMap.secondsToBeats(playheadSeconds));
+        const auto tempo = tempoMap.hasTempoData() ? std::string{"tempo map"} : std::format("{:.1f} BPM", state.tempo);
+        status = std::format("playhead {} \xC2\xB7 end {} \xC2\xB7 {} \xC2\xB7 {}/{}",
+            barBeatLabel(tempoMap, playheadSeconds), barBeatLabel(tempoMap, endSeconds),
+            tempo, signature.numerator, signature.denominator);
+    } else
+        status = std::format("playhead {:.2f}s \xC2\xB7 end {:.1f}s", playheadSeconds, endSeconds);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(status.c_str());
 }
 
 bool MainWindow::requestClose() {

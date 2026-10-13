@@ -225,6 +225,7 @@ class MainWindow {
         void renderCommandMenuItems(const uapmd_addin::CommandRegistry& registry);
 
         void renderDeviceSettingsWindow();
+        void renderTimeStatus();
         void applyUiScale(float scale);
         void requestWindowResize();
         void captureFontScales();
