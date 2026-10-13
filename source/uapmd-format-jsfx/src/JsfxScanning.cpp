@@ -282,6 +282,10 @@ namespace uapmd_jsfx {
         return entries;
     }
 
+    void JsfxScanning::filterListing(std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries) {
+        filterJsfxDuplicates(entries, duplicate_listing_);
+    }
+
     void JsfxScanning::startSlowPluginScan(uapmd_plugin_hosting::AudioPluginFoundCallback pluginFound,
                                            uapmd_plugin_hosting::AudioPluginScanCompletedCallback scanCompleted) {
         // Nothing about JSFX is slow to scan; the fast pass already found everything.

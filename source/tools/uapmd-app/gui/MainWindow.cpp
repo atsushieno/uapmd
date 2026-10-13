@@ -1716,10 +1716,6 @@ void MainWindow::refreshPluginList() {
     }
 
     auto rawEntries = host->pluginCatalogEntries();
-#if UAPMD_HAS_JSFX
-    if (auto* jsfx = uapmd_app::AppModel::instance().jsfxPluginFormat())
-        jsfx->filterPluginList(rawEntries);
-#endif
     plugins.reserve(rawEntries.size());
     for (auto& plugin : rawEntries) {
         plugins.push_back({

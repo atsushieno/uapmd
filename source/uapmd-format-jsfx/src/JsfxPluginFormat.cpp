@@ -336,10 +336,10 @@ namespace uapmd_jsfx {
 
     struct JsfxPluginFormat::Impl {
         JsfxScanning scanning{};
-        JsfxDuplicateListing duplicate_listing{loadDuplicateListing()};
     };
 
     JsfxPluginFormat::JsfxPluginFormat() : impl_(std::make_unique<Impl>()) {
+        impl_->scanning.duplicateListing(loadDuplicateListing());
     }
 
     JsfxPluginFormat::~JsfxPluginFormat() = default;
@@ -418,23 +418,23 @@ namespace uapmd_jsfx {
     }
 
     JsfxDuplicateListing JsfxPluginFormat::duplicateListing() const {
-        return impl_->duplicate_listing;
+        return impl_->scanning.duplicateListing();
     }
 
     void JsfxPluginFormat::duplicateListing(JsfxDuplicateListing value) {
-        if (impl_->duplicate_listing == value)
+        if (impl_->scanning.duplicateListing() == value)
             return;
-        impl_->duplicate_listing = value;
+        impl_->scanning.duplicateListing(value);
         saveDuplicateListing(value);
     }
 
-    void JsfxPluginFormat::filterPluginList(
-            std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries) const {
-        if (impl_->duplicate_listing == JsfxDuplicateListing::ShowAll)
+    void filterJsfxDuplicates(std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries,
+                              JsfxDuplicateListing policy) {
+        if (policy == JsfxDuplicateListing::ShowAll)
             return;
 
         std::vector<bool> hidden(entries.size(), false);
-        if (impl_->duplicate_listing == JsfxDuplicateListing::PreferLatestVersion) {
+        if (policy == JsfxDuplicateListing::PreferLatestVersion) {
             struct Representative {
                 size_t index{};
                 SemanticVersion version{};

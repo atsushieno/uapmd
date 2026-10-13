@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
+#include "uapmd-format-jsfx/uapmd-format-jsfx.hpp"
 
 namespace uapmd_jsfx {
 
@@ -28,11 +29,15 @@ namespace uapmd_jsfx {
         // where this installation may write. On Android, iOS and the web that happens
         // after this object exists, and there it is the only search path there is.
         mutable std::vector<std::filesystem::path> default_search_paths_{};
+        JsfxDuplicateListing duplicate_listing_{JsfxDuplicateListing::PreferLatestVersion};
 
         void refreshDefaultSearchPaths() const;
 
     public:
         JsfxScanning();
+
+        JsfxDuplicateListing duplicateListing() const { return duplicate_listing_; }
+        void duplicateListing(JsfxDuplicateListing value) { duplicate_listing_ = value; }
 
         bool scanningMayBeSlow() override { return false; }
         ScanningStrategy scanRequiresLoadLibrary() override { return ScanningStrategy::Never; }
@@ -43,6 +48,8 @@ namespace uapmd_jsfx {
         ScanningStrategy scanRequiresInstantiation() override { return ScanningStrategy::Never; }
 
         std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> getAllFastScannablePlugins() override;
+
+        void filterListing(std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries) override;
 
         void startSlowPluginScan(uapmd_plugin_hosting::AudioPluginFoundCallback pluginFound,
                                  uapmd_plugin_hosting::AudioPluginScanCompletedCallback scanCompleted) override;
@@ -79,5 +86,9 @@ namespace uapmd_jsfx {
     // names itself or has code in it.
     std::optional<uapmd_plugin_hosting::AudioPluginCatalogEntry> describeJsfxFile(
             const std::filesystem::path& path, const std::string& pluginId);
+
+    // Removes the JSFX entries that `policy` treats as duplicates of another entry.
+    void filterJsfxDuplicates(std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries,
+                              JsfxDuplicateListing policy);
 
 }

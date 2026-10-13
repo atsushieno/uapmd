@@ -9,6 +9,7 @@ namespace uapmd_plugin_hosting {
     class AudioPluginHostingAPI {
     public:
         virtual ~AudioPluginHostingAPI() = default;
+        // The listed plugins: the scanned catalog after each format's AudioPluginScanning::filterListing().
         virtual std::vector<AudioPluginCatalogEntry> pluginCatalogEntries() = 0;
         virtual void savePluginCatalogToFile(std::filesystem::path path) = 0;
         virtual void performPluginScanning(bool rescan) = 0;

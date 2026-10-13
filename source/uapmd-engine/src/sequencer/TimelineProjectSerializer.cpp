@@ -710,17 +710,6 @@ namespace uapmd::timeline_detail {
             }
             return catalogEntries;
         };
-        auto catalogHasPlugin = [&](const std::string& format, const std::string& pluginId) -> bool {
-            if (!pluginHost)
-                return true; // Cannot verify without host; assume valid
-            if (pluginId.empty())
-                return false;
-            auto& entries = ensureCatalogLoaded();
-            return std::any_of(entries.begin(), entries.end(),
-                [&](uapmd_plugin_hosting::AudioPluginCatalogEntry& entry) {
-                    return entry.format() == format && entry.pluginId() == pluginId;
-                });
-        };
         auto catalogFindByName = [&](const std::string& format, const std::string& displayName) -> std::string {
             if (!pluginHost || displayName.empty())
                 return {};
@@ -751,20 +740,12 @@ namespace uapmd::timeline_detail {
             const std::string pluginName = plugin.display_name;
             const int32_t groupIndex = plugin.group_index;
 
-            if (pluginId.empty()) {
-                auto fallbackId = catalogFindByName(format, pluginName);
-                if (!fallbackId.empty()) {
-                    std::cerr << "Info: Plugin \"" << pluginName
-                              << "\" missing ID; resolved using catalog entry ID " << fallbackId << "." << std::endl;
-                    pluginId = fallbackId;
-                }
-            } else if (!catalogHasPlugin(format, pluginId)) {
-                auto fallbackId = catalogFindByName(format, pluginName);
-                if (!fallbackId.empty()) {
-                    std::cerr << "Info: Plugin \"" << (pluginName.empty() ? pluginId : pluginName)
-                              << "\" not found by ID; substituting catalog entry ID " << fallbackId << "." << std::endl;
-                    pluginId = fallbackId;
-                }
+            // The listing may omit plugins that still instantiate, so the saved ID is tried before any name match.
+            std::string fallbackId = catalogFindByName(format, pluginName);
+            if (pluginId.empty() && !fallbackId.empty()) {
+                std::cerr << "Info: Plugin \"" << pluginName
+                          << "\" missing ID; resolved using catalog entry ID " << fallbackId << "." << std::endl;
+                pluginId = fallbackId;
             }
 
             if (pluginId.empty()) {
@@ -781,20 +762,39 @@ namespace uapmd::timeline_detail {
 
             run.pluginSteps->push_back(
                 [this, trackIndex, format = std::move(format), pluginId = std::move(pluginId),
-                 resolvedState, groupIndex, pluginLabel, nodeId = std::move(nodeId)](
+                 fallbackId = std::move(fallbackId), resolvedState, groupIndex, pluginLabel,
+                 nodeId = std::move(nodeId)](
                     std::function<void()> done) mutable {
+                    auto restore = [this, resolvedState, groupIndex, pluginLabel, format,
+                                    done = std::move(done)](
+                            int32_t instanceId, const std::string& error,
+                            const std::string& loadedPluginId) mutable {
+                        restoreLoadedPluginState(
+                            instanceId, error, resolvedState, groupIndex, pluginLabel,
+                            loadedPluginId, format);
+                        if (done)
+                            done();
+                    };
                     engine_.addPluginToTrack(
                         trackIndex, format, pluginId,
-                        [this, resolvedState, groupIndex, pluginLabel, pluginId, format,
-                         done = std::move(done)](
+                        [this, trackIndex, format, pluginId, fallbackId, pluginLabel, nodeId,
+                         restore = std::move(restore)](
                             int32_t instanceId, int32_t, std::string error) mutable {
-                            restoreLoadedPluginState(
-                                instanceId, error, resolvedState, groupIndex, pluginLabel,
-                                pluginId, format);
-                            if (done)
-                                done();
+                            if (instanceId < 0 && !fallbackId.empty() && fallbackId != pluginId) {
+                                std::cerr << "Info: Plugin \"" << pluginLabel
+                                          << "\" not found by ID; substituting catalog entry ID " << fallbackId << "." << std::endl;
+                                engine_.addPluginToTrack(
+                                    trackIndex, format, fallbackId,
+                                    [fallbackId, restore = std::move(restore)](
+                                        int32_t fallbackInstanceId, int32_t, std::string fallbackError) mutable {
+                                        restore(fallbackInstanceId, fallbackError, fallbackId);
+                                    },
+                                    nodeId);
+                                return;
+                            }
+                            restore(instanceId, error, pluginId);
                         },
-                        std::move(nodeId));
+                        nodeId);
                 });
         }
     }

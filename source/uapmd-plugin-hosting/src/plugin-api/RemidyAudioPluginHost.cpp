@@ -58,6 +58,9 @@ std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry> uapmd_plugin_hosting:
     std::vector<AudioPluginCatalogEntry> ret{};
     for (const auto e : scanning->catalog().getPlugins())
         ret.emplace_back(*e);
+    for (auto* format : scanning->formats())
+        if (auto* formatScanning = format ? format->scanning() : nullptr)
+            formatScanning->filterListing(ret);
     return ret;
 }
 

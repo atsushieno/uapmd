@@ -169,11 +169,6 @@ namespace uapmd_jsfx {
         // an exact path that the list has hidden as a duplicate.
         JsfxDuplicateListing duplicateListing() const;
         void duplicateListing(JsfxDuplicateListing value);
-
-        // Applies duplicateListing() to a copy of the complete catalog before it is handed
-        // to a generic plugin list. Entries belonging to other formats are left alone.
-        void filterPluginList(
-                std::vector<uapmd_plugin_hosting::AudioPluginCatalogEntry>& entries) const;
     };
 
 }

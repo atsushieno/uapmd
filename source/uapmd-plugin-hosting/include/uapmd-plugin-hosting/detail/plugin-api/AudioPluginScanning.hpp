@@ -54,6 +54,9 @@ namespace uapmd_plugin_hosting {
         // through `pluginFound` and finishes by calling `scanCompleted` exactly once.
         virtual void startSlowPluginScan(AudioPluginFoundCallback pluginFound,
                                          AudioPluginScanCompletedCallback scanCompleted) = 0;
+
+        // Removes this format's entries that should not be listed; unlisted entries still instantiate.
+        virtual void filterListing(std::vector<AudioPluginCatalogEntry>& entries) { (void) entries; }
     };
 
     // Scanning for formats whose plugins are bundles identified by a file path or a URL
