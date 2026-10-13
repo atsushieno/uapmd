@@ -72,6 +72,10 @@ The leftmost button reports and toggles the audio engine. It is **green when on*
 off**. Turning it off releases the audio device and disables the transport buttons; turning it
 back on re-activates the device and the plugins on it.
 
+If parallel processing fails -- audio workers miss their deadline, or a plugin fails on a worker
+-- the button reads `Audio Engine: Restart`. Its tooltip says what to change in
+[Settings](#settings) (fewer workers, a larger buffer, or `Serial`); click it to restart.
+
 ### System
 
 ![The System menu](../images/uapmd-app-guide-command-menu.png)
@@ -86,7 +90,10 @@ back on re-activates the device and the plugins on it.
 - **Device Settings**, **UAPMD Addins**, **Scripting**, and **MCP Settings** -- toggles
   for the four floating panels described later in this document. A check mark shows which of
   them are open.
-- **JSFX Settings** and **application commands contributed by addins**, below the separator.
+- **Application commands contributed by addins**, below the separator: **JSFX Settings**
+  ([JSFX effects](#jsfx-effects)), **Virtual MIDI Devices** ([virtual MIDI devices](#virtual-midi-devices)),
+  and **Augene2 Integration** ([MML import](#mml-import-augene2)), depending on the build and
+  the enabled addins.
 
 ### Project
 
@@ -270,7 +277,9 @@ The desktop has no press-and-hold menu, since a held press is how a drag starts 
 - **Show Dump List** -- the [MIDI event list editor](#the-midi-event-list).
 - **Edit Audio Events** -- the audio marker and warp editor. Enabled for audio clips only.
 - **Open Piano Roll** -- the [piano roll editor](#the-piano-roll).
-- **Cut**, **Copy**, and **Delete** apply to all selected clips. **Disable Clip** applies to the clicked clip.
+- **Open Step Sequencer** -- the [step sequencer](#the-step-sequencer). Enabled for MIDI clips only.
+- **Cut**, **Copy**, and **Delete** apply to all selected clips. **Disable Clip** / **Enable Clip**
+  applies to the clicked clip; a disabled clip stays on the timeline but is not played.
 - **Paste here** inserts copied clips relative to the clicked track, preserving their track offsets.
   For multi-track copies, its submenu previews the source-to-destination track mapping, destination
   plugins, and clip counts. Choose **Paste into these tracks** to apply it.
@@ -331,6 +340,25 @@ Selecting a note fills the lower pane with that note's per-note events, where yo
 event before the selected one, edit its type and value, or delete it. With no note selected the
 pane lists the clip-level automation events instead.
 
+### The step sequencer
+
+![The step sequencer](../images/uapmd-app-guide-step-sequencer.png)
+
+**Open Step Sequencer** edits a MIDI clip as a grid of steps: one row per note, one button per
+step. The toolbar sets the **Note set** (`GM Drums` or `All Notes`), the pattern **Steps**
+(1-128), its loop **Repetitions** (1-64), the step **Division** (`1/1` to `1/32`), and the
+**Default Velocity** and **Default Gate** given to newly activated steps. The header reports
+the pattern length and the expanded length in ticks.
+
+Clicking a step toggles it. An active step opens an inline editor for its velocity and a MIDI 2.0
+note attribute type and value; double-click a slider to type a value. Edits apply to the clip
+immediately, and `Reload` re-reads the clip. The **Velocity / automation** pane below the grid
+shows the velocity of each active note as a bar.
+
+The step sequencer records its pattern in the clip as Flex Data metadata. Opening a clip that was
+not made by the step sequencer first asks for confirmation, since editing it may discard notes or
+other data the step grid cannot represent; opening alone changes nothing.
+
 ### The MIDI event list
 
 ![The MIDI event list editor](../images/uapmd-app-guide-midi-event-list.png)
@@ -378,6 +406,25 @@ offers `Clear blocklist`, `Show scan report`, `Copy as Markdown`, and a table pr
 instead targets that track, and from the master track's entry it targets the master track. When
 a new track is created you can give its virtual UMP device a name and pick the MIDI API to
 expose it on.
+
+### JSFX effects
+
+Where the build includes JSFX support, REAPER JSFX effects appear in the plugin list as the
+`JSFX` format, and open their own graphics in a JSFX editor panel. `System` -> `JSFX Settings`
+manages where they come from:
+
+![JSFX Settings](../images/uapmd-app-guide-jsfx-settings.png)
+
+- **Copy effects in** -- `Copy in files or a .zip...` copies effect files into the app's own
+  content folder, optionally under a name given in `Copy into`.
+- **Where effects are looked for** -- register folders to search, `Re-read registered folders`,
+  and `Also look in this platform's usual locations`. Each listed folder has a `Remove` button.
+
+- **Plugin list** -> **Duplicate scripts** -- `Prefer latest version` collapses copies whose paths
+  differ only by a semantic-version directory, `Hide exact copies only`, or `Show every script`.
+  Hidden copies stay available to projects that use them.
+
+Every change rescans, and the window reports how many JSFX effects are available.
 
 ### The plugin menu on a track
 
@@ -500,6 +547,15 @@ A progress bar sits above **Start Render**, which becomes a stop button while a 
 
 Changing the audio device restarts the engine, which reactivates every loaded plugin.
 
+On desktop, two more controls govern parallel processing:
+
+- **Audio Workers** -- `Serial`, or the number of worker threads used to process independent
+  tracks concurrently. The default is a quarter of the CPU count, up to four. Graph providers or
+  extensions that are not compatible with parallel processing keep their tracks serial.
+- **Stop audio engine on deadline overrun** -- off by default: late blocks are silenced until the
+  workers catch up, then processing resumes. Turn it on to stop the engine instead and require a
+  [restart](#audio-engine). Overruns are always logged.
+
 
 ## Addins
 
@@ -513,8 +569,26 @@ Addins ship built-in (the piano roll, the MIDI event list, ARA support, the Demu
 BS-Roformer stem separators, Basic Pitch), or come from a shared library placed in one of the
 directories named at the top of the window.
 
+ARA support covers ARA-capable plugins on desktop, and AAP plugins that advertise the ARA
+extension on Android.
+
 Disabling an addin removes what it contributes -- turn off both stem separators, for example,
 and `Import Split Audio Tracks` disappears from the `Project` menu.
+
+
+### MML import (Augene2)
+
+Where the build includes Augene2, `System` -> `Augene2 Integration` compiles MML (Music Macro
+Language) sources into clips of the current project.
+
+![Augene2 Integration](../images/uapmd-app-guide-augene2.png)
+ `Import MMLs...` adds compiled inputs and
+`Import included MML...` adds files they include; `Resource folder` optionally names where to
+resolve their resources. Each source is either linked to an external file or kept as a bundled
+copy in the project, with `Relink...` and `Remove`. **Compile** regenerates the clips; on failure
+the previous clips are kept and the diagnostics are listed. `Track mapping` shows which track
+each MML track went to. Automatic synchronization is not available yet, so press Compile after
+editing linked files.
 
 
 ## Automating the app

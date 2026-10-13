@@ -8,6 +8,10 @@ Android does not support platform-level dynamic virtual MIDI 2.0 endpoints; inst
 
 To use an audio plugin as a virtual MIDI 2.0 device, you have to first instantiate it on a track on uapmd-app.
 
+Virtual MIDI 2.0 devices are not created by default. Open `System` -> `Virtual MIDI Devices` and either
+press `Enable` on the plugin instance's row (or `Enable All`), or check `Create virtual MIDI 2.0 devices automatically`
+before instantiating plugins. See [the uapmd-app guide](UAPMD_APP.md#virtual-midi-devices) for details.
+
 Any plugin type works i.e. it is not limited to instruments.
 
 ## Connect your app to the virtual device as a client

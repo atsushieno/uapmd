@@ -4,7 +4,7 @@ uapmd-app is primarily an audio plugin host which is demonstrating various audio
 It runs on desktop (Windows / macOS / Linux), Android, iOS (tested only on simulators / rarely tested), and Web. It features:
 
 - overall audio plugin hosting
-  - and register them as virtual MIDI 2.0 UMP devices.
+  - and optionally register them as virtual MIDI 2.0 UMP devices (opt-in; see [Using virtual MIDI devices](USE_VIRTUAL_MIDI_DEVICES.md)).
 - multi-track sequencing of audio and MIDI 2.0 clips, over simple linear audio plugin graph
   - can import MIDI 1.0 SMF (translated to MIDI2 clips) and audio files into split tracks (source separation)
 - save as a project (of audio and MIDI 2.0 sequences) and load ones
@@ -28,7 +28,7 @@ You find ways to create the individual items, and/or "build your own DAW" on top
 
 ### set up audio plugins you want to use
 
-On desktop, uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP format, so just install whatever you would like to use.
+On desktop, uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP format (and JSFX effects, where the build includes it), so just install whatever you would like to use.
 There may be plugins that do not work with uapmd-app, but it's hard to tell in prior.
 We have some list of working and not-working plugins on [the wiki page](https://github.com/atsushieno/uapmd/wiki/KnownToWork).
 
