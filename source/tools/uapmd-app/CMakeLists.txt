@@ -469,6 +469,8 @@ if(NOT TARGET imgui)
     )
     # Link backend library to ImGui so backends can find headers
     target_link_libraries(imgui PUBLIC ${BACKEND_LIBRARIES})
+    # GLES/WebGL backends lack VtxOffset, so 16-bit indices silently drop geometry past 64K vertices per window.
+    target_compile_definitions(imgui PUBLIC "ImDrawIdx=unsigned int")
 
     # Platform-specific rendering libraries
     if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
