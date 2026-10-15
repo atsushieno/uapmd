@@ -34,6 +34,39 @@ function withIsolationHeaders(response) {
     });
 }
 
+const pendingAppScripts = new Map();
+
+async function fetchAppScript(request) {
+    const key = JSON.stringify([
+        request.url, request.mode, request.credentials, request.redirect,
+        request.integrity, request.referrer, request.referrerPolicy,
+        Array.from(request.headers),
+    ]);
+    let pending = pendingAppScripts.get(key);
+    if (!pending) {
+        pending = (async () => {
+            const response = await fetch(request);
+            if (!response.ok || !response.body
+                    || new URL(response.url).origin !== self.location.origin)
+                return withIsolationHeaders(response);
+
+            // fetch() resolves at headers, before the HTTP cache reader finishes.
+            // Keep identical pthread bundle requests together until the whole body
+            // has been read: overlapping revalidations reproduce a truncated read
+            // in Firefox. Each worker then gets its own memory-backed response.
+            const isolated = withIsolationHeaders(response);
+            const body = await isolated.arrayBuffer();
+            return new Response(body, {
+                status: isolated.status,
+                statusText: isolated.statusText,
+                headers: isolated.headers,
+            });
+        })().finally(() => pendingAppScripts.delete(key));
+        pendingAppScripts.set(key, pending);
+    }
+    return (await pending).clone();
+}
+
 self.addEventListener('fetch', (event) => {
     const requestUrl = new URL(event.request.url);
 
@@ -46,12 +79,19 @@ self.addEventListener('fetch', (event) => {
 
     const url = event.request.url;
 
-    // Force network fetch (bypass HTTP cache) for WASM and JS bundles so that a
-    // hard reload always picks up the latest build rather than a stale SW-cached copy.
+    // Revalidate WASM and JS bundles so reloads pick up the latest build.
     const noCache = /\.(wasm|m?js)(\?.*)?$/.test(url);
     const fetchRequest = noCache
         ? new Request(event.request, { cache: 'no-cache' })
         : event.request;
+
+    // Emscripten loads this bundle again for every pthread in the startup pool.
+    if (event.request.method === 'GET'
+            && requestUrl.origin === self.location.origin
+            && requestUrl.pathname === new URL('uapmd-app.js', self.registration.scope).pathname) {
+        event.respondWith(fetchAppScript(fetchRequest));
+        return;
+    }
 
     event.respondWith(
         fetch(fetchRequest).then((response) => {
