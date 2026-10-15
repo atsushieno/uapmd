@@ -1745,7 +1745,13 @@ namespace uapmd {
         }
 
         // Apply soft clipping to prevent harsh distortion
-        if (!prerollActive && process.audioOutBusCount() > 0) {
+#ifdef __EMSCRIPTEN__
+        // Realtime output is soft-clipped by the AudioWorklet after its WebCLAP replacements instead.
+        const bool applySoftClip = offline;
+#else
+        const bool applySoftClip = true;
+#endif
+        if (applySoftClip && !prerollActive && process.audioOutBusCount() > 0) {
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
                 float* buffer = process.getFloatOutBuffer(0, ch);
                 for (uint32_t frame = 0; frame < process.frameCount(); frame++) {

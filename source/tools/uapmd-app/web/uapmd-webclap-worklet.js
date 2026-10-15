@@ -15,6 +15,7 @@
 //   ③ Drain WebCLAP input events produced during native graph rendering
 //   ④ _wclapPluginProcess for each active slot over the track's pre-volume input → localOut in host WASM
 //   ⑤ Replace that track's admitted contribution in master_output with localOut at the track volume
+//   ⑥ Run the master WebCLAP graph over master_output, then soft clip it (tanh, as the native engine does offline)
 // Then always: copy master_output[_accumCount] slice → outputs[0].
 
 import { startHost, getWclap } from './wclap.mjs';
@@ -685,6 +686,10 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 for (const [slot, info] of this._slots.entries())
                     this._drainUiMessages(slot, info);
             }
+
+            // ④ Soft clip the final mix; the engine leaves this to the worklet on the web.
+            for (let i = this._masterOutIdx, end = i + kChannels * this._engineQuantum; i < end; ++i)
+                f32[i] = Math.tanh(f32[i]);
         }
 
         // Copy master_output slice _accumCount → outputs[0].
