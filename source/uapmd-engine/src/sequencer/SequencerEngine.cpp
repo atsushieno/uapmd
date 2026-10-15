@@ -1622,6 +1622,17 @@ namespace uapmd {
         const auto mixStart = captureTiming ? TimingClock::now() : TimingClock::time_point{};
         publishTiming(AudioProcessingStage::Tracks, tracksStart, mixStart);
 
+        // Solo is additive at the engine level: any number of tracks may be
+        // marked solo, and only soloed tracks are admitted when at least one is
+        // selected. Mute always wins. Gate after graph processing so plugin
+        // state, tails, meters, and timeline state remain continuous.
+        bool anySolo = false;
+        for (const auto& track : tracks_)
+            if (track && track->solo()) {
+                anySolo = true;
+                break;
+            }
+
 #ifdef __EMSCRIPTEN__
         publishWebAudioTrackCount(static_cast<uint32_t>(processTrackCount));
 #endif
@@ -1633,8 +1644,10 @@ namespace uapmd {
                 continue;
 #ifdef __EMSCRIPTEN__
             // Publish the latency-aligned signal. The AudioWorklet replaces this
-            // exact dry contribution in the native master mix with WebCLAP DSP.
-            publishWebAudioTrackOutput(static_cast<uint32_t>(i), *ctx);
+            // exact dry contribution in the native master mix with WebCLAP DSP,
+            // then applies the track volume and the mute/solo gate itself.
+            const bool audible = !track->bypassed() && !track->muted() && !(anySolo && !track->solo());
+            publishWebAudioTrackOutput(static_cast<uint32_t>(i), *ctx, track->trackGain(), audible);
 #endif
         }
 
@@ -1663,17 +1676,6 @@ namespace uapmd {
             clearAudioInputBuses(*masterCtx);
             masterCtx->clearAudioOutputs();
         }
-
-        // Solo is additive at the engine level: any number of tracks may be
-        // marked solo, and only soloed tracks are admitted when at least one is
-        // selected. Mute always wins. Gate after graph processing so plugin
-        // state, tails, meters, and timeline state remain continuous.
-        bool anySolo = false;
-        for (const auto& track : tracks_)
-            if (track && track->solo()) {
-                anySolo = true;
-                break;
-            }
 
         // Stage compensated track output buses into a dedicated mixer context so
         // downstream processing can still see per-bus structure before the final

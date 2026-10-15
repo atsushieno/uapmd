@@ -51,8 +51,12 @@ namespace uapmd {
         float audio_input [kWebAudioChannels * kWebAudioQuantum]{};
         // engine → device (post-native mix, pre-master-WebCLAP)
         float master_output[kWebAudioBufferSize]{};
-        // engine → AudioWorklet dry per-track stems for worklet-hosted WebCLAP chains
+        // engine → AudioWorklet per-track stems exactly as admitted to the native mix (silent when muted)
         float track_output[kWebAudioMaxTracks * kWebAudioBufferSize]{};
+        // engine → AudioWorklet per-track signal before the track volume, fed to worklet-hosted WebCLAP chains
+        float track_input[kWebAudioMaxTracks * kWebAudioBufferSize]{};
+        // engine → AudioWorklet per-track volume applied after WebCLAP chains (0 when muted, unsoloed or bypassed)
+        float track_gain[kWebAudioMaxTracks]{};
         // engine → AudioWorklet WebCLAP input events produced during native graph processing
         std::atomic<uint32_t> webclap_event_count{0};
         uint32_t webclap_event_queue[kWebClapEventQueueCapacity * kWebClapEventRecordWords]{};
@@ -61,7 +65,7 @@ namespace uapmd {
     // The WebCLAP DSP lives in the AudioWorklet, so it needs each track's
     // post-native output in addition to the native master mix. These are RT-safe
     // bounded copies made by the sequencer's audio thread.
-    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context);
+    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context, double gain, bool audible);
     void publishWebAudioTrackCount(uint32_t trackCount);
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────

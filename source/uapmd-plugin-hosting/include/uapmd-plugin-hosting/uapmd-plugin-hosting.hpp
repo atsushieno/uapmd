@@ -18,3 +18,4 @@
 #include "detail/plugin-api/PluginFramebufferUIExtension.hpp"
 #include "detail/plugin-api/AudioPluginHostingAPI.hpp"
 #include "detail/plugin-api/AudioPluginNodeFeature.hpp"
+#include "detail/plugin-api/AudioThreadIdleWork.hpp"

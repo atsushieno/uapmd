@@ -13,14 +13,15 @@
 //   ① Signal engine: Atomics.store(host_seq, n+1)
 //   ② Spin-wait engine_seq === n+1
 //   ③ Drain WebCLAP input events produced during native graph rendering
-//   ④ _wclapPluginProcess for each active slot → localOut in host WASM
-//   ⑤ Replace that track's dry contribution in master_output with localOut
+//   ④ _wclapPluginProcess for each active slot over the track's pre-volume input → localOut in host WASM
+//   ⑤ Replace that track's admitted contribution in master_output with localOut at the track volume
 // Then always: copy master_output[_accumCount] slice → outputs[0].
 
 import { startHost, getWclap } from './wclap.mjs';
 
 const kChannels = 2;
 const kQuantum  = 128;
+const kMaxTracks = 16;
 
 class UapmdWebclapProcessor extends AudioWorkletProcessor {
 
@@ -39,6 +40,8 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._engineActiveIdx = (sabByteOffset + offsets.engineActive) >> 2;
         this._masterOutIdx  = (sabByteOffset + offsets.masterOut) >> 2;
         this._trackOutIdx   = (sabByteOffset + offsets.trackOut) >> 2;
+        this._trackInIdx    = (sabByteOffset + offsets.trackIn) >> 2;
+        this._trackGainIdx  = (sabByteOffset + offsets.trackGain) >> 2;
         this._webclapEventCountIdx = (sabByteOffset + offsets.webclapEventCount) >> 2;
         this._webclapEventQueueIdx = (sabByteOffset + offsets.webclapEventQueue) >> 2;
         this._engineQuantum  = engineQuantum;
@@ -48,6 +51,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         // WebCLAP state
         this._slots            = new Map();   // slot → {ptr, active, outLOff, outROff, inLOff, inROff}
         this._trackGraphs      = new Map();   // trackIndex → [slot]
+        this._trackGains       = new Float32Array(kMaxTracks).fill(NaN); // volume reached by the previous render
         this._masterGraph      = [];
         this._wclapHost        = null;
         this._wclapHostPromise = null;
@@ -161,10 +165,6 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 updates: JSON.parse(updates),
             });
         }
-    }
-
-    _trackBaseIndex(trackIndex) {
-        return this._trackOutIdx + trackIndex * kChannels * this._engineQuantum;
     }
 
     _removeSlotFromGraphs(slot) {
@@ -500,9 +500,10 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         },
     };
 
-    _runTrackGraph(slotIds, srcBaseIdx, accumulateIntoMaster) {
+    // Runs the slots in order over the stem at srcBaseIdx and leaves the result in _workL/_workR.
+    _runGraph(slotIds, srcBaseIdx) {
         if (!this._wclapHost || slotIds.length === 0)
-            return;
+            return false;
         const eq = this._engineQuantum;
         const exp = this._wclapHost.hostInstance.exports;
 
@@ -523,20 +524,33 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             this._workR.set(this._hostF32.subarray(srcR, srcR + eq));
         }
 
-        if (accumulateIntoMaster && processed) {
-            const dstL = this._masterOutIdx;
-            const dstR = this._masterOutIdx + eq;
-            for (let i = 0; i < eq; ++i) {
-                // The native engine has already mixed the dry track into the
-                // master buffer. Replace it, rather than adding the processed
-                // signal, so an effect is actually audible and never doubles
-                // the track's dry level.
-                this._f32[dstL + i] += this._workL[i] - this._f32[srcBaseIdx + i];
-                this._f32[dstR + i] += this._workR[i] - this._f32[srcBaseIdx + eq + i];
-            }
-        } else if (!accumulateIntoMaster) {
-            this._f32.set(this._workL, this._masterOutIdx);
-            this._f32.set(this._workR, this._masterOutIdx + eq);
+        return processed;
+    }
+
+    _mixTrackGraph(trackIndex, slotIds) {
+        const eq = this._engineQuantum;
+        const offset = trackIndex * kChannels * eq;
+        if (!this._runGraph(slotIds, this._trackInIdx + offset))
+            return;
+        // The engine publishes 0 for a muted, unsoloed or bypassed track; ramp like the native GainNode does.
+        const target = this._f32[this._trackGainIdx + trackIndex];
+        const previous = this._trackGains[trackIndex];
+        const start = Number.isNaN(previous) ? target : previous;
+        const step = (target - start) / eq;
+        this._trackGains[trackIndex] = target;
+
+        const admittedL = this._trackOutIdx + offset;
+        const admittedR = admittedL + eq;
+        const dstL = this._masterOutIdx;
+        const dstR = this._masterOutIdx + eq;
+        for (let i = 0; i < eq; ++i) {
+            // The native engine has already mixed the track into the master
+            // buffer (or left it out when gated). Replace that contribution,
+            // rather than adding to it, so an effect is actually audible and
+            // never doubles the track's dry level.
+            const gain = start + step * i;
+            this._f32[dstL + i] += this._workL[i] * gain - this._f32[admittedL + i];
+            this._f32[dstR + i] += this._workR[i] * gain - this._f32[admittedR + i];
         }
     }
 
@@ -662,10 +676,12 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                     const slots = this._trackGraphs.get(trackIndex);
                     if (!slots || slots.length === 0)
                         continue;
-                    this._runTrackGraph(slots, this._trackBaseIndex(trackIndex), true);
+                    this._mixTrackGraph(trackIndex, slots);
                 }
-                if (this._masterGraph.length > 0)
-                    this._runTrackGraph(this._masterGraph, this._masterOutIdx, false);
+                if (this._runGraph(this._masterGraph, this._masterOutIdx)) {
+                    this._f32.set(this._workL, this._masterOutIdx);
+                    this._f32.set(this._workR, this._masterOutIdx + this._engineQuantum);
+                }
                 for (const [slot, info] of this._slots.entries())
                     this._drainUiMessages(slot, info);
             }

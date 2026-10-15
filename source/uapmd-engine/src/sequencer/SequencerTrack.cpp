@@ -66,6 +66,8 @@ namespace uapmd {
         std::atomic_bool muted_{false};
         std::atomic_bool solo_{false};
         std::unique_ptr<AudioPluginGraph> graph_;
+        // Looking the node up takes the graph's non-realtime lock, so the audio thread reads it from here.
+        std::atomic<webaudio_compat::GainNode*> track_gain_node_{nullptr};
         std::vector<int32_t> instance_ids{};
         std::unordered_map<int32_t, uint8_t> instance_groups_{}; // instanceId → UMP group
 
@@ -126,6 +128,7 @@ namespace uapmd {
     SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph, size_t eventBufferSizeInBytes) :
         SequencerTrack(eventBufferSizeInBytes),
         graph_(std::move(graph)) {
+        track_gain_node_.store(findTrackGainNode(), std::memory_order_release);
     }
 
     std::unique_ptr<SequencerTrack> SequencerTrack::create(
@@ -152,6 +155,7 @@ namespace uapmd {
             return false;
         if (!AudioPluginGraph::migrate(*graph, *graph_))
             return false;
+        track_gain_node_.store(nullptr, std::memory_order_release);
         graph_ = std::move(graph);
         ensureTrackGainNode();
         // Choosing a graph replaces whatever unloadable one this track was
@@ -168,17 +172,15 @@ namespace uapmd {
     }
 
     webaudio_compat::GainNode* SequencerTrackImpl::ensureTrackGainNode() {
-        if (auto* gain = findTrackGainNode())
-            return gain;
-        if (!graph_)
-            return nullptr;
-        if (graph_->appendBuiltInNodeSimple(createTrackGainNodeDescriptor()) != 0)
-            return nullptr;
-        return findTrackGainNode();
+        auto* gain = findTrackGainNode();
+        if (!gain && graph_ && graph_->appendBuiltInNodeSimple(createTrackGainNodeDescriptor()) == 0)
+            gain = findTrackGainNode();
+        track_gain_node_.store(gain, std::memory_order_release);
+        return gain;
     }
 
     double SequencerTrackImpl::trackGain() const {
-        auto* gain = findTrackGainNode();
+        auto* gain = track_gain_node_.load(std::memory_order_acquire);
         return gain ? gain->gain() : 1.0;
     }
 
