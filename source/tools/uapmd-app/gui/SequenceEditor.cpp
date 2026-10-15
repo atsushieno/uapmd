@@ -258,7 +258,7 @@ bool SequenceEditor::renderClipGrips(const RenderContext& context,
             draw->AddRect(box->visual_min, box->visual_max, ImGui::GetColorU32(ImGuiCol_Text, 0.4f));
             draw->AddRectFilled({x1, box->visual_min.y}, {x2, box->visual_max.y}, ImGui::GetColorU32(ImGuiCol_HeaderActive, 0.3f));
             draw->AddRect({x1, box->visual_min.y}, {x2, box->visual_max.y},
-                          ImGui::GetColorU32(ImGuiCol_PlotLinesHovered), 0.0f, 0, 2.0f * context.uiScale);
+                          ImGui::GetColorU32(ImGuiCol_PlotLinesHovered), 0.0f, 2.0f * context.uiScale);
             const double edge = drag.action == GripAction::ResizeEnd ? proposal.end : proposal.start;
             const float edgeX = drag.action == GripAction::ResizeEnd ? x2 : x1;
             draw->AddText({edgeX + 3.0f * context.uiScale, box->visual_min.y},
@@ -1460,7 +1460,7 @@ void SequenceEditor::drawRangeSelectionOverlay(
 
     ImDrawList* drawList = timelineSelectionDrawList();
     drawList->AddRectFilled(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 40));
-    drawList->AddRect(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 140), 0.0f, 0, 1.5f);
+    drawList->AddRect(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 140), 0.0f, 1.5f);
 }
 
 void SequenceEditor::drawPlayheadIndicator(

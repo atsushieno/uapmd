@@ -78,7 +78,6 @@ private:
             area.Max - ImVec2(borderThickness, borderThickness),
             borderColor,
             nodeData.displayProperties.BorderRadius,
-            0,
             borderThickness
         );
     }
@@ -345,7 +344,7 @@ private:
                                                         0.9f - 0.4f * intensity,
                                                         0.9f));
             drawList->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), fillColor, 3.0f * uiScale_);
-            drawList->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), IM_COL32(20, 20, 20, 200), 3.0f * uiScale_, 0, 1.0f);
+            drawList->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), IM_COL32(20, 20, 20, 200), 3.0f * uiScale_, 1.0f);
         }
 
         drawList->PopClipRect();

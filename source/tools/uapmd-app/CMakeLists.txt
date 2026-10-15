@@ -334,7 +334,7 @@ message(STATUS "Backend configuration: TYPE=${BACKEND_TYPE}, LIBRARIES=${BACKEND
 if(NOT DEFINED imgui_SOURCE_DIR)
     CPMAddPackage(
             NAME imgui
-            GIT_TAG v1.92.3
+            GIT_TAG v1.93.0
             GIT_REPOSITORY https://github.com/ocornut/imgui
             DOWNLOAD_ONLY YES
     )

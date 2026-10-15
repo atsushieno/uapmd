@@ -88,7 +88,7 @@ struct TimelineClipMarquee {
                                        box.visual_max.y - box.border_thickness);
                 draw->AddRectFilled(box.visual_min, borderMax, ImGui::GetColorU32(ImGuiCol_Header, 0.35f), box.border_radius);
                 draw->AddRect(box.visual_min, borderMax, ImGui::GetColorU32(ImGuiCol_HeaderActive),
-                              box.border_radius, 0, box.border_thickness);
+                              box.border_radius, box.border_thickness);
             }
         if (active) {
             const ImVec2 end(std::clamp(mouse.x, areaMin.x, areaMax.x),
