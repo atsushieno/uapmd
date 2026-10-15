@@ -27,7 +27,9 @@ rarely tested), and Web. It features:</p>
 <ul>
 <li>overall audio plugin hosting
 <ul>
-<li>and register them as virtual MIDI 2.0 UMP devices.</li>
+<li>and optionally register them as virtual MIDI 2.0 UMP devices
+(opt-in; see <a href="USE_VIRTUAL_MIDI_DEVICES.html">Using virtual MIDI
+devices</a>).</li>
 </ul></li>
 <li>multi-track sequencing of audio and MIDI 2.0 clips, over simple
 linear audio plugin graph
@@ -58,9 +60,10 @@ like developers' activity).</p>
 <h3 id="set-up-audio-plugins-you-want-to-use">set up audio plugins you
 want to use</h3>
 <p>On desktop, uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP
-format, so just install whatever you would like to use. There may be
-plugins that do not work with uapmd-app, but it's hard to tell in prior.
-We have some list of working and not-working plugins on <a
+format (and JSFX effects, where the build includes it), so just install
+whatever you would like to use. There may be plugins that do not work
+with uapmd-app, but it's hard to tell in prior. We have some list of
+working and not-working plugins on <a
 href="https://github.com/atsushieno/uapmd/wiki/KnownToWork">the wiki
 page</a>.</p>
 <p>You can find some open source audio plugins by using <a

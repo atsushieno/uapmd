@@ -70,11 +70,13 @@ var searchData=
   ['audiosourcenode_67',['AudioSourceNode',['../d1/d5c/classuapmd_1_1AudioSourceNode.html',1,'uapmd']]],
   ['audiosourcerepository_68',['AudioSourceRepository',['../d5/dfa/classuapmd_1_1AudioSourceRepository.html',1,'uapmd']]],
   ['audiostemimport_69',['AudioStemImport',['../de/df5/structuapmd_1_1import_1_1AudioStemImport.html',1,'uapmd::import']]],
-  ['audiothreadscope_70',['AudioThreadScope',['../dd/db2/classremidy_1_1AudioThreadScope.html',1,'remidy']]],
-  ['audiotrackprogress_71',['AudioTrackProgress',['../db/d52/structuapmd_1_1AudioTrackProgress.html',1,'uapmd']]],
-  ['audiowarppoint_72',['AudioWarpPoint',['../de/dba/structuapmd_1_1AudioWarpPoint.html',1,'uapmd']]],
-  ['audioworkerfaultdiagnostic_73',['AudioWorkerFaultDiagnostic',['../d5/d95/structuapmd_1_1AudioWorkerFaultDiagnostic.html',1,'uapmd']]],
-  ['audioworkerprogress_74',['AudioWorkerProgress',['../d4/d0b/structuapmd_1_1AudioWorkerProgress.html',1,'uapmd']]],
-  ['audioworkerprogresssnapshot_75',['AudioWorkerProgressSnapshot',['../d1/de8/structuapmd_1_1AudioWorkerProgressSnapshot.html',1,'uapmd']]],
-  ['audioworkers_76',['AudioWorkers',['../d4/d0b/classuapmd_1_1AudioWorkers.html',1,'uapmd']]]
+  ['audiothreadidlerunner_70',['AudioThreadIdleRunner',['../d0/d00/classuapmd__plugin__hosting_1_1AudioThreadIdleRunner.html',1,'uapmd_plugin_hosting']]],
+  ['audiothreadidlework_71',['AudioThreadIdleWork',['../d3/dfe/classuapmd__plugin__hosting_1_1AudioThreadIdleWork.html',1,'uapmd_plugin_hosting']]],
+  ['audiothreadscope_72',['AudioThreadScope',['../dd/db2/classremidy_1_1AudioThreadScope.html',1,'remidy']]],
+  ['audiotrackprogress_73',['AudioTrackProgress',['../db/d52/structuapmd_1_1AudioTrackProgress.html',1,'uapmd']]],
+  ['audiowarppoint_74',['AudioWarpPoint',['../de/dba/structuapmd_1_1AudioWarpPoint.html',1,'uapmd']]],
+  ['audioworkerfaultdiagnostic_75',['AudioWorkerFaultDiagnostic',['../d5/d95/structuapmd_1_1AudioWorkerFaultDiagnostic.html',1,'uapmd']]],
+  ['audioworkerprogress_76',['AudioWorkerProgress',['../d4/d0b/structuapmd_1_1AudioWorkerProgress.html',1,'uapmd']]],
+  ['audioworkerprogresssnapshot_77',['AudioWorkerProgressSnapshot',['../d1/de8/structuapmd_1_1AudioWorkerProgressSnapshot.html',1,'uapmd']]],
+  ['audioworkers_78',['AudioWorkers',['../d4/d0b/classuapmd_1_1AudioWorkers.html',1,'uapmd']]]
 ];

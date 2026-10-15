@@ -110,6 +110,11 @@ already running.</p>
 Turning it off releases the audio device and disables the transport
 buttons; turning it back on re-activates the device and the plugins on
 it.</p>
+<p>If parallel processing fails -- audio workers miss their deadline, or
+a plugin fails on a worker -- the button reads
+<code>Audio Engine: Restart</code>. Its tooltip says what to change in
+<a href="#settings">Settings</a> (fewer workers, a larger buffer, or
+<code>Serial</code>); click it to restart.</p>
 <h3 id="system">System</h3>
 <p><img src="../images/uapmd-app-guide-command-menu.png"
 alt="The System menu" /></p>
@@ -126,8 +131,13 @@ to undo, <code>Ctrl+Shift+Z</code> / <code>Cmd+Shift+Z</code> or
 <strong>Scripting</strong>, and <strong>MCP Settings</strong> -- toggles
 for the four floating panels described later in this document. A check
 mark shows which of them are open.</li>
-<li><strong>JSFX Settings</strong> and <strong>application commands
-contributed by addins</strong>, below the separator.</li>
+<li><strong>Application commands contributed by addins</strong>, below
+the separator: <strong>JSFX Settings</strong> (<a
+href="#jsfx-effects">JSFX effects</a>), <strong>Virtual MIDI
+Devices</strong> (<a href="#virtual-midi-devices">virtual MIDI
+devices</a>), and <strong>Augene2 Integration</strong> (<a
+href="#mml-import-augene2">MML import</a>), depending on the build and
+the enabled addins.</li>
 </ul>
 <h3 id="project">Project</h3>
 <p><img src="../images/uapmd-app-guide-project-menu.png"
@@ -384,9 +394,13 @@ href="#the-midi-event-list">MIDI event list editor</a>.</li>
 editor. Enabled for audio clips only.</li>
 <li><strong>Open Piano Roll</strong> -- the <a
 href="#the-piano-roll">piano roll editor</a>.</li>
+<li><strong>Open Step Sequencer</strong> -- the <a
+href="#the-step-sequencer">step sequencer</a>. Enabled for MIDI clips
+only.</li>
 <li><strong>Cut</strong>, <strong>Copy</strong>, and
 <strong>Delete</strong> apply to all selected clips. <strong>Disable
-Clip</strong> applies to the clicked clip.</li>
+Clip</strong> / <strong>Enable Clip</strong> applies to the clicked
+clip; a disabled clip stays on the timeline but is not played.</li>
 <li><strong>Paste here</strong> inserts copied clips relative to the
 clicked track, preserving their track offsets. For multi-track copies,
 its submenu previews the source-to-destination track mapping,
@@ -456,6 +470,28 @@ dragging still resizes that note.</p>
 events, where you can insert an event before the selected one, edit its
 type and value, or delete it. With no note selected the pane lists the
 clip-level automation events instead.</p>
+<h3 id="the-step-sequencer">The step sequencer</h3>
+<p><img src="../images/uapmd-app-guide-step-sequencer.png"
+alt="The step sequencer" /></p>
+<p><strong>Open Step Sequencer</strong> edits a MIDI clip as a grid of
+steps: one row per note, one button per step. The toolbar sets the
+<strong>Note set</strong> (<code>GM Drums</code> or
+<code>All Notes</code>), the pattern <strong>Steps</strong> (1-128), its
+loop <strong>Repetitions</strong> (1-64), the step
+<strong>Division</strong> (<code>1/1</code> to <code>1/32</code>), and
+the <strong>Default Velocity</strong> and <strong>Default Gate</strong>
+given to newly activated steps. The header reports the pattern length
+and the expanded length in ticks.</p>
+<p>Clicking a step toggles it. An active step opens an inline editor for
+its velocity and a MIDI 2.0 note attribute type and value; double-click
+a slider to type a value. Edits apply to the clip immediately, and
+<code>Reload</code> re-reads the clip. The <strong>Velocity /
+automation</strong> pane below the grid shows the velocity of each
+active note as a bar.</p>
+<p>The step sequencer records its pattern in the clip as Flex Data
+metadata. Opening a clip that was not made by the step sequencer first
+asks for confirmation, since editing it may discard notes or other data
+the step grid cannot represent; opening alone changes nothing.</p>
 <h3 id="the-midi-event-list">The MIDI event list</h3>
 <p><img src="../images/uapmd-app-guide-midi-event-list.png"
 alt="The MIDI event list editor" /></p>
@@ -504,6 +540,30 @@ opening the selector from a track's <code>Add Plugin</code> entry
 instead targets that track, and from the master track's entry it targets
 the master track. When a new track is created you can give its virtual
 UMP device a name and pick the MIDI API to expose it on.</p>
+<h3 id="jsfx-effects">JSFX effects</h3>
+<p>Where the build includes JSFX support, REAPER JSFX effects appear in
+the plugin list as the <code>JSFX</code> format, and open their own
+graphics in a JSFX editor panel. <code>System</code> -&gt;
+<code>JSFX Settings</code> manages where they come from:</p>
+<p><img src="../images/uapmd-app-guide-jsfx-settings.png"
+alt="JSFX Settings" /></p>
+<ul>
+<li><p><strong>Copy effects in</strong> --
+<code>Copy in files or a .zip...</code> copies effect files into the
+app's own content folder, optionally under a name given in
+<code>Copy into</code>.</p></li>
+<li><p><strong>Where effects are looked for</strong> -- register folders
+to search, <code>Re-read registered folders</code>, and
+<code>Also look in this platform's usual locations</code>. Each listed
+folder has a <code>Remove</code> button.</p></li>
+<li><p><strong>Plugin list</strong> -&gt; <strong>Duplicate
+scripts</strong> -- <code>Prefer latest version</code> collapses copies
+whose paths differ only by a semantic-version directory,
+<code>Hide exact copies only</code>, or <code>Show every script</code>.
+Hidden copies stay available to projects that use them.</p></li>
+</ul>
+<p>Every change rescans, and the window reports how many JSFX effects
+are available.</p>
 <h3 id="the-plugin-menu-on-a-track">The plugin menu on a track</h3>
 <p><img src="../images/uapmd-app-guide-track-plugin-menu.png"
 alt="The track plugin menu" /></p>
@@ -639,6 +699,18 @@ out.</li>
 </ul>
 <p>Changing the audio device restarts the engine, which reactivates
 every loaded plugin.</p>
+<p>On desktop, two more controls govern parallel processing:</p>
+<ul>
+<li><strong>Audio Workers</strong> -- <code>Serial</code>, or the number
+of worker threads used to process independent tracks concurrently. The
+default is a quarter of the CPU count, up to four. Graph providers or
+extensions that are not compatible with parallel processing keep their
+tracks serial.</li>
+<li><strong>Stop audio engine on deadline overrun</strong> -- off by
+default: late blocks are silenced until the workers catch up, then
+processing resumes. Turn it on to stop the engine instead and require a
+<a href="#audio-engine">restart</a>. Overruns are always logged.</li>
+</ul>
 <h2 id="addins">Addins</h2>
 <p><img src="../images/uapmd-app-guide-addin-manager.png"
 alt="The Addin Manager" /></p>
@@ -650,9 +722,26 @@ the first column enables or disables each one.</p>
 support, the Demucs and BS-Roformer stem separators, Basic Pitch), or
 come from a shared library placed in one of the directories named at the
 top of the window.</p>
+<p>ARA support covers ARA-capable plugins on desktop, and AAP plugins
+that advertise the ARA extension on Android.</p>
 <p>Disabling an addin removes what it contributes -- turn off both stem
 separators, for example, and <code>Import Split Audio Tracks</code>
 disappears from the <code>Project</code> menu.</p>
+<h3 id="mml-import-augene2">MML import (Augene2)</h3>
+<p>Where the build includes Augene2, <code>System</code> -&gt;
+<code>Augene2 Integration</code> compiles MML (Music Macro Language)
+sources into clips of the current project.</p>
+<p><img src="../images/uapmd-app-guide-augene2.png"
+alt="Augene2 Integration" /> <code>Import MMLs...</code> adds compiled
+inputs and <code>Import included MML...</code> adds files they include;
+<code>Resource folder</code> optionally names where to resolve their
+resources. Each source is either linked to an external file or kept as a
+bundled copy in the project, with <code>Relink...</code> and
+<code>Remove</code>. <strong>Compile</strong> regenerates the clips; on
+failure the previous clips are kept and the diagnostics are listed.
+<code>Track mapping</code> shows which track each MML track went to.
+Automatic synchronization is not available yet, so press Compile after
+editing linked files.</p>
 <h2 id="automating-the-app">Automating the app</h2>
 <p>Everything the UI does is also reachable programmatically, which is
 how UAPMD is meant to be driven for anything repetitive.</p>
