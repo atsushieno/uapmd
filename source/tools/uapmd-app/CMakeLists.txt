@@ -23,6 +23,8 @@ if(UAPMD_TARGET_WASM)
         "-sAUDIO_WORKLET=1"
         "-pthread"
         "-sPTHREAD_POOL_SIZE=8"
+        # JSFX audio code translated to WebAssembly is added to the function table at runtime.
+        "-sALLOW_TABLE_GROWTH=1"
         # Emscripten gives every thread 64 KB of stack by default, which is far too
         # little for a C++ parser: loading a large JSFX script recurses deeply enough to
         # run off the end, and a stack that overruns in wasm surfaces as "memory access

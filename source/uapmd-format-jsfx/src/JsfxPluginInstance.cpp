@@ -269,9 +269,26 @@ namespace uapmd_jsfx {
         explicit JsfxMidiDispatcher(ysfx_t* fx) : fx_(fx) {}
     };
 
+    // Makes the audio thread run @block and @sample as WebAssembly once it is idle, instead of interpreting them.
+    class JsfxWasmPreparation : public uapmd_plugin_hosting::AudioThreadIdleWork {
+        ysfx_t* fx_;
+
+    public:
+        explicit JsfxWasmPreparation(ysfx_t* fx) : fx_(fx) { uapmd_plugin_hosting::registerAudioThreadIdleWork(this); }
+        ~JsfxWasmPreparation() override { uapmd_plugin_hosting::unregisterAudioThreadIdleWork(this); }
+
+        bool runOnAudioThreadIdle() override {
+            // a section that could not be translated keeps running interpreted, so there is nothing to retry
+            ysfx_wasm_instantiate(fx_);
+            return true;
+        }
+    };
+
     struct JsfxPluginInstance::Impl {
         ysfx_config_u config{};
         ysfx_u fx{};
+        // Declared after `fx` so it is destroyed, and unregistered from the audio thread, before it.
+        std::unique_ptr<JsfxWasmPreparation> wasm{};
         std::unique_ptr<JsfxAudioBuses> buses{};
         std::unique_ptr<JsfxParameterSupport> parameters{};
         std::unique_ptr<JsfxMidiDispatcher> midi{};
@@ -332,6 +349,12 @@ namespace uapmd_jsfx {
         ysfx_set_sample_rate(impl->fx.get(), static_cast<ysfx_real>(options.sampleRate));
         ysfx_set_block_size(impl->fx.get(), options.bufferSizeInSamples);
         ysfx_init(impl->fx.get());
+
+#if defined(__EMSCRIPTEN__)
+        // EEL2 can only interpret on the web; translate the audio sections now and let the audio thread pick them up.
+        ysfx_wasm_generate(impl->fx.get());
+        impl->wasm = std::make_unique<JsfxWasmPreparation>(impl->fx.get());
+#endif
 
         impl->block_size = options.bufferSizeInSamples;
         impl->buses = std::make_unique<JsfxAudioBuses>(ysfx_get_num_inputs(impl->fx.get()),

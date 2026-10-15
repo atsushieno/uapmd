@@ -1,0 +1,26 @@
+desc:EEL2 wasm spike loop
+out_pin:Left
+out_pin:Right
+@init
+i = 0;
+loop(16,
+  mem[i*4+1] = 110 * (i + 1) / srate;
+  i += 1;
+);
+@sample
+i = 0;
+out = 0;
+loop(16,
+  ph = mem[i*4];
+  ph += mem[i*4+1];
+  ph >= 1 ? ph -= 1;
+  mem[i*4] = ph;
+  s = sin(ph * 2 * $pi);
+  lp = mem[i*4+2];
+  lp += (s - lp) * 0.1;
+  mem[i*4+2] = lp;
+  out += lp;
+  i += 1;
+);
+spl0 = out * 0.05;
+spl1 = spl0;

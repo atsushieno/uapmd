@@ -1,0 +1,126 @@
+diff -ruN a/include/ysfx.h b/include/ysfx.h
+--- a/include/ysfx.h	2026-10-15 02:47:23
++++ b/include/ysfx.h	2026-10-15 02:47:37
+@@ -262,6 +262,10 @@
+ YSFX_API bool ysfx_compile(ysfx_t *fx, uint32_t compileopts);
+ // check whether the effect is compiled
+ YSFX_API bool ysfx_is_compiled(ysfx_t *fx);
++// translate @block and @sample to WebAssembly where supported; true if both run translated once instantiated
++YSFX_API bool ysfx_wasm_generate(ysfx_t *fx);
++// make the calling thread run the translated @block and @sample; true if both now run translated on it
++YSFX_API bool ysfx_wasm_instantiate(ysfx_t *fx);
+ 
+ // get the block size
+ YSFX_API uint32_t ysfx_get_block_size(ysfx_t *fx);
+diff -ruN a/sources/ysfx.cpp b/sources/ysfx.cpp
+--- a/sources/ysfx.cpp	2026-10-15 02:47:23
++++ b/sources/ysfx.cpp	2026-10-15 02:47:37
+@@ -586,6 +586,34 @@
+     return fx->code.compiled;
+ }
+ 
++bool ysfx_wasm_generate(ysfx_t *fx)
++{
++#ifdef NSEEL_WASM_BACKEND
++    bool all = true;
++    for (NSEEL_CODEHANDLE code : {fx->code.block.get(), fx->code.sample.get()})
++        if (code && !NSEEL_code_wasm_generate(code))
++            all = false;
++    return all;
++#else
++    (void)fx;
++    return false;
++#endif
++}
++
++bool ysfx_wasm_instantiate(ysfx_t *fx)
++{
++#ifdef NSEEL_WASM_BACKEND
++    bool all = true;
++    for (NSEEL_CODEHANDLE code : {fx->code.block.get(), fx->code.sample.get()})
++        if (code && !NSEEL_code_wasm_instantiate(code))
++            all = false;
++    return all;
++#else
++    (void)fx;
++    return false;
++#endif
++}
++
+ void ysfx_unload_source(ysfx_t *fx)
+ {
+     fx->source = {};
+diff -ruN a/sources/ysfx_api_host_interaction_dummy.hpp b/sources/ysfx_api_host_interaction_dummy.hpp
+--- a/sources/ysfx_api_host_interaction_dummy.hpp	2026-10-15 02:58:36
++++ b/sources/ysfx_api_host_interaction_dummy.hpp	2026-10-15 02:58:36
+@@ -23,12 +23,12 @@
+     return 0;
+ }
+ 
+-static EEL_F NSEEL_CGEN_CALL get_host_numchan(void *)
++static EEL_F NSEEL_CGEN_CALL get_host_numchan(void *, EEL_F *)
+ {
+     return 0;
+ }
+ 
+-static EEL_F NSEEL_CGEN_CALL get_pinmapper_flags(void *)
++static EEL_F NSEEL_CGEN_CALL get_pinmapper_flags(void *, EEL_F *)
+ {
+     return 0;
+ }
+diff -ruN a/thirdparty/WDL/source/WDL/eel2/ns-eel-int.h b/thirdparty/WDL/source/WDL/eel2/ns-eel-int.h
+--- a/thirdparty/WDL/source/WDL/eel2/ns-eel-int.h	2026-10-15 02:47:23
++++ b/thirdparty/WDL/source/WDL/eel2/ns-eel-int.h	2026-10-15 02:47:37
+@@ -158,7 +158,15 @@
+ 
+   int workTable_size; // size (minus padding/extra space) of workTable -- only used if EEL_VALIDATE_WORKTABLE_USE set, but might be handy to have around too
+   int compile_flags;
++#ifdef NSEEL_WASM_BACKEND
++  void *wasm; // translated WebAssembly, owned by nseel-wasm
++#endif
+ } codeHandleType;
++
++#ifdef NSEEL_WASM_BACKEND
++int nseel_wasm_execute(codeHandleType *h); // returns 1 if the code ran as WebAssembly on this thread
++void nseel_wasm_free(codeHandleType *h);
++#endif
+ 
+ typedef struct
+ {
+diff -ruN a/thirdparty/WDL/source/WDL/eel2/ns-eel.h b/thirdparty/WDL/source/WDL/eel2/ns-eel.h
+--- a/thirdparty/WDL/source/WDL/eel2/ns-eel.h	2026-10-15 02:47:23
++++ b/thirdparty/WDL/source/WDL/eel2/ns-eel.h	2026-10-15 02:47:37
+@@ -183,6 +183,10 @@
+ int NSEEL_code_geterror_flag(NSEEL_VMCTX ctx);
+ void NSEEL_code_execute(NSEEL_CODEHANDLE code);
+ void NSEEL_code_free(NSEEL_CODEHANDLE code);
++#ifdef NSEEL_WASM_BACKEND
++int NSEEL_code_wasm_generate(NSEEL_CODEHANDLE code); // translates to WebAssembly on any thread, returns 1 on success
++int NSEEL_code_wasm_instantiate(NSEEL_CODEHANDLE code); // makes the calling thread execute the translation, returns 1 on success
++#endif
+ int *NSEEL_code_getstats(NSEEL_CODEHANDLE code); // 4 ints...source bytes, static code bytes, call code bytes, data bytes
+   
+ 
+diff -ruN a/thirdparty/WDL/source/WDL/eel2/nseel-compiler.c b/thirdparty/WDL/source/WDL/eel2/nseel-compiler.c
+--- a/thirdparty/WDL/source/WDL/eel2/nseel-compiler.c	2026-10-15 02:47:23
++++ b/thirdparty/WDL/source/WDL/eel2/nseel-compiler.c	2026-10-15 02:47:37
+@@ -5196,6 +5196,9 @@
+   INT_PTR codeptr;
+   codeHandleType *h = (codeHandleType *)code;
+   if (!h || !h->code) return;
++#ifdef NSEEL_WASM_BACKEND
++  if (nseel_wasm_execute(h)) return;
++#endif
+ 
+   codeptr = (INT_PTR) h->code;
+ #if 0
+@@ -5257,6 +5260,9 @@
+     nseel_evallib_stats[3]-=h->code_stats[3];
+     nseel_evallib_stats[4]--;
+ 
++#ifdef NSEEL_WASM_BACKEND
++    nseel_wasm_free(h);
++#endif
+     freeBlocks(&h->blocks_code,1);
+     freeBlocks(&h->blocks_data,0);
+   }

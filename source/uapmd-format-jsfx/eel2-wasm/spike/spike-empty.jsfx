@@ -1,0 +1,6 @@
+desc:EEL2 wasm spike empty
+out_pin:Left
+out_pin:Right
+@sample
+spl0 = 0;
+spl1 = 0;

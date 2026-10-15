@@ -39,8 +39,12 @@ set(_UAPMD_YSFX_GFX ON)
 # The patch also adds YSFX_EXTERNAL_FONT, which leaves out LICE's device-context font and
 # routes font creation to the host instead.
 set(_UAPMD_YSFX_PATCH "${UAPMD_EXTERNAL_DIR}/patches/ysfx-uapmd-integration.patch")
-set(_UAPMD_YSFX_PATCH_EPOCH "5")
-file(SHA1 "${_UAPMD_YSFX_PATCH}" _UAPMD_YSFX_PATCH_SHA1)
+# Hooks for the WebAssembly backend in eel2-wasm/, plus a ysfx callback signature fix that wasm needs anyway.
+set(_UAPMD_YSFX_WASM_PATCH "${UAPMD_EXTERNAL_DIR}/patches/ysfx-eel2-wasm-backend.patch")
+set(_UAPMD_YSFX_PATCH_EPOCH "6")
+file(SHA1 "${_UAPMD_YSFX_PATCH}" _UAPMD_YSFX_PATCH_SHA1_A)
+file(SHA1 "${_UAPMD_YSFX_WASM_PATCH}" _UAPMD_YSFX_PATCH_SHA1_B)
+string(SHA1 _UAPMD_YSFX_PATCH_SHA1 "${_UAPMD_YSFX_PATCH_SHA1_A}${_UAPMD_YSFX_PATCH_SHA1_B}")
 
 CPMAddPackage(
         NAME            ysfx
@@ -48,7 +52,7 @@ CPMAddPackage(
         GIT_REPOSITORY  https://github.com/JoepVanlier/ysfx.git
         GIT_SUBMODULES  "thirdparty/dr_libs"
         CUSTOM_CACHE_KEY "b60955593a2917b493b6372cf92a9c9db165d464-v${_UAPMD_YSFX_PATCH_EPOCH}-${_UAPMD_YSFX_PATCH_SHA1}"
-        PATCHES         "${_UAPMD_YSFX_PATCH}"
+        PATCHES         "${_UAPMD_YSFX_PATCH}" "${_UAPMD_YSFX_WASM_PATCH}"
         EXCLUDE_FROM_ALL YES
         OPTIONS
             "YSFX_PLUGIN OFF"
@@ -64,6 +68,12 @@ CPMAddPackage(
             # SWELL; font creation is routed to us instead.
             "YSFX_EXTERNAL_FONT ${UAPMD_JSFX_OWN_FONTS}"
 )
+
+# EEL2 can only interpret on the web, so its audio sections are translated to WebAssembly there.
+if(EMSCRIPTEN)
+    target_sources(eel2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/eel2-wasm/nseel-wasm.c)
+    target_compile_definitions(eel2 PUBLIC NSEEL_WASM_BACKEND)
+endif()
 
 add_library(uapmd-format-jsfx STATIC)
 
