@@ -35,9 +35,10 @@ namespace uapmd_graph {
             if (!instance || !instance->audioBuses())
                 return 0;
             uint32_t count = 0;
-            for (auto* bus : instance->audioBuses()->audioInputBuses())
-                if (bus && bus->enabled())
-                    ++count;
+            const auto& buses = instance->audioBuses()->audioInputBuses();
+            for (size_t i = 0; i < buses.size(); i++)
+                if (buses[i] && buses[i]->enabled())
+                    count = static_cast<uint32_t>(i + 1);
             return count;
         }
 
@@ -45,9 +46,10 @@ namespace uapmd_graph {
             if (!instance || !instance->audioBuses())
                 return 0;
             uint32_t count = 0;
-            for (auto* bus : instance->audioBuses()->audioOutputBuses())
-                if (bus && bus->enabled())
-                    ++count;
+            const auto& buses = instance->audioBuses()->audioOutputBuses();
+            for (size_t i = 0; i < buses.size(); i++)
+                if (buses[i] && buses[i]->enabled())
+                    count = static_cast<uint32_t>(i + 1);
             return count;
         }
 
@@ -64,11 +66,10 @@ namespace uapmd_graph {
             size_t bufferSizeInFrames) {
             std::vector<remidy::AudioBusSpec> specs;
             for (auto* bus : buses) {
-                if (!bus || !bus->enabled())
-                    continue;
+                // Keep disabled bus slots so process-context indices match the plugin's buses.
                 specs.push_back(remidy::AudioBusSpec{
-                    bus->role(),
-                    bus->channelLayout().channels(),
+                    bus ? bus->role() : remidy::AudioBusRole::Aux,
+                    bus && bus->enabled() ? bus->channelLayout().channels() : 0,
                     bufferSizeInFrames
                 });
             }

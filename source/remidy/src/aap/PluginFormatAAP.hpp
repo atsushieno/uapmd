@@ -71,26 +71,27 @@ namespace remidy {
 
         class PluginBusesAAP : public PluginAudioBuses {
             remidy::PluginInstanceAAP* owner;
-            // FIXME: AAP doesn't have decent bus configuration API yet.
-            AudioBusDefinition main_bus_def_in{"main", AudioBusRole::Main, {AudioChannelLayout::mono()}};
-            AudioBusDefinition main_bus_def_out{"main", AudioBusRole::Main, {AudioChannelLayout::stereo()}};
-            AudioBusConfiguration main_bus_in{main_bus_def_in};
-            AudioBusConfiguration main_bus_out{main_bus_def_out};
-            std::vector<AudioBusConfiguration*> main_buses_in{&main_bus_in};
-            std::vector<AudioBusConfiguration*> main_buses_out{&main_bus_out};
+            std::vector<std::unique_ptr<AudioBusConfiguration>> bus_storage{};
+            std::vector<AudioBusConfiguration*> audio_in_buses{};
+            std::vector<AudioBusConfiguration*> audio_out_buses{};
 
         public:
-            PluginBusesAAP(remidy::PluginInstanceAAP* owner) : owner(owner) {}
+            PluginBusesAAP(remidy::PluginInstanceAAP* owner);
+
+            void inspectBuses();
+            void configure(ConfigurationRequest& configuration);
 
             bool hasEventInputs() override;
             bool hasEventOutputs() override;
+            int32_t mainInputBusIndex() override;
+            int32_t mainOutputBusIndex() override;
 
             const std::vector<AudioBusConfiguration *> &audioInputBuses() const override {
-                return main_buses_in;
+                return audio_in_buses;
             }
 
             const std::vector<AudioBusConfiguration *> &audioOutputBuses() const override {
-                return main_buses_out;
+                return audio_out_buses;
             }
         };
 
@@ -410,10 +411,7 @@ namespace remidy {
         std::unique_ptr<Extensibility> extensibility_{};
         aap::PluginInstance* instance{};
 
-        std::vector<int32_t> remidy_to_aap_port_index_map_audio_in{};
-        std::vector<int32_t> remidy_to_aap_port_index_map_audio_out{};
-        int32_t aap_port_midi2_in{-1};
-        int32_t aap_port_midi2_out{-1};
+        bool use_double{false};
 
     public:
         PluginInstanceAAP(PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance);

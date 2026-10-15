@@ -1,6 +1,20 @@
 
 ![latest screenshot](docs/images/sshot-latest.png)
 
+## AAP audio buses
+
+remidy uses aap-core's buses API to expose the plugin's main and auxiliary audio
+buses, including sidechains, multiple outputs, channel layouts, and enabled states.
+Use an aap-core SDK and published native library that include `aap/ext/buses.h`
+and the bus buffer accessors. Legacy plugins use the buses derived by aap-core
+from their ports or category defaults.
+
+Main input/output channel requests are negotiated with plugins that support
+layout changes; fixed-layout plugins keep their actual channel counts. Bus
+layouts are refreshed during `configure()`, while processing is stopped, and
+plugin-initiated changes take effect on the next configuration. Unconnected or
+host-disabled inputs are silenced, and all connected output buses are copied.
+
 ## AAP ARA support
 
 Android ARA support uses the experimental AAP-native document API from

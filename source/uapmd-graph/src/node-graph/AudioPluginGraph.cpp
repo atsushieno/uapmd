@@ -158,12 +158,13 @@ namespace uapmd_graph {
                 continue;
             if (!buses)
                 continue;
-            uint32_t enabledOutputs = 0;
-            for (auto* bus : buses->audioOutputBuses())
-                if (bus && bus->enabled())
-                    ++enabledOutputs;
-            if (enabledOutputs > 0)
-                return enabledOutputs;
+            uint32_t outputBusCount = 0;
+            const auto& outputs = buses->audioOutputBuses();
+            for (size_t i = 0; i < outputs.size(); i++)
+                if (outputs[i] && outputs[i]->enabled())
+                    outputBusCount = static_cast<uint32_t>(i + 1);
+            if (outputBusCount > 0)
+                return outputBusCount;
             break;
         }
         return 1;

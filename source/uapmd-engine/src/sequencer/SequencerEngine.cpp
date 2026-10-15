@@ -952,7 +952,9 @@ namespace uapmd {
                 audio_buffer_size_in_frames
             };
             if (i >= merged.size()) {
-                merged.emplace_back(required);
+                // Preserve slots for disabled buses before this one.
+                merged.resize(i + 1, remidy::AudioBusSpec{remidy::AudioBusRole::Aux, 0, audio_buffer_size_in_frames});
+                merged[i] = required;
             } else {
                 merged[i].channels = std::max(merged[i].channels, required.channels);
                 merged[i].bufferCapacityFrames = std::max(merged[i].bufferCapacityFrames, required.bufferCapacityFrames);

@@ -44,34 +44,30 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     if (!instance)
         return StatusCode::FAILED_TO_INSTANTIATE;
 
+    if (instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_ACTIVE)
+        instance->deactivate();
+    if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_UNPREPARED &&
+        instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_INACTIVE)
+        return StatusCode::FAILED_TO_CONFIGURE;
+
+    if (auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
+        remote && remote->isBusMode()) {
+        // Pick up plugin layout changes only here, while processing is stopped.
+        auto error = remote->refreshBusLayout();
+        if (!error.empty() && instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_ERROR)
+            return StatusCode::FAILED_TO_CONFIGURE;
+    }
+
+    auto* audioBuses = static_cast<PluginBusesAAP*>(this->audioBuses());
+    audioBuses->configure(configuration);
     if (instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_UNPREPARED)
         instance->prepare((int) configuration.bufferSizeInSamples, (int32_t) configuration.sampleRate);
-    else if (instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_ACTIVE)
-        instance->deactivate();
 
     if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_INACTIVE ||
         instance->getAudioPluginBuffer() == nullptr)
         return StatusCode::FAILED_TO_INSTANTIATE;
 
-    // generate port mappings
-    remidy_to_aap_port_index_map_audio_in.clear();
-    remidy_to_aap_port_index_map_audio_out.clear();
-
-    for (auto i = 0, n = instance->getNumPorts(); i < n; i++) {
-        auto port = instance->getPort(i);
-        if (port->getContentType() == AAP_CONTENT_TYPE_AUDIO) {
-            if (port->getPortDirection() == AAP_PORT_DIRECTION_INPUT)
-                remidy_to_aap_port_index_map_audio_in.push_back(i);
-            if (port->getPortDirection() == AAP_PORT_DIRECTION_OUTPUT)
-                remidy_to_aap_port_index_map_audio_out.push_back(i);
-        }
-        if (port->getContentType() == AAP_CONTENT_TYPE_MIDI2) {
-            if (port->getPortDirection() == AAP_PORT_DIRECTION_INPUT)
-                aap_port_midi2_in = i;
-            if (port->getPortDirection() == AAP_PORT_DIRECTION_OUTPUT)
-                aap_port_midi2_out = i;
-        }
-    }
+    use_double = configuration.dataType == AudioContentType::Float64;
 
     return StatusCode::OK;
 }
@@ -95,60 +91,79 @@ remidy::StatusCode remidy::PluginInstanceAAP::stopProcessing() {
 }
 
 remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContext &process) {
-    size_t aapIdx;
     auto instance = aapInstance();
     if (!instance)
         return StatusCode::FAILED_TO_PROCESS;
     auto buffer = instance->getAudioPluginBuffer();
-    if (!buffer)
+    if (!buffer || !buses || process.frameCount() < 0 || process.frameCount() > buffer->num_frames(buffer))
         return StatusCode::FAILED_TO_PROCESS;
 
-    aapIdx = 0;
-    for (auto iBus = 0, nBus = process.audioInBusCount(); iBus < nBus; iBus++) {
-        for (auto iCh = 0, nCh = process.inputChannelCount(iBus); iCh < nCh; iCh++) {
-            if (remidy_to_aap_port_index_map_audio_in.size() <= aapIdx)
-                break;
-            auto aapPortIdx = remidy_to_aap_port_index_map_audio_in[aapIdx++];
-            auto src = process.getFloatInBuffer(iBus, iCh);
-            auto dst = buffer->get_buffer(buffer, aapPortIdx);
-            memcpy(dst, src, sizeof(float) * process.frameCount());
+    const auto frames = process.frameCount();
+    const auto& inputBuses = buses->audioInputBuses();
+    for (int32_t bus = 0, n = buffer->get_bus_count(buffer, AAP_BUS_KIND_AUDIO, AAP_PORT_DIRECTION_INPUT); bus < n; bus++) {
+        auto channels = buffer->get_audio_channels(buffer, AAP_PORT_DIRECTION_INPUT, bus);
+        const bool enabled = static_cast<size_t>(bus) < inputBuses.size() && inputBuses[bus]->enabled();
+        const auto hostChannels = enabled ? process.inputChannelCount(bus) : 0;
+        if (hostChannels > 0 && process.inputBusBufferCapacityInFrames(bus) < static_cast<size_t>(frames))
+            return StatusCode::FAILED_TO_PROCESS;
+        for (int32_t channel = 0, count = buffer->get_audio_channel_count(buffer, AAP_PORT_DIRECTION_INPUT, bus); channel < count; channel++) {
+            auto* dst = channels ? channels[channel] : nullptr;
+            if (!dst)
+                continue;
+            if (channel >= hostChannels)
+                std::fill_n(dst, frames, 0.0f);
+            else if (use_double)
+                std::copy_n(process.getDoubleInBuffer(bus, channel), frames, dst);
+            else
+                std::copy_n(process.getFloatInBuffer(bus, channel), frames, dst);
         }
-        // FIXME: we should iterate non-main buses too once AAP is ready for that.
-        break;
     }
-    if (aap_port_midi2_in >= 0) {
+    if (buffer->get_bus_count(buffer, AAP_BUS_KIND_EVENT, AAP_PORT_DIRECTION_INPUT) > 0) {
         auto& eIn = process.eventIn();
         instance->addEventUmpInput(eIn.getMessages(), eIn.position());
     }
 
     instance->process(process.frameCount(), 0);
 
-    aapIdx = 0;
-    for (auto iBus = 0, nBus = process.audioOutBusCount(); iBus < nBus; iBus++) {
-        for (auto iCh = 0, nCh = process.outputChannelCount(iBus); iCh < nCh; iCh++) {
-            if (remidy_to_aap_port_index_map_audio_out.size() <= aapIdx)
-                break;
-            auto aapPortIdx = remidy_to_aap_port_index_map_audio_out[aapIdx++];
-            auto dst = process.getFloatOutBuffer(iBus, iCh);
-            auto src = buffer->get_buffer(buffer, aapPortIdx);
-            memcpy(dst, src, sizeof(float) * process.frameCount());
+    const auto& outputBuses = buses->audioOutputBuses();
+    for (int32_t bus = 0, n = process.audioOutBusCount(); bus < n; bus++) {
+        if (process.outputChannelCount(bus) > 0 &&
+            process.outputBusBufferCapacityInFrames(bus) < static_cast<size_t>(frames))
+            return StatusCode::FAILED_TO_PROCESS;
+        const bool enabled = static_cast<size_t>(bus) < outputBuses.size() && outputBuses[bus]->enabled();
+        auto channels = buffer->get_audio_channels(buffer, AAP_PORT_DIRECTION_OUTPUT, bus);
+        const auto count = enabled ? buffer->get_audio_channel_count(buffer, AAP_PORT_DIRECTION_OUTPUT, bus) : 0;
+        for (int32_t channel = 0, hostChannels = process.outputChannelCount(bus); channel < hostChannels; channel++) {
+            auto* src = channels && channel < count ? channels[channel] : nullptr;
+            if (use_double) {
+                auto* dst = process.getDoubleOutBuffer(bus, channel);
+                if (src)
+                    std::copy_n(src, frames, dst);
+                else
+                    std::fill_n(dst, frames, 0.0);
+            } else {
+                auto* dst = process.getFloatOutBuffer(bus, channel);
+                if (src)
+                    std::copy_n(src, frames, dst);
+                else
+                    std::fill_n(dst, frames, 0.0f);
+            }
         }
-        // FIXME: we should iterate non-main buses too once AAP is ready for that.
-        break;
     }
-    if (aap_port_midi2_out >= 0) {
+    if (buffer->get_bus_count(buffer, AAP_BUS_KIND_EVENT, AAP_PORT_DIRECTION_OUTPUT) > 0) {
         auto& eOut = process.eventOut();
-        auto src = buffer->get_buffer(buffer, aap_port_midi2_out);
-        auto size = buffer->get_buffer_size(buffer, aap_port_midi2_out);
+        auto src = buffer->get_event_buffer(buffer, AAP_PORT_DIRECTION_OUTPUT, 0);
+        auto size = buffer->get_event_buffer_capacity(buffer, AAP_PORT_DIRECTION_OUTPUT, 0);
         if (src && size > static_cast<int32_t>(sizeof(AAPMidiBufferHeader))) {
             auto* header = reinterpret_cast<AAPMidiBufferHeader*>(src);
             auto* payload = reinterpret_cast<uint8_t*>(header + 1);
-            const auto payloadBytes = std::min<size_t>(header->length, eOut.maxMessagesInBytes());
+            const auto availableBytes = std::min<size_t>(header->length, size - sizeof(AAPMidiBufferHeader));
+            const auto payloadBytes = std::min<size_t>(availableBytes, eOut.maxMessagesInBytes());
             if (payloadBytes > 0) {
                 std::memcpy(eOut.getMessages(), payload, payloadBytes);
                 eOut.position(payloadBytes);
-                if (auto* params = dynamic_cast<PluginInstanceAAP::ParameterSupport*>(parameters()))
-                    params->ingestPluginParameterUpdates(payload, header->length);
+                if (params)
+                    params->ingestPluginParameterUpdates(payload, availableBytes);
             } else {
                 eOut.position(0);
             }
