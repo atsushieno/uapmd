@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <remidy/remidy.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
@@ -8,16 +9,12 @@ namespace uapmd_midi_service {
     // - assignable controllers (NRPNs) to plugin parameters
     // - program/bank change to plugin presets (by index)
     //
-    // It makes use of UmpInputDispatcher in uapmd implementation.
-    //
-    // <del>Any unmapped UMPs are copied into output events.</del>
-    // We so far skip and pass unmodified sources to the plugin later.
     class UapmdUmpInputMapper {
 
     public:
         virtual ~UapmdUmpInputMapper() = default;
 
-        virtual void process(remidy::AudioProcessContext& src);
+        virtual void process(remidy::EventSequence& events);
 
         // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.
         // We use uint16_t to match that.
@@ -32,14 +29,11 @@ namespace uapmd_midi_service {
         virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
 
         // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
-        virtual void loadPreset(uint32_t index) = 0;
+        virtual void requestPresetLoad(uint32_t index) = 0;
 
-        // Transfer a queued request without touching plugin state. The host must
-        // apply it on its control thread with processing excluded.
-        virtual bool tryDequeuePresetRequest(uint32_t& index) = 0;
-        virtual uint32_t droppedPresetRequestCount() const = 0;
-
-        static std::unique_ptr<UapmdUmpInputMapper> create(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
+        static std::unique_ptr<UapmdUmpInputMapper> create(
+            uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin,
+            std::function<void(uint32_t)> presetRequestSink);
     };
 
     class UapmdUmpOutputMapper {

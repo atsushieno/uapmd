@@ -9,7 +9,6 @@
 #include <vector>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include "uapmd-graph/uapmd-graph.hpp"
-#include <uapmd-midi-service/uapmd-midi-service.hpp>
 
 #ifdef __EMSCRIPTEN__
 namespace uapmd_plugin_hosting {
@@ -31,7 +30,8 @@ namespace uapmd_graph {
         remidy::EventListenerId parameter_listener_token_{0};
         remidy::EventListenerId metadata_listener_token_{0};
         std::atomic<bool> stop_flush_requested_{false};
-        std::unique_ptr<uapmd_midi_service::UapmdUmpInputMapper> ump_input_mapper_{};
+        std::function<void(uapmd::EventSequence&)> event_input_processor_;
+        std::function<void(std::span<const uapmd_ump_t>)> event_output_observer_;
         // Active-note bitmask, indexed [group][channel][note / 64]. RT-thread only.
         // Used by prepareStopFlush() to emit genuine note-offs: formats like VST3 have
         // no All Sound Off event, so CC 120 alone cannot silence held voices.
@@ -59,8 +59,6 @@ namespace uapmd_graph {
             queue_(eventBufferSizeInBytes),
             on_delete_(std::move(onDelete)) {
             pending_events_.reserve(eventBufferSizeInBytes / sizeof(umppi::Ump));
-            if (instance_)
-                ump_input_mapper_ = uapmd_midi_service::UapmdUmpInputMapper::create(instance_);
             // Register parameter change listeners directly with the plugin
             if (instance_ && instance_->parameterSupport()) {
                 parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(
@@ -121,12 +119,27 @@ namespace uapmd_graph {
         int32_t processAudio(uapmd::AudioProcessContext& process) override {
             if (!instance_)
                 return 0;
+            if (event_input_processor_)
+                event_input_processor_(process.eventIn());
             // Keep the active-note bitmask in sync with what the plugin actually
             // receives, so a stop flush can emit genuine note-offs later. Doing this
             // here (rather than in each graph implementation) keeps the event-delivery
             // contract graph-agnostic.
             trackInputEvents(process.eventIn());
-            return instance_->processAudio(process);
+            const auto status = instance_->processAudio(process);
+            if (status == 0 && event_output_observer_ && process.eventOut().position() > 0)
+                event_output_observer_({
+                    static_cast<const uapmd_ump_t*>(process.eventOut().getMessages()),
+                    process.eventOut().position() / sizeof(uapmd_ump_t)});
+            return status;
+        }
+
+        void setEventInputProcessor(std::function<void(uapmd::EventSequence&)> processor) override {
+            event_input_processor_ = std::move(processor);
+        }
+
+        void setEventOutputObserver(std::function<void(std::span<const uapmd_ump_t>)> observer) override {
+            event_output_observer_ = std::move(observer);
         }
 
         uint32_t latencyInSamples() const override {
@@ -215,17 +228,6 @@ namespace uapmd_graph {
             umppi::Ump u128;
             while (queue_.try_dequeue(u128))
                 pending_events_.push_back(u128);
-        }
-
-        void processInputMapping(uapmd::AudioProcessContext& process,
-                                 const std::function<void(int32_t, uint32_t)>& presetCallback) {
-            if (auto* mapper = ump_input_mapper_.get()) {
-                mapper->process(process);
-                uint32_t index;
-                while (mapper->tryDequeuePresetRequest(index))
-                    if (presetCallback)
-                        presetCallback(instance_id_, index);
-            }
         }
 
         bool consumeStopFlushRequest() {

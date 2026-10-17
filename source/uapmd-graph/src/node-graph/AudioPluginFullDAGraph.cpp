@@ -1,7 +1,4 @@
-#include "uapmd-graph/detail/node-graph/AudioPluginFullDAGraph.hpp"
-#include "uapmd-graph/detail/node-graph/AudioBusesLayoutExtension.hpp"
-#include "uapmd-graph/detail/node-graph/OutputRoutingExtension.hpp"
-#include "uapmd-graph/detail/node-graph/AudioGraphRegistry.hpp"
+#include "uapmd-graph/uapmd-graph.hpp"
 #include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
 
@@ -373,8 +370,6 @@ namespace uapmd_graph {
         std::unique_ptr<AudioGraphRegistry> registry_;
         size_t event_buffer_size_in_bytes_;
         std::function<uint8_t(int32_t)> group_resolver_;
-        std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
-        std::function<void(int32_t, uint32_t)> preset_request_callback_;
         std::string provider_id_;
         std::vector<TrackOutputRoutingRule> output_routing_rules_{};
 
@@ -399,7 +394,6 @@ namespace uapmd_graph {
         AudioGraphExtension* getExtension(const std::type_info& type) override;
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
         const std::string& providerId() const override { return provider_id_; }
-        void setPresetRequestCallback(std::function<void(int32_t, uint32_t)> callback) override { preset_request_callback_ = std::move(callback); }
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete, std::string nodeId = {}) override;
         uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
@@ -423,7 +417,6 @@ namespace uapmd_graph {
         AudioGraphBusesLayout busesLayout() override;
         void applyBusesLayout(const AudioGraphBusesLayout& layout) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
-        void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
         bool supportsParallelTrackProcessing() const noexcept override { return true; }
         uint32_t outputBusCount() override;
@@ -1051,10 +1044,6 @@ namespace uapmd_graph {
         group_resolver_ = std::move(resolver);
     }
 
-    void AudioPluginFullDAGraphImpl::setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) {
-        event_output_callback_ = std::move(callback);
-    }
-
     int32_t AudioPluginFullDAGraphImpl::processAudio(AudioProcessContext& process) {
         RTGraphState::ScopedAccess<farbot::ThreadType::realtime> access(state_);
         auto& state = *access;
@@ -1081,8 +1070,6 @@ namespace uapmd_graph {
 
                 auto* instance = pluginNode->instance();
                 const bool bypassed = instance && instance->bypassed();
-                if (!bypassed)
-                    pluginNode->processInputMapping(process, preset_request_callback_);
                 if (bypassed)
                     process.copyInputsToOutputs();
                 else {
@@ -1091,15 +1078,6 @@ namespace uapmd_graph {
                         return status;
                 }
 
-                auto& eventOut = process.eventOut();
-                if (eventOut.position() > 0) {
-                    if (event_output_callback_)
-                        event_output_callback_(
-                            instanceId,
-                            static_cast<uapmd_ump_t*>(eventOut.getMessages()),
-                            eventOut.position());
-                    eventOut.position(0);
-                }
                 if (i + 1 < state.nodes.size() || !state.builtin_nodes.empty())
                     process.advanceToNextNode();
             }
@@ -1181,22 +1159,12 @@ namespace uapmd_graph {
             }
 
             if (pluginImpl && pluginNode && instance) {
-                if (!instance->bypassed())
-                    pluginImpl->processInputMapping(runtime.process, preset_request_callback_);
-
                 if (instance->bypassed()) {
                     runtime.process.copyInputsToOutputs();
                 } else {
                     auto status = pluginImpl->processAudio(runtime.process);
                     if (status != 0)
                         return status;
-                }
-
-                if (!state.custom_topology && event_output_callback_ && runtime.process.eventOut().position() > 0) {
-                    event_output_callback_(
-                        pluginNode->instanceId(),
-                        static_cast<uapmd_ump_t*>(runtime.process.eventOut().getMessages()),
-                        runtime.process.eventOut().position());
                 }
             } else {
                 auto status = runtime.node->processAudio(runtime.process);
@@ -1216,27 +1184,6 @@ namespace uapmd_graph {
             accumulateAudioBus(process, false, connection.target.bus_index,
                                sourceRuntimeIt->second->process, false, connection.source.bus_index);
         }
-        if (state.custom_topology && event_output_callback_) {
-            for (const auto& connection : state.output_event_links) {
-                if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
-                    event_output_callback_(-1,
-                                           static_cast<uapmd_ump_t*>(process.eventIn().getMessages()),
-                                           process.eventIn().position());
-                    continue;
-                }
-                auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
-                if (sourceRuntimeIt == state.runtimes.end())
-                    continue;
-                auto& eventOut = sourceRuntimeIt->second->process.eventOut();
-                if (eventOut.position() == 0)
-                    continue;
-                if (auto* sourcePluginNode = dynamic_cast<AudioPluginNode*>(sourceRuntimeIt->second->node.get())) {
-                    event_output_callback_(sourcePluginNode->instanceId(),
-                                           static_cast<uapmd_ump_t*>(eventOut.getMessages()),
-                                           eventOut.position());
-                }
-            }
-        }
 
         // Built-in nodes are outside the plug-in DAG and form the final serial
         // stage, matching the ordering used by AudioPluginGraph.
@@ -1251,6 +1198,21 @@ namespace uapmd_graph {
             }
         }
 
+        process.eventOut().position(0);
+        for (const auto& connection : state.output_event_links) {
+            if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
+                appendEventBytes(process.eventOut(),
+                                 static_cast<const uint8_t*>(process.eventIn().getMessages()),
+                                 process.eventIn().position());
+                continue;
+            }
+            auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
+            if (sourceRuntimeIt == state.runtimes.end())
+                continue;
+            auto& eventOut = sourceRuntimeIt->second->process.eventOut();
+            appendEventBytes(process.eventOut(),
+                             static_cast<const uint8_t*>(eventOut.getMessages()), eventOut.position());
+        }
         return 0;
     }
 

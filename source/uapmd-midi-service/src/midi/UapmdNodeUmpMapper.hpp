@@ -1,25 +1,19 @@
 #pragma once
 #include <memory>
 #include <remidy/remidy.hpp>
-#include "readerwriterqueue.h"
-#include <atomic>
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
 
 using namespace uapmd_plugin_hosting;
 
 namespace uapmd_midi_service {
-    class UapmdNodeUmpInputMapper :
-        public UapmdUmpInputMapper,
-        public remidy::UmpInputDispatcher {
+    class UapmdNodeUmpInputMapper : public UapmdUmpInputMapper {
         uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin;
-        moodycamel::ReaderWriterQueue<uint32_t> preset_load_queue_{64};
-        std::atomic<uint32_t> dropped_preset_requests_{0};
+        std::function<void(uint32_t)> preset_request_sink_;
 
     public:
-        explicit UapmdNodeUmpInputMapper(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin);
-
-        void process(remidy::AudioProcessContext& src) override;
+        UapmdNodeUmpInputMapper(uapmd_plugin_hosting::AudioPluginInstanceAPI* plugin,
+                               std::function<void(uint32_t)> presetRequestSink);
 
         void setParameterValue(uint16_t index, double value) override;
 
@@ -27,13 +21,7 @@ namespace uapmd_midi_service {
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;
 
-        // Captures a request without calling the plugin; newest requests drop on overflow.
-        void loadPreset(uint32_t index) override;
-
-        bool tryDequeuePresetRequest(uint32_t& index) override;
-        uint32_t droppedPresetRequestCount() const override {
-            return dropped_preset_requests_.load(std::memory_order_relaxed);
-        }
+        void requestPresetLoad(uint32_t index) override;
     };
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {

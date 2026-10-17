@@ -2836,12 +2836,18 @@ namespace uapmd {
         track->graph().setGroupResolver([track](int32_t instanceId) {
             return track->processingGroup(instanceId);
         });
-        track->graph().setPresetRequestCallback([track](int32_t instanceId, uint32_t index) {
-            track->capturePresetRequest(instanceId, index);
-        });
-        track->graph().setEventOutputCallback([track](int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes) {
-            track->capturePluginOutput(instanceId, data, dataSizeInBytes);
-        });
+        for (const auto& [instanceId, node] : track->graph().plugins()) {
+            std::shared_ptr<UapmdUmpInputMapper> mapper = UapmdUmpInputMapper::create(
+                node->instance(), [track, instanceId](uint32_t index) {
+                    track->capturePresetRequest(instanceId, index);
+                });
+            node->setEventInputProcessor([mapper = std::move(mapper)](EventSequence& events) {
+                mapper->process(events);
+            });
+            node->setEventOutputObserver([track, instanceId](std::span<const uapmd_ump_t> events) {
+                track->capturePluginOutput(instanceId, events.data(), events.size_bytes());
+            });
+        }
     }
 
     void SequencerEngineImpl::refreshProcessingGroups(SequencerTrack& track) {

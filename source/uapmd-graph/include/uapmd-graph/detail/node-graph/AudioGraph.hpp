@@ -25,7 +25,6 @@ namespace uapmd_graph {
         virtual AudioGraphNode* getNode(const std::string& nodeId) = 0;
 
         virtual void setGroupResolver(std::function<uint8_t(int32_t)> resolver) = 0;
-        virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
         virtual int32_t processAudio(uapmd::AudioProcessContext& process) = 0;
         // A track scheduler may process distinct graphs concurrently, but never

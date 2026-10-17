@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include "AudioGraphNode.hpp"
 
 namespace uapmd_graph {
@@ -10,6 +11,8 @@ namespace uapmd_graph {
 
         virtual int32_t instanceId() const = 0;
         virtual uapmd_plugin_hosting::AudioPluginInstanceAPI* instance() override = 0;
+        virtual void setEventInputProcessor(std::function<void(uapmd::EventSequence&)> processor) = 0;
+        virtual void setEventOutputObserver(std::function<void(std::span<const uapmd_ump_t>)> observer) = 0;
         virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override = 0;
         virtual void sendAllNotesOff() = 0;
         virtual void requestStopFlush() = 0;

@@ -4,8 +4,7 @@
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 
 namespace uapmd_midi_service {
-    void UapmdUmpInputMapper::process(remidy::AudioProcessContext& src) {
-        auto& inEvents = src.eventIn();
+    void UapmdUmpInputMapper::process(remidy::EventSequence& inEvents) {
         auto* bytes = static_cast<uint8_t*>(inEvents.getMessages());
         size_t bytesAvailable = inEvents.position();
         size_t offset = 0;
@@ -61,7 +60,7 @@ namespace uapmd_midi_service {
                             const auto indexInBank = (bankMsb & 0x40 ? bankMsb - 0x40 : 0) * 0x80 + program;
                             presetIndex = bankIndex * 0x80 + indexInBank;
                         }
-                        loadPreset(presetIndex);
+                        requestPresetLoad(presetIndex);
                         consumed = true;
                         break;
                     }
@@ -79,7 +78,8 @@ namespace uapmd_midi_service {
         inEvents.position(writeOffset);
     }
 
-    std::unique_ptr<UapmdUmpInputMapper> UapmdUmpInputMapper::create(AudioPluginInstanceAPI* plugin) {
-        return std::make_unique<UapmdNodeUmpInputMapper>(plugin);
+    std::unique_ptr<UapmdUmpInputMapper> UapmdUmpInputMapper::create(
+        AudioPluginInstanceAPI* plugin, std::function<void(uint32_t)> presetRequestSink) {
+        return std::make_unique<UapmdNodeUmpInputMapper>(plugin, std::move(presetRequestSink));
     }
 }

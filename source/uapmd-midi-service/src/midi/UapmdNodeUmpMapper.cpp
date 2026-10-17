@@ -7,13 +7,11 @@
 #include "UapmdNodeUmpMapper.hpp"
 
 namespace uapmd_midi_service {
-    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin)
+    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(
+        AudioPluginInstanceAPI* plugin, std::function<void(uint32_t)> presetRequestSink)
       : UapmdUmpInputMapper(),
-        plugin(plugin) {
-    }
-
-    void UapmdNodeUmpInputMapper::process(remidy::AudioProcessContext& src) {
-        UapmdUmpInputMapper::process(src);
+        plugin(plugin),
+        preset_request_sink_(std::move(presetRequestSink)) {
     }
 
     // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.
@@ -34,14 +32,9 @@ namespace uapmd_midi_service {
 
     // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
     // Preset application belongs to the host's control thread, never DSP.
-    void UapmdNodeUmpInputMapper::loadPreset(uint32_t index) {
-        static_assert(std::atomic<uint32_t>::is_always_lock_free);
-        if (!preset_load_queue_.try_enqueue(index))
-            dropped_preset_requests_.fetch_add(1, std::memory_order_relaxed);
-    }
-
-    bool UapmdNodeUmpInputMapper::tryDequeuePresetRequest(uint32_t& index) {
-        return preset_load_queue_.try_dequeue(index);
+    void UapmdNodeUmpInputMapper::requestPresetLoad(uint32_t index) {
+        if (preset_request_sink_)
+            preset_request_sink_(index);
     }
 
     UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)
