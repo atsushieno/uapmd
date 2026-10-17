@@ -9,9 +9,7 @@
 
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 #include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
-#include <uapmd-engine/detail/sequencer/LatencyCompensationManager.hpp>
-#include <uapmd-engine/detail/sequencer/AudioProcessingEventHandler.hpp>
-#include <uapmd-engine/detail/sequencer/SequencerProcessingLifecycleListener.hpp>
+#include <uapmd-engine/uapmd-engine.hpp>
 
 using namespace uapmd_plugin_hosting;
 
@@ -54,7 +52,7 @@ namespace uapmd {
         std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_{};
         std::function<void(const std::function<void()>&)> run_mutation_{};
         std::function<AudioPluginInstanceAPI*(int32_t)> resolve_plugin_instance_{};
-        std::function<void()> prepare_for_timing_change_{};
+        std::function<void()> prepare_for_latency_change_{};
         std::unordered_map<int32_t, remidy::EventListenerId> timing_listener_ids_{};
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> timing_listener_instances_{};
         struct TimingSnapshot {
@@ -70,7 +68,7 @@ namespace uapmd {
         void schedulePrerollFromAudiblePosition(int64_t samples);
         void applyStateChange();
         void handlePluginTimingInfoChange(int32_t instanceId, remidy::PluginTimingInfoChange change);
-        bool refreshGraphTimingInfo(int32_t instanceId);
+        uapmd_graph::AudioPluginGraph* findGraphForInstance(int32_t instanceId);
 
     public:
         LatencyCompensationManagerImpl(
@@ -83,7 +81,7 @@ namespace uapmd {
             std::atomic<int64_t>& renderPlaybackPositionSamples,
             std::function<void(const std::function<void()>&)> runMutation,
             std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
-            std::function<void()> prepareForTimingChange);
+            std::function<void()> prepareForLatencyChange);
 
         void attachTrackRoutingManager(TrackRoutingManager& trackRoutingManager);
         void syncPluginTimingListeners();

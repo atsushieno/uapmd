@@ -377,6 +377,7 @@ namespace uapmd_graph {
         bool endpointExists(const GraphState& state, const AudioPluginGraphEndpoint& endpoint, AudioPluginGraphBusType busType) const;
         void rebuildCompiledState(GraphState& state) const;
         void rebuildSimpleConnections(GraphState& state) const;
+        void rebuildRuntimeState();
         uint8_t resolveGroup(int32_t instanceId) const;
 
     public:
@@ -403,7 +404,11 @@ namespace uapmd_graph {
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
         std::vector<AudioPluginGraphConnection> connections() override;
-        void refreshTimingInfo() override;
+        void notifyLatencyChanged() override { rebuildRuntimeState(); }
+        void notifyTailLengthChanged() override {
+            // FIXME: Recompute cached tail lengths without rebuilding runtime contexts or latency state.
+            rebuildRuntimeState();
+        }
         void saveTo(std::map<std::string, std::string>& entries) override;
         void loadFrom(const std::map<std::string, std::string>& entries) override;
         std::vector<TrackOutputRoutingRule> outputRoutingRules() const override;
@@ -885,7 +890,7 @@ namespace uapmd_graph {
         return node ? node.get() : nullptr;
     }
 
-    void AudioPluginFullDAGraphImpl::refreshTimingInfo() {
+    void AudioPluginFullDAGraphImpl::rebuildRuntimeState() {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         if (access->custom_topology)
             rebuildCompiledState(*access);

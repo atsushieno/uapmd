@@ -72,7 +72,7 @@ namespace uapmd {
         std::atomic<int64_t>& renderPlaybackPositionSamples,
         std::function<void(const std::function<void()>&)> runMutation,
         std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
-        std::function<void()> prepareForTimingChange)
+        std::function<void()> prepareForLatencyChange)
         : audio_buffer_size_in_frames_(audioBufferSizeInFrames)
         , tracks_(tracks)
         , master_track_(masterTrack)
@@ -82,7 +82,7 @@ namespace uapmd {
         , render_playback_position_samples_(renderPlaybackPositionSamples)
         , run_mutation_(std::move(runMutation))
         , resolve_plugin_instance_(std::move(resolvePluginInstance))
-        , prepare_for_timing_change_(std::move(prepareForTimingChange)) {
+        , prepare_for_latency_change_(std::move(prepareForLatencyChange)) {
     }
 
     void LatencyCompensationManagerImpl::clearPluginTimingListeners() {
@@ -167,18 +167,15 @@ namespace uapmd {
         }
     }
 
-    bool LatencyCompensationManagerImpl::refreshGraphTimingInfo(int32_t instanceId) {
+    uapmd_graph::AudioPluginGraph* LatencyCompensationManagerImpl::findGraphForInstance(int32_t instanceId) {
         for (const auto& track : tracks_) {
             if (!track || !track->graph().getPluginNode(instanceId))
                 continue;
-            track->graph().refreshTimingInfo();
-            return true;
+            return &track->graph();
         }
-        if (master_track_ && master_track_->graph().getPluginNode(instanceId)) {
-            master_track_->graph().refreshTimingInfo();
-            return true;
-        }
-        return false;
+        if (master_track_ && master_track_->graph().getPluginNode(instanceId))
+            return &master_track_->graph();
+        return nullptr;
     }
 
     void LatencyCompensationManagerImpl::handlePluginTimingInfoChange(
@@ -204,17 +201,26 @@ namespace uapmd {
             instance->tailLengthInSeconds(),
         };
         const auto previousIt = timing_snapshots_.find(instanceId);
-        if (previousIt != timing_snapshots_.end() &&
-            previousIt->second.latency_in_samples == current.latency_in_samples &&
-            previousIt->second.tail_length_in_seconds == current.tail_length_in_seconds)
+        const bool latencyChanged = previousIt == timing_snapshots_.end() ||
+            previousIt->second.latency_in_samples != current.latency_in_samples;
+        const bool tailLengthChanged = previousIt == timing_snapshots_.end() ||
+            previousIt->second.tail_length_in_seconds != current.tail_length_in_seconds;
+        if (!latencyChanged && !tailLengthChanged)
             return;
         timing_snapshots_[instanceId] = current;
 
         run_mutation_([&]() {
-            if (!refreshGraphTimingInfo(instanceId))
+            auto* graph = findGraphForInstance(instanceId);
+            if (!graph)
                 return;
-            if (prepare_for_timing_change_)
-                prepare_for_timing_change_();
+            if (latencyChanged)
+                graph->notifyLatencyChanged();
+            if (tailLengthChanged)
+                graph->notifyTailLengthChanged();
+            if (!latencyChanged)
+                return;
+            if (prepare_for_latency_change_)
+                prepare_for_latency_change_();
             if (track_routing_manager_)
                 track_routing_manager_->rebuildRoutingCaches();
             applyLatencyCompensationTimingUpdate(
@@ -231,8 +237,8 @@ namespace uapmd {
     }
 
     void LatencyCompensationManagerImpl::applyStateChange() {
-        if (prepare_for_timing_change_)
-            prepare_for_timing_change_();
+        if (prepare_for_latency_change_)
+            prepare_for_latency_change_();
         if (track_routing_manager_)
             track_routing_manager_->rebuildRoutingCaches();
         reconfigureOutputAlignmentBuffers();

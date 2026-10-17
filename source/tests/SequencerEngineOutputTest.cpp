@@ -1578,7 +1578,7 @@ TEST_F(SequencerEngineOutputTest, Project4First20SecondsRemainEquivalentAfterDAG
 #endif
 }
 
-TEST_F(SequencerEngineOutputTest, FullDAGraphRefreshesRuntimeTimingInfo) {
+TEST_F(SequencerEngineOutputTest, FullDAGraphUpdatesReportedLatencyAfterNotification) {
     MutableTimingPlugin plugin;
     plugin.latencyInSamples(64);
 
@@ -1592,7 +1592,7 @@ TEST_F(SequencerEngineOutputTest, FullDAGraphRefreshesRuntimeTimingInfo) {
     EXPECT_EQ(graph->mainOutputLatencyInSamples(), 64u);
 
     plugin.latencyInSamples(256);
-    graph->refreshTimingInfo();
+    graph->notifyLatencyChanged();
     EXPECT_EQ(graph->mainOutputLatencyInSamples(), 256u);
 }
 

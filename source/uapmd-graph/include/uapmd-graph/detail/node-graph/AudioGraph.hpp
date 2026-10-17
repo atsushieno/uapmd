@@ -32,6 +32,8 @@ namespace uapmd_graph {
         // instance-local and treat the shared transport context as read-only.
         virtual bool supportsParallelTrackProcessing() const noexcept = 0;
         virtual uint32_t outputBusCount() = 0;
+        virtual void notifyLatencyChanged() = 0;
+        virtual void notifyTailLengthChanged() = 0;
         virtual uint32_t outputLatencyInSamples(uint32_t outputBusIndex) = 0;
         virtual double outputTailLengthInSeconds(uint32_t outputBusIndex) = 0;
         virtual uint32_t renderLeadInSamples() = 0;

@@ -50,7 +50,8 @@ namespace uapmd_graph {
         AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
-        void refreshTimingInfo() override;
+        void notifyLatencyChanged() override {}
+        void notifyTailLengthChanged() override {}
         void saveTo(std::map<std::string, std::string>& entries) override;
         void loadFrom(const std::map<std::string, std::string>& entries) override;
         std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() override;
@@ -69,11 +70,6 @@ namespace uapmd_graph {
 
     void AudioPluginGraphImpl::setGroupResolver(std::function<uint8_t(int32_t)> resolver) {
         group_resolver_ = std::move(resolver);
-    }
-
-    void AudioPluginGraphImpl::refreshTimingInfo() {
-        // Linear graphs query node timing values directly, so there is no derived
-        // timing state to rebuild here.
     }
 
     int32_t AudioPluginGraphImpl::processAudio(uapmd::AudioProcessContext& process) {
