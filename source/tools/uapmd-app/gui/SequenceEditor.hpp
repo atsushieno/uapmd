@@ -48,6 +48,7 @@ public:
     };
 
     struct RenderContext {
+        uapmd::ProjectDocument* document{};
         TimelineClipActions clipActions;
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, const std::string& filepath)> addClip;

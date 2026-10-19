@@ -44,6 +44,13 @@ content notifications queue rendered-track invalidation on the host event loop.
 Modification archives are included in project save/load and clip/track clipboard
 state when the plugin advertises archive support.
 
+With an aap-ara build exposing `AAP_ARA_FEATURE_VIEW_SELECTION`, selection changes
+also reach visible plugin editors. Clips and tracks map to playback regions and
+region sequences, with an optional explicit project-time range. Opening/reopening
+the editor sends the current selection; document edits refresh its projection.
+Selection does not change document revisions, dirty state or undo history. Older
+plugins without this capability retain document and archive support.
+
 The current aap-ara API does not expose tempo/note content readers or analysis
 requests, so those features remain unavailable for AAP. Timeline arrangement stays
 host-owned, and audible ARA rendering depends on the plugin's AAP processing support.

@@ -271,6 +271,8 @@ namespace uapmd {
     };
 
     class ProjectDocumentEventDispatcher : public ProjectDocumentEventSource {
+        std::function<void()> before_dispatch_;
+        std::function<void()> after_dispatch_;
         mutable std::mutex listeners_mutex_{};
         std::unordered_map<ProjectDocumentEventListenerToken, ProjectDocumentEventListener*> listeners_{};
         std::atomic<ProjectDocumentEventListenerToken> next_listener_token_{1};
@@ -324,6 +326,11 @@ namespace uapmd {
         }
 
     public:
+        // Model-thread owner hooks; never invoked while a dispatcher lock is held.
+        void setDeliveryHooks(std::function<void()> before, std::function<void()> after) {
+            before_dispatch_ = std::move(before);
+            after_dispatch_ = std::move(after);
+        }
         ProjectRevision currentRevision() const override {
             return current_revision_.load(std::memory_order_acquire);
         }
@@ -417,6 +424,8 @@ namespace uapmd {
         }
 
         void dispatchBatch(std::vector<ProjectDocumentEvent> batch) {
+            if (before_dispatch_)
+                before_dispatch_();
             // Revisions are assigned at delivery so that they stay contiguous
             // and ordered as observers see them, rather than as mutations
             // happened to be applied inside a transaction.
@@ -448,6 +457,8 @@ namespace uapmd {
                     dispatchTo(*listener, event);
                 listener->transactionEnded();
             }
+            if (after_dispatch_)
+                after_dispatch_();
         }
     };
 

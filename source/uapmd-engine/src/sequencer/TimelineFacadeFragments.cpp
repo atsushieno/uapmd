@@ -551,6 +551,9 @@ namespace uapmd {
 
         ProjectClipFragment fragment;
         fragment.clip = *clip;
+        if (clip->clipType == ClipType::Midi)
+            if (auto content = const_cast<TimelineFacadeImpl*>(this)->midiContent(clip->referenceId))
+                fragment.midiContent = content->committedSnapshot();
         if (clip->clipType == ClipType::Midi) {
             // Audio clips are rebuilt from their file, but MIDI content is
             // authored and exists nowhere else, so it must be copied out.
@@ -681,6 +684,9 @@ namespace uapmd {
         // the clip has now: the captured one when restoring, a freshly
         // minted one when pasting.
         if (const auto* attachedClip = clips.getClip(result.clipId)) {
+            if (fragment.midiContent)
+                if (auto content = midiContent(attachedClip->referenceId))
+                    content->restore(*fragment.midiContent, idPolicy == ProjectObjectIdPolicy::Mint);
             for (auto* extension : projectSerializationExtensionsSnapshot()) {
                 const auto it = fragment.extensionState.find(std::string(extension->extensionId()));
                 static const std::vector<uint8_t> kNoState{};
@@ -867,7 +873,11 @@ namespace uapmd {
             std::string_view trackReferenceId,
             const ProjectClipFragment& desired,
             const ProjectClipFragment* compensation) {
-                auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
+        // Replacement preserves the object's identity. Observers, shared MIDI
+        // models, and selections must see the final restore rather than the
+        // temporary absence between removal and attachment.
+        ProjectDocumentTransaction transaction(project_document_events_);
+        auto* targetTrack = resolveTrackByReferenceId(trackReferenceId);
         if (!targetTrack)
             return false;
         const auto currentClipId =

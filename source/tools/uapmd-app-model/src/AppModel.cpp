@@ -498,8 +498,11 @@ bool uapmd_app::AppModel::isTimelineClipSelected(int32_t trackIndex, int32_t cli
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
         return false;
     const auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-    return clip && std::find(selected_clip_references_.begin(), selected_clip_references_.end(),
-        clip->referenceId) != selected_clip_references_.end();
+    if (!clip)
+        return false;
+    const auto& selections = sequencer_.engine()->timeline().document().selections();
+    const auto selection = selections.snapshot(selections.defaultContext()).value_or(uapmd::ProjectSelection{});
+    return std::find(selection.objects.begin(), selection.objects.end(), clip->referenceId) != selection.objects.end();
 }
 
 bool uapmd_app::AppModel::selectTimelineMidiClip(int32_t trackIndex, int32_t clipId) {
@@ -546,9 +549,20 @@ bool uapmd_app::AppModel::pianoRollSourceMatchesLastEdit() {
 
 std::shared_ptr<uapmd_app::PianoRollSession> uapmd_app::AppModel::openPianoRollSession(
         int32_t trackIndex, int32_t clipId) {
+    auto& document = sequencer_.engine()->timeline().document();
+    auto address = sequencer_.engine()->timeline().addresses().clipAddress(trackIndex, clipId);
+    if (!address)
+        return {};
+    auto content = document.midiContent(address->clipReferenceId);
+    if (!content)
+        return {};
     auto& session = piano_roll_sessions_[{trackIndex, clipId}];
-    if (!session)
-        session = std::make_shared<PianoRollSession>();
+    if (!session || session->content != content || !document.selections().hasContext(session->selection_context)) {
+        session = std::make_shared<PianoRollSession>(content);
+        session->project = &document;
+        session->clip_reference_id = address->clipReferenceId;
+        session->selection_context = document.selections().createContext(address->clipReferenceId);
+    }
     session->trackIndex = trackIndex;
     session->clipId = clipId;
     return session;
@@ -561,44 +575,51 @@ uapmd_app::PianoRollSession* uapmd_app::AppModel::findPianoRollSession(
 }
 
 void uapmd_app::AppModel::closePianoRollSession(int32_t trackIndex, int32_t clipId) {
+    if (auto session = findPianoRollSession(trackIndex, clipId))
+        if (session->project)
+            session->project->selections().removeContext(session->selection_context);
     piano_roll_sessions_.erase({trackIndex, clipId});
 }
 
 std::vector<uapmd_app::AppModel::TimelineClipTarget> uapmd_app::AppModel::selectedTimelineClips() {
     std::vector<TimelineClipTarget> result;
     const auto tracks = getTimelineTracks();
+    const auto& selections = sequencer_.engine()->timeline().document().selections();
+    const auto selected = selections.snapshot(selections.defaultContext()).value_or(uapmd::ProjectSelection{}).objects;
     for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i)
         if (tracks[i])
             for (const auto& clip : tracks[i]->clipManager().getAllClips())
-                if (std::find(selected_clip_references_.begin(), selected_clip_references_.end(),
-                        clip.referenceId) != selected_clip_references_.end())
+                if (std::find(selected.begin(), selected.end(), clip.referenceId) != selected.end())
                     result.push_back({i, clip.clipId});
     return result;
 }
 
 void uapmd_app::AppModel::selectTimelineClips(
         const std::vector<TimelineClipTarget>& clips, bool additive, bool toggle) {
-    if (!additive)
-        selected_clip_references_.clear();
+    auto& selections = sequencer_.engine()->timeline().document().selections();
+    auto selection = additive ? selections.snapshot(selections.defaultContext()).value_or(uapmd::ProjectSelection{})
+                              : uapmd::ProjectSelection{};
+    selection.regions.clear();
     const auto tracks = getTimelineTracks();
     for (const auto& target : clips) {
-        if (target.track_index < 0 || target.track_index >= static_cast<int32_t>(tracks.size()) ||
-                !tracks[target.track_index])
+        if (target.track_index < 0 || target.track_index >= static_cast<int32_t>(tracks.size()) || !tracks[target.track_index])
             continue;
         const auto* clip = tracks[target.track_index]->clipManager().getClip(target.clip_id);
         if (!clip)
             continue;
-        const auto it = std::find(selected_clip_references_.begin(), selected_clip_references_.end(),
-                                  clip->referenceId);
-        if (it == selected_clip_references_.end())
-            selected_clip_references_.push_back(clip->referenceId);
+        const auto it = std::find(selection.objects.begin(), selection.objects.end(), clip->referenceId);
+        if (it == selection.objects.end())
+            selection.objects.insert(selection.objects.begin(), clip->referenceId);
         else if (toggle)
-            selected_clip_references_.erase(it);
+            selection.objects.erase(it);
     }
+    selections.replace(selections.defaultContext(), std::move(selection));
+    selections.setActiveContext(selections.defaultContext());
 }
 
 void uapmd_app::AppModel::clearTimelineClipSelection() {
-    selected_clip_references_.clear();
+    sequencer_.engine()->timeline().document().selections().clear(
+        sequencer_.engine()->timeline().document().selections().defaultContext());
 }
 
 bool uapmd_app::AppModel::copySelectedTimelineClips(std::string& error) {
@@ -649,7 +670,8 @@ bool uapmd_app::AppModel::deleteSelectedTimelineClips(
             step.commit();
     }
     if (success)
-        selected_clip_references_.clear();
+        sequencer_.engine()->timeline().document().selections().clear(
+        sequencer_.engine()->timeline().document().selections().defaultContext());
     else
         error = "Could not delete all selected clips; the edit was cancelled.";
     for (const auto& target : targets) {
@@ -2082,8 +2104,11 @@ void uapmd_app::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, boo
         result.wasCreated = true;
     }
 
+    // ARA editor views receive the current host selection during setup.
+    sequencer_.engine()->notifyPluginEditorVisibilityChanged(instanceId, true);
     // Show the UI
     if (!instance->showUI()) {
+        sequencer_.engine()->notifyPluginEditorVisibilityChanged(instanceId, false);
         result.success = false;
         result.error = "Failed to show plugin UI";
         for (auto& cb : uiShown) {
@@ -2115,6 +2140,7 @@ void uapmd_app::AppModel::hidePluginUI(int32_t instanceId) {
         return;
     }
 
+    sequencer_.engine()->notifyPluginEditorVisibilityChanged(instanceId, false);
     // Hide the UI
     if (instance->hasUISupport() && instance->isUIVisible()) {
         instance->hideUI();
@@ -3837,7 +3863,8 @@ void uapmd_app::AppModel::tearDownProjectInstances() {
 // Brings everything this model tracks per project back in line with whatever
 // the timeline now holds. A new project simply has nothing to enumerate.
 void uapmd_app::AppModel::resyncAfterProjectReplacement() {
-    selected_clip_references_.clear();
+    sequencer_.engine()->timeline().document().selections().clear(
+        sequencer_.engine()->timeline().document().selections().defaultContext());
     selected_midi_clip_.reset();
     timeline_clipboard_.clear();
     piano_roll_sessions_.clear();

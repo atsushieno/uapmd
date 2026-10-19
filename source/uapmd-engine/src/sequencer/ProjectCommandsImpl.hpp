@@ -32,6 +32,7 @@ namespace uapmd {
             return dispatch_;
         }
 
+        bool setMidiClipContent(ProjectObjectId, const MidiClipContentSnapshot&, ProjectMutationOrigin) override;
         bool setClipEnabled(int32_t, int32_t, bool, ProjectMutationOrigin) override;
         bool setClipAnchor(int32_t, int32_t, const TimeReference&, ProjectMutationOrigin) override;
         bool setClipGain(int32_t, int32_t, double, ProjectMutationOrigin) override;

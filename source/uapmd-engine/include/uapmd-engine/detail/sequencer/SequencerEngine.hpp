@@ -81,6 +81,8 @@ namespace uapmd {
         virtual void clearPlatformMidiOutputRoute() = 0;
 
         virtual uapmd_plugin_hosting::AudioPluginHostingAPI* pluginHost() = 0;
+        virtual void notifyPluginEditorVisibilityChanged(int32_t instanceId, bool visible) = 0;
+        virtual ProjectDocument& document() { return timeline().document(); }
         virtual FrozenTrackManager& frozenTrackManager() = 0;
         virtual TailProcessManager& tailProcessManager() = 0;
         virtual uapmd_plugin_hosting::AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;

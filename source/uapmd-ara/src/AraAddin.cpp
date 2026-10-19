@@ -1,3 +1,4 @@
+#include <uapmd-engine/uapmd-engine.hpp>
 #include <array>
 #include <set>
 #include <iostream>
@@ -66,11 +67,18 @@ public:
         if (!support_)
             return;
         const auto status = support_->attachPlugin(instanceId, instance);
-        if (status == uapmd::ara::AraStatus::Ok)
+        if (status == uapmd::ara::AraStatus::Ok) {
             attached_instances_.insert(instanceId);
+            support_->setPluginEditorVisible(instanceId, instance.isUIVisible());
+        }
         else if (status != uapmd::ara::AraStatus::UnsupportedPlugin)
             std::cerr << "Failed to attach ARA document for plugin instance " << instanceId
                       << " (status " << static_cast<int>(status) << ")." << std::endl;
+    }
+
+    void pluginEditorVisibilityChanged(int32_t instanceId, bool visible) override {
+        if (support_)
+            support_->setPluginEditorVisible(instanceId, visible);
     }
 
     void pluginInstanceWillBeDestroyed(int32_t instanceId) override {

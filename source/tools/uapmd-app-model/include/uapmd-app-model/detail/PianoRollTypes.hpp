@@ -12,66 +12,36 @@
 
 namespace uapmd_app {
 
-struct PianoRollAutomationEvent {
-    enum class Type : uint8_t {
-        PitchBend,
-        PerNotePitchBend,
-        ChannelPressure,
-        PolyPressure,
-        ControlChange,
-        RPN,
-        NRPN,
-        PerNoteParameter,
-    };
-    double timeSeconds{0.0};
-    double normalizedValue{0.0};
-    Type type{Type::ControlChange};
-    uint8_t channel{0};
-    uint8_t noteNumber{0};
-    uint8_t umpGroup{0};
-    uint16_t paramIndex{0};
-    size_t rawEventIdx{SIZE_MAX};
-};
-
-struct PianoRollMidiNote {
-    double startSeconds{0.0};
-    double durationSeconds{0.0};
-    uint8_t note{0};
-    float velocity{0.0f};
-    uint8_t channel{0};
-    bool deleted{false};
-    size_t noteOnWordIdx{SIZE_MAX};
-    size_t noteOffWordIdx{SIZE_MAX};
-};
-
-struct PianoRollRawMidiData {
-    std::vector<uapmd_ump_t> umpEvents;
-    std::vector<uint64_t> tickTimestamps;
-    uint32_t tickResolution{480};
-    double clipTempo{120.0};
-};
-
-struct PianoRollEditNote : PianoRollMidiNote {
-    PianoRollEditNote() = default;
-    explicit PianoRollEditNote(const PianoRollMidiNote& base) : PianoRollMidiNote(base) {}
-    uint64_t edit_id{0};
-    uint8_t ump_group{0};
-    uint16_t release_velocity{0};
-    uint8_t attributeType{0};
-    uint16_t attributeValue{0};
-    std::vector<PianoRollAutomationEvent> automationEvents;
-};
+using PianoRollAutomationEvent = uapmd::MidiAutomationEvent;
+using PianoRollMidiNote = uapmd::MidiNote;
+using PianoRollRawMidiData = uapmd::MidiRawData;
+using PianoRollEditNote = uapmd::MidiEditNote;
 
 struct PianoRollSession {
     enum class Action { None, Copy, Cut, Paste, Delete, SelectAll };
     int32_t trackIndex{-1};
     int32_t clipId{-1};
-    std::shared_ptr<PianoRollRawMidiData> rawMidiData;
-    std::vector<PianoRollEditNote> editNotes;
-    std::vector<PianoRollAutomationEvent> editClipEvents;
+    std::shared_ptr<uapmd::MidiClipDocument> content;
+    std::shared_ptr<PianoRollRawMidiData>& rawMidiData;
+    std::vector<PianoRollEditNote>& editNotes;
+    std::vector<PianoRollAutomationEvent>& editClipEvents;
+    uint64_t& next_note_id;
+    uapmd::ProjectDocument* project{};
+    uapmd::ProjectObjectId clip_reference_id;
+    uapmd::SelectionContextId selection_context{0};
+
+    explicit PianoRollSession(std::shared_ptr<uapmd::MidiClipDocument> document)
+        : content(std::move(document)), rawMidiData(content->rawMidiData),
+          editNotes(content->editNotes), editClipEvents(content->editClipEvents),
+          next_note_id(content->next_note_id) {}
+    void publishSelection();
+    void syncSelection();
+    bool isObjectSelected(const uapmd::ProjectObjectId& id) const;
+    bool isAutomationInSelectedRegion(const PianoRollAutomationEvent& event,
+        std::optional<uapmd::ProjectObjectId> noteId = {}) const;
+    void selectObject(const uapmd::ProjectObjectId& id, bool additive, bool toggle);
     std::unordered_set<uint64_t> selected_notes;
     int selectedNoteIdx{-1};
-    uint64_t next_note_id{1};
     std::vector<PianoRollEditNote> clipboard;
     std::vector<size_t> deletedRawIdxs;
     bool dirtyAfterEdit{false};

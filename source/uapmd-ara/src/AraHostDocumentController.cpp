@@ -519,8 +519,9 @@ namespace uapmd::ara {
         const ARA::ARADocumentControllerInstance* controller_instance{};
         const ARA::ARAPlugInExtensionInstance* plugin_extension{};
         bool initialized_factory{};
-        ProjectDocumentView* document_view{};
-        TimelineFacade::MasterTrackSnapshot master_track_snapshot{};
+        bool editor_view_visible{false};
+        const ProjectDocumentView* document_view{};
+        ProjectMasterTrackSnapshot master_track_snapshot{};
         ARA::ARAMusicalContextRef musical_context_ref{};
         HostRegionSequence musical_context_host{};
         std::map<ProjectObjectId, HostRegionSequence> region_sequence_hosts{};
@@ -710,6 +711,39 @@ namespace uapmd::ara {
                 playbackRegionRef);
         }
 
+        bool notifySelection(const ProjectDocumentView& view, const ProjectSelection& selection) {
+            if (!editor_view_visible || !plugin_extension ||
+                plugin_extension->structSize < offsetof(ARA::ARAPlugInExtensionInstance, editorViewInterface) + sizeof(plugin_extension->editorViewInterface) ||
+                !plugin_extension->editorViewRef || !plugin_extension->editorViewInterface)
+                return false;
+            const auto* interface = plugin_extension->editorViewInterface;
+            if (interface->structSize < offsetof(ARA::ARAEditorViewInterface, notifySelection) + sizeof(interface->notifySelection) || !interface->notifySelection)
+                return false;
+            const auto projected = projectSelection(view, selection);
+            std::vector<ARA::ARAPlaybackRegionRef> regions;
+            std::vector<ARA::ARARegionSequenceRef> sequences;
+            for (const auto& id : projected.clip_ids)
+                if (auto it = playback_region_refs.find(id); it != playback_region_refs.end() && it->second)
+                    regions.push_back(it->second);
+            for (const auto& id : projected.track_ids)
+                if (auto it = region_sequence_refs.find(id); it != region_sequence_refs.end() && it->second)
+                    sequences.push_back(it->second);
+            ARA::ARAContentTimeRange time{};
+            if (projected.time_range) {
+                time.start = projected.time_range->first;
+                time.duration = projected.time_range->second - projected.time_range->first;
+            }
+            ARA::ARAViewSelection value{};
+            value.structSize = ARA::kARAViewSelectionMinSize;
+            value.playbackRegionRefsCount = regions.size();
+            value.playbackRegionRefs = regions.empty() ? nullptr : regions.data();
+            value.regionSequenceRefsCount = sequences.size();
+            value.regionSequenceRefs = sequences.empty() ? nullptr : sequences.data();
+            value.timeRange = projected.time_range ? &time : nullptr;
+            interface->notifySelection(plugin_extension->editorViewRef, &value);
+            return true;
+        }
+
         void bindPluginExtension(const ARA::ARAPlugInExtensionInstance* pluginExtension) {
             plugin_extension = pluginExtension;
             if (!playbackRendererAvailable())
@@ -761,15 +795,15 @@ namespace uapmd::ara {
         }
 
         bool populateModel(
-            ProjectDocumentView& view,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot) {
+            const ProjectDocumentView& view,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot) {
             auto* controller = controllerInterface();
             if (!controller)
                 return false;
 
             document_view = &view;
             master_track_snapshot = masterTrackSnapshot;
-            beginEditing();
+            enterEditing();
             clearModel();
 
             musical_context_host = HostRegionSequence{
@@ -828,12 +862,12 @@ namespace uapmd::ara {
                     createOrUpdatePlaybackRegion(view, clipId);
             }
 
-            endEditing();
-            notifyModelUpdates();
+            requestModelUpdates();
+            leaveEditing();
             return true;
         }
 
-        std::optional<ProjectObjectId> audioSourceIdForClip(ProjectDocumentView& view, const ProjectClipSnapshot& clip) {
+        std::optional<ProjectObjectId> audioSourceIdForClip(const ProjectDocumentView& view, const ProjectClipSnapshot& clip) {
             if (clip.clipType == ClipType::Midi)
                 return syntheticMidiAudioSourceId(clip.clipId);
 
@@ -854,7 +888,7 @@ namespace uapmd::ara {
         }
 
         std::optional<ProjectObjectId> associatedAudioSourceIdForMidiClip(
-            ProjectDocumentView& view,
+            const ProjectDocumentView& view,
             const ProjectClipSnapshot& midiClip) {
             if (midiClip.clipType != ClipType::Midi)
                 return std::nullopt;
@@ -870,7 +904,7 @@ namespace uapmd::ara {
         }
 
         std::vector<ProjectClipSnapshot> associatedMidiClipsForAudioClip(
-            ProjectDocumentView& view,
+            const ProjectDocumentView& view,
             const ProjectClipSnapshot& audioClip) const {
             std::vector<ProjectClipSnapshot> result;
             if (audioClip.clipType != ClipType::Audio)
@@ -1140,7 +1174,7 @@ namespace uapmd::ara {
         }
 
         std::optional<ARA::ARAPlaybackRegionProperties> playbackRegionProperties(
-            ProjectDocumentView& view,
+            const ProjectDocumentView& view,
             const ProjectClipSnapshot& clip,
             HostPlaybackRegion& host,
             ARA::ARARegionSequenceRef regionSequenceRef) {
@@ -1180,7 +1214,7 @@ namespace uapmd::ara {
             };
         }
 
-        bool createOrUpdateRegionSequence(ProjectDocumentView& view, const ProjectObjectId& trackId) {
+        bool createOrUpdateRegionSequence(const ProjectDocumentView& view, const ProjectObjectId& trackId) {
             auto* controller = controllerInterface();
             auto track = view.getTrack(trackId);
             if (!controller || !track || track->masterTrack)
@@ -1252,7 +1286,7 @@ namespace uapmd::ara {
             region_sequence_hosts.erase(trackId);
         }
 
-        bool createOrUpdateAudioSource(ProjectDocumentView& view, const ProjectObjectId& audioSourceId) {
+        bool createOrUpdateAudioSource(const ProjectDocumentView& view, const ProjectObjectId& audioSourceId) {
             auto* controller = controllerInterface();
             auto source = view.getAudioSource(audioSourceId);
             if (!controller || !source || source->frameCount <= 0 || source->channelCount == 0)
@@ -1455,7 +1489,7 @@ namespace uapmd::ara {
             audio_source_hosts.erase(audioSourceId);
         }
 
-        bool createOrUpdatePlaybackRegion(ProjectDocumentView& view, const ProjectObjectId& clipId) {
+        bool createOrUpdatePlaybackRegion(const ProjectDocumentView& view, const ProjectObjectId& clipId) {
             auto* controller = controllerInterface();
             auto clip = view.getClip(clipId);
             if (!controller || !clip)
@@ -1546,7 +1580,7 @@ namespace uapmd::ara {
             return true;
         }
 
-        bool updateMusicalContextContent(const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot) {
+        bool updateMusicalContextContent(const ProjectMasterTrackSnapshot& masterTrackSnapshot) {
             auto* controller = controllerInterface();
             if (!controller || !musical_context_ref)
                 return false;
@@ -1568,8 +1602,8 @@ namespace uapmd::ara {
         }
 
         bool applyProjectDocumentEvent(
-            ProjectDocumentView& view,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot,
+            const ProjectDocumentView& view,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot,
             const ProjectDocumentEvent& event) {
             if (!valid())
                 return false;
@@ -2355,10 +2389,10 @@ namespace uapmd::ara {
                 contentType == ARA::kARAContentTypeStaticTuning;
         }
 
-        using TempoPoint = TimelineFacade::MasterTrackSnapshot::TempoPoint;
-        using TimeSignaturePoint = TimelineFacade::MasterTrackSnapshot::TimeSignaturePoint;
+        using TempoPoint = ProjectMasterTrackSnapshot::TempoPoint;
+        using TimeSignaturePoint = ProjectMasterTrackSnapshot::TimeSignaturePoint;
 
-        std::vector<TempoPoint> normalizedTempoPoints(const TimelineFacade::MasterTrackSnapshot& timeline) {
+        std::vector<TempoPoint> normalizedTempoPoints(const ProjectMasterTrackSnapshot& timeline) {
             std::vector<TempoPoint> tempoPoints;
             tempoPoints.reserve(timeline.tempoPoints.size() + 1);
             for (const auto& point : timeline.tempoPoints)
@@ -2399,7 +2433,7 @@ namespace uapmd::ara {
             return tempoPoints;
         }
 
-        std::vector<ARA::ARAContentTempoEntry> makeTempoEntries(const TimelineFacade::MasterTrackSnapshot& timeline) {
+        std::vector<ARA::ARAContentTempoEntry> makeTempoEntries(const ProjectMasterTrackSnapshot& timeline) {
             auto tempoPoints = normalizedTempoPoints(timeline);
             std::vector<ARA::ARAContentTempoEntry> entries;
             entries.reserve(tempoPoints.size() + 1);
@@ -2465,7 +2499,7 @@ namespace uapmd::ara {
         }
 
         std::vector<ARA::ARAContentBarSignature> makeBarSignatures(
-            const TimelineFacade::MasterTrackSnapshot& timeline,
+            const ProjectMasterTrackSnapshot& timeline,
             const std::vector<ARA::ARAContentTempoEntry>& tempoEntries) {
             std::vector<TimeSignaturePoint> signaturePoints = timeline.timeSignaturePoints;
             std::stable_sort(signaturePoints.begin(), signaturePoints.end(), [](const auto& a, const auto& b) {
@@ -2795,6 +2829,15 @@ namespace uapmd::ara {
         return impl_ ? impl_->factory : nullptr;
     }
 
+    bool AraHostDocumentController::notifySelection(const ProjectDocumentView& view, const ProjectSelection& selection) {
+        return impl_ && impl_->notifySelection(view, selection);
+    }
+
+    void AraHostDocumentController::setEditorViewVisible(bool visible) {
+        if (impl_)
+            impl_->editor_view_visible = visible;
+    }
+
     void AraHostDocumentController::bindPluginExtension(const ARA::ARAPlugInExtensionInstance* pluginExtension) {
         if (!valid())
             return;
@@ -2802,16 +2845,16 @@ namespace uapmd::ara {
     }
 
     bool AraHostDocumentController::resyncFromProjectDocument(
-        ProjectDocumentView& documentView,
-        const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot) {
+        const ProjectDocumentView& documentView,
+        const ProjectMasterTrackSnapshot& masterTrackSnapshot) {
         if (!valid())
             return false;
         return impl_->populateModel(documentView, masterTrackSnapshot);
     }
 
     bool AraHostDocumentController::applyProjectDocumentEvent(
-        ProjectDocumentView& documentView,
-        const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot,
+        const ProjectDocumentView& documentView,
+        const ProjectMasterTrackSnapshot& masterTrackSnapshot,
         const ProjectDocumentEvent& event) {
         if (!valid())
             return false;

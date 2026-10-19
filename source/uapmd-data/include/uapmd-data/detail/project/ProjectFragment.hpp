@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "MidiTimelineEvents.hpp"
+#include "MidiClipDocument.hpp"
+#include <optional>
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {
@@ -37,6 +39,7 @@ namespace uapmd {
         // Authored MIDI content. Empty for audio clips, which are rebuilt from
         // `clip.filepath`. Tick resolution and clip tempo are not repeated here
         // because `clip` already carries them.
+        std::optional<MidiClipContentSnapshot> midiContent;
         std::vector<uapmd_ump_t> umpEvents{};
         std::vector<uint64_t> umpTickTimestamps{};
         std::vector<MidiTempoChange> tempoChanges{};

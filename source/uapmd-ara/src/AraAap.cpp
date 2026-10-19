@@ -105,6 +105,7 @@ namespace uapmd::ara {
             int64_t next_id{10};
             int edit_depth{};
             bool created{};
+            bool editor_view_visible{};
             AraRequestId next_request{1};
 
             bool supportsArchives() const {
@@ -294,6 +295,26 @@ namespace uapmd::ara {
             }
 
             bool valid() const override { return created; }
+            void setEditorViewVisible(bool visible) override { editor_view_visible = visible; }
+            bool notifySelection(const ProjectDocumentView& view, const ProjectSelection& selection) override {
+                if (!created || !editor_view_visible || edit_depth || capability.struct_size < sizeof(capability) ||
+                    !(capability.supported_features & AAP_ARA_FEATURE_VIEW_SELECTION) || !extension->notify_selection)
+                    return false;
+                const auto projected = projectSelection(view, selection);
+                std::vector<int64_t> selected_regions, selected_sequences;
+                for (const auto& id : projected.clip_ids)
+                    if (auto it = regions.find(id); it != regions.end())
+                        selected_regions.push_back(it->second.id);
+                for (const auto& id : projected.track_ids)
+                    if (auto it = sequences.find(id); it != sequences.end())
+                        selected_sequences.push_back(it->second.id);
+                const aap_ara_view_selection_t value{sizeof(value), 1,
+                    static_cast<uint32_t>(selected_regions.size()), selected_regions.data(),
+                    static_cast<uint32_t>(selected_sequences.size()), selected_sequences.data(),
+                    projected.time_range.has_value(), projected.time_range ? projected.time_range->first : 0,
+                    projected.time_range ? projected.time_range->second - projected.time_range->first : 0};
+                return extension->notify_selection(extension, plugin, &value);
+            }
             ARA::ARADocumentControllerRef documentControllerRef() const override { return nullptr; }
             const ARA::ARAFactory* factory() const override { return nullptr; }
             void bindPluginExtension(const ARA::ARAPlugInExtensionInstance*) override {}
@@ -312,7 +333,7 @@ namespace uapmd::ara {
                 }
             }
 
-            bool resyncFromProjectDocument(ProjectDocumentView& view, const TimelineFacade::MasterTrackSnapshot&) override {
+            bool resyncFromProjectDocument(const ProjectDocumentView& view, const ProjectMasterTrackSnapshot&) override {
                 // Keep existing object IDs and modifications across edits and full resyncs.
                 std::map<ProjectObjectId, ProjectTrackSnapshot> wanted_tracks;
                 std::map<ProjectObjectId, ProjectAudioSourceSnapshot> wanted_sources;
@@ -467,7 +488,7 @@ namespace uapmd::ara {
                 return true;
             }
 
-            bool applyProjectDocumentEvent(ProjectDocumentView& view, const TimelineFacade::MasterTrackSnapshot& master,
+            bool applyProjectDocumentEvent(const ProjectDocumentView& view, const ProjectMasterTrackSnapshot& master,
                                            const ProjectDocumentEvent& event) override {
                 const auto result = resyncFromProjectDocument(view, master);
                 if (event.kind() == ProjectDocumentEventKind::AudioSourceChanged && event.audioSourceId())

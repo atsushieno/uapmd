@@ -1,3 +1,4 @@
+#include <uapmd-engine/uapmd-engine.hpp>
 #include "uapmd-ara/uapmd-ara.hpp"
 
 #include "AraFormatBinding.hpp"
@@ -30,6 +31,7 @@ namespace uapmd::ara {
         class AraSupportImpl final
             : public AraSupport
             , public ProjectDocumentEventListener
+            , public ProjectSelectionListener
             , public ProjectSerializationExtension {
             struct BoundAraDocument {
                 std::unique_ptr<AraFormatBinding> binding{};
@@ -41,6 +43,24 @@ namespace uapmd::ara {
             std::unique_ptr<AraSession> session_;
             ProjectDocumentEventSource* event_source_{};
             ProjectDocumentEventListenerToken event_listener_token_{};
+            SelectionListenerToken selection_listener_token_{};
+            uint32_t document_batch_depth_{0};
+
+            void forwardSelection() {
+                if (document_batch_depth_)
+                    return;
+                auto& document = engine_.document();
+                const auto selection = document.selections().activeSelection();
+                for (auto& [id, plugin] : ara_documents_)
+                    if (auto* instance = engine_.getPluginInstance(id); plugin.controller && instance && instance->isUIVisible())
+                        plugin.controller->notifySelection(document.view(), selection);
+            }
+            void selectionChanged(SelectionContextId, const ProjectSelection&, const ProjectSelection&) override {
+                forwardSelection();
+            }
+            void activeContextChanged(std::optional<SelectionContextId>, std::optional<SelectionContextId>) override {
+                forwardSelection();
+            }
             std::map<int32_t, BoundAraDocument> ara_documents_{};
             // Archive bytes plus the plug-in archive identifier they were written
             // under; ARA refuses a restore that cannot name its own format.
@@ -121,23 +141,23 @@ namespace uapmd::ara {
             static constexpr uint32_t kFragmentSlotVersion = 1;
 
             void resyncBoundAraDocuments() {
-                auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
+                auto masterTrackSnapshot = engine_.document().view().masterTrackSnapshot();
                 for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->resyncFromProjectDocument(
-                            engine_.timeline().projectDocumentView(),
+                            engine_.document().view(),
                             masterTrackSnapshot);
                 }
             }
 
             void applyAraProjectEvent(const ProjectDocumentEvent& event) {
-                auto masterTrackSnapshot = engine_.timeline().buildMasterTrackSnapshot();
+                auto masterTrackSnapshot = engine_.document().view().masterTrackSnapshot();
                 for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
                         document.controller->applyProjectDocumentEvent(
-                            engine_.timeline().projectDocumentView(),
+                            engine_.document().view(),
                             masterTrackSnapshot,
                             event);
                 }
@@ -151,22 +171,33 @@ namespace uapmd::ara {
                     throw std::runtime_error("Failed to create ARA session.");
 
                 auto status = session_->bindProjectDocument(
-                    engine_.timeline().projectDocumentView(),
-                    engine_.timeline().projectDocumentEvents());
+                    engine_.document().view(),
+                    engine_.document().events());
                 if (status != AraStatus::Ok)
                     throw std::runtime_error("Failed to bind ARA session to project document.");
 
                 engine_.timeline().addProjectSerializationExtension(*this);
-                event_source_ = &engine_.timeline().projectDocumentEvents();
+                event_source_ = &engine_.document().events();
+                selection_listener_token_ = engine_.document().selections().addListener(*this);
                 event_listener_token_ = event_source_->addProjectDocumentEventListener(*this);
             }
 
             ~AraSupportImpl() override {
+                engine_.document().selections().removeListener(selection_listener_token_);
                 if (event_source_ && event_listener_token_ != 0)
                     event_source_->removeProjectDocumentEventListener(event_listener_token_);
                 engine_.timeline().removeProjectSerializationExtension(*this);
                 if (session_)
                     session_->unbindProjectDocument();
+            }
+
+            void setPluginEditorVisible(int32_t instanceId, bool visible) override {
+                auto it = ara_documents_.find(instanceId);
+                if (it == ara_documents_.end() || !it->second.controller)
+                    return;
+                it->second.controller->setEditorViewVisible(visible);
+                if (visible)
+                    it->second.controller->notifySelection(engine_.document().view(), engine_.document().selections().activeSelection());
             }
 
             AraSession& session() override {
@@ -213,8 +244,8 @@ namespace uapmd::ara {
                     });
 
                 if (!controller->resyncFromProjectDocument(
-                        engine_.timeline().projectDocumentView(),
-                        engine_.timeline().buildMasterTrackSnapshot()))
+                        engine_.document().view(),
+                        engine_.document().view().masterTrackSnapshot()))
                     return AraStatus::BackendError;
 
                 if (auto pendingIt = pending_archives_.find(pluginInstanceId); pendingIt != pending_archives_.end()) {
@@ -476,8 +507,8 @@ namespace uapmd::ara {
                     // Fragment attachment queues document events until its transaction
                     // ends. Create the new ARA objects before restoring their private state.
                     if (!documentIt->second.controller->resyncFromProjectDocument(
-                            engine_.timeline().projectDocumentView(),
-                            engine_.timeline().buildMasterTrackSnapshot())
+                            engine_.document().view(),
+                            engine_.document().view().masterTrackSnapshot())
                         || !documentIt->second.controller->restoreArchiveStateForClip(
                             clipId, archiveId, audioSourceId, modificationId, archive)) {
                         error = std::format(
@@ -579,8 +610,8 @@ namespace uapmd::ara {
                         continue;
 
                     if (!documentIt->second.controller->resyncFromProjectDocument(
-                            engine_.timeline().projectDocumentView(),
-                            engine_.timeline().buildMasterTrackSnapshot())
+                            engine_.document().view(),
+                            engine_.document().view().masterTrackSnapshot())
                         || !documentIt->second.controller->restoreArchiveStateForTrack(
                             trackId, archiveId, regionSequenceId, archive)) {
                         error = std::format(
@@ -676,6 +707,7 @@ namespace uapmd::ara {
             // multi-step edit is applied atomically rather than as one cycle
             // per event.
             void transactionBegan() override {
+                ++document_batch_depth_;
                 for (auto& [pluginInstanceId, document] : ara_documents_) {
                     (void) pluginInstanceId;
                     if (document.controller)
@@ -689,6 +721,9 @@ namespace uapmd::ara {
                     if (document.controller)
                         document.controller->endProjectDocumentTransaction();
                 }
+                if (document_batch_depth_)
+                    --document_batch_depth_;
+                forwardSelection();
             }
 
             void masterTrackChanged(const ProjectDocumentEvent& event) override {

@@ -41,6 +41,7 @@ namespace uapmd {
 
     class TimelineFacadeImpl : public TimelineFacade,
                                public ProjectDocumentView,
+                               public ProjectDocument,
                                public ProjectAddressBook,
                                public PropertyCommandTarget,
                                public timeline_detail::TimelineProjectSerializerHost,
@@ -93,6 +94,9 @@ namespace uapmd {
         bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
         ProjectDocumentEventDispatcher project_document_events_{};
+        ProjectSelectionService project_selections_{*this};
+        mutable std::unordered_map<ProjectObjectId, std::shared_ptr<MidiClipDocument>> midi_documents_;
+        void reconcileDocumentObjects();
         // Which history the project records into. Held through the interface
         // so that swapping the implementation is a change here and nowhere
         // else; CommandInverseHistory is the default one.
@@ -519,6 +523,11 @@ namespace uapmd {
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
             , history_(makeHistory(std::move(historyFactory)))
         {
+            project_document_events_.setDeliveryHooks([this] {
+                project_selections_.beginDocumentBatch();
+                reconcileDocumentObjects();
+                project_selections_.reconcile();
+            }, [this] { project_selections_.endDocumentBatch(); });
             engine_.addPluginInstanceLifecycleListener(*this);
             if (auto* pluginHost = engine_.pluginHost())
                 plugin_state_change_listener_id_ =
@@ -555,6 +564,10 @@ namespace uapmd {
         }
 
         void emitProjectDocumentEvent(ProjectDocumentEvent event) {
+            if (event.kind() == ProjectDocumentEventKind::ProjectClosing) {
+                project_selections_.reset();
+                midi_documents_.clear();
+            }
             if (!suppress_project_document_events_)
                 project_document_events_.emit(std::move(event));
         }
@@ -715,6 +728,22 @@ namespace uapmd {
         void endDocumentTransaction() override {
             project_document_events_.endTransaction();
         }
+
+        ProjectDocument& document() override { return *this; }
+        const ProjectDocument& document() const override { return *this; }
+        const ProjectDocumentView& view() const override { return *this; }
+        ProjectMasterTrackSnapshot masterTrackSnapshot() const override {
+            return *master_track_snapshot_.currentOnPublisherThread();
+        }
+        ProjectDocumentEventSource& events() override { return project_document_events_; }
+        ProjectSelectionService& selections() override { return project_selections_; }
+        const ProjectSelectionService& selections() const override { return project_selections_; }
+        ProjectCommandManager& commandManager() override { return command_manager_; }
+        void beginTransaction() override { beginDocumentTransaction(); }
+        void endTransaction() override { endDocumentTransaction(); }
+        std::shared_ptr<MidiClipDocument> midiContent(ProjectObjectId clipId) override;
+        std::optional<ProjectObjectSnapshot> getObject(ProjectObjectId id) const override;
+        std::optional<double> clipContentTickToProjectSeconds(ProjectObjectId clipId, uint64_t tick) const override;
 
         ProjectDocumentEventSource& projectDocumentEvents() override {
             return project_document_events_;
@@ -1131,7 +1160,7 @@ namespace uapmd {
             int32_t clipId,
             std::vector<uapmd_ump_t> umpEvents,
             std::vector<uint64_t> umpTickTimestamps,
-            ProjectMutationOrigin origin) override;
+            ProjectMutationOrigin origin, const MidiClipContentSnapshot* content = nullptr) override;
         bool replaceMidiClipData(
             int32_t trackIndex, int32_t clipId, MidiClipReader::ClipInfo content,
             ProjectMutationOrigin origin) override;

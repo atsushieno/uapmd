@@ -1,5 +1,6 @@
 #include "ProjectCommandsImpl.hpp"
 #include <cmath>
+#include <set>
 
 // Every undoable project edit. Each one names its property descriptor and
 // its address; the shared machinery does the rest.
@@ -7,6 +8,40 @@
 namespace uapmd {
 
     using namespace timeline_detail;
+
+    bool ProjectCommandsImpl::setMidiClipContent(ProjectObjectId clipId,
+            const MidiClipContentSnapshot& content, ProjectMutationOrigin origin) {
+        const auto clip = engine_.document().view().getClip(clipId);
+        if (!clip || clip->clipType != ClipType::Midi || !content.raw.tickResolution ||
+            content.raw.tickResolution != clip->tickResolution || content.raw.clipTempo != clip->clipTempo ||
+            content.raw.umpEvents.size() != content.raw.tickTimestamps.size())
+            return false;
+        std::set<ProjectObjectId> identities;
+        auto validateIdentity = [&](const ProjectObjectId& id) {
+            if (id.empty() || !identities.insert(id).second)
+                return false;
+            auto existing = engine_.document().view().getObject(id);
+            if (existing && (existing->kind == ProjectObjectKind::Track || existing->kind == ProjectObjectKind::Clip))
+                return false;
+            // An existing item can only be reused by its current owning clip.
+            while (existing && existing->kind != ProjectObjectKind::Clip)
+                existing = existing->parent_id ? engine_.document().view().getObject(*existing->parent_id) : std::nullopt;
+            return !existing || existing->id == clipId;
+        };
+        for (const auto& note : content.notes) {
+            if (note.deleted || !validateIdentity(note.reference_id))
+                return false;
+            for (const auto& point : note.automationEvents)
+                if (!validateIdentity(point.reference_id))
+                    return false;
+        }
+        for (const auto& point : content.automation)
+            if (!validateIdentity(point.reference_id))
+                return false;
+        return engine_.timeline().replaceMidiClipContent(clip->trackIndex, clip->clipNumericId,
+            content.raw.umpEvents, content.raw.tickTimestamps, origin, &content);
+    }
+
 
     bool ProjectCommandsImpl::setClipEnabled(
         int32_t trackIndex, int32_t clipId, bool enabled, ProjectMutationOrigin origin) {
@@ -116,8 +151,22 @@ namespace uapmd {
         const bool ownsStep = records && !dispatch_.state().compoundOpen;
         if (ownsStep && !dispatch_.beginStep("Extend clip", origin).succeeded())
             return false;
+        auto midiContent = fragment->midiContent;
+        if (midiContent) {
+            const double deltaSeconds = leadTicks * 60.0 / (std::max(1.0, clip.clipTempo) * std::max<uint32_t>(1, clip.tickResolution));
+            for (auto& tick : midiContent->raw.tickTimestamps)
+                tick += leadTicks;
+            for (auto& note : midiContent->notes) {
+                note.startSeconds += deltaSeconds;
+                for (auto& point : note.automationEvents)
+                    point.timeSeconds += deltaSeconds;
+            }
+            for (auto& point : midiContent->automation)
+                point.timeSeconds += deltaSeconds;
+        }
         const bool done =
-            timeline.replaceMidiClipContent(trackIndex, clipId, fragment->umpEvents, std::move(ticks), origin)
+            timeline.replaceMidiClipContent(trackIndex, clipId, fragment->umpEvents, std::move(ticks), origin,
+                midiContent ? &*midiContent : nullptr)
             && execute<ClipExtentProperty>(std::move(address), std::move(extent), origin);
         if (ownsStep) {
             if (done)

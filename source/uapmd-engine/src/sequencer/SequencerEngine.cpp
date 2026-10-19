@@ -503,6 +503,12 @@ namespace uapmd {
             SequencerProcessingLifecycleListener& listener) override {
             std::erase(processing_lifecycle_listeners_, &listener);
         }
+        void notifyPluginEditorVisibilityChanged(int32_t instanceId, bool visible) override {
+            const auto listeners = plugin_instance_lifecycle_listeners_;
+            for (auto* listener : listeners)
+                if (std::find(plugin_instance_lifecycle_listeners_.begin(), plugin_instance_lifecycle_listeners_.end(), listener) != plugin_instance_lifecycle_listeners_.end())
+                    listener->pluginEditorVisibilityChanged(instanceId, visible);
+        }
         void addPluginInstanceLifecycleListener(
             PluginInstanceLifecycleListener& listener) override {
             if (std::find(

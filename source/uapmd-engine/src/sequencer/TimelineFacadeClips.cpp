@@ -474,7 +474,7 @@ namespace uapmd {
             int32_t clipId,
             std::vector<uapmd_ump_t> umpEvents,
             std::vector<uint64_t> umpTickTimestamps,
-            ProjectMutationOrigin origin) {
+            ProjectMutationOrigin origin, const MidiClipContentSnapshot* content) {
                 auto* targetTrack = resolveTrack(trackIndex);
         if (!targetTrack)
             return false;
@@ -518,6 +518,11 @@ namespace uapmd {
             // tempo map is put back on it; without that, a tempo-mapped project
             // hears the content shift in time on every edit.
             applyMasterTempoMapToMusicalClips();
+            if (content) {
+                auto model = midiContent(clip->referenceId);
+                if (model)
+                    model->restore(*content);
+            }
             notifyClipChanged(trackIndex, clipId, "clip-content-changed");
             notifyTimelineChanged();
         }
@@ -571,51 +576,13 @@ namespace uapmd {
         auto midi = std::dynamic_pointer_cast<MidiClipSourceNode>(source);
         if (!midi)
             return false;
-        struct TimedUmp {uint64_t tick{
-                };
-            std::vector<uapmd_ump_t> words;
-            bool recorded{};
-        };
-        std::vector<TimedUmp> events;
-        const auto appendEvents = [&events](const std::vector<uapmd_ump_t>& sourceWords,
-                                            const std::vector<uint64_t>& sourceTicks,
-                                            bool recorded) {
-            for (size_t offset = 0; offset < sourceWords.size();) {
-                const auto wordCount = std::max<size_t>(1,
-                    umppi::umpSizeInInts(static_cast<uint8_t>(sourceWords[offset] >> 28)));
-                if (offset + wordCount > sourceWords.size() || offset >= sourceTicks.size())
-                    return false;
-                events.push_back({
-                    sourceTicks[offset],
-                    std::vector<uapmd_ump_t>(sourceWords.begin() + static_cast<std::ptrdiff_t>(offset),
-                                             sourceWords.begin() + static_cast<std::ptrdiff_t>(offset + wordCount)),
-                    recorded});
-                offset += wordCount;
-            }
-            return true;
-        };
-        if (!appendEvents(midi->umpEvents(), midi->eventTimestampsTicks(), false) ||
-            !appendEvents(words, ticks, true))
+        auto content = midiContent(clip->referenceId);
+        if (!content)
             return false;
-        // At an identical tick preserve existing clip data before newly
-        // recorded input; stable_sort retains each stream's event order.
-        std::stable_sort(events.begin(), events.end(), [](const TimedUmp& a, const TimedUmp& b) {
-            if (a.tick != b.tick)
-                return a.tick < b.tick;
-            return !a.recorded && b.recorded;
-        });
-        std::vector<uapmd_ump_t> allWords;
-        std::vector<uint64_t> allTicks;
-        for (const auto& event : events) {
-            allWords.insert(allWords.end(), event.words.begin(), event.words.end());
-            allTicks.insert(allTicks.end(), event.words.size(), event.tick);
-        }
-        return replaceMidiClipContent(
-            trackIndex,
-            clipId,
-            std::move(allWords),
-            std::move(allTicks),
-            ProjectMutationOrigin::User);
+        MidiRawData incoming{std::move(words), std::move(ticks), clip->tickResolution, clip->clipTempo};
+        auto snapshot = content->withAppendedEvents(std::move(incoming));
+        return snapshot && replaceMidiClipContent(trackIndex, clipId,
+            snapshot->raw.umpEvents, snapshot->raw.tickTimestamps, ProjectMutationOrigin::User, &*snapshot);
     }
 
     ClipReferenceMap TimelineFacadeImpl::buildClipReferenceMap() const {

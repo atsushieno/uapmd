@@ -4,6 +4,87 @@
 // identities into live objects and back, and emitting document events.
 
 namespace uapmd {
+    std::shared_ptr<MidiClipDocument> TimelineFacadeImpl::midiContent(ProjectObjectId clipId) {
+        auto clip = getClip(clipId);
+        if (!clip || clip->clipType != ClipType::Midi)
+            return {};
+        if (auto it = midi_documents_.find(clipId); it != midi_documents_.end())
+            return it->second;
+        MidiRawData raw;
+        if (!readClipUmpContent(clipId, raw.umpEvents, raw.tickTimestamps, raw.tickResolution))
+            return {};
+        raw.clipTempo = clip->clipTempo;
+        auto content = std::make_shared<MidiClipDocument>();
+        content->load(std::move(raw), (clip->sourceOffsetSamples + clip->durationSamples) / std::max(1.0, clip->sampleRate));
+        midi_documents_[clipId] = content;
+        return content;
+    }
+
+    void TimelineFacadeImpl::reconcileDocumentObjects() {
+        std::erase_if(midi_documents_, [this](auto& entry) {
+            auto clip = getClip(entry.first);
+            if (!clip || clip->clipType != ClipType::Midi)
+                return true;
+            MidiRawData raw;
+            if (readClipUmpContent(entry.first, raw.umpEvents, raw.tickTimestamps, raw.tickResolution)) {
+                raw.clipTempo = clip->clipTempo;
+                if (!entry.second->matchesSource(raw))
+                    entry.second->load(std::move(raw), (clip->sourceOffsetSamples + clip->durationSamples) / std::max(1.0, clip->sampleRate));
+            }
+            return false;
+        });
+    }
+
+    std::optional<ProjectObjectSnapshot> TimelineFacadeImpl::getObject(ProjectObjectId id) const {
+        if (auto object = ProjectDocumentView::getObject(id))
+            return object;
+        for (const auto& [clipId, content] : midi_documents_) {
+            if (!getClip(clipId))
+                continue;
+            for (const auto& note : content->editNotes) {
+                if (note.deleted)
+                    continue;
+                if (note.reference_id == id)
+                    return ProjectObjectSnapshot{id, ProjectObjectKind::Note, clipId};
+                for (const auto& point : note.automationEvents)
+                    if (point.reference_id == id)
+                        return ProjectObjectSnapshot{id, ProjectObjectKind::AutomationPoint, note.reference_id};
+            }
+            for (const auto& point : content->editClipEvents)
+                if (point.reference_id == id)
+                    return ProjectObjectSnapshot{id, ProjectObjectKind::AutomationPoint, clipId};
+        }
+        return std::nullopt;
+    }
+
+    std::optional<double> TimelineFacadeImpl::clipContentTickToProjectSeconds(ProjectObjectId clipId, uint64_t tick) const {
+        auto clip = getClip(clipId);
+        if (!clip || clip->clipType != ClipType::Midi || !clip->tickResolution)
+            return std::nullopt;
+        const double start = clip->position.toSeconds(static_cast<int32_t>(clip->sampleRate));
+        const double offset = clip->sourceOffsetSamples / std::max(1.0, clip->sampleRate);
+        const auto& tempo = masterTempoMap();
+        if (!master_timeline_meta_.tempoPoints.empty())
+            return tempo.beatsToSeconds(tempo.secondsToBeats(std::max(0.0, start - offset)) +
+                static_cast<double>(tick) / clip->tickResolution);
+        // Without a project map, use the source's authored tempo changes.
+        auto found = findClipById(clipId);
+        auto source = found ? std::dynamic_pointer_cast<MidiClipSourceNode>(
+            found->first->getSourceNode(found->second.sourceNodeInstanceId)) : nullptr;
+        double seconds = 0.0;
+        uint64_t lastTick = 0;
+        double bpm = std::max(1.0, clip->clipTempo);
+        if (source)
+            for (const auto& point : source->tempoChanges()) {
+                if (point.tickPosition > tick)
+                    break;
+                seconds += (point.tickPosition - lastTick) * 60.0 / (bpm * clip->tickResolution);
+                lastTick = point.tickPosition;
+                bpm = std::max(1.0, point.bpm);
+            }
+        return start - offset + seconds + (tick - lastTick) * 60.0 / (bpm * clip->tickResolution);
+    }
+
     ProjectRevision TimelineFacadeImpl::currentRevision() const {
         return project_document_events_.currentRevision();
     }

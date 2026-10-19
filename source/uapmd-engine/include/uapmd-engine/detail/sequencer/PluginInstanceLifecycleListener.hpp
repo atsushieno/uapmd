@@ -18,6 +18,8 @@ public:
         int32_t,
         uapmd_plugin_hosting::AudioPluginInstanceAPI&) {}
     virtual void pluginInstanceWillBeDestroyed(int32_t) {}
+    // Sent during UI setup (before show) and when the host hides the editor.
+    virtual void pluginEditorVisibilityChanged(int32_t, bool) {}
 };
 
 } // namespace uapmd

@@ -12,7 +12,7 @@ namespace uapmd::ara {
                 std::unique_ptr<AraPluginDocument> document{};
             };
 
-            ProjectDocumentView* document_view_{nullptr};
+            const ProjectDocumentView* document_view_{nullptr};
             ProjectDocumentEventSource* event_source_{nullptr};
             ProjectDocumentEventListenerToken listener_token_{0};
             std::map<int32_t, AttachedPlugin> plugins_{};
@@ -56,7 +56,7 @@ namespace uapmd::ara {
             }
 
             AraStatus bindProjectDocument(
-                ProjectDocumentView& documentView,
+                const ProjectDocumentView& documentView,
                 ProjectDocumentEventSource& eventSource) override {
                 if (event_source_ == &eventSource && document_view_ == &documentView)
                     return AraStatus::Ok;

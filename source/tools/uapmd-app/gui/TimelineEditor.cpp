@@ -799,6 +799,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         gap + muteButtonWidth + gap + soloButtonWidth + pad;
 
     return SequenceEditor::RenderContext{
+        .document = &uapmd_app::AppModel::instance().sequencer().engine()->timeline().document(),
         .clipActions = buildClipActions(),
         .refreshClips = [this](int32_t trackIndex) {
             refreshSequenceEditorForTrack(trackIndex);

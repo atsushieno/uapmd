@@ -191,7 +191,6 @@ namespace uapmd_app {
         std::unique_ptr<uapmd::IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
-        std::vector<std::string> selected_clip_references_;
         std::optional<std::pair<int32_t, int32_t>> selected_midi_clip_;
         std::vector<TimelineClipboardClip> timeline_clipboard_;
         std::map<std::pair<int32_t, int32_t>, std::shared_ptr<PianoRollSession>> piano_roll_sessions_;

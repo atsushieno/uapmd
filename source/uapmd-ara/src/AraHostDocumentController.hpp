@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <ARA_API/ARAInterface.h>
-#include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-data/uapmd-data.hpp>
 
 #include "AraDocumentController.hpp"
 
@@ -23,15 +23,17 @@ namespace uapmd::ara {
         AraHostDocumentController& operator=(const AraHostDocumentController&) = delete;
 
         bool valid() const override;
+        bool notifySelection(const ProjectDocumentView& view, const ProjectSelection& selection) override;
+        void setEditorViewVisible(bool visible) override;
         ARA::ARADocumentControllerRef documentControllerRef() const override;
         const ARA::ARAFactory* factory() const override;
         void bindPluginExtension(const ARA::ARAPlugInExtensionInstance* pluginExtension) override;
         bool resyncFromProjectDocument(
-            ProjectDocumentView& documentView,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot) override;
+            const ProjectDocumentView& documentView,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot) override;
         bool applyProjectDocumentEvent(
-            ProjectDocumentView& documentView,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot,
+            const ProjectDocumentView& documentView,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot,
             const ProjectDocumentEvent& event) override;
         // Holds one ARA edit cycle open across a batch of document events, so
         // that a multi-step edit reaches the plug-in atomically instead of as

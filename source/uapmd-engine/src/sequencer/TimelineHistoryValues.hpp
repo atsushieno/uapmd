@@ -121,6 +121,20 @@ namespace uapmd::timeline_detail {
             + fragment.umpTickTimestamps.capacity() * sizeof(uint64_t)
             + fragment.tempoChanges.capacity() * sizeof(MidiTempoChange)
             + fragment.timeSignatureChanges.capacity() * sizeof(MidiTimeSignatureChange);
+        if (fragment.midiContent) {
+            const auto& content = *fragment.midiContent;
+            result += sizeof(content) + content.raw.umpEvents.capacity() * sizeof(uapmd_ump_t)
+                + content.raw.tickTimestamps.capacity() * sizeof(uint64_t)
+                + content.notes.capacity() * sizeof(MidiEditNote)
+                + content.automation.capacity() * sizeof(MidiAutomationEvent);
+            for (const auto& note : content.notes) {
+                result += note.reference_id.capacity() + note.automationEvents.capacity() * sizeof(MidiAutomationEvent);
+                for (const auto& point : note.automationEvents)
+                    result += point.reference_id.capacity();
+            }
+            for (const auto& point : content.automation)
+                result += point.reference_id.capacity();
+        }
         for (const auto& [extensionId, state] : fragment.extensionState)
             result += sizeof(extensionId) + extensionId.capacity()
                 + sizeof(state) + state.capacity();

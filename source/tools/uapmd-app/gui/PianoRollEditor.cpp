@@ -165,6 +165,10 @@ void PianoRollEditor::showClip(int32_t trackIndex, int32_t clipId,
     state.preview    = std::move(preview);
     state.visible    = true;
     state.document = uapmd_app::AppModel::instance().openPianoRollSession(trackIndex, clipId);
+    if (!state.document) {
+        state.visible = false;
+        return;
+    }
     if (!state.preview || !state.preview->rawMidiData ||
             !state.document->matchesSource(*state.preview->rawMidiData))
         state.document->loadNotes(
@@ -412,6 +416,25 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         }
     }
 
+    // Explicit regions retain their native clip-content coordinates as objects move.
+    if (state.document->project && state.document->rawMidiData) {
+        const auto selection = state.document->project->selections().snapshot(state.document->selection_context);
+        if (selection)
+            for (const auto& value : selection->regions)
+                if (const auto* region = std::get_if<uapmd::MidiNoteSelectionRegion>(&value);
+                    region && region->clip_id == state.document->clip_reference_id) {
+                    const double secondsPerTick = 60.0 / (bpm * std::max<uint32_t>(1, state.document->rawMidiData->tickResolution));
+                    const float x0 = origin.x + static_cast<float>(region->start_tick * secondsPerTick) * pxPerSec - hScroll;
+                    const float x1 = origin.x + static_cast<float>(region->end_tick * secondsPerTick) * pxPerSec - hScroll;
+                    const auto pitches = region->pitches.value_or(std::pair<uint8_t, uint8_t>{0, 127});
+                    const float y0 = noteAreaY + (127 - pitches.second) * noteH - vScrollPx;
+                    const float y1 = noteAreaY + (128 - pitches.first) * noteH - vScrollPx;
+                    dl->PushClipRect({origin.x, noteAreaY}, {origin.x + width, origin.y + height}, true);
+                    dl->AddRectFilled({x0, y0}, {x1, y1}, ImGui::GetColorU32(ImGuiCol_Header, 0.45f));
+                    dl->PopClipRect();
+                }
+    }
+
     const auto pointer = ImGui::GetMousePos();
     const bool inGrid = pointer.x >= origin.x && pointer.x < origin.x + width &&
         pointer.y >= noteAreaY && pointer.y < noteAreaY + noteAreaH;
@@ -604,7 +627,9 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         if (mouseRightClick)
             ImGui::OpenPopup("##note_editor");
         if (ImGui::BeginPopup("##note_editor")) {
-            renderNoteActions(state);
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+        state.document->project->selections().setActiveContext(state.document->selection_context);
+    renderNoteActions(state);
             const int idx = state.document->selectedNoteIdx;
             if (idx < 0 || idx >= static_cast<int>(state.document->editNotes.size()) ||
                     state.document->editNotes[idx].deleted) {
@@ -920,32 +945,19 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 const auto& evt = state.document->editClipEvents[ci];
                 ImGui::PushID(ci);
                 ImGui::TableNextRow();
+                if (state.document->isAutomationInSelectedRegion(evt))
+                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.45f));
 
                 // Col 0: time — also acts as the click target for the whole row.
                 ImGui::TableSetColumnIndex(0);
                 char timeLabel[32];
                 std::snprintf(timeLabel, sizeof(timeLabel), "%.4f", evt.timeSeconds);
-                const bool rowClicked = ImGui::Selectable(timeLabel, false,
+                const bool rowClicked = ImGui::Selectable(timeLabel, state.document->isObjectSelected(evt.reference_id),
                     ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
                     ImVec2(0, ImGui::GetTextLineHeight()));
-                if (rowClicked) {
-                    // Find the note whose time-range contains this event and select it.
-                    for (int ni = 0; ni < static_cast<int>(state.document->editNotes.size()); ++ni) {
-                        const auto& n = state.document->editNotes[ni];
-                        if (!n.deleted &&
-                                evt.timeSeconds >= n.startSeconds &&
-                                evt.timeSeconds <= n.startSeconds + n.durationSeconds) {
-                            state.document->selectNote(ni);
-                            // Scroll the piano-roll vertically to show the note.
-                            const float targetIdx = static_cast<float>(kNoteCount - 1) -
-                                                    static_cast<float>(n.note);
-                            state.view.vScrollNote = std::max(0.0f, targetIdx - 8.0f);
-                            break;
-                        }
-                    }
-                }
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Click to jump to the note containing this event");
+                if (rowClicked)
+                    state.document->selectObject(evt.reference_id, ImGui::GetIO().KeyShift || ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper,
+                        ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper);
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::TextUnformatted(automationTypeName(evt.type));
@@ -1024,9 +1036,17 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             auto& ae = note.automationEvents[ei];
             ImGui::PushID(ei);
             ImGui::TableNextRow();
+            if (state.document->isObjectSelected(ae.reference_id))
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header));
+            else if (state.document->isAutomationInSelectedRegion(ae, note.reference_id))
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.45f));
 
             // Context-menu button (col 0 — always visible, never clipped)
             ImGui::TableSetColumnIndex(0);
+            bool pointSelected = state.document->isObjectSelected(ae.reference_id);
+            if (ImGui::Checkbox("##selected", &pointSelected))
+                state.document->selectObject(ae.reference_id, true, true);
+            ImGui::SameLine();
             {
                 const std::string menuId = std::format("RowActionsN##{}", ei);
                 if (contextActionButton(std::format("{}##N{}", icons::ContextMenu, ei).c_str(),
@@ -1177,10 +1197,18 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
 
             ImGui::PushID(1000 + ci); // offset avoids ID collision with per-note rows
             ImGui::TableNextRow();
+            if (state.document->isObjectSelected(ae.reference_id))
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header));
+            else if (state.document->isAutomationInSelectedRegion(ae))
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.45f));
             ImGui::PushStyleColor(ImGuiCol_Text, theme.automation_related_text);
 
             // Context-menu button (col 0 — always visible, never clipped)
             ImGui::TableSetColumnIndex(0);
+            bool pointSelected = state.document->isObjectSelected(ae.reference_id);
+            if (ImGui::Checkbox("##selected", &pointSelected))
+                state.document->selectObject(ae.reference_id, true, true);
+            ImGui::SameLine();
             {
                 const std::string menuId = std::format("RowActionsC##{}", ci);
                 if (contextActionButton(std::format("{}##C{}", icons::ContextMenu, ci).c_str(),
@@ -1371,6 +1399,17 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
 // ── main window ───────────────────────────────────────────────────────────────
 
 void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx) {
+    if (!state.document || !state.document->project ||
+        !state.document->project->selections().hasContext(state.document->selection_context)) {
+        state.visible = false;
+        return;
+    }
+    if (auto clip = state.document->project->view().getClip(state.document->clip_reference_id)) {
+        state.trackIndex = state.document->trackIndex = clip->trackIndex;
+        state.clipId = state.document->clipId = clip->clipNumericId;
+    }
+    state.document->content->ensureIdentities();
+    state.document->syncSelection();
     const float uiScale = ctx.uiScale;
     std::string title = std::format("Piano Roll - {}###PianoRoll_{}_{}",
                                      state.clipName, state.trackIndex, state.clipId);
@@ -1402,6 +1441,8 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
         return;
     }
 
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+        state.document->project->selections().setActiveContext(state.document->selection_context);
     renderControls(state, uiScale);
     if (!state.document->edit_error.empty()) {
         ImGui::TextWrapped("Edits were not saved: %s", state.document->edit_error.c_str());
@@ -1727,11 +1768,15 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
     const auto beforeNotes = batchEdit ? state.document->editNotes : std::vector<EditNote>{};
     const auto beforeSelection = batchEdit ? state.document->selected_notes : std::unordered_set<uint64_t>{};
     const int beforePrimary = state.document->selectedNoteIdx;
+    const auto beforeDocumentSelection = batchEdit
+        ? state.document->project->selections().snapshot(state.document->selection_context) : std::nullopt;
     performNoteAction(state);
     if (state.document->dirtyAfterEdit && !applyNoteEdits(state, ctx) && batchEdit) {
         state.document->editNotes = beforeNotes;
         state.document->selected_notes = beforeSelection;
         state.document->selectedNoteIdx = beforePrimary;
+        if (beforeDocumentSelection)
+            state.document->project->selections().replace(state.document->selection_context, *beforeDocumentSelection);
         state.document->retry_available = false;
     }
 

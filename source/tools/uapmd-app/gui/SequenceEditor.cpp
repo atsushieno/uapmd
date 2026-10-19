@@ -766,6 +766,9 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
         const bool gripOwnsGesture = renderClipGrips(context, selectionBoxes,
             {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
             timelineHovered && mouseInClipArea && !shouldBlockInput);
+        if (context.document && timelineHovered &&
+            (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)))
+            context.document->selections().setActiveContext(context.document->selections().defaultContext());
         const auto marqueeSelected = timeline_.marquee.render(context.clipActions, selectionBoxes,
             {clipAreaMinX, clipAreaMinY}, {clipAreaMaxX, clipAreaMaxY},
             timelineHovered && !shouldBlockInput && !gripOwnsGesture, context.uiScale);
@@ -863,10 +866,46 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                             axis_.secondsFromFrame(static_cast<double>(rStart)), 0.0, maxSeconds);
                         trackState.requestedRangeEnd = std::clamp(
                             axis_.secondsFromFrame(static_cast<double>(rEnd)), 0.0, maxSeconds);
+                        if (context.document) {
+                            auto& service = context.document->selections();
+                            uapmd::TimelineSelectionRegion region;
+                            region.start_seconds = trackState.requestedRangeStart;
+                            region.end_seconds = trackState.requestedRangeEnd;
+                            region.track_ids = std::vector<uapmd::ProjectObjectId>{};
+                            auto ids = context.document->view().trackIds();
+                            if (auto master = context.document->view().masterTrackId())
+                                ids.push_back(*master);
+                            for (const auto& id : ids)
+                                if (auto track = context.document->view().getTrack(id); track && track->trackIndex == rTrack)
+                                    region.track_ids->push_back(id);
+                            service.replace(service.defaultContext(), {{}, {region}});
+                            service.setActiveContext(service.defaultContext());
+                        }
                         requestedRangeTrack = rTrack;
                     }
                 }
             }
+        }
+
+        if (context.document && !timeline_.rangeDrag.active) {
+            auto& service = context.document->selections();
+            const auto selection = service.snapshot(service.defaultContext());
+            if (selection)
+                for (const auto& value : selection->regions)
+                    if (const auto* region = std::get_if<uapmd::TimelineSelectionRegion>(&value)) {
+                        const float scale = timeline_.widget->GetScale();
+                        const float first = static_cast<float>(timeline_.widget->GetStartTimestamp());
+                        const float x0 = std::clamp(clipAreaMinX + static_cast<float>(axis_.frameFromSeconds(region->start_seconds) - first) * scale, clipAreaMinX, clipAreaMaxX);
+                        const float x1 = std::clamp(clipAreaMinX + static_cast<float>(axis_.frameFromSeconds(region->end_seconds) - first) * scale, clipAreaMinX, clipAreaMaxX);
+                        auto ids = region->track_ids.value_or(context.document->view().trackIds());
+                        for (const auto& id : ids)
+                            if (auto track = context.document->view().getTrack(id)) {
+                                const float top = sectionTopYFor(track->trackIndex);
+                                const float height = sectionHeightFor(track->trackIndex);
+                                if (height > 0 && x1 >= x0)
+                                    timelineSelectionDrawList()->AddRectFilled({x0, top}, {x1, top + height}, IM_COL32(255, 255, 255, 40));
+                            }
+                    }
         }
 
         // Open & render per-track context menus

@@ -10,15 +10,18 @@ namespace uapmd::ara {
     public:
         virtual ~AraDocumentController() = default;
         virtual bool valid() const = 0;
+        // Backends without an editor selection transport report unsupported.
+        virtual bool notifySelection(const ProjectDocumentView&, const ProjectSelection&) { return false; }
+        virtual void setEditorViewVisible(bool) {}
         virtual ARA::ARADocumentControllerRef documentControllerRef() const = 0;
         virtual const ARA::ARAFactory* factory() const = 0;
         virtual void bindPluginExtension(const ARA::ARAPlugInExtensionInstance* pluginExtension) = 0;
         virtual bool resyncFromProjectDocument(
-            ProjectDocumentView& documentView,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot) = 0;
+            const ProjectDocumentView& documentView,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot) = 0;
         virtual bool applyProjectDocumentEvent(
-            ProjectDocumentView& documentView,
-            const TimelineFacade::MasterTrackSnapshot& masterTrackSnapshot,
+            const ProjectDocumentView& documentView,
+            const ProjectMasterTrackSnapshot& masterTrackSnapshot,
             const ProjectDocumentEvent& event) = 0;
         // Holds one ARA edit cycle open across a batch of document events, so
         // that a multi-step edit reaches the plug-in atomically instead of as

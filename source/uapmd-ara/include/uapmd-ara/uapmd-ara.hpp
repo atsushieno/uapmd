@@ -9,8 +9,11 @@
 #include <vector>
 
 #include <ARA_API/ARAInterface.h>
-#include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-data/uapmd-data.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 #include "ara-plugin-instance-handles.hpp"
+
+namespace uapmd { class SequencerEngine; }
 
 namespace uapmd::ara {
 
@@ -124,7 +127,7 @@ namespace uapmd::ara {
         virtual ~AraPluginDocument() = default;
 
         virtual AraStatus bindProjectDocument(
-            ProjectDocumentView& documentView,
+            const ProjectDocumentView& documentView,
             ProjectDocumentEventSource& eventSource) = 0;
         virtual void unbindProjectDocument() = 0;
 
@@ -166,7 +169,7 @@ namespace uapmd::ara {
         virtual ~AraSession() = default;
 
         virtual AraStatus bindProjectDocument(
-            ProjectDocumentView& documentView,
+            const ProjectDocumentView& documentView,
             ProjectDocumentEventSource& eventSource) = 0;
         virtual void unbindProjectDocument() = 0;
 
@@ -197,6 +200,7 @@ namespace uapmd::ara {
 
         // Includes AAP-native documents as well as SDK document controllers.
         virtual bool hasAraBinding(int32_t pluginInstanceId) const = 0;
+        virtual void setPluginEditorVisible(int32_t pluginInstanceId, bool visible) = 0;
         // SDK handles below are unavailable for AAP-native documents.
         virtual bool hasNativeAraBinding(int32_t pluginInstanceId) const = 0;
         virtual const ARA::ARAFactory* nativeAraFactory(int32_t pluginInstanceId) const = 0;

@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "ProjectDocumentEvents.hpp"
+#include "ProjectSelection.hpp"
+#include "ProjectMasterTrackSnapshot.hpp"
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {
@@ -50,6 +52,17 @@ namespace uapmd {
         virtual ~ProjectDocumentView() = default;
 
         virtual ProjectRevision currentRevision() const = 0;
+        virtual ProjectMasterTrackSnapshot masterTrackSnapshot() const { return {}; }
+        virtual std::optional<ProjectObjectSnapshot> getObject(ProjectObjectId id) const {
+            if (getTrack(id))
+                return ProjectObjectSnapshot{id, ProjectObjectKind::Track, {}};
+            if (auto clip = getClip(id))
+                return ProjectObjectSnapshot{id, ProjectObjectKind::Clip, clip->trackId};
+            return std::nullopt;
+        }
+        virtual std::optional<double> clipContentTickToProjectSeconds(
+            ProjectObjectId clipId, uint64_t tick) const { return std::nullopt; }
+
 
         virtual std::optional<ProjectObjectId> masterTrackId() const = 0;
         virtual std::vector<ProjectObjectId> trackIds() const = 0;

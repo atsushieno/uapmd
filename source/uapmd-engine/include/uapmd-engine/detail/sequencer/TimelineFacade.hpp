@@ -134,7 +134,8 @@ public:
         int32_t clipId,
         std::vector<uapmd_ump_t> umpEvents,
         std::vector<uint64_t> umpTickTimestamps,
-        ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+        ProjectMutationOrigin origin = ProjectMutationOrigin::User,
+        const MidiClipContentSnapshot* content = nullptr) = 0;
 
     // Reimport including tempo/signature metadata. Incoming ticks are normalized
     // to the existing clip resolution; its document identity is retained.
@@ -271,6 +272,9 @@ public:
     virtual void beginDocumentTransaction() = 0;
     virtual void endDocumentTransaction() = 0;
 
+    virtual ProjectDocument& document() = 0;
+    virtual const ProjectDocument& document() const = 0;
+
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
     virtual ProjectDocumentView& projectDocumentView() = 0;
     // Translation between persistent document identities and runtime indexes.
@@ -313,24 +317,7 @@ public:
         std::string& error) = 0;
 
     // Tempo map and time-signature metadata extracted from master track MIDI clips
-    struct MasterTrackSnapshot {
-        struct TempoPoint {
-            double timeSeconds{0.0};
-            uint64_t tickPosition{0};
-            double bpm{0.0};
-        };
-        struct TimeSignaturePoint {
-            double timeSeconds{0.0};
-            uint64_t tickPosition{0};
-            MidiTimeSignatureChange signature{};
-        };
-        std::vector<TempoPoint> tempoPoints;
-        std::vector<TimeSignaturePoint> timeSignaturePoints;
-        double maxTimeSeconds{0.0};
-        bool empty() const {
-            return tempoPoints.empty() && timeSignaturePoints.empty();
-        }
-    };
+    using MasterTrackSnapshot = ProjectMasterTrackSnapshot;
 
     virtual MasterTrackSnapshot buildMasterTrackSnapshot() = 0;
 
