@@ -28,6 +28,7 @@
     #include <android/log.h>
     #include <filesystem>
     #include <SDL3/SDL_system.h>
+    #include "AndroidSessionPersistence.hpp"
 #endif
 
 #ifdef USE_GLFW_BACKEND
@@ -383,8 +384,15 @@ int runMainLoop(int argc, char** argv) {
         mainWindow.applySystemUiScale(suggestedUiScale);
     }
 
-    // Start audio
+    // Restore before starting audio; loading reinstantiates the project plugins.
+#if defined(__ANDROID__)
+    AndroidSessionPersistence sessionPersistence;
+    sessionPersistence.restore([] {
+        AppModel::instance().setAudioEngineEnabled(true);
+    });
+#else
     uapmd_app::AppModel::instance().setAudioEngineEnabled(true);
+#endif
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -538,6 +546,11 @@ int runMainLoop(int argc, char** argv) {
         }
 #endif
     }
+
+#if defined(__ANDROID__)
+    sessionPersistence.save();
+    sessionPersistence.stop();
+#endif
 
     // A scan still running would call back into the UI torn down below, and its
     // worker would outlive the model. It is canceled and waited for here, while all

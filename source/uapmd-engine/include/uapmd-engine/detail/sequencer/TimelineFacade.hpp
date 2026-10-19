@@ -245,6 +245,9 @@ public:
         // final storage. Such callers mark the captured history node only after
         // the provider confirms the final write.
         bool markHistorySaved{true};
+        // Recovery snapshots must survive removal of temporary/imported media.
+        bool copy_media_files{false};
+        bool preserve_empty_tracks{false};
     };
     using ProjectSaveCallback = std::function<void(ProjectResult)>;
     using ProjectLoadCallback = std::function<void(ProjectResult)>;

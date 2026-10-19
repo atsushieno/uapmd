@@ -84,6 +84,7 @@ namespace uapmd::timeline_detail {
         std::unordered_map<std::string, UapmdProjectClipData*> clipLookup;
         std::vector<SerializedTrackClips> tracks;
         size_t midiExportCounter{0};
+        bool copy_media_files{false};
     };
 
     void TimelineProjectSerializer::saveProject(
@@ -157,6 +158,7 @@ namespace uapmd::timeline_detail {
 
             ProjectSaveBuild build;
             build.clipDir = operation.project_dir / "clips";
+            build.copy_media_files = options.copy_media_files;
 
             if (!serializeTracks(operation, options, build, error))
                 return false;
@@ -196,7 +198,9 @@ namespace uapmd::timeline_detail {
                 static_cast<int32_t>(trackIndex),
                 clips});
 
-            for (const auto& clip : clips) {
+            for (auto clip : clips) {
+                if (build.copy_media_files)
+                    clip.needsFileSave = true;
                 if (!sequencer_detail::serializeProjectClip(
                         *timelineTrack,
                         clip,
@@ -205,7 +209,9 @@ namespace uapmd::timeline_detail {
                         build.clipDir,
                         operation.project_dir,
                         std::format("track{}_clip_", trackIndex),
-                        std::format("track{}_", trackIndex),
+                        build.copy_media_files
+                            ? std::format("track{}_clip{}_", trackIndex, clip.clipId)
+                            : std::format("track{}_", trackIndex),
                         std::format("Clip {} on track {}", clip.clipId, trackIndex),
                         false,
                         build.midiExportCounter,
@@ -235,7 +241,7 @@ namespace uapmd::timeline_detail {
             // would discard the very graph we are preserving.
             const bool hasUnresolvedGraph = sequencerTrack
                 && !sequencerTrack->unresolvedGraphPayload().empty();
-            if (!hasClips && !hasPlugins && !hasMixerState && !hasUnresolvedGraph)
+            if (!options.preserve_empty_tracks && !hasClips && !hasPlugins && !hasMixerState && !hasUnresolvedGraph)
                 continue;
 
             queueProjectGraphSerialization(
@@ -270,9 +276,11 @@ namespace uapmd::timeline_detail {
                 kMasterTrackIndex,
                 clips});
 
-            for (const auto& clip : clips) {
+            for (auto clip : clips) {
                 if (clip.clipType != ClipType::Midi)
                     continue;
+                if (build.copy_media_files)
+                    clip.needsFileSave = true;
                 if (!sequencer_detail::serializeProjectClip(
                         *masterTimelineTrack,
                         clip,
