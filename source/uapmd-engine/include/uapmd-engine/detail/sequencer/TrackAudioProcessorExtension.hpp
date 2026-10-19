@@ -1,13 +1,12 @@
 #pragma once
 
 #include <cstdint>
-#include <limits>
+#include <uapmd-data/uapmd-data.hpp>
 
 #include <uapmd-midi-service/uapmd-midi-service.hpp>
 
 namespace uapmd {
 
-inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
 using uapmd_track_index_t = int32_t;
 
 class SequencerEngine;

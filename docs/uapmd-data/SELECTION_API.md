@@ -379,9 +379,13 @@ migration. This does not require moving the full `TimelineFacade` into
 
 Move the value types currently nested in `TimelineFacade::MasterTrackSnapshot`
 to `uapmd-data`, so document consumers can inspect tempo/signature metadata
-without naming the engine facade. Split document identity queries from
-`ProjectAddressBook` operations that return live `SequencerTrack*` or resolve
-runtime plugin instances.
+without naming the engine facade.
+
+`ProjectAddressBook` now lives in `uapmd-data` and resolves stable track and
+clip identities against authored track/clip storage. It is exposed through
+`ProjectDocument::addresses()`; `TimelineFacade::addresses()` forwards to the
+same book. Lookups of live `SequencerTrack*` and runtime plugin instances remain
+on the engine-private command target.
 
 Live project load/save orchestration can remain in the engine initially:
 serializing authored data and reconstructing live tracks/plugins are distinct

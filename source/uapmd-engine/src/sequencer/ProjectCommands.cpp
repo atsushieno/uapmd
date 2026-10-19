@@ -237,7 +237,7 @@ namespace uapmd {
 
     bool ProjectCommandsImpl::setPluginParameterValue(
         int32_t instanceId, int32_t parameterIndex, double value, ProjectMutationOrigin origin) {
-        auto plugin = target_.addresses().pluginAddress(instanceId);
+        auto plugin = target_.pluginAddress(instanceId);
         if (!plugin)
             return false;
         return execute<PluginParameterProperty>(
@@ -256,7 +256,7 @@ namespace uapmd {
         int32_t parameterIndex,
         double value,
         ProjectMutationOrigin origin) {
-        auto plugin = target_.addresses().pluginAddress(instanceId);
+        auto plugin = target_.pluginAddress(instanceId);
         if (!plugin)
             return false;
         return execute<PluginPerNoteProperty>(

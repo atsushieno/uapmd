@@ -5,6 +5,7 @@
 #include "ProjectSelection.hpp"
 
 namespace uapmd {
+    class ProjectAddressBook;
     class ProjectCommands;
     class ProjectCommandManager;
     class MidiClipDocument;
@@ -14,6 +15,8 @@ namespace uapmd {
     public:
         virtual ~ProjectDocument() = default;
         virtual const ProjectDocumentView& view() const = 0;
+        virtual ProjectAddressBook& addresses() = 0;
+        virtual const ProjectAddressBook& addresses() const = 0;
         virtual ProjectDocumentEventSource& events() = 0;
         virtual ProjectSelectionService& selections() = 0;
         virtual const ProjectSelectionService& selections() const = 0;

@@ -11,7 +11,6 @@
 #include <remidy/remidy.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include "SequenceProcessContext.hpp"
-#include "ProjectAddressBook.hpp"
 #include "ProjectCommands.hpp"
 #include "LatencyCompensationTypes.hpp"
 

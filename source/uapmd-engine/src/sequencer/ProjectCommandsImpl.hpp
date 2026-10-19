@@ -165,7 +165,7 @@ namespace uapmd {
             int32_t instanceId,
             typename Property::Value value,
             ProjectMutationOrigin origin) {
-            auto address = target_.addresses().pluginAddress(instanceId);
+            auto address = target_.pluginAddress(instanceId);
             return address
                 && execute<Property>(std::move(*address), std::move(value), origin);
         }

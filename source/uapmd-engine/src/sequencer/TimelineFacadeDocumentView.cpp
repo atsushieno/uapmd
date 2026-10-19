@@ -422,48 +422,12 @@ namespace uapmd {
         return -1;
     }
 
-    TimelineTrack* TimelineFacadeImpl::timelineTrack(std::string_view trackReferenceId) {
-        return resolveTrackByReferenceId(trackReferenceId);
-    }
-
     SequencerTrack* TimelineFacadeImpl::sequencerTrack(std::string_view trackReferenceId) {
         return resolveSequencerTrackByReferenceId(trackReferenceId);
     }
 
-    int32_t TimelineFacadeImpl::trackIndex(std::string_view trackReferenceId) const {
-        return trackIndexForPersistentId(trackReferenceId);
-    }
-
-    int32_t TimelineFacadeImpl::clipId(const ClipAddress& address) const {
-        const auto* track = const_cast<TimelineFacadeImpl*>(this)
-            ->resolveTrackByReferenceId(address.trackReferenceId);
-        return track ? clipIdForReferenceId(*track, address.clipReferenceId) : -1;
-    }
-
     int32_t TimelineFacadeImpl::pluginInstanceId(const PluginAddress& address) {
         return resolvePluginInstanceId(address.trackReferenceId, address.nodeId);
-    }
-
-    std::optional<ProjectObjectId> TimelineFacadeImpl::trackReferenceId(int32_t index) const {
-        const auto* track = resolveTrack(index);
-        if (!track)
-            return std::nullopt;
-        return track->referenceId();
-    }
-
-    std::optional<ClipAddress> TimelineFacadeImpl::clipAddress(
-            int32_t index,
-            int32_t clipIdentifier) const {
-                const auto* track = resolveTrack(index);
-        const auto* clip = track
-            ? track->clipManager().getClip(clipIdentifier)
-            : nullptr;
-        if (!clip)
-            return std::nullopt;
-        return ClipAddress{
-            .trackReferenceId = track->referenceId(),
-            .clipReferenceId = clip->referenceId
-        };
     }
 
     std::optional<PluginAddress> TimelineFacadeImpl::pluginAddress(int32_t instanceId) {
@@ -471,22 +435,11 @@ namespace uapmd {
     }
 
     int32_t TimelineFacadeImpl::trackIndexForPersistentId(std::string_view trackReferenceId) const {
-        if (master_timeline_track_ && master_timeline_track_->referenceId() == trackReferenceId)
-            return kMasterTrackIndex;
-        for (size_t index = 0; index < timeline_tracks_.size(); ++index)
-            if (timeline_tracks_[index]
-                && timeline_tracks_[index]->referenceId() == trackReferenceId)
-                return static_cast<int32_t>(index);
-        return -1;
+        return addresses_.trackIndex(trackReferenceId);
     }
 
     TimelineTrack* TimelineFacadeImpl::resolveTrackByReferenceId(std::string_view trackReferenceId) {
-        if (master_timeline_track_ && master_timeline_track_->referenceId() == trackReferenceId)
-            return master_timeline_track_.get();
-        for (const auto& track : timeline_tracks_)
-            if (track && track->referenceId() == trackReferenceId)
-                return track.get();
-        return nullptr;
+        return addresses_.timelineTrack(trackReferenceId);
     }
 
     int32_t TimelineFacadeImpl::clipIdForReferenceId(

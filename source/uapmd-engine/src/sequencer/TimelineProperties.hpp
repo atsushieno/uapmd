@@ -36,6 +36,9 @@ namespace uapmd::timeline_detail {
         virtual ~PropertyCommandTarget() = default;
 
         virtual ProjectAddressBook& addresses() = 0;
+        virtual SequencerTrack* sequencerTrack(std::string_view trackReferenceId) = 0;
+        virtual int32_t pluginInstanceId(const PluginAddress& address) = 0;
+        virtual std::optional<PluginAddress> pluginAddress(int32_t instanceId) = 0;
         virtual double timelineSampleRate() const = 0;
 
         // Emits the document events for a clip that has just changed.
@@ -344,7 +347,7 @@ namespace uapmd::timeline_detail {
             PropertyCommandTarget& target,
             const ProjectObjectId& address) {
             auto& addresses = target.addresses();
-            auto* track = addresses.sequencerTrack(address);
+            auto* track = target.sequencerTrack(address);
             if (!track)
                 return std::nullopt;
             return TrackSubject{
@@ -376,7 +379,7 @@ namespace uapmd::timeline_detail {
         static std::optional<PluginSubject> resolve(
             PropertyCommandTarget& target,
             const PluginAddress& address) {
-            const auto instanceId = target.addresses().pluginInstanceId(address);
+            const auto instanceId = target.pluginInstanceId(address);
             auto* instance = target.pluginInstance(instanceId);
             if (!instance)
                 return std::nullopt;
@@ -758,7 +761,7 @@ namespace uapmd::timeline_detail {
         static std::optional<PluginParameterSubject> resolve(
             PropertyCommandTarget& target,
             const PluginParameterAddress& address) {
-            const auto instanceId = target.addresses().pluginInstanceId(address.plugin);
+            const auto instanceId = target.pluginInstanceId(address.plugin);
             auto* instance = target.pluginInstance(instanceId);
             if (!instance)
                 return std::nullopt;
@@ -835,7 +838,7 @@ namespace uapmd::timeline_detail {
         static std::optional<PluginPerNoteSubject> resolve(
             PropertyCommandTarget& target,
             const PluginPerNoteAddress& address) {
-            const auto instanceId = target.addresses().pluginInstanceId(address.plugin);
+            const auto instanceId = target.pluginInstanceId(address.plugin);
             auto* instance = target.pluginInstance(instanceId);
             if (!instance || address.parameterIndex < 0)
                 return std::nullopt;

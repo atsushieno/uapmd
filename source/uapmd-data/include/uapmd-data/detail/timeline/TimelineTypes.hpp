@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <cmath>
 #include <string>
 #include <string_view>
@@ -8,6 +9,8 @@
 #include <vector>
 
 namespace uapmd {
+
+    inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
 
     // Anchor origin - whether the anchor point is at the start or end of a clip/track
     enum class AnchorOrigin {

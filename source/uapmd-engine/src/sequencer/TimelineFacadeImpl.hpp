@@ -42,7 +42,6 @@ namespace uapmd {
     class TimelineFacadeImpl : public TimelineFacade,
                                public ProjectDocumentView,
                                public ProjectDocument,
-                               public ProjectAddressBook,
                                public PropertyCommandTarget,
                                public timeline_detail::TimelineProjectSerializerHost,
                                public PluginInstanceLifecycleListener {
@@ -61,6 +60,7 @@ namespace uapmd {
         // timeline_tracks_snapshot_ above. Never null.
         RtSnapshotPublisher<MasterTrackSnapshot> master_track_snapshot_;
         std::shared_ptr<TimelineTrack> master_timeline_track_;
+        ProjectAddressBook addresses_{timeline_tracks_, master_timeline_track_};
         // Model-thread view of the same master-track curve, including its TempoMap. Not
         // published to the audio thread: nothing there converts between seconds and beats.
         MasterTimelineMeta master_timeline_meta_;
@@ -614,37 +614,16 @@ namespace uapmd {
             return trackIndexForPersistentId(trackId);
         }
 
-        // ProjectAddressBook -- the one place that translates between the
-        // persistent identities a command carries and the runtime indexes and
-        // pointers the engine works with.
+        ProjectAddressBook& addresses() override { return addresses_; }
+        const ProjectAddressBook& addresses() const override { return addresses_; }
 
-        ProjectAddressBook& addresses() override {
-            return *this;
-        }
+        ProjectCommands& commands() override { return commands_; }
 
-        ProjectCommands& commands() override {
-            return commands_;
-        }
-
-        TimelineTrack* timelineTrack(std::string_view trackReferenceId) override;
+        // PropertyCommandTarget: engine objects associated with document addresses.
 
         SequencerTrack* sequencerTrack(std::string_view trackReferenceId) override;
-
-        int32_t trackIndex(std::string_view trackReferenceId) const override;
-
-        int32_t clipId(const ClipAddress& address) const override;
-
         int32_t pluginInstanceId(const PluginAddress& address) override;
-
-        std::optional<ProjectObjectId> trackReferenceId(int32_t index) const override;
-
-        std::optional<ClipAddress> clipAddress(
-            int32_t index,
-            int32_t clipIdentifier) const override;
-
         std::optional<PluginAddress> pluginAddress(int32_t instanceId) override;
-
-        // PropertyCommandTarget
 
         double timelineSampleRate() const override {
             return static_cast<double>(sampleRate_);

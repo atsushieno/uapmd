@@ -18,6 +18,7 @@
 #include "detail/convert/StemSeparator.hpp"
 #include "detail/project/ProjectDocumentEvents.hpp"
 #include "detail/project/ProjectAddresses.hpp"
+#include "detail/project/ProjectAddressBook.hpp"
 #include "detail/project/ProjectSelection.hpp"
 #include "detail/project/MidiClipDocument.hpp"
 #include "detail/project/ProjectDocumentView.hpp"

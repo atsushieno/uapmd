@@ -3029,8 +3029,9 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
             addError = std::move(error);
         });
     ASSERT_TRUE(originalInstanceId.has_value()) << addError;
-    const auto address = timeline.addresses().pluginAddress(*originalInstanceId);
-    ASSERT_TRUE(address.has_value());
+    auto* pluginNode = engine->tracks()[static_cast<size_t>(trackIndex)]
+        ->graph().getPluginNode(*originalInstanceId);
+    ASSERT_NE(pluginNode, nullptr);
 
     auto* graph = engine->tracks()[static_cast<size_t>(trackIndex)]
         ->graph().getExtension<uapmd_graph::GraphConnectionExtension>();
@@ -3040,7 +3041,7 @@ TEST_F(SequencerEngineOutputTest, PluginGraphConnectionUndoResolvesRestoredInsta
     connection.source.type = uapmd_graph::AudioPluginGraphEndpointType::GraphInput;
     connection.target.type = uapmd_graph::AudioPluginGraphEndpointType::Plugin;
     connection.target.instance_id = *originalInstanceId;
-    connection.target.node_id = address->nodeId;
+    connection.target.node_id = pluginNode->nodeId();
     std::string connectionError;
     ASSERT_TRUE(timeline.commands().connectTrackGraph(
         trackIndex, connection, connectionError)) << connectionError;

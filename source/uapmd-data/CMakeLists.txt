@@ -35,6 +35,7 @@ target_sources(uapmd-data PRIVATE
         src/command/ProjectCommandManager.cpp
         src/command/ProjectHistory.cpp
         src/command/ProjectUndo.cpp
+        src/project/ProjectAddressBook.cpp
         src/project/ProjectSelection.cpp
         src/project/MidiClipDocument.cpp
         src/project/AudioGraphProvider.cpp
