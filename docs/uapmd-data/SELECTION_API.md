@@ -60,12 +60,11 @@ updates.
 The native ARA adapter consumes the document API and forwards selection to
 visible editor views, with an initial notification during UI setup/reopening.
 Relevant document changes refresh its projection after model synchronization.
-The AAP adapter uses the capability-negotiated `notify_selection` transport from
-`aap-ara`. It maps the same projection to AAP playback-region and region-sequence
-IDs plus an optional explicit project-time range, after model synchronization.
-Plugins without `AAP_ARA_FEATURE_VIEW_SELECTION` report selection forwarding as
-unsupported while retaining document support. AAP transports these notifications
-over its Binder control path, outside audio processing.
+The AAP adapter uses the same SDK controller and selection projection through
+the ARAAAP companion integration in `aap-ara`. SDK playback-region and
+region-sequence references plus the optional explicit project-time range reach
+the bound editor-view role after model synchronization. ARAAAP transports these
+notifications over its `/ara/v2` Binder control path, outside audio processing.
 
 The selection state and note/automation IDs are not added to project-file
 serialization by this implementation. Identity-bearing fragments and history
@@ -425,9 +424,9 @@ views. The SDK limits these view notifications to a displayed UI or its setup
 phase. Rebinding or rebuilding ARA objects requires resolving their references
 again before forwarding the current selection.
 
-The SDK-backed controller and alternate AAP backend need separate capability
-checks. A selection transport must not be assumed merely because a backend
-supports document edits or advertises an editor role.
+All format bindings use the SDK editor-view role, including AAP through ARAAAP.
+Selection support requires a successfully bound editor-view interface; it must
+not be assumed merely because a plug-in supports document edits.
 
 ## Implementation sequence
 

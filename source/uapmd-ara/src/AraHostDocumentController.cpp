@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -11,6 +12,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 #include <umppi/umppi.hpp>
 
@@ -130,15 +134,20 @@ namespace uapmd::ara {
             int64_t startInTimelineSamples,
             int64_t durationInTimelineSamples,
             double timelineSampleRate,
+            double sourceOffset,
             double modificationDuration) {
             const auto startInPlaybackTime = secondsFromSamples(startInTimelineSamples, timelineSampleRate);
             const auto durationInPlaybackTime = secondsFromSamples(durationInTimelineSamples, timelineSampleRate);
-            const auto clippedOffset = std::clamp(-std::min(0.0, startInPlaybackTime), 0.0, modificationDuration);
+            const auto clippedHead = -std::min(0.0, startInPlaybackTime);
+            const auto clippedOffset = std::clamp(
+                sourceOffset + clippedHead, 0.0, modificationDuration);
+            const auto duration = std::max(0.0, std::min(
+                modificationDuration - clippedOffset, durationInPlaybackTime - clippedHead));
             return PlaybackRegionTiming{
                 .startInModificationTime = clippedOffset,
-                .durationInModificationTime = std::max(0.0, modificationDuration - clippedOffset),
+                .durationInModificationTime = duration,
                 .startInPlaybackTime = std::max(0.0, startInPlaybackTime),
-                .durationInPlaybackTime = std::max(0.0, durationInPlaybackTime - clippedOffset)
+                .durationInPlaybackTime = duration
             };
         }
 
@@ -519,6 +528,8 @@ namespace uapmd::ara {
         const ARA::ARADocumentControllerInstance* controller_instance{};
         const ARA::ARAPlugInExtensionInstance* plugin_extension{};
         bool initialized_factory{};
+        bool connection_failed{};
+        ArchiveImporter archive_importer{};
         bool editor_view_visible{false};
         const ProjectDocumentView* document_view{};
         ProjectMasterTrackSnapshot master_track_snapshot{};
@@ -538,20 +549,23 @@ namespace uapmd::ara {
         std::map<AraRequestId, PendingAnalysisRequest> pending_analysis_requests{};
         AraRequestId next_analysis_request_id{1};
 
-        explicit Impl(const ARA::ARAFactory& factory, std::string documentName)
-            : factory(&factory), document_name(std::move(documentName)) {
-            const auto apiGeneration = static_cast<ARA::ARAAPIGeneration>(
-                std::min(
-                    static_cast<int>(factory.highestSupportedApiGeneration),
-                    static_cast<int>(ARA::kARAAPIGeneration_2_0_Final)));
-            interface_configuration = ARA::ARAInterfaceConfiguration{
-                .structSize = ARA::kARAInterfaceConfigurationMinSize,
-                .desiredApiGeneration = apiGeneration,
-                .assertFunctionAddress = &gAraAssertFunction
-            };
-            if (factory.initializeARAWithConfiguration) {
-                factory.initializeARAWithConfiguration(&interface_configuration);
-                initialized_factory = true;
+        explicit Impl(const ARA::ARAFactory* factory, std::string documentName,
+                      CreateController createController = {})
+            : factory(factory), document_name(std::move(documentName)) {
+            if (factory) {
+                const auto apiGeneration = static_cast<ARA::ARAAPIGeneration>(
+                    std::min(
+                        static_cast<int>(factory->highestSupportedApiGeneration),
+                        static_cast<int>(ARA::kARAAPIGeneration_2_0_Final)));
+                interface_configuration = ARA::ARAInterfaceConfiguration{
+                    .structSize = ARA::kARAInterfaceConfigurationMinSize,
+                    .desiredApiGeneration = apiGeneration,
+                    .assertFunctionAddress = &gAraAssertFunction
+                };
+                if (factory->initializeARAWithConfiguration) {
+                    factory->initializeARAWithConfiguration(&interface_configuration);
+                    initialized_factory = true;
+                }
             }
 
             audio_access_interface = ARA::ARAAudioAccessControllerInterface{
@@ -573,7 +587,7 @@ namespace uapmd::ara {
                 .destroyContentReader = destroyContentReader
             };
             archiving_interface = ARA::ARAArchivingControllerInterface{
-                .structSize = ARA::kARAArchivingControllerInterfaceMinSize,
+                .structSize = sizeof(ARA::ARAArchivingControllerInterface),
                 .getArchiveSize = getArchiveSize,
                 .readBytesFromArchive = readBytesFromArchive,
                 .writeBytesToArchive = writeBytesToArchive,
@@ -604,20 +618,30 @@ namespace uapmd::ara {
                 .playbackControllerInterface = nullptr
             };
             document_properties = ARA::ARADocumentProperties{
-                .structSize = ARA::kARADocumentPropertiesMinSize,
+                .structSize = sizeof(ARA::ARADocumentProperties),
                 .name = document_name.empty() ? nullptr : document_name.c_str()
             };
 
-            if (factory.createDocumentControllerWithDocument)
-                controller_instance = factory.createDocumentControllerWithDocument(&host_instance, &document_properties);
+            if (createController) {
+                controller_instance = createController(&host_instance, &document_properties);
+                if (valid())
+                    this->factory = controllerInterface()->getFactory(controller_instance->documentControllerRef);
+            } else if (factory && factory->createDocumentControllerWithDocument)
+                controller_instance = factory->createDocumentControllerWithDocument(&host_instance, &document_properties);
         }
 
         ~Impl() {
-            if (controller_instance &&
-                controller_instance->documentControllerInterface &&
-                controller_instance->documentControllerInterface->destroyDocumentController)
-                controller_instance->documentControllerInterface->destroyDocumentController(
-                    controller_instance->documentControllerRef);
+            try {
+                if (controller_instance && controller_instance->documentControllerInterface) {
+                    auto* controller = controller_instance->documentControllerInterface;
+                    if (editing_depth && controller->endEditing)
+                        controller->endEditing(controller_instance->documentControllerRef);
+                    if (controller->destroyDocumentController)
+                        controller->destroyDocumentController(controller_instance->documentControllerRef);
+                }
+            } catch (const std::exception& error) {
+                std::cerr << "ARA controller shutdown failed: " << error.what() << std::endl;
+            }
             controller_instance = nullptr;
 
             if (initialized_factory && factory && factory->uninitializeARA)
@@ -625,9 +649,33 @@ namespace uapmd::ara {
         }
 
         bool valid() const {
-            return controller_instance &&
+            return !connection_failed && controller_instance &&
                 controller_instance->documentControllerRef &&
                 controller_instance->documentControllerInterface;
+        }
+
+        template<class Result, class Function>
+        Result invoke(Function&& function, Result failure) {
+            if (!valid())
+                return failure;
+            try {
+                return function();
+            } catch (const std::exception& error) {
+                // ARAAAP reports transport and rejected model calls as exceptions.
+                // Stop using a partial model and report failure at the app boundary.
+                connection_failed = true;
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_WARN, "uapmd-ara", "ARA controller call failed: %s", error.what());
+#else
+                std::cerr << "ARA controller call failed: " << error.what() << std::endl;
+#endif
+                return failure;
+            }
+        }
+
+        template<class Function>
+        void invoke(Function&& function) {
+            invoke([&] { function(); return true; }, false);
         }
 
         const ARA::ARADocumentControllerInterface* controllerInterface() const {
@@ -734,7 +782,7 @@ namespace uapmd::ara {
                 time.duration = projected.time_range->second - projected.time_range->first;
             }
             ARA::ARAViewSelection value{};
-            value.structSize = ARA::kARAViewSelectionMinSize;
+            value.structSize = sizeof(value);
             value.playbackRegionRefsCount = regions.size();
             value.playbackRegionRefs = regions.empty() ? nullptr : regions.data();
             value.regionSequenceRefsCount = sequences.size();
@@ -804,50 +852,49 @@ namespace uapmd::ara {
             document_view = &view;
             master_track_snapshot = masterTrackSnapshot;
             enterEditing();
-            clearModel();
-
-            musical_context_host = HostRegionSequence{
-                .id = "master",
-                .name = "Master",
-                .persistent_id = "uapmd.master"
-            };
-            ARA::ARAMusicalContextProperties musicalContextProperties{
-                .structSize = ARA::kARAMusicalContextPropertiesMinSize,
-                .name = musical_context_host.name.c_str(),
-                .orderIndex = 0,
-                .color = nullptr
-            };
-            if (controller->createMusicalContext)
-                musical_context_ref = controller->createMusicalContext(
-                    controller_instance->documentControllerRef,
-                    reinterpret_cast<ARA::ARAMusicalContextHostRef>(&musical_context_host),
-                    &musicalContextProperties);
-
-            for (const auto& trackId : view.trackIds()) {
-                auto track = view.getTrack(trackId);
-                if (!track || track->masterTrack)
-                    continue;
-
-                auto& host = region_sequence_hosts[trackId];
-                host = HostRegionSequence{
-                    .id = trackId,
-                    .name = "Track " + std::to_string(track->trackIndex),
-                    .persistent_id = "uapmd.track." + trackId
-                };
-                ARA::ARARegionSequenceProperties properties{
-                    .structSize = ARA::kARARegionSequencePropertiesMinSize,
-                    .name = host.name.c_str(),
-                    .orderIndex = track->trackIndex,
-                    .musicalContextRef = musical_context_ref,
-                    .color = nullptr,
-                    .persistentID = host.persistent_id.c_str()
-                };
-                if (controller->createRegionSequence)
-                    region_sequence_refs[trackId] = controller->createRegionSequence(
-                        controller_instance->documentControllerRef,
-                        reinterpret_cast<ARA::ARARegionSequenceHostRef>(&host),
-                        &properties);
+            // Retain matching sources/modifications across a full document
+            // refresh. Recreating them here discards restored plug-in edits on
+            // projectLoaded/projectSaved, after the archive has already loaded.
+            std::vector<ProjectObjectId> obsolete;
+            for (const auto& [clipId, _] : playback_region_refs)
+                if (!view.getClip(clipId))
+                    obsolete.push_back(clipId);
+            for (const auto& id : obsolete)
+                destroyPlaybackRegion(id);
+            obsolete.clear();
+            for (const auto& [sourceId, host] : audio_source_hosts) {
+                auto clip = host.synthetic_midi ? view.getClip(host.clip_id) : std::nullopt;
+                if (host.synthetic_midi
+                    ? !clip || associatedAudioSourceIdForMidiClip(view, *clip).has_value()
+                    : !view.getAudioSource(sourceId).has_value())
+                    obsolete.push_back(sourceId);
             }
+            for (const auto& id : obsolete)
+                destroyAudioSource(id);
+            obsolete.clear();
+            for (const auto& [trackId, _] : region_sequence_refs)
+                if (!view.getTrack(trackId))
+                    obsolete.push_back(trackId);
+            for (const auto& id : obsolete)
+                destroyRegionSequence(id);
+
+            if (!musical_context_ref) {
+                musical_context_host = HostRegionSequence{
+                    .id = "master",
+                    .name = "Master",
+                    .persistent_id = "uapmd.master"
+                };
+                const auto properties = musicalContextProperties();
+                if (controller->createMusicalContext)
+                    musical_context_ref = controller->createMusicalContext(
+                        controller_instance->documentControllerRef,
+                        reinterpret_cast<ARA::ARAMusicalContextHostRef>(&musical_context_host),
+                        &properties);
+            } else
+                updateMusicalContextContent(masterTrackSnapshot);
+
+            for (const auto& trackId : view.trackIds())
+                createOrUpdateRegionSequence(view, trackId);
 
             for (const auto& audioSourceId : view.audioSourceIds()) {
                 createOrUpdateAudioSource(view, audioSourceId);
@@ -873,7 +920,8 @@ namespace uapmd::ara {
 
             for (const auto& audioSourceId : view.audioSourceIds()) {
                 auto source = view.getAudioSource(audioSourceId);
-                if (source && source->clipId == clip.clipId)
+                if (source && (source->clipId == clip.clipId ||
+                    (!clip.filepath.empty() && source->filepath == clip.filepath)))
                     return audioSourceId;
             }
             return std::nullopt;
@@ -923,7 +971,7 @@ namespace uapmd::ara {
 
         ARA::ARAMusicalContextProperties musicalContextProperties() const {
             return ARA::ARAMusicalContextProperties{
-                .structSize = ARA::kARAMusicalContextPropertiesMinSize,
+                .structSize = sizeof(ARA::ARAMusicalContextProperties),
                 .name = musical_context_host.name.c_str(),
                 .orderIndex = 0,
                 .color = nullptr
@@ -932,7 +980,7 @@ namespace uapmd::ara {
 
         ARA::ARARegionSequenceProperties regionSequenceProperties(const ProjectTrackSnapshot& track, HostRegionSequence& host) const {
             return ARA::ARARegionSequenceProperties{
-                .structSize = ARA::kARARegionSequencePropertiesMinSize,
+                .structSize = sizeof(ARA::ARARegionSequenceProperties),
                 .name = host.name.c_str(),
                 .orderIndex = track.trackIndex,
                 .musicalContextRef = musical_context_ref,
@@ -943,7 +991,7 @@ namespace uapmd::ara {
 
         ARA::ARAAudioSourceProperties audioSourceProperties(const ProjectAudioSourceSnapshot& source, HostAudioSource& host) const {
             return ARA::ARAAudioSourceProperties{
-                .structSize = ARA::kARAAudioSourcePropertiesMinSize,
+                .structSize = sizeof(ARA::ARAAudioSourceProperties),
                 .name = host.name.c_str(),
                 .persistentID = host.persistent_id.c_str(),
                 .sampleCount = source.frameCount,
@@ -957,7 +1005,7 @@ namespace uapmd::ara {
 
         ARA::ARAAudioSourceProperties syntheticAudioSourceProperties(HostAudioSource& host) const {
             return ARA::ARAAudioSourceProperties{
-                .structSize = ARA::kARAAudioSourcePropertiesMinSize,
+                .structSize = sizeof(ARA::ARAAudioSourceProperties),
                 .name = host.name.c_str(),
                 .persistentID = host.persistent_id.c_str(),
                 .sampleCount = std::max<int64_t>(1, host.frame_count),
@@ -971,7 +1019,7 @@ namespace uapmd::ara {
 
         ARA::ARAAudioModificationProperties audioModificationProperties(HostAudioModification& host) const {
             return ARA::ARAAudioModificationProperties{
-                .structSize = ARA::kARAAudioModificationPropertiesMinSize,
+                .structSize = sizeof(ARA::ARAAudioModificationProperties),
                 .name = host.name.c_str(),
                 .persistentID = host.persistent_id.c_str()
             };
@@ -1199,15 +1247,16 @@ namespace uapmd::ara {
                 clip.position.samples,
                 clip.durationSamples,
                 timelineSampleRate,
+                secondsFromSamples(clip.sourceOffsetSamples, sourceSampleRate),
                 modificationDuration);
             return ARA::ARAPlaybackRegionProperties{
-                .structSize = ARA::kARAPlaybackRegionPropertiesMinSize,
+                .structSize = sizeof(ARA::ARAPlaybackRegionProperties),
                 .transformationFlags = ARA::kARAPlaybackTransformationNoChanges,
                 .startInModificationTime = timing.startInModificationTime,
                 .durationInModificationTime = timing.durationInModificationTime,
                 .startInPlaybackTime = timing.startInPlaybackTime,
                 .durationInPlaybackTime = timing.durationInPlaybackTime,
-                .musicalContextRef = musical_context_ref,
+                .musicalContextRef = nullptr,
                 .regionSequenceRef = regionSequenceRef,
                 .name = host.name.c_str(),
                 .color = nullptr
@@ -1764,6 +1813,41 @@ namespace uapmd::ara {
             return scope;
         }
 
+        std::optional<bool> importArchive(ArchiveScope scope, const ProjectObjectId& objectId,
+                                         const std::string& archiveId, const std::vector<uint8_t>& archive) {
+            if (!archive_importer)
+                return std::nullopt;
+            std::vector<ArchiveTarget> targets;
+            for (const auto& [clipId, trackId] : playback_region_track_ids) {
+                if ((scope == ArchiveScope::Clip && clipId != objectId) ||
+                    (scope == ArchiveScope::Track && trackId != objectId))
+                    continue;
+                auto clip = document_view ? document_view->getClip(clipId) : std::nullopt;
+                // The former AAP backend only archived audio clips.
+                if (!clip || clip->clipType != ClipType::Audio)
+                    continue;
+                auto clipScope = clipArchiveScope(clipId);
+                if (clipScope.audio_modification)
+                    targets.emplace_back(clipId, clipScope.audio_modification);
+            }
+            if (scope == ArchiveScope::Track)
+                std::sort(targets.begin(), targets.end(), [this](const auto& a, const auto& b) {
+                    const auto first = document_view->getClip(a.first), second = document_view->getClip(b.first);
+                    return first->position.samples != second->position.samples
+                        ? first->position.samples < second->position.samples
+                        : first->clipNumericId < second->clipNumericId;
+                });
+            enterEditing();
+            try {
+                auto result = archive_importer(scope, archiveId, archive, targets);
+                leaveEditing();
+                return result;
+            } catch (...) {
+                leaveEditing();
+                throw;
+            }
+        }
+
         // Archives just the objects covering `clipId`, for a fragment rather
         // than for the project. documentData is false because the archive is
         // meant to be imported into another context, which is exactly the case
@@ -1842,7 +1926,7 @@ namespace uapmd::ara {
             // from an older version of this one. Restoring it anyway would hand
             // the plug-in bytes it cannot decode.
             if (!canRestoreArchiveId(archiveId))
-                return true;
+                return importArchive(ArchiveScope::Clip, clipId, archiveId, archive).value_or(true);
 
             auto scope = clipArchiveScope(clipId);
             if (!scope.valid() || archivedAudioSourcePersistentId.empty())
@@ -1951,7 +2035,7 @@ namespace uapmd::ara {
             if (!controller || !controller->restoreObjectsFromArchive || archive.empty())
                 return true;
             if (!canRestoreArchiveId(archiveId))
-                return true;
+                return importArchive(ArchiveScope::Track, trackId, archiveId, archive).value_or(true);
 
             auto hostIt = region_sequence_hosts.find(trackId);
             if (hostIt == region_sequence_hosts.end() || archivedRegionSequencePersistentId.empty())
@@ -2344,6 +2428,8 @@ namespace uapmd::ara {
             if (!controller || archive.empty())
                 return false;
             if (!canRestoreArchiveId(archiveId)) {
+                if (auto imported = importArchive(ArchiveScope::Document, {}, archiveId, archive))
+                    return *imported;
                 std::cerr << "Warning: Skipping ARA archive written as \"" << archiveId
                           << "\"; this plug-in declares \"" << documentArchiveId()
                           << "\" and lists it as neither its own format nor a compatible one."
@@ -2808,11 +2894,19 @@ namespace uapmd::ara {
     } // namespace
 
     AraHostDocumentController::AraHostDocumentController(const ARA::ARAFactory& factory, std::string documentName)
-        : impl_(new Impl(factory, std::move(documentName))) {
+        : impl_(new Impl(&factory, std::move(documentName))) {
+    }
+
+    AraHostDocumentController::AraHostDocumentController(CreateController createController, std::string documentName)
+        : impl_(new Impl(nullptr, std::move(documentName), std::move(createController))) {
     }
 
     AraHostDocumentController::~AraHostDocumentController() {
         delete impl_;
+    }
+
+    void AraHostDocumentController::setArchiveImporter(ArchiveImporter importer) {
+        impl_->archive_importer = std::move(importer);
     }
 
     bool AraHostDocumentController::valid() const {
@@ -2830,7 +2924,7 @@ namespace uapmd::ara {
     }
 
     bool AraHostDocumentController::notifySelection(const ProjectDocumentView& view, const ProjectSelection& selection) {
-        return impl_ && impl_->notifySelection(view, selection);
+        return impl_ && impl_->invoke([&] { return impl_->notifySelection(view, selection); }, false);
     }
 
     void AraHostDocumentController::setEditorViewVisible(bool visible) {
@@ -2841,7 +2935,7 @@ namespace uapmd::ara {
     void AraHostDocumentController::bindPluginExtension(const ARA::ARAPlugInExtensionInstance* pluginExtension) {
         if (!valid())
             return;
-        impl_->bindPluginExtension(pluginExtension);
+        impl_->invoke([&] { impl_->bindPluginExtension(pluginExtension); });
     }
 
     bool AraHostDocumentController::resyncFromProjectDocument(
@@ -2849,7 +2943,7 @@ namespace uapmd::ara {
         const ProjectMasterTrackSnapshot& masterTrackSnapshot) {
         if (!valid())
             return false;
-        return impl_->populateModel(documentView, masterTrackSnapshot);
+        return impl_->invoke([&] { return impl_->populateModel(documentView, masterTrackSnapshot); }, false);
     }
 
     bool AraHostDocumentController::applyProjectDocumentEvent(
@@ -2858,33 +2952,33 @@ namespace uapmd::ara {
         const ProjectDocumentEvent& event) {
         if (!valid())
             return false;
-        return impl_->applyProjectDocumentEvent(documentView, masterTrackSnapshot, event);
+        return impl_->invoke([&] { return impl_->applyProjectDocumentEvent(documentView, masterTrackSnapshot, event); }, false);
     }
 
     AraRequestId AraHostDocumentController::requestAnalysis(AraAnalysisRequest request, AraAnalysisCallback callback) {
         if (!valid())
             return 0;
-        return impl_->requestAnalysis(std::move(request), std::move(callback));
+        return impl_->invoke([&] { return impl_->requestAnalysis(std::move(request), std::move(callback)); }, AraRequestId{});
     }
 
     void AraHostDocumentController::cancelAnalysis(AraRequestId requestId) {
         if (!valid())
             return;
-        impl_->cancelAnalysis(requestId);
+        impl_->invoke([&] { impl_->cancelAnalysis(requestId); });
     }
 
     bool AraHostDocumentController::saveArchiveState(std::vector<uint8_t>& archive, std::string& archiveId) {
-        return valid() && impl_->saveArchiveState(archive, archiveId);
+        return valid() && impl_->invoke([&] { return impl_->saveArchiveState(archive, archiveId); }, false);
     }
 
     bool AraHostDocumentController::loadArchiveState(const std::vector<uint8_t>& archive, const std::string& archiveId) {
-        return valid() && impl_->loadArchiveState(archive, archiveId);
+        return valid() && impl_->invoke([&] { return impl_->loadArchiveState(archive, archiveId); }, false);
     }
 
     void AraHostDocumentController::notifyModelUpdates() {
         if (!valid())
             return;
-        impl_->notifyModelUpdates();
+        impl_->invoke([&] { impl_->notifyModelUpdates(); });
     }
 
     bool AraHostDocumentController::storeArchiveStateForClip(
@@ -2893,8 +2987,8 @@ namespace uapmd::ara {
         std::string& archivedAudioSourcePersistentId,
         std::string& archivedAudioModificationPersistentId,
         std::vector<uint8_t>& archive) {
-        return valid() && impl_->storeArchiveStateForClip(
-            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive);
+        return valid() && impl_->invoke([&] { return impl_->storeArchiveStateForClip(
+            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive); }, false);
     }
 
     bool AraHostDocumentController::restoreArchiveStateForClip(
@@ -2903,8 +2997,8 @@ namespace uapmd::ara {
         const std::string& archivedAudioSourcePersistentId,
         const std::string& archivedAudioModificationPersistentId,
         const std::vector<uint8_t>& archive) {
-        return valid() && impl_->restoreArchiveStateForClip(
-            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive);
+        return valid() && impl_->invoke([&] { return impl_->restoreArchiveStateForClip(
+            clipId, archiveId, archivedAudioSourcePersistentId, archivedAudioModificationPersistentId, archive); }, false);
     }
 
     void AraHostDocumentController::setRenderedSignalChangedCallback(
@@ -2919,8 +3013,8 @@ namespace uapmd::ara {
         std::string& archiveId,
         std::string& archivedRegionSequencePersistentId,
         std::vector<uint8_t>& archive) {
-        return valid() && impl_->storeArchiveStateForTrack(
-            trackId, archiveId, archivedRegionSequencePersistentId, archive);
+        return valid() && impl_->invoke([&] { return impl_->storeArchiveStateForTrack(
+            trackId, archiveId, archivedRegionSequencePersistentId, archive); }, false);
     }
 
     bool AraHostDocumentController::restoreArchiveStateForTrack(
@@ -2928,8 +3022,8 @@ namespace uapmd::ara {
         const std::string& archiveId,
         const std::string& archivedRegionSequencePersistentId,
         const std::vector<uint8_t>& archive) {
-        return valid() && impl_->restoreArchiveStateForTrack(
-            trackId, archiveId, archivedRegionSequencePersistentId, archive);
+        return valid() && impl_->invoke([&] { return impl_->restoreArchiveStateForTrack(
+            trackId, archiveId, archivedRegionSequencePersistentId, archive); }, false);
     }
 
     std::optional<AraContentEvents> AraHostDocumentController::readContent(
@@ -2938,19 +3032,19 @@ namespace uapmd::ara {
         AraContentKind kind) {
         if (!valid())
             return std::nullopt;
-        return impl_->readContent(scope, objectId, kind);
+        return impl_->invoke([&] { return impl_->readContent(scope, objectId, kind); }, std::optional<AraContentEvents>{});
     }
 
     void AraHostDocumentController::beginProjectDocumentTransaction() {
         if (!valid())
             return;
-        impl_->beginProjectDocumentTransaction();
+        impl_->invoke([&] { impl_->beginProjectDocumentTransaction(); });
     }
 
     void AraHostDocumentController::endProjectDocumentTransaction() {
         if (!valid())
             return;
-        impl_->endProjectDocumentTransaction();
+        impl_->invoke([&] { impl_->endProjectDocumentTransaction(); });
     }
 
 } // namespace uapmd::ara

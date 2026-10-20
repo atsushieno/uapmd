@@ -17,7 +17,7 @@ host-disabled inputs are silenced, and all connected output buses are copied.
 
 ## AAP ARA support
 
-Android ARA support uses the experimental AAP-native document API from
+Android ARA support uses the ARA SDK through the ARAAAP companion integration in
 [aap-ara](https://github.com/atsushieno/aap-ara), alongside aap-core 0.12.0.
 Check out the repositories at `android/external/aap-core` and
 `android/external/aap-ara`, then publish their libraries before building UAPMD:
@@ -26,6 +26,7 @@ Check out the repositories at `android/external/aap-core` and
 cd external/aap-core
 ./gradlew publishToMavenLocal
 cd ../aap-ara
+git submodule update --init --recursive
 ./gradlew :androidaudioplugin-ara:publishToMavenLocal
 cd ../..
 ./gradlew assembleDebug
@@ -34,26 +35,42 @@ cd ../..
 For an existing aap-core checkout elsewhere, pass `-PaapDir=/absolute/path/to/aap-core`
 to the UAPMD Gradle build. The Android Actions workflow accepts `aap_core_ref`
 and `aap_ara_ref` and checks out and publishes both dependencies automatically.
+Use an aap-ara revision containing the SDK-backed `/ara/v2` transport, and install
+a plug-in built against that integration. The older `/ara/v1` custom document
+protocol is incompatible. Rebuild UAPMD after publishing an updated local AAR;
+updating only the plug-in APK leaves the host on its previous protocol.
 
 With the ARA support addin enabled, adding an AAP ARA plugin attaches the existing
 plugin instance to the project. Audio clips, track sequences, clip moves, source
 changes, and removal reach its document model; its usual plugin UI shows that same
-document. Document synchronization and source access work with the audio engine off; enable
-it for playback. Source reads use independent file readers on Binder threads. Plugin
-content notifications queue rendered-track invalidation on the host event loop.
-Modification archives are included in project save/load and clip/track clipboard
-state when the plugin advertises archive support.
+document. It uses the same SDK document controller and project projection as the
+desktop formats, with ARAAAP proxies for the factory, controller, and renderer/view
+roles. Property sizes advertise the fields actually supplied, and clip regions
+retain their source offsets and trimmed lengths. Clips sharing a file resolve
+the same SDK source; full document refreshes preserve existing modifications.
+Document synchronization and source access work with the audio engine off;
+enable it for playback. Source reads use independent file readers. SDK model
+notifications invalidate rendered tracks when polled on the host event loop.
+SDK document and filtered object archives are included in project save/load and
+clip/track clipboard state, including persistent-ID remapping on paste.
+Archives saved by the former AAP backend are unpacked and restored through the
+SDK plug-in reader; subsequent saves use the plug-in's SDK archive identifier.
 
-With an aap-ara build exposing `AAP_ARA_FEATURE_VIEW_SELECTION`, selection changes
-also reach visible plugin editors. Clips and tracks map to playback regions and
+Selection changes also reach visible SDK editor views. Clips and tracks map to playback regions and
 region sequences, with an optional explicit project-time range. Opening/reopening
 the editor sends the current selection; document edits refresh its projection.
-Selection does not change document revisions, dirty state or undo history. Older
-plugins without this capability retain document and archive support.
+Selection does not change document revisions, dirty state or undo history.
 
-The current aap-ara API does not expose tempo/note content readers or analysis
-requests, so those features remain unavailable for AAP. Timeline arrangement stays
-host-owned, and audible ARA rendering depends on the plugin's AAP processing support.
+Tempo, meter, tuning, and note content readers, plug-in analysis requests, and
+content reads use the SDK interfaces, subject to the plug-in's advertised content
+types. Timeline arrangement stays host-owned, and audible ARA rendering depends
+on the plug-in's AAP processing support.
+
+Verified on 2026-10-20: the Android APK builds for arm64-v8a and x86_64, and the
+desktop ARA library builds. With the audio engine disabled, the Galaxy SM-X230
+loads the previous AAP project archive, displays both clips sharing one source,
+preserves its 0.51× gain through SDK save/reload, and forwards host clip selection.
+The trimmed clip retains its 0.5-second source offset and 2-second duration.
 
 ## Working-session recovery
 

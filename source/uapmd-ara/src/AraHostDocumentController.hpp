@@ -1,6 +1,8 @@
 #pragma once
 
 #include <functional>
+#include <optional>
+#include <utility>
 
 #include <string>
 #include <vector>
@@ -16,7 +18,18 @@ namespace uapmd::ara {
     public:
         struct Impl;
 
+        // Companion transports can supply an SDK controller proxy while reusing
+        // the same document projection, host services, and archive implementation.
+        using CreateController = std::function<const ARA::ARADocumentControllerInstance*(
+            const ARA::ARADocumentControllerHostInstance*, const ARA::ARADocumentProperties*)>;
+        enum class ArchiveScope { Document, Clip, Track };
+        using ArchiveTarget = std::pair<ProjectObjectId, ARA::ARAAudioModificationRef>;
+        using ArchiveImporter = std::function<std::optional<bool>(ArchiveScope,
+            const std::string&, const std::vector<uint8_t>&, const std::vector<ArchiveTarget>&)>;
+
         explicit AraHostDocumentController(const ARA::ARAFactory& factory, std::string documentName);
+        AraHostDocumentController(CreateController createController, std::string documentName);
+        void setArchiveImporter(ArchiveImporter importer);
         ~AraHostDocumentController() override;
 
         AraHostDocumentController(const AraHostDocumentController&) = delete;
