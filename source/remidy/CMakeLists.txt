@@ -74,6 +74,14 @@ if (${REMIDY_LINUX_DESKTOP})
     endif()
 endif()
 
+# rtlog-cpp fetches stb without a revision, but newer stb moved stb_sprintf.h.
+# Declare a compatible revision first so all platforms use the same headers.
+include(FetchContent)
+FetchContent_Declare(stb
+        GIT_REPOSITORY https://github.com/nothings/stb
+        GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20
+)
+
 CPMAddPackage(
         NAME rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
