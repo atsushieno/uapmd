@@ -55,7 +55,16 @@ namespace uapmd {
     } // namespace
 
     int32_t ClipManager::generateClipId() {
-        return next_clip_id_++;
+        // Loading keeps persistent references but may assign different runtime IDs.
+        // Do not let a new runtime ID regenerate an existing clip's reference.
+        for (;;) {
+            const auto clipId = next_clip_id_++;
+            const auto referenceId = makeClipReferenceId(reference_prefix_, clipId);
+            if (std::none_of(clips_.begin(), clips_.end(), [&](const auto& entry) {
+                    return entry.second.referenceId == referenceId;
+                }))
+                return clipId;
+        }
     }
 
     void ClipManager::rebuildSnapshotLocked() {

@@ -1335,14 +1335,34 @@ namespace uapmd::ara {
             region_sequence_hosts.erase(trackId);
         }
 
+        bool disableSamplesAccessForFormatChange(const ProjectObjectId& audioSourceId, const HostAudioSource& updatedHost) {
+            auto* controller = controllerInterface();
+            auto source = audio_source_refs.find(audioSourceId);
+            auto host = audio_source_hosts.find(audioSourceId);
+            if (!controller || !controller->enableAudioSourceSamplesAccess ||
+                source == audio_source_refs.end() || host == audio_source_hosts.end())
+                return false;
+            if (host->second.frame_count == updatedHost.frame_count &&
+                host->second.sample_rate == updatedHost.sample_rate &&
+                host->second.channel_count == updatedHost.channel_count)
+                return false;
+
+            // ARA requires sample access to be disabled before changing the sample format
+            // or length. Keep the old host properties alive until sample readers are released.
+            controller->enableAudioSourceSamplesAccess(
+                controller_instance->documentControllerRef,
+                source->second,
+                ARA::kARAFalse);
+            return true;
+        }
+
         bool createOrUpdateAudioSource(const ProjectDocumentView& view, const ProjectObjectId& audioSourceId) {
             auto* controller = controllerInterface();
             auto source = view.getAudioSource(audioSourceId);
             if (!controller || !source || source->frameCount <= 0 || source->channelCount == 0)
                 return false;
 
-            auto& host = audio_source_hosts[audioSourceId];
-            host = HostAudioSource{
+            HostAudioSource updatedHost{
                 .id = audioSourceId,
                 .name = source->filepath.empty() ? audioSourceId : source->filepath,
                 .persistent_id = "uapmd.audio-source." + audioSourceId,
@@ -1352,6 +1372,9 @@ namespace uapmd::ara {
                 .sample_rate = source->sampleRate,
                 .frame_count = source->frameCount
             };
+            const auto samplesAccessDisabled = disableSamplesAccessForFormatChange(audioSourceId, updatedHost);
+            auto& host = audio_source_hosts[audioSourceId];
+            host = std::move(updatedHost);
             auto properties = audioSourceProperties(*source, host);
             auto existing = audio_source_refs.find(audioSourceId);
             if (existing != audio_source_refs.end()) {
@@ -1360,6 +1383,11 @@ namespace uapmd::ara {
                         controller_instance->documentControllerRef,
                         existing->second,
                         &properties);
+                if (samplesAccessDisabled)
+                    controller->enableAudioSourceSamplesAccess(
+                        controller_instance->documentControllerRef,
+                        existing->second,
+                        ARA::kARATrue);
                 if (controller->updateAudioSourceContent)
                     controller->updateAudioSourceContent(
                         controller_instance->documentControllerRef,
@@ -1413,8 +1441,7 @@ namespace uapmd::ara {
                 return false;
 
             const auto audioSourceId = syntheticMidiAudioSourceId(clip.clipId);
-            auto& host = audio_source_hosts[audioSourceId];
-            host = HostAudioSource{
+            HostAudioSource updatedHost{
                 .id = audioSourceId,
                 .name = clip.name.empty() ? clip.clipId : clip.name,
                 .persistent_id = "uapmd.midi-source." + clip.clipId,
@@ -1424,6 +1451,9 @@ namespace uapmd::ara {
                 .sample_rate = clip.sampleRate > 0.0 ? clip.sampleRate : 48000.0,
                 .frame_count = std::max<int64_t>(1, clip.durationSamples)
             };
+            const auto samplesAccessDisabled = disableSamplesAccessForFormatChange(audioSourceId, updatedHost);
+            auto& host = audio_source_hosts[audioSourceId];
+            host = std::move(updatedHost);
 
             auto properties = syntheticAudioSourceProperties(host);
             auto existing = audio_source_refs.find(audioSourceId);
@@ -1433,6 +1463,11 @@ namespace uapmd::ara {
                         controller_instance->documentControllerRef,
                         existing->second,
                         &properties);
+                if (samplesAccessDisabled)
+                    controller->enableAudioSourceSamplesAccess(
+                        controller_instance->documentControllerRef,
+                        existing->second,
+                        ARA::kARATrue);
                 if (controller->updateAudioSourceContent)
                     controller->updateAudioSourceContent(
                         controller_instance->documentControllerRef,
