@@ -13,10 +13,12 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <future>
 #include <limits>
 #include <stdexcept>
+#include "ScriptDocumentIds.hpp"
 
 using namespace uapmd_graph;
 
@@ -111,6 +113,7 @@ void UapmdJSRuntime::reinitialize()
     registerSequencerAudioAnalysisAPI();
     registerSequencerAudioDeviceAPI();
     registerTimelineAPI();
+    registerSelectionAPI();
     registerRenderAPI();
 }
 
@@ -354,10 +357,21 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
     {
         auto formatName = args.get<std::string> (0, "");
         auto pluginId = args.get<std::string> (1, "");
-        auto trackIndex = args.get<int32_t> (2, -1);
+        auto trackId = args.get<std::string> (2, "");
 
         if (formatName.empty() || pluginId.empty())
             return choc::value::createInt32 (-1);
+
+        // An empty trackId creates the instance on a new track.
+        int32_t trackIndex = -1;
+        if (!trackId.empty()) {
+            auto resolved = script_ids::trackIndex(trackId);
+            if (!resolved) {
+                std::cerr << "[JS] Unknown trackId: " << trackId << std::endl;
+                return choc::value::createInt32 (-1);
+            }
+            trackIndex = *resolved;
+        }
 
         // Use the unified AppModel API which calls global callbacks
         // However, JavaScript needs synchronous return, so we still need to wait
@@ -898,7 +912,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         for (uapmd_track_index_t i = 0, n = tracks.size(); i < n; ++i) {
             auto track = tracks[i];
             auto trackObj = choc::value::createObject ("TrackInfo");
-            trackObj.setMember ("trackIndex", i);
+            trackObj.setMember ("trackId", script_ids::trackId(i));
 
             auto nodesArr = choc::value::createEmptyArray();
             for (const auto& [nodeId, graphNode] : track->graph().nodes()) {
@@ -963,7 +977,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         uapmd_app::AppModel::instance().addTrack(
             [this, job](int32_t trackIndex, std::string error) {
                 auto result = choc::value::createObject("TrackMutationResult");
-                result.setMember("trackIndex", trackIndex);
+                result.setMember("trackId", trackIndex < 0 ? std::string{} : script_ids::trackId(trackIndex));
                 completeMutationJob(job, std::move(result), std::move(error));
             });
         return mutationJobValue(job);
@@ -971,20 +985,21 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
     impl_->context.registerFunction ("__remidy_sequencer_remove_track", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        const auto trackIndex = args.get<int32_t> (0, -1);
+        const auto trackId = args.get<std::string> (0, "");
+        const auto trackIndex = script_ids::trackIndex(trackId);
         auto job = createMutationJob();
-        if (trackIndex < 0) {
+        if (!trackIndex || *trackIndex < 0) {
             completeMutationJob(
                 job,
                 choc::value::createObject("TrackMutationResult"),
-                "Invalid track index");
+                "Invalid trackId");
             return mutationJobValue(job);
         }
         uapmd_app::AppModel::instance().removeTrack(
-            trackIndex,
-            [this, job](int32_t removedTrackIndex, std::string error) {
+            *trackIndex,
+            [this, job, trackId](int32_t, std::string error) {
                 auto result = choc::value::createObject("TrackMutationResult");
-                result.setMember("trackIndex", removedTrackIndex);
+                result.setMember("trackId", trackId);
                 completeMutationJob(job, std::move(result), std::move(error));
             });
         return mutationJobValue(job);
@@ -1691,7 +1706,7 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
     auto tracks = choc::value::createEmptyArray();
     for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
         auto track = choc::value::createObject("LatencyCompensationTrackState");
-        track.setMember("trackIndex", trackIndex);
+        track.setMember("trackId", script_ids::trackId(trackIndex));
         track.setMember("recordArmed", manager.trackRecordArmed(trackIndex));
         track.setMember("monitoringEnabled", manager.trackMonitoringEnabled(trackIndex));
         tracks.addArrayElement(track);
@@ -1705,6 +1720,374 @@ choc::value::Value serializeLatencyCompensationDebugState(uapmd::LatencyCompensa
     result.setMember("realtimeInfiniteTailPolicy",
                      realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
     return result;
+}
+
+std::string automationTypeToString(uapmd::MidiAutomationEvent::Type type) {
+    using T = uapmd::MidiAutomationEvent::Type;
+    switch (type) {
+        case T::PitchBend: return "pitchBend";
+        case T::PerNotePitchBend: return "perNotePitchBend";
+        case T::ChannelPressure: return "channelPressure";
+        case T::PolyPressure: return "polyPressure";
+        case T::ControlChange: return "controlChange";
+        case T::RPN: return "rpn";
+        case T::NRPN: return "nrpn";
+        case T::PerNoteParameter: return "perNoteParameter";
+    }
+    return "controlChange";
+}
+
+// Lane status as the piano roll addresses automation in selection regions.
+uint8_t automationLaneStatus(const uapmd::MidiAutomationEvent& point) {
+    using T = uapmd::MidiAutomationEvent::Type;
+    switch (point.type) {
+        case T::PitchBend: return 0xE0;
+        case T::PerNotePitchBend: return 0x60;
+        case T::ChannelPressure: return 0xD0;
+        case T::PolyPressure: return 0xA0;
+        case T::ControlChange: return 0xB0;
+        case T::RPN: return 0x20;
+        case T::NRPN: return 0x30;
+        case T::PerNoteParameter: return point.registered_per_note ? 0x00 : 0x10;
+    }
+    return 0xB0;
+}
+
+int64_t clipSecondsToTick(double seconds, const uapmd::MidiRawData& raw) {
+    return std::llround(seconds * std::max(1.0, raw.clipTempo) * raw.tickResolution / 60.0);
+}
+
+choc::value::Value serializeAutomationPoint(const uapmd::MidiAutomationEvent& point,
+                                            const uapmd::ProjectObjectId& clipId,
+                                            const uapmd::ProjectObjectId* noteId,
+                                            const uapmd::MidiRawData& raw) {
+    auto lane = choc::value::createObject("AutomationLane");
+    lane.setMember("clipId", clipId);
+    if (noteId)
+        lane.setMember("noteId", *noteId);
+    lane.setMember("group", static_cast<int32_t>(point.umpGroup));
+    lane.setMember("channel", static_cast<int32_t>(point.channel));
+    lane.setMember("status", static_cast<int32_t>(automationLaneStatus(point)));
+    lane.setMember("parameter", static_cast<int32_t>(point.paramIndex));
+    auto obj = choc::value::createObject("AutomationPoint");
+    obj.setMember("pointId", point.reference_id);
+    obj.setMember("type", automationTypeToString(point.type));
+    obj.setMember("timeSeconds", point.timeSeconds);
+    obj.setMember("tick", choc::value::createInt64(clipSecondsToTick(point.timeSeconds, raw)));
+    obj.setMember("value", point.normalizedValue);
+    obj.setMember("lane", lane);
+    return obj;
+}
+
+choc::value::Value serializeClipNotes(const std::string& clipId) {
+    auto result = choc::value::createObject("ClipNotes");
+    auto content = clipId.empty() ? nullptr : script_ids::document().midiContent(clipId);
+    if (!content || !content->rawMidiData) {
+        result.setMember("success", false);
+        result.setMember("error", "MIDI clip not found");
+        return result;
+    }
+    content->ensureIdentities();
+    const auto& raw = *content->rawMidiData;
+    auto notes = choc::value::createEmptyArray();
+    for (const auto& note : content->editNotes) {
+        if (note.deleted)
+            continue;
+        auto obj = choc::value::createObject("Note");
+        obj.setMember("noteId", note.reference_id);
+        obj.setMember("startSeconds", note.startSeconds);
+        obj.setMember("durationSeconds", note.durationSeconds);
+        obj.setMember("startTick", choc::value::createInt64(clipSecondsToTick(note.startSeconds, raw)));
+        obj.setMember("endTick", choc::value::createInt64(clipSecondsToTick(note.startSeconds + note.durationSeconds, raw)));
+        obj.setMember("note", static_cast<int32_t>(note.note));
+        obj.setMember("velocity", note.velocity);
+        obj.setMember("channel", static_cast<int32_t>(note.channel));
+        obj.setMember("group", static_cast<int32_t>(note.ump_group));
+        auto automation = choc::value::createEmptyArray();
+        for (const auto& point : note.automationEvents)
+            automation.addArrayElement(serializeAutomationPoint(point, clipId, &note.reference_id, raw));
+        obj.setMember("automation", automation);
+        notes.addArrayElement(obj);
+    }
+    auto automation = choc::value::createEmptyArray();
+    for (const auto& point : content->editClipEvents)
+        automation.addArrayElement(serializeAutomationPoint(point, clipId, nullptr, raw));
+    result.setMember("success", true);
+    result.setMember("clipId", clipId);
+    result.setMember("tickResolution", static_cast<int32_t>(raw.tickResolution));
+    result.setMember("tempo", raw.clipTempo);
+    result.setMember("notes", notes);
+    result.setMember("automation", automation);
+    return result;
+}
+
+std::string objectKindToString(uapmd::ProjectObjectKind kind) {
+    switch (kind) {
+        case uapmd::ProjectObjectKind::Track: return "track";
+        case uapmd::ProjectObjectKind::Clip: return "clip";
+        case uapmd::ProjectObjectKind::Note: return "note";
+        case uapmd::ProjectObjectKind::AutomationPoint: return "automationPoint";
+    }
+    return "track";
+}
+
+choc::value::Value serializeIdList(const std::vector<uapmd::ProjectObjectId>& ids) {
+    auto array = choc::value::createEmptyArray();
+    for (const auto& id : ids)
+        array.addArrayElement(id);
+    return array;
+}
+
+template <typename T>
+choc::value::Value serializeRange(const std::pair<T, T>& range) {
+    auto array = choc::value::createEmptyArray();
+    array.addArrayElement(range.first);
+    array.addArrayElement(range.second);
+    return array;
+}
+
+choc::value::Value serializeSelectionRegion(const uapmd::ProjectSelectionRegion& region) {
+    auto obj = choc::value::createObject("SelectionRegion");
+    if (const auto* timeline = std::get_if<uapmd::TimelineSelectionRegion>(&region)) {
+        obj.setMember("type", "timeline");
+        obj.setMember("startSeconds", timeline->start_seconds);
+        obj.setMember("endSeconds", timeline->end_seconds);
+        if (timeline->track_ids)
+            obj.setMember("trackIds", serializeIdList(*timeline->track_ids));
+    } else if (const auto* notes = std::get_if<uapmd::MidiNoteSelectionRegion>(&region)) {
+        obj.setMember("type", "notes");
+        obj.setMember("clipId", notes->clip_id);
+        obj.setMember("startTick", choc::value::createInt64(static_cast<int64_t>(notes->start_tick)));
+        obj.setMember("endTick", choc::value::createInt64(static_cast<int64_t>(notes->end_tick)));
+        if (notes->pitches)
+            obj.setMember("pitches", serializeRange(std::pair<int32_t, int32_t>{notes->pitches->first, notes->pitches->second}));
+        if (notes->group)
+            obj.setMember("group", static_cast<int32_t>(*notes->group));
+        if (notes->channel)
+            obj.setMember("channel", static_cast<int32_t>(*notes->channel));
+    } else if (const auto* automation = std::get_if<uapmd::MidiAutomationSelectionRegion>(&region)) {
+        auto lane = choc::value::createObject("AutomationLane");
+        lane.setMember("clipId", automation->lane.clip_id);
+        if (automation->lane.note_id)
+            lane.setMember("noteId", *automation->lane.note_id);
+        lane.setMember("group", static_cast<int32_t>(automation->lane.group));
+        lane.setMember("channel", static_cast<int32_t>(automation->lane.channel));
+        lane.setMember("status", static_cast<int32_t>(automation->lane.status));
+        lane.setMember("parameter", static_cast<int32_t>(automation->lane.parameter));
+        obj.setMember("type", "automation");
+        obj.setMember("lane", lane);
+        obj.setMember("startTick", choc::value::createInt64(static_cast<int64_t>(automation->start_tick)));
+        obj.setMember("endTick", choc::value::createInt64(static_cast<int64_t>(automation->end_tick)));
+        if (automation->values)
+            obj.setMember("values", serializeRange(*automation->values));
+    }
+    return obj;
+}
+
+choc::value::Value serializeSelection(const uapmd::ProjectSelection& selection) {
+    auto regions = choc::value::createEmptyArray();
+    for (const auto& region : selection.regions)
+        regions.addArrayElement(serializeSelectionRegion(region));
+    auto result = choc::value::createObject("Selection");
+    result.setMember("objects", serializeIdList(selection.objects));
+    result.setMember("regions", regions);
+    return result;
+}
+
+std::optional<choc::value::ValueView> optionalMember(const choc::value::ValueView& value, const char* key) {
+    if (!value.isObject() || !value.hasObjectMember(key) || value[key].isVoid())
+        return std::nullopt;
+    return value[key];
+}
+
+bool parseNumber(const choc::value::ValueView& value, const char* key, double& out, std::string& error) {
+    auto member = optionalMember(value, key);
+    if (!member || !(member->isInt() || member->isFloat())) {
+        error = std::string(key) + " must be a number";
+        return false;
+    }
+    out = member->get<double>();
+    return true;
+}
+
+bool parseInteger(const choc::value::ValueView& value, const char* key, int64_t minimum, int64_t maximum,
+                  int64_t& out, std::string& error) {
+    double number = 0;
+    if (!parseNumber(value, key, number, error))
+        return false;
+    if (number != std::floor(number) || number < static_cast<double>(minimum) || number > static_cast<double>(maximum)) {
+        error = std::string(key) + " must be an integer in [" + std::to_string(minimum) + ", " + std::to_string(maximum) + "]";
+        return false;
+    }
+    out = static_cast<int64_t>(number);
+    return true;
+}
+
+template <typename T>
+bool parseOptionalInteger(const choc::value::ValueView& value, const char* key, int64_t maximum,
+                          std::optional<T>& out, std::string& error) {
+    if (!optionalMember(value, key))
+        return true;
+    int64_t number = 0;
+    if (!parseInteger(value, key, 0, maximum, number, error))
+        return false;
+    out = static_cast<T>(number);
+    return true;
+}
+
+bool parseString(const choc::value::ValueView& value, const char* key, std::string& out, std::string& error) {
+    auto member = optionalMember(value, key);
+    if (!member || !member->isString() || member->getString().empty()) {
+        error = std::string(key) + " must be a non-empty string";
+        return false;
+    }
+    out = std::string(member->getString());
+    return true;
+}
+
+bool parseOptionalRange(const choc::value::ValueView& value, const char* key,
+                        std::optional<std::pair<double, double>>& out, std::string& error) {
+    auto member = optionalMember(value, key);
+    if (!member)
+        return true;
+    if (!member->isArray() || member->size() != 2 ||
+        !((*member)[0].isInt() || (*member)[0].isFloat()) || !((*member)[1].isInt() || (*member)[1].isFloat())) {
+        error = std::string(key) + " must be a [low, high] number pair";
+        return false;
+    }
+    out = std::pair{(*member)[0].get<double>(), (*member)[1].get<double>()};
+    return true;
+}
+
+constexpr int64_t kMaxScriptTick = int64_t{1} << 53;
+
+bool parseSelectionRegion(const choc::value::ValueView& value, uapmd::ProjectSelectionRegion& region, std::string& error) {
+    std::string type;
+    if (!value.isObject() || !parseString(value, "type", type, error)) {
+        error = "region must be an object with a type";
+        return false;
+    }
+    if (type == "timeline") {
+        uapmd::TimelineSelectionRegion timeline;
+        if (!parseNumber(value, "startSeconds", timeline.start_seconds, error) ||
+            !parseNumber(value, "endSeconds", timeline.end_seconds, error))
+            return false;
+        if (auto ids = optionalMember(value, "trackIds")) {
+            if (!ids->isArray()) {
+                error = "trackIds must be an array";
+                return false;
+            }
+            timeline.track_ids.emplace();
+            for (const auto& id : *ids) {
+                if (!id.isString()) {
+                    error = "trackIds must contain strings";
+                    return false;
+                }
+                timeline.track_ids->emplace_back(id.getString());
+            }
+        }
+        region = std::move(timeline);
+        return true;
+    }
+    int64_t startTick = 0, endTick = 0;
+    if (type == "notes") {
+        uapmd::MidiNoteSelectionRegion notes;
+        std::optional<std::pair<double, double>> pitches;
+        if (!parseString(value, "clipId", notes.clip_id, error) ||
+            !parseInteger(value, "startTick", 0, kMaxScriptTick, startTick, error) ||
+            !parseInteger(value, "endTick", 0, kMaxScriptTick, endTick, error) ||
+            !parseOptionalRange(value, "pitches", pitches, error) ||
+            !parseOptionalInteger(value, "group", 15, notes.group, error) ||
+            !parseOptionalInteger(value, "channel", 15, notes.channel, error))
+            return false;
+        if (pitches) {
+            const auto [low, high] = *pitches;
+            if (low != std::floor(low) || high != std::floor(high) || low < 0 || high > 127) {
+                error = "pitches must be integers in [0, 127]";
+                return false;
+            }
+            notes.pitches = std::pair{static_cast<uint8_t>(low), static_cast<uint8_t>(high)};
+        }
+        notes.start_tick = static_cast<uint64_t>(startTick);
+        notes.end_tick = static_cast<uint64_t>(endTick);
+        region = std::move(notes);
+        return true;
+    }
+    if (type == "automation") {
+        uapmd::MidiAutomationSelectionRegion automation;
+        auto lane = optionalMember(value, "lane");
+        if (!lane || !lane->isObject()) {
+            error = "lane must be an object";
+            return false;
+        }
+        std::optional<uint8_t> group, channel, status;
+        std::optional<uint16_t> parameter;
+        if (!parseString(*lane, "clipId", automation.lane.clip_id, error) ||
+            !parseOptionalInteger(*lane, "group", 15, group, error) ||
+            !parseOptionalInteger(*lane, "channel", 15, channel, error) ||
+            !parseOptionalInteger(*lane, "status", 0xFF, status, error) ||
+            !parseOptionalInteger(*lane, "parameter", 0xFFFF, parameter, error) ||
+            !parseInteger(value, "startTick", 0, kMaxScriptTick, startTick, error) ||
+            !parseInteger(value, "endTick", 0, kMaxScriptTick, endTick, error) ||
+            !parseOptionalRange(value, "values", automation.values, error))
+            return false;
+        if (optionalMember(*lane, "noteId")) {
+            automation.lane.note_id.emplace();
+            if (!parseString(*lane, "noteId", *automation.lane.note_id, error))
+                return false;
+        }
+        automation.lane.group = group.value_or(automation.lane.group);
+        automation.lane.channel = channel.value_or(automation.lane.channel);
+        automation.lane.status = status.value_or(automation.lane.status);
+        automation.lane.parameter = parameter.value_or(automation.lane.parameter);
+        automation.start_tick = static_cast<uint64_t>(startTick);
+        automation.end_tick = static_cast<uint64_t>(endTick);
+        region = std::move(automation);
+        return true;
+    }
+    error = "region type must be timeline, notes, or automation";
+    return false;
+}
+
+bool parseSelection(const choc::value::ValueView& value, uapmd::ProjectSelection& selection, std::string& error) {
+    if (!value.isObject()) {
+        error = "selection must be an object";
+        return false;
+    }
+    if (auto objects = optionalMember(value, "objects")) {
+        if (!objects->isArray()) {
+            error = "objects must be an array";
+            return false;
+        }
+        for (const auto& id : *objects) {
+            if (!id.isString()) {
+                error = "objects must contain strings";
+                return false;
+            }
+            selection.objects.emplace_back(id.getString());
+        }
+    }
+    if (auto regions = optionalMember(value, "regions")) {
+        if (!regions->isArray()) {
+            error = "regions must be an array";
+            return false;
+        }
+        for (const auto& item : *regions) {
+            uapmd::ProjectSelectionRegion region;
+            if (!parseSelectionRegion(item, region, error))
+                return false;
+            selection.regions.push_back(std::move(region));
+        }
+    }
+    return true;
+}
+
+// A negative context selects the active context, falling back to the default one.
+uapmd::SelectionContextId resolveSelectionContext(int64_t context) {
+    const auto& selections = script_ids::document().selections();
+    if (context >= 0)
+        return static_cast<uapmd::SelectionContextId>(context);
+    return selections.activeContext().value_or(selections.defaultContext());
 }
 
 } // namespace
@@ -1788,18 +2171,18 @@ void UapmdJSRuntime::registerTimelineAPI()
             }
             for (uint32_t i = 0; i < tracks.size(); ++i) {
                 const auto& trackValue = tracks[i];
-                if (!trackValue.isObject() || !trackValue.hasObjectMember("trackIndex")) {
+                if (!trackValue.isObject() || !trackValue.hasObjectMember("trackId")) {
                     result.setMember("success", false);
-                    result.setMember("error", "track entry must contain trackIndex");
+                    result.setMember("error", "track entry must contain trackId");
                     return result;
                 }
-                const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
-                if (trackIndex < 0
-                    || trackIndex >= static_cast<int32_t>(engine->tracks().size())) {
+                const auto resolved = script_ids::trackIndex(trackValue["trackId"].getWithDefault<std::string>(""));
+                if (!resolved || *resolved < 0) {
                     result.setMember("success", false);
-                    result.setMember("error", "trackIndex is invalid");
+                    result.setMember("error", "trackId is invalid");
                     return result;
                 }
+                const auto trackIndex = *resolved;
                 if (trackValue.hasObjectMember("recordArmed")) {
                     std::erase(settings.record_armed_track_indexes, trackIndex);
                     if (trackValue["recordArmed"].get<bool>())
@@ -1875,40 +2258,37 @@ void UapmdJSRuntime::registerTimelineAPI()
         return choc::value::Value();
     });
 
+    impl_->context.registerFunction ("__remidy_timeline_get_master_track_id", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        return choc::value::createString (script_ids::masterTrackId());
+    });
+
     impl_->context.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto& appModel = uapmd_app::AppModel::instance();
-
-        uapmd::TimelineTrack* track = nullptr;
-        if (trackIndex < 0) {
-            track = appModel.getMasterTimelineTrack();
-        } else {
-            auto tracks = appModel.getTimelineTracks();
-            if (trackIndex < static_cast<int32_t> (tracks.size()))
-                track = tracks[static_cast<size_t> (trackIndex)];
-        }
-        if (!track)
-            return choc::value::createEmptyArray();
-
-        const auto clips = track->clipManager().getAllClips();
+        const auto trackId = args.get<std::string> (0, "");
         auto arr = choc::value::createEmptyArray();
-        for (const auto& clip : clips)
+        auto* track = script_ids::document().addresses().timelineTrack(trackId);
+        if (trackId.empty() || !track)
+            return arr;
+
+        for (const auto& snapshot : script_ids::clipsOnTrack(trackId))
         {
+            const auto* clip = track->clipManager().getClip(snapshot.clipNumericId);
+            if (!clip)
+                continue;
             auto obj = choc::value::createObject ("ClipData");
-            obj.setMember ("clipId", clip.clipId);
-            obj.setMember ("positionSamples", choc::value::createInt64 (clip.position.samples));
-            obj.setMember ("durationSamples", choc::value::createInt64 (clip.durationSamples));
-            obj.setMember ("sourceOffsetSamples", choc::value::createInt64 (clip.sourceOffsetSamples));
-            obj.setMember ("name", clip.name);
-            obj.setMember ("filepath", clip.filepath);
-            obj.setMember ("clipType", clip.clipType == uapmd::ClipType::Midi ? std::string ("midi") : std::string ("audio"));
-            obj.setMember ("gain", clip.gain);
-            obj.setMember ("muted", clip.muted);
-            obj.setMember ("tempo", clip.clipTempo);
-            obj.setMember ("tickResolution", static_cast<int32_t> (clip.tickResolution));
-            obj.setMember ("referenceId", clip.referenceId);
-            obj.setMember ("anchorReferenceId", clip.anchorReferenceId);
+            obj.setMember ("clipId", snapshot.clipId);
+            obj.setMember ("positionSamples", choc::value::createInt64 (clip->position.samples));
+            obj.setMember ("durationSamples", choc::value::createInt64 (clip->durationSamples));
+            obj.setMember ("sourceOffsetSamples", choc::value::createInt64 (clip->sourceOffsetSamples));
+            obj.setMember ("name", clip->name);
+            obj.setMember ("filepath", clip->filepath);
+            obj.setMember ("clipType", clip->clipType == uapmd::ClipType::Midi ? std::string ("midi") : std::string ("audio"));
+            obj.setMember ("gain", clip->gain);
+            obj.setMember ("muted", clip->muted);
+            obj.setMember ("tempo", clip->clipTempo);
+            obj.setMember ("tickResolution", static_cast<int32_t> (clip->tickResolution));
+            obj.setMember ("anchorReferenceId", clip->anchorReferenceId);
             arr.addArrayElement (obj);
         }
         return arr;
@@ -1916,26 +2296,26 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_ensure_dag_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        return choc::value::createBool(uapmd_app::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
+        auto trackIndex = script_ids::trackIndex(args.get<std::string> (0, ""));
+        return choc::value::createBool(trackIndex && uapmd_app::AppModel::instance().ensureTrackUsesEditorGraph(*trackIndex));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_show_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        uapmd_app::AppModel::instance().requestShowTrackGraph(trackIndex);
+        if (auto trackIndex = script_ids::trackIndex(args.get<std::string> (0, "")))
+            uapmd_app::AppModel::instance().requestShowTrackGraph(*trackIndex);
         return choc::value::Value();
     });
 
     impl_->context.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        return choc::value::createBool(uapmd_app::AppModel::instance().revertTrackToSimpleGraph(trackIndex));
+        auto trackIndex = script_ids::trackIndex(args.get<std::string> (0, ""));
+        return choc::value::createBool(trackIndex && uapmd_app::AppModel::instance().revertTrackToSimpleGraph(*trackIndex));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
+        auto trackIndex = script_ids::trackIndex(args.get<std::string> (0, "")).value_or(-1);
         std::vector<AudioPluginGraphConnection> connections;
         std::string error;
 
@@ -1959,7 +2339,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_connect_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t>(0, -1);
+        auto trackIndex = script_ids::trackIndex(args.get<std::string>(0, ""));
         auto busTypeText = args.get<std::string>(1, "");
         auto sourceTypeText = args.get<std::string>(2, "");
         auto sourceInstanceId = args.get<int32_t>(3, -1);
@@ -1971,6 +2351,11 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto targetNodeId = args.get<std::string>(9, "");
 
         auto result = choc::value::createObject("TrackGraphMutation");
+        if (!trackIndex) {
+            result.setMember("success", false);
+            result.setMember("error", "Track not found");
+            return result;
+        }
         AudioPluginGraphBusType busType;
         AudioPluginGraphEndpointType sourceType, targetType;
         if (!parseGraphBusType(busTypeText, busType) ||
@@ -1983,7 +2368,7 @@ void UapmdJSRuntime::registerTimelineAPI()
 
         std::string error;
         const bool ok = uapmd_app::AppModel::instance().connectTrackGraph(
-            trackIndex,
+            *trackIndex,
             AudioPluginGraphConnection{
                 .id = 0,
                 .bus_type = busType,
@@ -1998,10 +2383,10 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_disconnect_track_graph_connection", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t>(0, -1);
+        auto trackIndex = script_ids::trackIndex(args.get<std::string>(0, ""));
         auto connectionId = args.get<int64_t>(1, 0);
-        std::string error;
-        const bool ok = uapmd_app::AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
+        std::string error = trackIndex ? std::string{} : std::string{"Track not found"};
+        const bool ok = trackIndex && uapmd_app::AppModel::instance().disconnectTrackGraphConnection(*trackIndex, connectionId, error);
         auto result = choc::value::createObject("TrackGraphMutation");
         result.setMember("success", ok);
         result.setMember("error", error);
@@ -2010,27 +2395,18 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_get_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto clipId = args.get<int32_t> (1, -1);
+        const auto clip = script_ids::clip(args.get<std::string> (0, ""));
         std::vector<uapmd::ClipMarker> markers;
         std::vector<uapmd::AudioWarpPoint> warps;
-        std::string error;
+        std::string error = "Clip not found";
         auto result = choc::value::createObject ("ClipAudioEvents");
-        if (!uapmd_app::AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error)) {
+        if (!clip || !uapmd_app::AppModel::instance().getClipAudioEvents(clip->trackIndex, clip->clipNumericId, markers, warps, error)) {
             result.setMember ("success", false);
             result.setMember ("error", error);
             return result;
         }
 
-        std::string ownerReferenceId = kMasterMarkerReferenceId.data();
-        if (trackIndex != uapmd::kMasterTrackIndex) {
-            auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-            if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
-                if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
-                    ownerReferenceId = clip->referenceId;
-            }
-        }
-
+        const auto ownerReferenceId = script_ids::markerOwnerReferenceId(*clip, kMasterMarkerReferenceId);
         auto markerArray = choc::value::createEmptyArray();
         for (const auto& marker : markers)
             markerArray.addArrayElement(serializeMarker(marker, ownerReferenceId));
@@ -2046,31 +2422,24 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_set_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto clipId = args.get<int32_t> (1, -1);
+        const auto clip = script_ids::clip(args.get<std::string> (0, ""));
         auto result = choc::value::createObject ("ClipAudioEventSetResult");
-        if (trackIndex < 0 || clipId < 0 || args.size() < 3 || args[2] == nullptr || !args[2]->isObject()) {
+        if (!clip || args.size() < 2 || args[1] == nullptr || !args[1]->isObject()) {
             result.setMember ("success", false);
-            result.setMember ("error", "invalid arguments");
+            result.setMember ("error", clip ? "invalid arguments" : "Clip not found");
             return result;
         }
 
-        auto tracks = uapmd_app::AppModel::instance().getTimelineTracks();
-        std::string ownerReferenceId = kMasterMarkerReferenceId.data();
-        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
-            if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
-                ownerReferenceId = clip->referenceId;
-        }
-
+        const auto ownerReferenceId = script_ids::markerOwnerReferenceId(*clip, kMasterMarkerReferenceId);
         std::vector<uapmd::ClipMarker> markers;
         std::vector<uapmd::AudioWarpPoint> warps;
         std::string error;
-        auto payload = args[2]->getView();
+        auto payload = args[1]->getView();
         auto markersView = payload.hasObjectMember("markers") ? std::optional(payload["markers"]) : std::nullopt;
         auto warpsView = payload.hasObjectMember("audioWarps") ? std::optional(payload["audioWarps"]) : std::nullopt;
         if (!parseMarkersValue(markersView ? &*markersView : nullptr, ownerReferenceId, markers, error) ||
             !parseWarpsValue(warpsView ? &*warpsView : nullptr, ownerReferenceId, warps, error) ||
-            !uapmd_app::AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
+            !uapmd_app::AppModel::instance().setClipAudioEvents(clip->trackIndex, clip->clipNumericId, std::move(markers), std::move(warps), error)) {
             result.setMember ("success", false);
             result.setMember ("error", error);
             return result;
@@ -2106,28 +2475,28 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_add_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
+        auto trackIndex = script_ids::trackIndex(args.get<std::string> (0, ""));
         auto positionSamples = args.get<int64_t> (1, 0);
         auto filepath = args.get<std::string> (2, "");
 
         auto makeError = [] (const std::string& msg) {
             auto obj = choc::value::createObject ("ClipAddResult");
-            obj.setMember ("clipId", -1);
+            obj.setMember ("clipId", std::string{});
             obj.setMember ("success", false);
             obj.setMember ("error", msg);
             return obj;
         };
 
-        if (trackIndex < 0 || filepath.empty())
+        if (!trackIndex || *trackIndex < 0 || filepath.empty())
             return makeError ("invalid arguments");
 
         auto& appModel = uapmd_app::AppModel::instance();
         uapmd::TimelinePosition pos{};
         pos.samples = positionSamples;
-        auto result = appModel.addMidiClipToTrack (trackIndex, pos, filepath);
+        auto result = appModel.addMidiClipToTrack (*trackIndex, pos, filepath);
 
         auto obj = choc::value::createObject ("ClipAddResult");
-        obj.setMember ("clipId", result.clipId);
+        obj.setMember ("clipId", result.success ? script_ids::clipId(*trackIndex, result.clipId) : std::string{});
         obj.setMember ("success", result.success);
         obj.setMember ("error", result.error);
         return obj;
@@ -2160,7 +2529,7 @@ void UapmdJSRuntime::registerTimelineAPI()
                 auto importedTracks = choc::value::createEmptyArray();
                 for (const auto& track : result.importedTracks) {
                     auto trackValue = choc::value::createObject("MidiTrackImportResult");
-                    trackValue.setMember("trackIndex", track.trackIndex);
+                    trackValue.setMember("trackId", track.trackIndex < 0 ? std::string{} : script_ids::trackId(track.trackIndex));
                     trackValue.setMember("clipName", track.clipName);
                     trackValue.setMember("success", track.success);
                     trackValue.setMember("error", track.error);
@@ -2177,33 +2546,35 @@ void UapmdJSRuntime::registerTimelineAPI()
 
     impl_->context.registerFunction ("__remidy_timeline_remove_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto clipId = args.get<int32_t> (1, -1);
-        if (trackIndex < 0 || clipId < 0)
+        const auto clip = script_ids::clip(args.get<std::string> (0, ""));
+        if (!clip)
             return choc::value::createBool (false);
-        return choc::value::createBool (uapmd_app::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
+        return choc::value::createBool (uapmd_app::AppModel::instance().removeClipFromTrack (clip->trackIndex, clip->clipNumericId));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_get_clip_ump_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto clipId     = args.get<int32_t> (1, -1);
-        if (trackIndex < 0 || clipId < 0)
+        const auto clip = script_ids::clip(args.get<std::string> (0, ""));
+        if (!clip)
             return choc::value::createObject ("");
-        return toChocValue(uapmd_app::AppModel::instance().getMidiClipUmpEvents(trackIndex, clipId));
+        return toChocValue(uapmd_app::AppModel::instance().getMidiClipUmpEvents(clip->trackIndex, clip->clipNumericId));
+    });
+
+    impl_->context.registerFunction ("__remidy_timeline_get_clip_notes", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        return serializeClipNotes(args.get<std::string> (0, ""));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_add_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex = args.get<int32_t> (0, -1);
-        auto clipId     = args.get<int32_t> (1, -1);
-        auto tick       = static_cast<uint64_t>(args.get<int64_t> (2, 0));
-        if (trackIndex < 0 || clipId < 0)
+        const auto clip = script_ids::clip(args.get<std::string> (0, ""));
+        auto tick       = static_cast<uint64_t>(args.get<int64_t> (1, 0));
+        if (!clip)
             return choc::value::createBool (false);
-        // args[3] is an array of 1–2 UMP words
+        // args[2] is an array of 1–2 UMP words
         std::vector<uint32_t> words;
-        if (args.size() > 3) {
-            auto* wordsVal = args[3];
+        if (args.size() > 2) {
+            auto* wordsVal = args[2];
             if (wordsVal && wordsVal->isArray())
                 for (uint32_t i = 0; i < wordsVal->size(); ++i)
                     words.push_back (static_cast<uint32_t>((*wordsVal)[i].get<int64_t>()));
@@ -2211,31 +2582,122 @@ void UapmdJSRuntime::registerTimelineAPI()
         if (words.empty()) return choc::value::createBool (false);
         std::string error;
         return choc::value::createBool (
-            uapmd_app::AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error));
+            uapmd_app::AppModel::instance().addUmpEventToClip (clip->trackIndex, clip->clipNumericId, tick, std::move(words), error));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_remove_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex  = args.get<int32_t> (0, -1);
-        auto clipId      = args.get<int32_t> (1, -1);
-        auto eventIndex  = args.get<int32_t> (2, -1);
-        if (trackIndex < 0 || clipId < 0 || eventIndex < 0)
+        const auto clip  = script_ids::clip(args.get<std::string> (0, ""));
+        auto eventIndex  = args.get<int32_t> (1, -1);
+        if (!clip || eventIndex < 0)
             return choc::value::createBool (false);
         std::string error;
         return choc::value::createBool (
-            uapmd_app::AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error));
+            uapmd_app::AppModel::instance().removeUmpEventFromClip (clip->trackIndex, clip->clipNumericId, eventIndex, error));
     });
 
     impl_->context.registerFunction ("__remidy_timeline_create_empty_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto trackIndex      = args.get<int32_t> (0, -1);
-        if (trackIndex < 0) return choc::value::createInt32 (-1);
+        auto trackIndex      = script_ids::trackIndex(args.get<std::string> (0, ""));
+        if (!trackIndex || *trackIndex < 0) return choc::value::createString ("");
         auto positionSamples = args.get<int64_t>  (1, 0);
         auto tickResolution  = static_cast<uint32_t>(std::max (1, args.get<int32_t> (2, 480)));
         auto bpm             = args.get<double>   (3, 120.0);
         auto r = uapmd_app::AppModel::instance().createEmptyMidiClip (
-            trackIndex, positionSamples, tickResolution, bpm);
-        return choc::value::createInt32 (r.clipId);
+            *trackIndex, positionSamples, tickResolution, bpm);
+        return choc::value::createString (r.success ? script_ids::clipId(*trackIndex, r.clipId) : std::string{});
+    });
+}
+
+void UapmdJSRuntime::registerSelectionAPI()
+{
+    impl_->context.registerFunction ("__remidy_selection_get_contexts", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        const auto& selections = script_ids::document().selections();
+        const auto active = selections.activeContext();
+        auto result = choc::value::createObject ("SelectionContexts");
+        result.setMember ("defaultContext", choc::value::createInt64 (static_cast<int64_t> (selections.defaultContext())));
+        result.setMember ("activeContext", active ? choc::value::createInt64 (static_cast<int64_t> (*active)) : choc::value::Value());
+        return result;
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_context_for_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto clip = script_ids::clip (args.get<std::string> (0, ""));
+        auto* session = clip ? uapmd_app::AppModel::instance().findPianoRollSession (clip->trackIndex, clip->clipNumericId) : nullptr;
+        if (!session || !script_ids::document().selections().hasContext (session->selection_context))
+            return choc::value::Value();
+        return choc::value::createInt64 (static_cast<int64_t> (session->selection_context));
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_get", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto context = resolveSelectionContext (args.get<int64_t> (0, -1));
+        const auto selection = script_ids::document().selections().snapshot (context);
+        return selection ? serializeSelection (*selection) : choc::value::Value();
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_set", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto result = choc::value::createObject ("SelectionUpdateResult");
+        uapmd::ProjectSelection selection;
+        std::string error;
+        if (args.size() < 1 || args[0] == nullptr || !parseSelection (args[0]->getView(), selection, error)) {
+            result.setMember ("success", false);
+            result.setMember ("error", error.empty() ? std::string ("selection is required") : error);
+            return result;
+        }
+        const auto context = resolveSelectionContext (args.get<int64_t> (1, -1));
+        const auto update = script_ids::document().selections().replace (context, std::move (selection));
+        result.setMember ("success", update.success);
+        result.setMember ("error", update.error);
+        return result;
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_clear", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto& selections = script_ids::document().selections();
+        const auto context = resolveSelectionContext (args.get<int64_t> (0, -1));
+        if (!selections.hasContext (context))
+            return choc::value::createBool (false);
+        selections.clear (context);
+        return choc::value::createBool (true);
+    });
+
+    // A negative context leaves no context active.
+    impl_->context.registerFunction ("__remidy_selection_set_active_context", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto context = args.get<int64_t> (0, -1);
+        return choc::value::createBool (script_ids::document().selections().setActiveContext (
+            context < 0 ? std::nullopt : std::optional<uapmd::SelectionContextId> (static_cast<uapmd::SelectionContextId> (context))));
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_get_object", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        const auto id = args.get<std::string> (0, "");
+        const auto object = id.empty() ? std::nullopt : script_ids::document().view().getObject (id);
+        if (!object)
+            return choc::value::Value();
+        auto result = choc::value::createObject ("DocumentObject");
+        result.setMember ("id", object->id);
+        result.setMember ("kind", objectKindToString (object->kind));
+        if (object->parent_id)
+            result.setMember ("parentId", *object->parent_id);
+        return result;
+    });
+
+    impl_->context.registerFunction ("__remidy_selection_get_projection", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto& document = script_ids::document();
+        const auto selection = document.selections().snapshot (resolveSelectionContext (args.get<int64_t> (0, -1)));
+        if (!selection)
+            return choc::value::Value();
+        const auto projection = uapmd::projectSelection (document.view(), *selection);
+        auto result = choc::value::createObject ("SelectionProjection");
+        result.setMember ("clipIds", serializeIdList (projection.clip_ids));
+        result.setMember ("trackIds", serializeIdList (projection.track_ids));
+        result.setMember ("timeRange", projection.time_range ? serializeRange (*projection.time_range) : choc::value::Value());
+        return result;
     });
 }
 

@@ -74,6 +74,10 @@ void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
         Logger::global()->logError("No presets available");
         return;
     }
+    if (index < 0 || index >= presetCount) {
+        Logger::global()->logError(std::format("Invalid preset index: {}", index).c_str());
+        return;
+    }
 
     // Normalize index to [0.0, 1.0] range
     // JUCE does: value = program / max(1, programCount - 1)
@@ -105,6 +109,11 @@ void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
 }
 
 void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    if (index < 0 || index >= getPresetCount()) {
+        if (completed)
+            completed("invalid preset index", nullptr);
+        return;
+    }
     EventLoop::enqueueTaskOnMainThread([this, index, completed = std::move(completed)]() mutable {
         loadPreset(index);
         if (completed)

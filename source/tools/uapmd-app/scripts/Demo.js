@@ -64,14 +64,8 @@ for (const trackConfig of tracksToCreate) {
     const plugin = findPlugin(trackConfig.name, trackConfig.format);
 
     if (plugin) {
-        // Use the low-level sequencer API directly, matching the C++ AppModel::instantiatePlugin pattern
-        const trackIndex = sequencer.addTrack();
-        if (trackIndex < 0) {
-            log(`Failed to create track for ${plugin.displayName}`);
-            continue;
-        }
-
-        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId, trackIndex);
+        // Without a trackId, the instance is created on a new track.
+        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId);
         if (instanceId >= 0) {
             instanceIds.push(instanceId);
             sequencer.showPluginUI(instanceId);
@@ -88,7 +82,7 @@ const tracks = sequencer.getTrackInfos();
 log(`Created ${instanceIds.length} track(s):`);
 for (const track of tracks) {
     for (const node of track.nodes) {
-        log(`  Track ${track.trackIndex}: ${node.displayName} (${node.format})`);
+        log(`  Track ${track.trackId}: ${node.displayName} (${node.format})`);
     }
 }
 

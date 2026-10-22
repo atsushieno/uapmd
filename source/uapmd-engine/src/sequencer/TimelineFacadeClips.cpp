@@ -506,6 +506,17 @@ namespace uapmd {
             existing->timeSignatureChanges());
         const int64_t newDuration = replacement->totalLength();
 
+        // UMP carries no note identities; take them from the loaded document for unchanged messages.
+        std::optional<MidiClipContentSnapshot> carried;
+        if (!content)
+            if (auto cached = midi_documents_.find(clip->referenceId); cached != midi_documents_.end()) {
+                carried = cached->second->withReplacedEvents(
+                    MidiRawData{replacement->umpEvents(), replacement->eventTimestampsTicks(),
+                        replacement->tickResolution(), clip->clipTempo},
+                    static_cast<double>(newDuration) / std::max(1.0, static_cast<double>(sampleRate_)));
+                content = &*carried;
+            }
+
         // The node swap and the duration change are one edit.
         {
             ProjectDocumentTransaction transaction(project_document_events_);

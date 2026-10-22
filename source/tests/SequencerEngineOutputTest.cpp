@@ -1311,11 +1311,6 @@ TEST_F(SequencerEngineOutputTest, MidiPresetsAreAppliedOnControlThreadAndCancele
     drain();
     EXPECT_TRUE(loaded.empty());
 
-    enqueuePreset(0, 127); // Reject out-of-range indices before backend access.
-    ASSERT_EQ(engine->processAudio(process), 0);
-    drain();
-    EXPECT_TRUE(loaded.empty());
-
     engine->offlineRendering(true);
     enqueuePreset(0, 5);
     ASSERT_EQ(engine->processAudio(process), 0);
@@ -1951,7 +1946,11 @@ TEST_F(SequencerEngineOutputTest, ClipPropertyMutationsUndoAndRedoIndividually) 
             EXPECT_EQ(actual.clip.filepath, after.clip.filepath);
         });
     exercise(
-        [&] { return timeline.commands().setClipNeedsFileSave(trackIndex, added.clipId, true); },
+        [&] {
+            // Renaming a MIDI clip above already set this flag, so flip whatever it is now.
+            const auto current = timeline.captureClipFragment(trackIndex, added.clipId)->clip.needsFileSave;
+            return timeline.commands().setClipNeedsFileSave(trackIndex, added.clipId, !current);
+        },
         [](const auto& before, const auto& actual) {
             EXPECT_EQ(actual.clip.needsFileSave, before.clip.needsFileSave);
         },

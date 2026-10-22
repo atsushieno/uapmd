@@ -81,10 +81,10 @@ function __uapmdClone(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-function __uapmdFindMatchingInstance(format, pluginId, trackIndex) {
+function __uapmdFindMatchingInstance(format, pluginId, trackId) {
     const tracks = __remidy_sequencer_getTrackInfos();
-    if (trackIndex >= 0 && trackIndex < tracks.length) {
-        const track = tracks[trackIndex];
+    const track = trackId ? tracks.find(t => t.trackId === trackId) : null;
+    if (track) {
         const node = (track.nodes || []).find(n => n.format === format && n.pluginId === pluginId);
         if (node)
             return node;
@@ -109,7 +109,7 @@ function __uapmdPollCreateJob(jobId) {
         return null;
 
     if (job.state === "running") {
-        const node = __uapmdFindMatchingInstance(job.format, job.pluginId, job.trackIndex);
+        const node = __uapmdFindMatchingInstance(job.format, job.pluginId, job.trackId);
         if (node) {
             job.state = "completed";
             job.instanceId = node.instanceId;
@@ -147,10 +147,10 @@ globalThis.uapmd = {
         setCacheFile: (path) => __remidy_scan_tool_set_cache_file(path)
     },
 
-    // Instance creation and management
+    // Instance creation and management. An empty trackId creates a new track.
     instancing: {
-        create: (format, pluginId, trackIndex = -1) => __remidy_instance_create(format, pluginId, trackIndex),
-        startCreateJob: (jobId, format, pluginId, trackIndex = -1) => {
+        create: (format, pluginId, trackId = "") => __remidy_instance_create(format, pluginId, trackId),
+        startCreateJob: (jobId, format, pluginId, trackId = "") => {
             if (!jobId)
                 throw new Error("jobId is required");
 
@@ -163,20 +163,20 @@ globalThis.uapmd = {
                 state: "running",
                 format,
                 pluginId,
-                trackIndex,
+                trackId,
                 instanceId: -1,
                 startedAtMs: Date.now()
             };
             __uapmdAutomationState.jobs[jobId] = job;
 
             try {
-                const instanceId = __remidy_instance_create(format, pluginId, trackIndex);
+                const instanceId = __remidy_instance_create(format, pluginId, trackId);
                 if (instanceId >= 0) {
                     job.state = "completed";
                     job.instanceId = instanceId;
                     job.completedAtMs = Date.now();
                 } else {
-                    const node = __uapmdFindMatchingInstance(format, pluginId, trackIndex);
+                    const node = __uapmdFindMatchingInstance(format, pluginId, trackId);
                     if (node) {
                         job.state = "completed";
                         job.instanceId = node.instanceId;
@@ -239,7 +239,7 @@ globalThis.uapmd = {
         // uapmd.mutations.getJob(jobId); the engine model thread is never
         // blocked waiting for asynchronous restoration or history capture.
         addTrack: () => __remidy_sequencer_add_track(),
-        removeTrack: (trackIndex) => __remidy_sequencer_remove_track(trackIndex),
+        removeTrack: (trackId) => __remidy_sequencer_remove_track(trackId),
         clearTracks: () => __remidy_sequencer_clear_tracks(),
         getParameterUpdates: (instanceId) => __remidy_sequencer_getParameterUpdates(instanceId),
         consumeParameterMetadataRefresh: (instanceId) => __remidy_sequencer_consumeParameterMetadataRefresh(instanceId),
@@ -258,38 +258,39 @@ globalThis.uapmd = {
         isScanning: () => __remidy_sequencer_isScanning()
     },
 
-    // Timeline API - Clip and playback state management
+    // Timeline API - tracks and clips are addressed by the project's string trackId/clipId.
     timeline: {
         getState: () => __remidy_timeline_get_state(),
-        getLatencyCompensationState: () => __remidy_timeline_get_latency_compensation_state(),
-        setLatencyCompensationState: (payload) => __remidy_timeline_set_latency_compensation_state(payload),
+        getMasterTrackId: () => __remidy_timeline_get_master_track_id(),
         setTempo: (bpm) => __remidy_timeline_set_tempo(bpm),
-        getClips: (trackIndex) => __remidy_timeline_get_clips(trackIndex),
-        getClipAudioEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_audio_events(trackIndex, clipId),
-        setClipAudioEvents: (trackIndex, clipId, payload) => __remidy_timeline_set_clip_audio_events(trackIndex, clipId, payload),
+        getClips: (trackId) => __remidy_timeline_get_clips(trackId),
+        getClipAudioEvents: (clipId) => __remidy_timeline_get_clip_audio_events(clipId),
+        setClipAudioEvents: (clipId, payload) => __remidy_timeline_set_clip_audio_events(clipId, payload),
         getMasterMarkers: () => __remidy_timeline_get_master_markers(),
         setMasterMarkers: (markers) => __remidy_timeline_set_master_markers(markers),
-        addMidiClip: (trackIndex, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath),
+        addMidiClip: (trackId, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackId, positionSamples, filepath),
         // Multi-track SMF import: creates one new track per SMF track, plus a master-track clip
         // (anchored to its source track's clip) for each track that carries its own tempo/
         // time-signature data. Mirrors the GUI's "Import MIDI Tracks (SMF)" menu action.
         importMidiTracks: (filepath) => __remidy_timeline_import_midi_tracks(filepath),
-        removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId),
-        createEmptyMidiClip: (trackIndex, positionSamples = 0, tickResolution = 480, bpm = 120.0) =>
-            __remidy_timeline_create_empty_midi_clip(trackIndex, positionSamples, tickResolution, bpm),
+        removeClip: (clipId) => __remidy_timeline_remove_clip(clipId),
+        createEmptyMidiClip: (trackId, positionSamples = 0, tickResolution = 480, bpm = 120.0) =>
+            __remidy_timeline_create_empty_midi_clip(trackId, positionSamples, tickResolution, bpm),
         getLatencyCompensationState: () => __remidy_timeline_get_latency_compensation_state(),
         setLatencyCompensationState: (payload) => __remidy_timeline_set_latency_compensation_state(payload),
         getLatencyCompensationDebugState: () => __remidy_timeline_get_latency_compensation_debug_state(),
         setLatencyCompensationDebugState: (payload) => __remidy_timeline_set_latency_compensation_debug_state(payload),
-        getClipUmpEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_ump_events(trackIndex, clipId),
-        addUmpEvent: (trackIndex, clipId, tick, words) => __remidy_timeline_add_ump_event(trackIndex, clipId, tick, words),
-        removeUmpEvent: (trackIndex, clipId, eventIndex) => __remidy_timeline_remove_ump_event(trackIndex, clipId, eventIndex),
-        ensureDagGraph: (trackIndex) => __remidy_timeline_ensure_dag_graph(trackIndex),
-        showTrackGraph: (trackIndex) => __remidy_timeline_show_track_graph(trackIndex),
-        revertTrackGraphToSimple: (trackIndex) => __remidy_timeline_revert_track_graph_to_simple(trackIndex),
-        getTrackGraphConnections: (trackIndex) => __remidy_timeline_get_track_graph_connections(trackIndex),
-        connectTrackGraph: (trackIndex, busType, source, target) => __remidy_timeline_connect_track_graph(
-            trackIndex,
+        getClipUmpEvents: (clipId) => __remidy_timeline_get_clip_ump_events(clipId),
+        // noteId/pointId are not saved; across addUmpEvent/removeUmpEvent they last while the note-on or point message is unchanged.
+        getClipNotes: (clipId) => __remidy_timeline_get_clip_notes(clipId),
+        addUmpEvent: (clipId, tick, words) => __remidy_timeline_add_ump_event(clipId, tick, words),
+        removeUmpEvent: (clipId, eventIndex) => __remidy_timeline_remove_ump_event(clipId, eventIndex),
+        ensureDagGraph: (trackId) => __remidy_timeline_ensure_dag_graph(trackId),
+        showTrackGraph: (trackId) => __remidy_timeline_show_track_graph(trackId),
+        revertTrackGraphToSimple: (trackId) => __remidy_timeline_revert_track_graph_to_simple(trackId),
+        getTrackGraphConnections: (trackId) => __remidy_timeline_get_track_graph_connections(trackId),
+        connectTrackGraph: (trackId, busType, source, target) => __remidy_timeline_connect_track_graph(
+            trackId,
             busType,
             source.type,
             source.instanceId ?? -1,
@@ -300,8 +301,21 @@ globalThis.uapmd = {
             source.nodeId ?? "",
             target.nodeId ?? ""
         ),
-        disconnectTrackGraphConnection: (trackIndex, connectionId) =>
-            __remidy_timeline_disconnect_track_graph_connection(trackIndex, connectionId)
+        disconnectTrackGraphConnection: (trackId, connectionId) =>
+            __remidy_timeline_disconnect_track_graph_connection(trackId, connectionId)
+    },
+
+    // Selection API - an omitted context means the active context, else the default (timeline) one.
+    selection: {
+        getContexts: () => __remidy_selection_get_contexts(),
+        contextForClip: (clipId) => __remidy_selection_context_for_clip(clipId),
+        get: (context) => __remidy_selection_get(context ?? -1),
+        set: (selection, context) => __remidy_selection_set(selection, context ?? -1),
+        clear: (context) => __remidy_selection_clear(context ?? -1),
+        // null leaves no context active.
+        setActiveContext: (context) => __remidy_selection_set_active_context(context ?? -1),
+        getObject: (id) => __remidy_selection_get_object(id),
+        getProjection: (context) => __remidy_selection_get_projection(context ?? -1)
     },
 
     render: {

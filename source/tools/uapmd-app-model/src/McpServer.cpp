@@ -19,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include "ScriptDocumentIds.hpp"
 
 using namespace uapmd_graph;
 
@@ -87,6 +88,45 @@ static double getDoubleArg(const choc::value::Value& args, const char* key, doub
     if (args.isObject() && args.hasObjectMember (key))
         return args[key].get<double>();
     return fallback;
+}
+
+// Returns uapmd::kMasterTrackIndex for the master track.
+static int32_t getTrackArg(const choc::value::Value& args)
+{
+    const auto trackId = getStringArg (args, "trackId");
+    if (trackId.empty())
+        throw std::invalid_argument ("trackId is required");
+    const auto trackIndex = script_ids::trackIndex (trackId);
+    if (!trackIndex)
+        throw std::invalid_argument ("Unknown trackId: " + trackId);
+    return *trackIndex;
+}
+
+static int32_t getRegularTrackArg(const choc::value::Value& args)
+{
+    const auto trackIndex = getTrackArg (args);
+    if (trackIndex < 0)
+        throw std::invalid_argument ("trackId must not be the master track");
+    return trackIndex;
+}
+
+static ProjectClipSnapshot getClipArg(const choc::value::Value& args)
+{
+    const auto clipId = getStringArg (args, "clipId");
+    if (clipId.empty())
+        throw std::invalid_argument ("clipId is required");
+    auto clip = script_ids::clip (clipId);
+    if (!clip)
+        throw std::invalid_argument ("Unknown clipId: " + clipId);
+    return std::move (*clip);
+}
+
+// Optional selection context argument as a JS expression; undefined selects the active one.
+static std::string getContextArgScript(const choc::value::Value& args)
+{
+    if (!args.isObject() || !args.hasObjectMember ("context") || args["context"].isVoid())
+        return "undefined";
+    return std::to_string (args["context"].get<int64_t>());
 }
 
 namespace {
@@ -300,7 +340,7 @@ choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationM
     auto tracks = choc::value::createEmptyArray();
     for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
         auto track = choc::value::createObject("");
-        track.setMember("trackIndex", trackIndex);
+        track.setMember("trackId", script_ids::trackId(trackIndex));
         track.setMember("recordArmed", manager.trackRecordArmed(trackIndex));
         track.setMember("monitoringEnabled", manager.trackMonitoringEnabled(trackIndex));
         tracks.addArrayElement(track);
@@ -386,7 +426,7 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "list_tracks",
-            "List all sequencer tracks with their graph nodes and plugin instances.",
+            "List all sequencer tracks with their trackId, graph nodes, and plugin instances. Also returns masterTrackId.",
             R"j({"type":"object","properties":{}})j"
         },
         {
@@ -432,16 +472,16 @@ static choc::value::Value buildToolDefinitions()
         {
             "get_track_freeze_state",
             "Get the requested freeze policy, runtime state, and active render progress for a track.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"}}})j"
         },
         {
             "set_track_freeze_policy",
             "Set a track freeze policy. The policy remains editable during playback, while rendering is deferred until playback has stopped or paused and its output tail is quiet.",
-            R"j({"type":"object","required":["trackIndex","policy"],"properties":{"trackIndex":{"type":"integer"},"policy":{"type":"string","description":"off or on"}}})j"
+            R"j({"type":"object","required":["trackId","policy"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"},"policy":{"type":"string","description":"off or on"}}})j"
         },
         {
             "create_track",
-            "Create a new empty sequencer track. Returns the new trackIndex.",
+            "Create a new empty sequencer track. Returns the new trackId.",
             R"j({"type":"object","properties":{}})j"
         },
         {
@@ -462,32 +502,32 @@ static choc::value::Value buildToolDefinitions()
         {
             "add_plugin_to_track",
             "Add a plugin instance to a track. Returns the instanceId.",
-            R"j({"type":"object","required":["trackIndex","pluginId","format"],"properties":{"trackIndex":{"type":"integer"},"pluginId":{"type":"string","description":"Plugin ID from list_plugins"},"format":{"type":"string","description":"VST3, AU, LV2, or CLAP"}}})j"
+            R"j({"type":"object","required":["trackId","pluginId","format"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"},"pluginId":{"type":"string","description":"Plugin ID from list_plugins"},"format":{"type":"string","description":"VST3, AU, LV2, or CLAP"}}})j"
         },
         {
             "ensure_dag_track_graph",
             "Promote a track graph to the built-in DAG graph editor implementation.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; use masterTrackId for the master track"}}})j"
         },
         {
             "get_track_graph_connections",
             "List connections for a track graph. Works on the built-in DAG graph.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; use masterTrackId for the master track"}}})j"
         },
         {
             "connect_track_graph",
             "Create a connection in a track DAG graph.",
-            R"j({"type":"object","required":["trackIndex","busType","source","target"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"busType":{"type":"string","description":"audio or event"},"source":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}},"target":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}}}})j"
+            R"j({"type":"object","required":["trackId","busType","source","target"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; use masterTrackId for the master track"},"busType":{"type":"string","description":"audio or event"},"source":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}},"target":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}}}})j"
         },
         {
             "disconnect_track_graph_connection",
             "Remove a connection from a track DAG graph by connection ID.",
-            R"j({"type":"object","required":["trackIndex","connectionId"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"connectionId":{"type":"integer"}}})j"
+            R"j({"type":"object","required":["trackId","connectionId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; use masterTrackId for the master track"},"connectionId":{"type":"integer"}}})j"
         },
         {
             "revert_track_graph_to_simple",
             "Replace the track graph with the simple linear graph.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; use masterTrackId for the master track"}}})j"
         },
         {
             "get_timeline_state",
@@ -502,7 +542,7 @@ static choc::value::Value buildToolDefinitions()
         {
             "set_latency_compensation_state",
             "Update project latency-compensation settings. String enums: playbackCompensationMode=compensated|lowLatency, inputMonitoringPolicy=tapeStyle|auto|off.",
-            R"j({"type":"object","properties":{"playbackCompensationMode":{"type":"string"},"inputMonitoringPolicy":{"type":"string"},"tracks":{"type":"array","items":{"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"recordArmed":{"type":"boolean"},"monitoringEnabled":{"type":"boolean"}}}}}})j"
+            R"j({"type":"object","properties":{"playbackCompensationMode":{"type":"string"},"inputMonitoringPolicy":{"type":"string"},"tracks":{"type":"array","items":{"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"},"recordArmed":{"type":"boolean"},"monitoringEnabled":{"type":"boolean"}}}}}})j"
         },
         {
             "get_latency_compensation_debug_state",
@@ -521,18 +561,18 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "list_clips",
-            "List all clips on a given track.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
+            "List all clips on a given track. Each clip has a clipId that is unique within the project.",
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"}}})j"
         },
         {
             "get_clip_audio_events",
             "Get markers and audio warps for a clip.",
-            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+            R"j({"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"}}})j"
         },
         {
             "set_clip_audio_events",
             "Replace markers and audio warps for an audio clip. Uses timeReference objects with type, referenceId, and offset.",
-            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"markers":{"type":"array"},"audioWarps":{"type":"array"}}})j"
+            R"j({"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"},"markers":{"type":"array"},"audioWarps":{"type":"array"}}})j"
         },
         {
             "get_master_markers",
@@ -547,38 +587,85 @@ static choc::value::Value buildToolDefinitions()
         {
             "add_midi_clip",
             "Import a Standard MIDI File (.mid) as a clip on a track.",
-            R"j({"type":"object","required":["trackIndex","filepath"],"properties":{"trackIndex":{"type":"integer"},"positionSamples":{"type":"integer","description":"Start in samples (default 0)"},"filepath":{"type":"string","description":"Absolute path to .mid file"}}})j"
+            R"j({"type":"object","required":["trackId","filepath"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"},"positionSamples":{"type":"integer","description":"Start in samples (default 0)"},"filepath":{"type":"string","description":"Absolute path to .mid file"}}})j"
         },
         {
             "remove_clip",
             "Remove a clip from a track by clipId.",
-            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+            R"j({"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"}}})j"
         },
         {
             "get_clip_ump_events",
             "Get the raw UMP event stream of a MIDI clip. "
             "Returns tickResolution, bpm, and events[]{eventIndex, tick, words[]}. "
             "words is 1 element for MIDI1 messages, 2 for MIDI2.",
-            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+            R"j({"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"}}})j"
         },
         {
             "add_ump_event",
             "Insert a single UMP event into a MIDI clip at a given tick position. "
             "words must contain exactly the right number of uint32 values for the message type "
             "(1 for MIDI1, 2 for MIDI2). Use get_clip_ump_events to inspect existing events.",
-            R"j({"type":"object","required":["trackIndex","clipId","tick","words"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"tick":{"type":"integer","description":"Tick position within the clip (based on tickResolution)"},"words":{"type":"array","items":{"type":"integer"},"description":"1 or 2 uint32 UMP words as integers"}}})j"
+            R"j({"type":"object","required":["clipId","tick","words"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"},"tick":{"type":"integer","description":"Tick position within the clip (based on tickResolution)"},"words":{"type":"array","items":{"type":"integer"},"description":"1 or 2 uint32 UMP words as integers"}}})j"
         },
         {
             "remove_ump_event",
             "Remove a UMP event from a MIDI clip by its eventIndex (as returned by get_clip_ump_events). "
             "Removes all words belonging to that logical event (1 for MIDI1, 2 for MIDI2).",
-            R"j({"type":"object","required":["trackIndex","clipId","eventIndex"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"eventIndex":{"type":"integer","description":"Zero-based logical event index from get_clip_ump_events"}}})j"
+            R"j({"type":"object","required":["clipId","eventIndex"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"},"eventIndex":{"type":"integer","description":"Zero-based logical event index from get_clip_ump_events"}}})j"
         },
         {
             "create_empty_midi_clip",
             "Create a new empty MIDI clip on a track. Returns clipId. "
             "Use add_ump_event to populate it with events.",
-            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"positionSamples":{"type":"integer","description":"Start position in samples (default 0)"},"tickResolution":{"type":"integer","description":"Ticks per quarter note (default 480)"},"bpm":{"type":"number","description":"Clip tempo in BPM (default 120)"}}})j"
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks"},"positionSamples":{"type":"integer","description":"Start position in samples (default 0)"},"tickResolution":{"type":"integer","description":"Ticks per quarter note (default 480)"},"bpm":{"type":"number","description":"Clip tempo in BPM (default 120)"}}})j"
+        },
+        {
+            "get_clip_notes",
+            "Get the notes and automation points of a MIDI clip with their noteId and pointId. "
+            "These IDs are not saved with the project. Across add_ump_event and remove_ump_event, a note keeps its noteId while its note-on message is unchanged, and a point keeps its pointId while its message is unchanged. "
+            "Ticks follow the clip tickResolution and tempo. Each automation point includes the lane address used by automation selection regions.",
+            R"j({"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","description":"Clip ID from list_clips"}}})j"
+        },
+        {
+            "get_selection_contexts",
+            "Get the default (timeline) and active selection context IDs. With clipId, also returns clipContext: the context of that clip's open piano roll, or null.",
+            R"j({"type":"object","properties":{"clipId":{"type":"string","description":"MIDI clip ID whose piano-roll context to look up"}}})j"
+        },
+        {
+            "get_selection",
+            "Get the selection of a context: objects (track, clip, note, or automation point IDs, primary first) and regions. "
+            "Region types: timeline {startSeconds, endSeconds, trackIds?}, notes {clipId, startTick, endTick, pitches?, group?, channel?}, "
+            "automation {lane {clipId, noteId?, group, channel, status, parameter}, startTick, endTick, values?}. "
+            "Selection does not change the project, its dirty state, or undo history.",
+            R"j({"type":"object","properties":{"context":{"type":"integer","description":"Selection context ID; defaults to the active context, else the default context"}}})j"
+        },
+        {
+            "set_selection",
+            "Replace the selection of a context. Objects must exist; note and automation point IDs come from get_clip_notes. "
+            "An absent trackIds in a timeline region means all tracks; an empty array means none. Time ranges are half-open; equal endpoints select a point. "
+            "Does not change the active context.",
+            R"j({"type":"object","required":["selection"],"properties":{"selection":{"type":"object","properties":{"objects":{"type":"array","items":{"type":"string"}},"regions":{"type":"array","items":{"type":"object"}}}},"context":{"type":"integer","description":"Selection context ID; defaults to the active context, else the default context"}}})j"
+        },
+        {
+            "clear_selection",
+            "Clear the selection of a context.",
+            R"j({"type":"object","properties":{"context":{"type":"integer","description":"Selection context ID; defaults to the active context, else the default context"}}})j"
+        },
+        {
+            "set_active_selection_context",
+            "Make a selection context active. Editors and ARA plug-ins follow the active context. Omit context to leave none active.",
+            R"j({"type":"object","properties":{"context":{"type":"integer"}}})j"
+        },
+        {
+            "get_selection_projection",
+            "Get the clips, tracks, and project-time range a selection covers. Notes and automation points project to their clips.",
+            R"j({"type":"object","properties":{"context":{"type":"integer","description":"Selection context ID; defaults to the active context, else the default context"}}})j"
+        },
+        {
+            "get_object",
+            "Resolve a track, clip, note, or automation point ID to its kind and parentId. Returns null for unknown IDs.",
+            R"j({"type":"object","required":["id"],"properties":{"id":{"type":"string"}}})j"
         },
         {
             "play",
@@ -665,7 +752,7 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
     for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i)
     {
         auto t = choc::value::createObject ("");
-        t.setMember ("trackIndex", i);
+        t.setMember ("trackId", script_ids::trackId (i));
         auto instances = choc::value::createEmptyArray();
         auto nodes = choc::value::createEmptyArray();
         for (const auto& [nodeId, graphNode] : tracks[static_cast<size_t>(i)]->graph().nodes())
@@ -695,6 +782,7 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
 
     auto result = choc::value::createObject ("");
     result.setMember ("tracks", arr);
+    result.setMember ("masterTrackId", script_ids::masterTrackId());
     return result;
 }
 
@@ -713,7 +801,7 @@ static choc::value::Value toolCreateTrack(const choc::value::Value&)
         throw std::runtime_error(
             error.empty() ? "Failed to create track" : std::move(error));
     auto result = choc::value::createObject ("");
-    result.setMember ("trackIndex", trackIndex);
+    result.setMember ("trackId", script_ids::trackId (trackIndex));
     return result;
 }
 
@@ -722,11 +810,11 @@ static choc::value::Value serializeTrackFreezeState(int32_t trackIndex)
     auto* engine = AppModel::instance().sequencer().engine();
     if (!engine || trackIndex < 0 ||
         static_cast<size_t>(trackIndex) >= engine->tracks().size())
-        throw std::invalid_argument("trackIndex is invalid");
+        throw std::invalid_argument("trackId is invalid");
 
     auto& manager = engine->frozenTrackManager();
     auto result = choc::value::createObject("");
-    result.setMember("trackIndex", trackIndex);
+    result.setMember("trackId", script_ids::trackId(trackIndex));
     result.setMember(
         "policy",
         manager.freezePolicyForTrack(trackIndex) ==
@@ -768,13 +856,13 @@ static choc::value::Value serializeTrackFreezeState(int32_t trackIndex)
 static choc::value::Value toolGetTrackFreezeState(
     const choc::value::Value& args)
 {
-    return serializeTrackFreezeState(getIntArg(args, "trackIndex", -1));
+    return serializeTrackFreezeState(getRegularTrackArg(args));
 }
 
 static choc::value::Value toolSetTrackFreezePolicy(
     const choc::value::Value& args)
 {
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getRegularTrackArg(args);
     const auto policyText = getStringArg(args, "policy");
     uapmd::FrozenTrackManager::FreezePolicy policy;
     if (policyText == "on")
@@ -785,9 +873,8 @@ static choc::value::Value toolSetTrackFreezePolicy(
         throw std::invalid_argument("policy must be off or on");
 
     auto* engine = AppModel::instance().sequencer().engine();
-    if (!engine || trackIndex < 0 ||
-        static_cast<size_t>(trackIndex) >= engine->tracks().size())
-        throw std::invalid_argument("trackIndex is invalid");
+    if (!engine || static_cast<size_t>(trackIndex) >= engine->tracks().size())
+        throw std::invalid_argument("trackId is invalid");
     engine->commands().setTrackFreezePolicyEnabled(
         trackIndex,
         policy == uapmd::FrozenTrackManager::FreezePolicy::On);
@@ -841,12 +928,12 @@ static choc::value::Value toolLoadProjectHandle(const choc::value::Value& args)
 
 static choc::value::Value toolAddPluginToTrack(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg (args, "trackIndex");
+    auto trackIndex = getTrackArg (args);
     auto pluginId   = getStringArg (args, "pluginId");
     auto format     = getStringArg (args, "format");
 
-    if (trackIndex < 0 || pluginId.empty() || format.empty())
-        throw std::invalid_argument ("trackIndex, pluginId and format are required");
+    if (pluginId.empty() || format.empty())
+        throw std::invalid_argument ("pluginId and format are required");
 
     auto& model = AppModel::instance();
     AppModel::PluginInstanceConfig config{};
@@ -885,7 +972,7 @@ static choc::value::Value toolAddPluginToTrack(const choc::value::Value& args)
 static choc::value::Value toolEnsureDAGTrackGraph(const choc::value::Value& args)
 {
     auto result = choc::value::createObject ("");
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getTrackArg(args);
     const bool success = AppModel::instance().ensureTrackUsesEditorGraph(trackIndex);
     result.setMember("success", success);
     result.setMember("error", success ? std::string{} : std::string{"Failed to promote track graph to DAG"});
@@ -895,7 +982,7 @@ static choc::value::Value toolEnsureDAGTrackGraph(const choc::value::Value& args
 static choc::value::Value toolGetTrackGraphConnections(const choc::value::Value& args)
 {
     auto result = choc::value::createObject ("");
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getTrackArg(args);
     std::vector<AudioPluginGraphConnection> connections;
     std::string error;
     const bool success = AppModel::instance().getTrackGraphConnections(trackIndex, connections, error);
@@ -912,7 +999,7 @@ static choc::value::Value toolGetTrackGraphConnections(const choc::value::Value&
 static choc::value::Value toolConnectTrackGraph(const choc::value::Value& args)
 {
     auto result = choc::value::createObject ("");
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getTrackArg(args);
     if (!args.isObject() || !args.hasObjectMember("source") || !args.hasObjectMember("target"))
         throw std::invalid_argument("source and target are required");
 
@@ -944,7 +1031,7 @@ static choc::value::Value toolConnectTrackGraph(const choc::value::Value& args)
 static choc::value::Value toolDisconnectTrackGraphConnection(const choc::value::Value& args)
 {
     auto result = choc::value::createObject ("");
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getTrackArg(args);
     const auto connectionId = getInt64Arg(args, "connectionId", 0);
     std::string error;
     const bool success = AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
@@ -956,7 +1043,7 @@ static choc::value::Value toolDisconnectTrackGraphConnection(const choc::value::
 static choc::value::Value toolRevertTrackGraphToSimple(const choc::value::Value& args)
 {
     auto result = choc::value::createObject ("");
-    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto trackIndex = getTrackArg(args);
     const bool success = AppModel::instance().revertTrackToSimpleGraph(trackIndex);
     result.setMember("success", success);
     result.setMember("error", success ? std::string{} : std::string{"Failed to revert track graph to simple"});
@@ -1033,12 +1120,12 @@ static choc::value::Value toolSetLatencyCompensationState(const choc::value::Val
         if (!tracks.isArray())
             throw std::invalid_argument("tracks must be an array");
         for (const auto& trackValue : tracks) {
-            if (!trackValue.isObject() || !trackValue.hasObjectMember("trackIndex"))
-                throw std::invalid_argument("track entry must contain trackIndex");
-            const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
-            if (trackIndex < 0
-                || trackIndex >= static_cast<int32_t>(engine->tracks().size()))
-                throw std::invalid_argument("trackIndex is invalid");
+            if (!trackValue.isObject() || !trackValue.hasObjectMember("trackId"))
+                throw std::invalid_argument("track entry must contain trackId");
+            const auto resolved = script_ids::trackIndex(trackValue["trackId"].getWithDefault<std::string>(""));
+            if (!resolved || *resolved < 0)
+                throw std::invalid_argument("trackId is invalid");
+            const auto trackIndex = *resolved;
             if (trackValue.hasObjectMember("recordArmed")) {
                 std::erase(settings.record_armed_track_indexes, trackIndex);
                 if (trackValue["recordArmed"].get<bool>())
@@ -1095,30 +1182,29 @@ static choc::value::Value toolSetLatencyCompensationDebugState(const choc::value
 
 static choc::value::Value toolListClips(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg (args, "trackIndex");
-    if (trackIndex < 0)
-        throw std::invalid_argument ("trackIndex is required");
+    const auto trackId = getStringArg (args, "trackId");
+    auto* track = trackId.empty() ? nullptr : script_ids::document().addresses().timelineTrack (trackId);
+    if (!track)
+        throw std::invalid_argument ("Unknown trackId: " + trackId);
 
-    auto tracks = AppModel::instance().getTimelineTracks();
-    if (trackIndex >= static_cast<int32_t>(tracks.size()))
-        throw std::out_of_range ("trackIndex out of range");
-
-    const auto clips = tracks[static_cast<size_t>(trackIndex)]->clipManager().getAllClips();
     auto arr = choc::value::createEmptyArray();
-    for (const auto& clip : clips)
+    for (const auto& snapshot : script_ids::clipsOnTrack (trackId))
     {
+        const auto* clip = track->clipManager().getClip (snapshot.clipNumericId);
+        if (!clip)
+            continue;
         auto obj = choc::value::createObject ("");
-        obj.setMember ("clipId", clip.clipId);
-        obj.setMember ("positionSamples", choc::value::createInt64 (clip.position.samples));
-        obj.setMember ("durationSamples", choc::value::createInt64 (clip.durationSamples));
-        obj.setMember ("sourceOffsetSamples", choc::value::createInt64 (clip.sourceOffsetSamples));
-        obj.setMember ("name", clip.name);
-        obj.setMember ("filepath", clip.filepath);
-        obj.setMember ("clipType", clip.clipType == ClipType::Midi ? std::string ("midi") : std::string ("audio"));
-        obj.setMember ("gain", clip.gain);
-        obj.setMember ("muted", clip.muted);
-        obj.setMember ("tempo", clip.clipTempo);
-        obj.setMember ("tickResolution", static_cast<int32_t> (clip.tickResolution));
+        obj.setMember ("clipId", snapshot.clipId);
+        obj.setMember ("positionSamples", choc::value::createInt64 (clip->position.samples));
+        obj.setMember ("durationSamples", choc::value::createInt64 (clip->durationSamples));
+        obj.setMember ("sourceOffsetSamples", choc::value::createInt64 (clip->sourceOffsetSamples));
+        obj.setMember ("name", clip->name);
+        obj.setMember ("filepath", clip->filepath);
+        obj.setMember ("clipType", clip->clipType == ClipType::Midi ? std::string ("midi") : std::string ("audio"));
+        obj.setMember ("gain", clip->gain);
+        obj.setMember ("muted", clip->muted);
+        obj.setMember ("tempo", clip->clipTempo);
+        obj.setMember ("tickResolution", static_cast<int32_t> (clip->tickResolution));
         arr.addArrayElement (obj);
     }
 
@@ -1129,24 +1215,15 @@ static choc::value::Value toolListClips(const choc::value::Value& args)
 
 static choc::value::Value toolGetClipAudioEvents(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg(args, "trackIndex", -1);
-    auto clipId = getIntArg(args, "clipId", -1);
+    const auto clip = getClipArg(args);
     std::vector<uapmd::ClipMarker> markers;
     std::vector<uapmd::AudioWarpPoint> warps;
     std::string error;
 
-    if (!AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error))
+    if (!AppModel::instance().getClipAudioEvents(clip.trackIndex, clip.clipNumericId, markers, warps, error))
         throw std::invalid_argument(error);
 
-    std::string ownerReferenceId = std::string(kMasterMarkerReferenceId);
-    if (trackIndex != uapmd::kMasterTrackIndex) {
-        auto tracks = AppModel::instance().getTimelineTracks();
-        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
-            if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
-                ownerReferenceId = clip->referenceId;
-        }
-    }
-
+    const auto ownerReferenceId = script_ids::markerOwnerReferenceId(clip, kMasterMarkerReferenceId);
     auto result = choc::value::createObject ("");
     auto markerArray = choc::value::createEmptyArray();
     for (const auto& marker : markers)
@@ -1161,21 +1238,14 @@ static choc::value::Value toolGetClipAudioEvents(const choc::value::Value& args)
 
 static choc::value::Value toolSetClipAudioEvents(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg(args, "trackIndex", -1);
-    auto clipId = getIntArg(args, "clipId", -1);
-    auto tracks = AppModel::instance().getTimelineTracks();
-    std::string ownerReferenceId = std::string(kMasterMarkerReferenceId);
-    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
-        if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
-            ownerReferenceId = clip->referenceId;
-    }
-
+    const auto clip = getClipArg(args);
+    const auto ownerReferenceId = script_ids::markerOwnerReferenceId(clip, kMasterMarkerReferenceId);
     std::vector<uapmd::ClipMarker> markers;
     std::vector<uapmd::AudioWarpPoint> warps;
     std::string error;
     if (!parseMarkersArg(args, "markers", ownerReferenceId, markers, error) ||
         !parseWarpsArg(args, "audioWarps", ownerReferenceId, warps, error) ||
-        !AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
+        !AppModel::instance().setClipAudioEvents(clip.trackIndex, clip.clipNumericId, std::move(markers), std::move(warps), error)) {
         throw std::invalid_argument(error);
     }
 
@@ -1210,12 +1280,12 @@ static choc::value::Value toolSetMasterMarkers(const choc::value::Value& args)
 
 static choc::value::Value toolAddMidiClip(const choc::value::Value& args)
 {
-    auto trackIndex      = getIntArg (args, "trackIndex");
+    auto trackIndex      = getRegularTrackArg (args);
     auto filepath        = getStringArg (args, "filepath");
     auto positionSamples = getInt64Arg (args, "positionSamples", 0);
 
-    if (trackIndex < 0 || filepath.empty())
-        throw std::invalid_argument ("trackIndex and filepath are required");
+    if (filepath.empty())
+        throw std::invalid_argument ("filepath is required");
 
     TimelinePosition pos{};
     pos.samples = positionSamples;
@@ -1225,19 +1295,14 @@ static choc::value::Value toolAddMidiClip(const choc::value::Value& args)
         throw std::runtime_error (r.error.empty() ? "Failed to add MIDI clip" : r.error);
 
     auto result = choc::value::createObject ("");
-    result.setMember ("clipId", r.clipId);
+    result.setMember ("clipId", script_ids::clipId (trackIndex, r.clipId));
     return result;
 }
 
 static choc::value::Value toolRemoveClip(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg (args, "trackIndex");
-    auto clipId     = getIntArg (args, "clipId");
-
-    if (trackIndex < 0 || clipId < 0)
-        throw std::invalid_argument ("trackIndex and clipId are required");
-
-    bool ok = AppModel::instance().removeClipFromTrack (trackIndex, clipId);
+    const auto clip = getClipArg (args);
+    bool ok = AppModel::instance().removeClipFromTrack (clip.trackIndex, clip.clipNumericId);
     auto result = choc::value::createObject ("");
     result.setMember ("success", ok);
     return result;
@@ -1265,20 +1330,14 @@ static choc::value::Value toChocValue(const AppModel::MidiClipUmpEvents& clip_ev
 
 static choc::value::Value toolGetClipUmpEvents(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg (args, "trackIndex");
-    auto clipId     = getIntArg (args, "clipId");
-    if (trackIndex < 0 || clipId < 0)
-        throw std::invalid_argument ("trackIndex and clipId are required");
-    return toChocValue(AppModel::instance().getMidiClipUmpEvents(trackIndex, clipId));
+    const auto clip = getClipArg (args);
+    return toChocValue(AppModel::instance().getMidiClipUmpEvents(clip.trackIndex, clip.clipNumericId));
 }
 
 static choc::value::Value toolAddUmpEvent(const choc::value::Value& args)
 {
-    auto trackIndex = getIntArg  (args, "trackIndex");
-    auto clipId     = getIntArg  (args, "clipId");
+    const auto clip = getClipArg (args);
     auto tick       = static_cast<uint64_t>(getInt64Arg (args, "tick", 0));
-    if (trackIndex < 0 || clipId < 0)
-        throw std::invalid_argument ("trackIndex and clipId are required");
 
     std::vector<uint32_t> words;
     if (args.isObject() && args.hasObjectMember ("words")) {
@@ -1291,30 +1350,27 @@ static choc::value::Value toolAddUmpEvent(const choc::value::Value& args)
         throw std::invalid_argument ("words is required and must be non-empty");
 
     std::string error;
-    if (!AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error))
+    if (!AppModel::instance().addUmpEventToClip (clip.trackIndex, clip.clipNumericId, tick, std::move(words), error))
         throw std::runtime_error (error.empty() ? "Failed to add UMP event" : error);
     return choc::value::createObject ("");
 }
 
 static choc::value::Value toolRemoveUmpEvent(const choc::value::Value& args)
 {
-    auto trackIndex  = getIntArg (args, "trackIndex");
-    auto clipId      = getIntArg (args, "clipId");
+    const auto clip  = getClipArg (args);
     auto eventIndex  = getIntArg (args, "eventIndex");
-    if (trackIndex < 0 || clipId < 0 || eventIndex < 0)
-        throw std::invalid_argument ("trackIndex, clipId and eventIndex are required");
+    if (eventIndex < 0)
+        throw std::invalid_argument ("eventIndex is required");
 
     std::string error;
-    if (!AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error))
+    if (!AppModel::instance().removeUmpEventFromClip (clip.trackIndex, clip.clipNumericId, eventIndex, error))
         throw std::runtime_error (error.empty() ? "Failed to remove UMP event" : error);
     return choc::value::createObject ("");
 }
 
 static choc::value::Value toolCreateEmptyMidiClip(const choc::value::Value& args)
 {
-    auto trackIndex      = getIntArg   (args, "trackIndex");
-    if (trackIndex < 0)
-        throw std::invalid_argument ("trackIndex is required");
+    auto trackIndex      = getRegularTrackArg (args);
     auto positionSamples = getInt64Arg (args, "positionSamples", 0);
     auto tickResolution  = static_cast<uint32_t>(std::max (1, getIntArg (args, "tickResolution", 480)));
     auto bpm             = getDoubleArg(args, "bpm", 120.0);
@@ -1323,7 +1379,7 @@ static choc::value::Value toolCreateEmptyMidiClip(const choc::value::Value& args
     if (!r.success)
         throw std::runtime_error (r.error.empty() ? "Failed to create MIDI clip" : r.error);
     auto result = choc::value::createObject ("");
-    result.setMember ("clipId", r.clipId);
+    result.setMember ("clipId", script_ids::clipId (trackIndex, r.clipId));
     return result;
 }
 
@@ -1574,6 +1630,18 @@ struct McpServer::Impl {
         return jsRuntime_->evaluateScript (code);
     }
 
+    // Parses the JSON result of evalScript; undefined becomes null.
+    choc::value::Value evalScriptValue(const std::string& code)
+    {
+        const auto output = evalScript (code);
+        return output == "undefined" ? choc::value::Value() : choc::json::parseValue (output);
+    }
+
+    static std::string jsString(const std::string& text)
+    {
+        return choc::json::toString (choc::value::createString (text));
+    }
+
     std::string handleToolsCall(const choc::value::Value& id, const choc::value::Value& msg)
     {
         if (!msg.hasObjectMember ("params"))
@@ -1680,6 +1748,45 @@ struct McpServer::Impl {
             else if (toolName == "add_ump_event")            toolResult = toolAddUmpEvent (args);
             else if (toolName == "remove_ump_event")         toolResult = toolRemoveUmpEvent (args);
             else if (toolName == "create_empty_midi_clip")   toolResult = toolCreateEmptyMidiClip (args);
+            else if (toolName == "get_clip_notes") {
+                toolResult = evalScriptValue ("uapmd.timeline.getClipNotes(" + jsString (getClipArg (args).clipId) + ")");
+                if (!toolResult.isObject() || !toolResult["success"].getWithDefault<bool> (false))
+                    throw std::runtime_error (toolResult.isObject() ? toolResult["error"].getWithDefault<std::string> ("") : "Failed to read clip notes");
+            }
+            else if (toolName == "get_selection_contexts") {
+                toolResult = evalScriptValue ("uapmd.selection.getContexts()");
+                if (const auto clipId = getStringArg (args, "clipId"); !clipId.empty())
+                    toolResult.setMember ("clipContext", evalScriptValue (
+                        "uapmd.selection.contextForClip(" + jsString (getClipArg (args).clipId) + ")"));
+            }
+            else if (toolName == "get_selection" || toolName == "get_selection_projection") {
+                toolResult = evalScriptValue (std::string (toolName == "get_selection" ? "uapmd.selection.get(" : "uapmd.selection.getProjection(")
+                    + getContextArgScript (args) + ")");
+                if (toolResult.isVoid())
+                    throw std::invalid_argument ("Selection context not found");
+            }
+            else if (toolName == "set_selection") {
+                if (!args.isObject() || !args.hasObjectMember ("selection"))
+                    throw std::invalid_argument ("selection is required");
+                toolResult = evalScriptValue ("uapmd.selection.set(" + choc::json::toString (args["selection"]) + ", "
+                    + getContextArgScript (args) + ")");
+                if (!toolResult["success"].getWithDefault<bool> (false))
+                    throw std::invalid_argument (toolResult["error"].getWithDefault<std::string> ("Failed to set selection"));
+            }
+            else if (toolName == "clear_selection" || toolName == "set_active_selection_context") {
+                const auto success = evalScriptValue (std::string (toolName == "clear_selection" ? "uapmd.selection.clear(" : "uapmd.selection.setActiveContext(")
+                    + getContextArgScript (args) + ")");
+                if (!success.getWithDefault<bool> (false))
+                    throw std::invalid_argument ("Selection context not found");
+                toolResult = choc::value::createObject ("");
+                toolResult.setMember ("success", true);
+            }
+            else if (toolName == "get_object") {
+                const auto id = getStringArg (args, "id");
+                if (id.empty())
+                    throw std::invalid_argument ("id is required");
+                toolResult = evalScriptValue ("uapmd.selection.getObject(" + jsString (id) + ")");
+            }
             else if (toolName == "play")                     toolResult = toolPlay (args);
             else if (toolName == "stop")                     toolResult = toolStop (args);
             else if (toolName == "jump")                     toolResult = toolJump (args);

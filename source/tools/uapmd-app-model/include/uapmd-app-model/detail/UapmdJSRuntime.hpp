@@ -150,6 +150,7 @@ private:
     void registerSequencerAudioAnalysisAPI();
     void registerSequencerAudioDeviceAPI();
     void registerTimelineAPI();
+    void registerSelectionAPI();
     void registerRenderAPI();
 };
 

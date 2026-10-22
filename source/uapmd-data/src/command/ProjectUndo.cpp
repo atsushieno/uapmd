@@ -617,7 +617,7 @@ namespace uapmd {
                             } else if (pending.operation->hasEffect()) {
                                 children.push_back(std::move(pending.operation));
                             }
-                        } else {
+                        } else if (pending.operation->hasEffect()) {
                             finishPerform(std::move(pending.operation));
                         }
                         break;

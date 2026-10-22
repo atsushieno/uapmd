@@ -273,10 +273,11 @@ TEST(AppLayerUndoIntegrationTest, JavaScriptTrackJobParticipatesInHistory) {
 
     ASSERT_EQ(job["state"].get<std::string>(), "completed")
         << job["error"].get<std::string>();
-    EXPECT_EQ(
-        job["result"]["trackIndex"].get<int32_t>(),
-        static_cast<int32_t>(initialTrackCount));
     ASSERT_EQ(model.trackCount(), initialTrackCount + 1);
+    EXPECT_EQ(
+        job["result"]["trackId"].get<std::string>(),
+        model.sequencer().engine()->timeline().addresses().trackReferenceId(
+            static_cast<int32_t>(initialTrackCount)).value_or(""));
 
     auto result = moveHistory(model, false);
     ASSERT_TRUE(result.has_value());

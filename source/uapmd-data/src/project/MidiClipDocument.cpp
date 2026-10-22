@@ -131,6 +131,48 @@ namespace uapmd {
             merged.umpEvents.insert(merged.umpEvents.end(), message.words.begin(), message.words.end());
             merged.tickTimestamps.insert(merged.tickTimestamps.end(), message.words.size(), message.tick);
         }
+        return withIdentitiesFrom(std::move(merged), 0.01, originalOffsets);
+    }
+
+    MidiClipContentSnapshot MidiClipDocument::withReplacedEvents(MidiRawData incoming, double durationSeconds) const {
+        incoming = normalize(std::move(incoming));
+        auto messageOffsets = [](const MidiRawData& raw) {
+            std::vector<size_t> offsets;
+            for (size_t i = 0; i < raw.umpEvents.size();) {
+                offsets.push_back(i);
+                i += static_cast<size_t>(std::max(1, umppi::Ump(raw.umpEvents[i]).getSizeInInts()));
+            }
+            return offsets;
+        };
+        const auto before = messageOffsets(committed_.raw);
+        const auto after = messageOffsets(incoming);
+        auto sameMessage = [&](size_t committed, size_t edited) {
+            const auto& from = committed_.raw;
+            const auto count = static_cast<size_t>(std::max(1, umppi::Ump(from.umpEvents[committed]).getSizeInInts()));
+            return committed < from.tickTimestamps.size() && edited < incoming.tickTimestamps.size() &&
+                from.tickTimestamps[committed] == incoming.tickTimestamps[edited] &&
+                committed + count <= from.umpEvents.size() && edited + count <= incoming.umpEvents.size() &&
+                std::equal(from.umpEvents.begin() + committed, from.umpEvents.begin() + committed + count,
+                    incoming.umpEvents.begin() + edited);
+        };
+        // A raw edit changes one contiguous span; messages before and after it are the same messages.
+        size_t prefix = 0;
+        while (prefix < before.size() && prefix < after.size() && sameMessage(before[prefix], after[prefix]))
+            ++prefix;
+        size_t suffix = 0;
+        while (prefix + suffix < before.size() && prefix + suffix < after.size() &&
+               sameMessage(before[before.size() - 1 - suffix], after[after.size() - 1 - suffix]))
+            ++suffix;
+        std::unordered_map<size_t, size_t> committedOffsets;
+        for (size_t i = 0; i < prefix; ++i)
+            committedOffsets[after[i]] = before[i];
+        for (size_t i = 1; i <= suffix; ++i)
+            committedOffsets[after[after.size() - i]] = before[before.size() - i];
+        return withIdentitiesFrom(std::move(incoming), durationSeconds, committedOffsets);
+    }
+
+    MidiClipContentSnapshot MidiClipDocument::withIdentitiesFrom(MidiRawData raw, double durationSeconds,
+            const std::unordered_map<size_t, size_t>& committedOffsets) const {
         std::unordered_map<size_t, const MidiEditNote*> oldNotes;
         std::unordered_map<size_t, ProjectObjectId> oldPoints;
         for (const auto& note : committed_.notes) {
@@ -141,16 +183,16 @@ namespace uapmd {
         for (const auto& point : committed_.automation)
             oldPoints[point.rawEventIdx] = point.reference_id;
         MidiClipDocument candidate;
-        candidate.load(std::move(merged), 0.01);
+        candidate.load(std::move(raw), durationSeconds);
         candidate.next_note_id = next_note_id;
         auto preservePoint = [&](MidiAutomationEvent& point) {
-            if (auto offset = originalOffsets.find(point.rawEventIdx); offset != originalOffsets.end())
+            if (auto offset = committedOffsets.find(point.rawEventIdx); offset != committedOffsets.end())
                 if (auto id = oldPoints.find(offset->second); id != oldPoints.end())
                     point.reference_id = id->second;
         };
         for (auto& note : candidate.editNotes) {
             bool preserved = false;
-            if (auto offset = originalOffsets.find(note.noteOnWordIdx); offset != originalOffsets.end())
+            if (auto offset = committedOffsets.find(note.noteOnWordIdx); offset != committedOffsets.end())
                 if (auto old = oldNotes.find(offset->second); old != oldNotes.end()) {
                     note.reference_id = old->second->reference_id;
                     note.edit_id = old->second->edit_id;

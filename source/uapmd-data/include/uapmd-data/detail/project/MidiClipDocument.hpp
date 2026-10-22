@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 #include "ProjectDocumentEvents.hpp"
 
@@ -73,6 +74,9 @@ struct MidiClipContentSnapshot {
 // Shared by all editors of a clip; independent of window lifetime and selection.
 class MidiClipDocument {
     MidiClipContentSnapshot committed_;
+    // committedOffsets maps a message's word offset in raw to its offset in the committed raw.
+    MidiClipContentSnapshot withIdentitiesFrom(MidiRawData raw, double durationSeconds,
+        const std::unordered_map<size_t, size_t>& committedOffsets) const;
 public:
     std::shared_ptr<MidiRawData> rawMidiData;
     std::vector<MidiEditNote> editNotes;
@@ -83,6 +87,8 @@ public:
     void restore(MidiClipContentSnapshot snapshot, bool mintIdentities = false);
     void ensureIdentities();
     std::optional<MidiClipContentSnapshot> withAppendedEvents(MidiRawData incoming) const;
+    // Notes keep their identities while their note-on message lies outside the changed span; points likewise.
+    MidiClipContentSnapshot withReplacedEvents(MidiRawData incoming, double durationSeconds) const;
     MidiClipContentSnapshot encodedSnapshot(const std::vector<size_t>& deletedRawIdxs = {});
     MidiClipContentSnapshot snapshot() const;
     const MidiClipContentSnapshot& committedSnapshot() const { return committed_; }

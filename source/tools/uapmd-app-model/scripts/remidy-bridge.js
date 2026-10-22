@@ -97,8 +97,8 @@ export class ParameterInfo {
 }
 
 export class PluginInstance {
-    constructor(formatName, pluginId, trackIndex = -1) {
-        this.instanceId = __remidy_instance_create(formatName, pluginId, trackIndex);
+    constructor(formatName, pluginId, trackId = "") {
+        this.instanceId = __remidy_instance_create(formatName, pluginId, trackId);
         if (this.instanceId < 0) {
             throw new Error('Failed to create plugin instance');
         }
@@ -169,14 +169,14 @@ export class PluginNodeInfo extends GraphNodeInfo {
 
 export class TrackInfo {
     constructor(data) {
-        this.trackIndex = data.trackIndex || -1;
+        this.trackId = data.trackId ?? '';
         this.nodes = (data.nodes || []).map(n => new GraphNodeInfo(n));
     }
 }
 
 export class ClipData {
     constructor(data) {
-        this.clipId = data.clipId ?? -1;
+        this.clipId = data.clipId ?? '';
         this.positionSamples = data.positionSamples ?? 0;
         this.durationSamples = data.durationSamples ?? 0;
         this.name = data.name ?? '';
@@ -227,16 +227,16 @@ export const timeline = {
         __remidy_timeline_set_tempo(bpm);
     },
 
-    getClips: function(trackIndex) {
-        return __remidy_timeline_get_clips(trackIndex).map(c => new ClipData(c));
+    getClips: function(trackId) {
+        return __remidy_timeline_get_clips(trackId).map(c => new ClipData(c));
     },
 
-    addMidiClip: function(trackIndex, positionSamples, filepath) {
-        return __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath);
+    addMidiClip: function(trackId, positionSamples, filepath) {
+        return __remidy_timeline_add_midi_clip(trackId, positionSamples, filepath);
     },
 
-    removeClip: function(trackIndex, clipId) {
-        return __remidy_timeline_remove_clip(trackIndex, clipId);
+    removeClip: function(clipId) {
+        return __remidy_timeline_remove_clip(clipId);
     }
 };
 
@@ -281,9 +281,8 @@ export const sequencer = {
     },
 
     // Instance Management
-    createPluginInstance: function(format, pluginId, trackIndex) {
-        if (trackIndex === undefined) trackIndex = -1;
-        return __remidy_instance_create(format, pluginId, trackIndex);
+    createPluginInstance: function(format, pluginId, trackId) {
+        return __remidy_instance_create(format, pluginId, trackId ?? "");
     },
 
     enableUmpDevice: function(instanceId, deviceName) {
@@ -359,8 +358,8 @@ export const sequencer = {
     addTrack: function() {
         return __remidy_sequencer_add_track();
     },
-    removeTrack: function(trackIndex) {
-        return __remidy_sequencer_remove_track(trackIndex);
+    removeTrack: function(trackId) {
+        return __remidy_sequencer_remove_track(trackId);
     },
     clearTracks: function() {
         __remidy_sequencer_clear_tracks();
