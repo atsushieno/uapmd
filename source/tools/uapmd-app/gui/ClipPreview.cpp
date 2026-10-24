@@ -21,7 +21,7 @@ using namespace uapmd;
 namespace uapmd_app_gui {
 namespace {
 
-constexpr size_t kWaveformResolution = 512;
+constexpr size_t kWaveformResolution = 2048;
 constexpr float kNodeContentPadding = 5.0f;
 constexpr float kLabelSpacing = 2.0f;
 constexpr float kMinimumNoteHeight = 4.0f;
@@ -191,6 +191,8 @@ private:
                 : 0.0;
             float t = static_cast<float>(std::clamp(preview_->fractionAt(columnSeconds), 0.0, 1.0));
             float x = rect.Min.x + t * width;
+            if (x < drawList->GetClipRectMin().x || x > drawList->GetClipRectMax().x)
+                continue;
             float maxValue = std::clamp(point.maxValue, -1.0f, 1.0f);
             float minValue = std::clamp(point.minValue, -1.0f, 1.0f);
             float y1 = centerY - maxValue * halfHeight;
