@@ -341,7 +341,7 @@ if(NOT DEFINED imgui_SOURCE_DIR)
 endif()
 
 set(_UAPMD_IMNODES_PATCH "${UAPMD_EXTERNAL_DIR}/patches/imnodes-imgui-1.92.patch")
-set(_UAPMD_IMNODES_PATCH_EPOCH "2")
+set(_UAPMD_IMNODES_PATCH_EPOCH "3")
 file(SHA1 "${_UAPMD_IMNODES_PATCH}" _UAPMD_IMNODES_PATCH_SHA1)
 CPMAddPackage(
     NAME imnodes
@@ -354,7 +354,7 @@ CPMAddPackage(
 
 # ImTimeline for SequenceEditor timeline view
 set(_UAPMD_IMTIMELINE_PATCH "${UAPMD_EXTERNAL_DIR}/patches/imtimeline.patch")
-set(_UAPMD_IMTIMELINE_CACHE_EPOCH "3")
+set(_UAPMD_IMTIMELINE_CACHE_EPOCH "4")
 file(SHA1 "${_UAPMD_IMTIMELINE_PATCH}" _UAPMD_IMTIMELINE_PATCH_SHA1)
 CPMAddPackage(
     NAME ImTimeline
