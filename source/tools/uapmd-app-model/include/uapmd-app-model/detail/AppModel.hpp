@@ -281,6 +281,7 @@ namespace uapmd_app {
         bool isScanning() const { return isScanning_; }
         bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire) && sequencer_.engine()->audioWorkers().fault() == uapmd::AudioWorkerFault::None; }
         void setAudioEngineEnabled(bool enabled);
+        void shutdownAudioEngine();
         void toggleAudioEngine();
         void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);
         void setAutoBufferSizeEnabled(bool enabled);

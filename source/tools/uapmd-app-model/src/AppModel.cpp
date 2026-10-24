@@ -463,6 +463,7 @@ uapmd_app::AppModel::~AppModel() {
     // is still finishing from calling back into a UI that is being torn down.
     shutting_down_ = true;
     stopPluginScanning();
+    shutdownAudioEngine();
 
     if (clip_enablement_extension_)
         sequencer_.engine()->timeline().removeProjectSerializationExtension(*clip_enablement_extension_);
@@ -472,9 +473,6 @@ uapmd_app::AppModel::~AppModel() {
     }
     if (plugin_state_change_listener_id_ != 0)
         sequencer_.engine()->pluginHost()->removePluginStateChangeListener(plugin_state_change_listener_id_);
-
-    audioEngineEnabled_.store(false, std::memory_order_release);
-    completeAudioEngineShutdown();
 
     std::unordered_set<int32_t> removedInstanceIds;
     if (auto* mt = sequencer_.engine()->masterTrack()) {
@@ -489,8 +487,6 @@ uapmd_app::AppModel::~AppModel() {
             if (removedInstanceIds.insert(instanceId).second)
                 removePluginInstance(instanceId);
     }
-
-    joinAudioShutdownWorker();
 }
 
 bool uapmd_app::AppModel::isTimelineClipSelected(int32_t trackIndex, int32_t clipId) {
@@ -1256,8 +1252,6 @@ void uapmd_app::AppModel::joinAudioShutdownWorker() {
     }
 }
 
-// Final phase of the engine-off sequence. Runs on the main thread, after the muted
-// drain has let plugin release/reverb tails render out.
 void uapmd_app::AppModel::completeAudioEngineShutdown() {
     // Bail out if the engine was re-enabled while draining, or if an earlier queued
     // completion already performed the shutdown.
@@ -1359,6 +1353,18 @@ void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
             });
         });
     }
+}
+
+void uapmd_app::AppModel::shutdownAudioEngine() {
+    joinAudioShutdownWorker();
+    audioEngineEnabled_.store(false, std::memory_order_release);
+    if (pluginsProcessingStopped_)
+        return;
+
+    sequencer_.engine()->setOutputMuted(true);
+    if (sequencer_.isAudioPlaying() != 0)
+        transportController_->stop();
+    completeAudioEngineShutdown();
 }
 
 void uapmd_app::AppModel::toggleAudioEngine() {
