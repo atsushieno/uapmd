@@ -218,20 +218,23 @@ index db75acd..36757f9 100644
  
  void HorizontalNodeView::PreDraw() 
  {
-@@ -27,10 +44,10 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+@@ -27,10 +44,12 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
  
      // background
  
 -    auto bgColorFullBar = IM_COL32(40, 50, 50, 255);
 +    auto bgColorFullBar = pContext->mStyle.SectionBackgroundColor;
  
-     if (area.Contains(pContext->GetLastInputData().MousePos)) {
+-    if (area.Contains(pContext->GetLastInputData().MousePos)) {
++    const bool section_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
++        ImGui::IsMouseHoveringRect(area.Min, area.Max);
++    if (section_hovered) {
 -        bgColorFullBar += 0x80201008;
 +        bgColorFullBar = blendColor(bgColorFullBar, pContext->mStyle.SectionBackgroundHoveredColor);
          pContext->SetSelectedTimeline(timeline.mID);
      }
  
-@@ -72,9 +89,12 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+@@ -72,9 +91,12 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
              return;
          }
  
@@ -246,7 +249,13 @@ index db75acd..36757f9 100644
          ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
  
          ImRect nodeRect = ImRect(slotP1, slotP2);
-@@ -134,12 +154,9 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
+@@ -96,4 +118,4 @@
+-        bool bIsSelected = ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
++        bool bIsSelected = section_hovered && ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
+         bool bInputDelay = (pContext->GetLastInputData().MouseDownDuration > 40.0f);
+
+         if (bIsSelected && pContext->mDragData.DragState == eDragState::None) {
+@@ -134,12 +156,10 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
          bgColor = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColor;
          bgColor2 = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColorTwo;
      }
@@ -256,13 +265,14 @@ index db75acd..36757f9 100644
 -
 -    ImU32 gradientStart = bgColor;
 -    ImU32 gradientEnd = bgColor + 0xFF402000;
-+    const bool hovered = area.Contains(timeline->GetLastInputData().MousePos);
++    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
++        ImGui::IsMouseHoveringRect(area.Min, area.Max);
 +    ImU32 gradientStart = hovered ? blendColor(bgColor, timeline->mStyle.NodeHoveredOverlayColor) : bgColor;
 +    ImU32 gradientEnd = hovered ? blendColor(bgColor2, timeline->mStyle.NodeHoveredOverlayColor) : bgColor2;
  
  
      f32 borderRadius = node.displayProperties.BorderRadius;
-@@ -174,7 +191,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
+@@ -174,7 +194,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
  
      auto* draw_list = ImGui::GetWindowDrawList();
      ImVec2 tpos(area.Min.x + 3, area.Min.y);
