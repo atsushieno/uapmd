@@ -170,6 +170,7 @@ export class PluginNodeInfo extends GraphNodeInfo {
 export class TrackInfo {
     constructor(data) {
         this.trackId = data.trackId ?? '';
+        this.properties = data.properties ?? {color: null, path: '', order: 0};
         this.nodes = (data.nodes || []).map(n => new GraphNodeInfo(n));
     }
 }
@@ -348,6 +349,12 @@ export const sequencer = {
     getTrackInfos: function() {
         const tracks = __remidy_sequencer_getTrackInfos();
         return tracks.map(t => new TrackInfo(t));
+    },
+    getTrackProperties: function(trackId) {
+        return globalThis.uapmd.sequencer.getTrackProperties(trackId);
+    },
+    setTrackProperties: function(trackId, properties) {
+        return globalThis.uapmd.sequencer.setTrackProperties(trackId, properties);
     },
     getMutationJob: function(jobId) {
         return __remidy_mutation_job_get(jobId);

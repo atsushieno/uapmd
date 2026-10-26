@@ -19,6 +19,7 @@
 #include <limits>
 #include <stdexcept>
 #include "ScriptDocumentIds.hpp"
+#include "ScriptTrackProperties.hpp"
 
 using namespace uapmd_graph;
 
@@ -913,6 +914,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             auto track = tracks[i];
             auto trackObj = choc::value::createObject ("TrackInfo");
             trackObj.setMember ("trackId", script_ids::trackId(i));
+            trackObj.setMember ("properties", script_track_properties::get(script_ids::trackId(i)));
 
             auto nodesArr = choc::value::createEmptyArray();
             for (const auto& [nodeId, graphNode] : track->graph().nodes()) {
@@ -945,6 +947,22 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             arr.addArrayElement (trackObj);
         }
         return arr;
+    });
+
+    impl_->context.registerFunction ("__remidy_sequencer_getTrackProperties", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        return script_track_properties::invokeForJavaScript([&] {
+            return script_track_properties::get(args.get<std::string>(0, ""));
+        });
+    });
+
+    impl_->context.registerFunction ("__remidy_sequencer_setTrackProperties", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        return script_track_properties::invokeForJavaScript([&] {
+            if (args.size() != 2 || args[1] == nullptr)
+                throw std::invalid_argument("setTrackProperties requires trackId and properties");
+            return script_track_properties::set(args.get<std::string>(0, ""), args[1]->getView());
+        });
     });
 
     impl_->context.registerFunction ("__remidy_mutation_job_get", [this] (choc::javascript::ArgumentList args) -> choc::value::Value

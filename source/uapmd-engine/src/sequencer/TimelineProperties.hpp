@@ -605,6 +605,21 @@ namespace uapmd::timeline_detail {
         }
     };
 
+    struct TrackPropertiesProperty : TrackPropertyDescriptor<TrackPropertiesProperty, TrackProperties> {
+        static constexpr std::string_view commandId{"track.setProperties"};
+        static constexpr std::string_view changeType{"track-properties-changed"};
+        static constexpr std::string_view label{"Edit track properties"};
+
+        static Value read(PropertyCommandTarget& target, const TrackSubject& subject) {
+            return target.addresses().timelineTrack(subject.referenceId)->properties();
+        }
+
+        static bool write(PropertyCommandTarget& target, const TrackSubject& subject, const Value& value) {
+            auto* track = target.addresses().timelineTrack(subject.referenceId);
+            return track && track->properties(value);
+        }
+    };
+
     struct TrackGainProperty : TrackPropertyDescriptor<TrackGainProperty, double> {
         static constexpr std::string_view commandId{"track.setGain"};
         static constexpr std::string_view changeType{"track-gain-changed"};

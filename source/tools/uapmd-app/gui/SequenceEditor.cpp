@@ -4,6 +4,7 @@
 #include <cmath>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -13,7 +14,6 @@
 #include <ImTimeline.h>
 #include "TrackLegendNodeView.hpp"
 #include "TimelineLaneAssignment.hpp"
-#include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ClipPreview.hpp"
@@ -391,8 +391,157 @@ void SequenceEditor::render(const RenderContext& context) {
     }
 }
 
+TrackProperties SequenceEditor::trackProperties(int32_t trackIndex, const RenderContext& context) const {
+    if (context.document)
+        if (auto id = context.document->addresses().trackReferenceId(trackIndex))
+            if (auto track = context.document->view().getTrack(*id))
+                return track->properties;
+    TrackProperties properties;
+    properties.order = trackIndex;
+    return properties;
+}
+
+std::vector<int32_t> SequenceEditor::sortedTrackIndices(const RenderContext& context) const {
+    std::vector<int32_t> indices;
+    std::map<int32_t, TrackProperties> properties;
+    for (const auto& [index, _] : windows_) {
+        indices.push_back(index);
+        properties.emplace(index, trackProperties(index, context));
+    }
+    std::sort(indices.begin(), indices.end(), [&](int32_t lhs, int32_t rhs) {
+        if (lhs == kMasterTrackIndex || rhs == kMasterTrackIndex)
+            return lhs < rhs;
+        const auto& a = properties.at(lhs);
+        const auto& b = properties.at(rhs);
+        if (a.path.empty() != b.path.empty())
+            return !a.path.empty();
+        if (a.path != b.path)
+            return a.path < b.path;
+        if (a.order != b.order)
+            return a.order < b.order;
+        return lhs < rhs;
+    });
+    return indices;
+}
+
+void SequenceEditor::renderTrackProperties(int32_t trackIndex, SequenceEditorState& state,
+                                         const RenderContext& context) {
+    if (!context.document)
+        return;
+    auto properties = trackProperties(trackIndex, context);
+    const auto apply = [&] {
+        if (context.document->commands().setTrackProperties(trackIndex, properties))
+            invalidateTimeline();
+    };
+
+    ImGui::SeparatorText("Track Properties");
+    const auto rgb = properties.color;
+    const ImVec4 color = rgb
+        ? ImVec4((*rgb >> 16) / 255.0f, ((*rgb >> 8) & 0xFF) / 255.0f, (*rgb & 0xFF) / 255.0f, 1.0f)
+        : ImGui::GetStyleColorVec4(ImGuiCol_Header);
+    if (ImGui::ColorButton("##TrackColor", color, ImGuiColorEditFlags_NoAlpha)) {
+        state.colorDraft = color;
+        ImGui::OpenPopup("Track Color");
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Color");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!properties.color);
+    if (ImGui::Button("Reset to Default")) {
+        properties.color.reset();
+        apply();
+    }
+    ImGui::EndDisabled();
+    if (ImGui::BeginPopup("Track Color")) {
+        ImGui::ColorPicker3("##Picker", &state.colorDraft.x, ImGuiColorEditFlags_DisplayHex);
+        if (ImGui::Button("Apply")) {
+            const auto channel = [](float value) {
+                return static_cast<uint32_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+            };
+            properties.color = (channel(state.colorDraft.x) << 16)
+                | (channel(state.colorDraft.y) << 8) | channel(state.colorDraft.z);
+            apply();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::Button("Edit Path...")) {
+        state.pathDraft.assign(std::max<size_t>(256, properties.path.size() + 1), '\0');
+        std::copy(properties.path.begin(), properties.path.end(), state.pathDraft.begin());
+        ImGui::OpenPopup("Track Path");
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(properties.path.empty() ? "(no path)" : properties.path.c_str());
+    if (ImGui::BeginPopupModal("Track Path", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Organizational path (for example, Orchestra/Strings)");
+        ImGui::TextDisabled("Case-sensitive; non-empty paths sort first.");
+        ImGui::SetNextItemWidth(350.0f * context.uiScale);
+        if (ImGui::IsWindowAppearing())
+            ImGui::SetKeyboardFocusHere();
+        const bool enter = ImGui::InputText("##Path", state.pathDraft.data(), state.pathDraft.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize,
+            [](ImGuiInputTextCallbackData* data) {
+                auto& buffer = *static_cast<std::vector<char>*>(data->UserData);
+                buffer.resize(static_cast<size_t>(data->BufSize));
+                data->Buf = buffer.data();
+                return 0;
+            }, &state.pathDraft);
+        if (ImGui::Button("Apply") || enter) {
+            properties.path = state.pathDraft.data();
+            apply();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    // The master track stays first, regardless of organizational metadata.
+    if (trackIndex == kMasterTrackIndex)
+        return;
+    if (!state.editingOrder) {
+        state.orderDraft = properties.order;
+        state.orderMin = std::min(0.0, properties.order);
+        state.orderMax = std::max(1.0, properties.order);
+        for (const auto& id : context.document->view().trackIds())
+            if (const auto track = context.document->view().getTrack(id);
+                track && track->properties.path == properties.path) {
+                state.orderMin = std::min(state.orderMin, track->properties.order);
+                state.orderMax = std::max(state.orderMax, track->properties.order);
+            }
+        state.orderMin -= 1.0;
+        state.orderMax += 1.0;
+        // ImGui requires double slider bounds within half the numeric range.
+        constexpr double sliderLimit = std::numeric_limits<double>::max() / 4.0;
+        state.orderMin = std::max(state.orderMin, -sliderLimit);
+        state.orderMax = std::min(state.orderMax, sliderLimit);
+    }
+    ImGui::SetNextItemWidth(std::max(100.0f, ImGui::GetContentRegionAvail().x - 180.0f * context.uiScale));
+    ImGui::SliderScalar("##TrackOrder", ImGuiDataType_Double, &state.orderDraft,
+                       &state.orderMin, &state.orderMax, "%.3f");
+    bool active = ImGui::IsItemActive();
+    bool commit = ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f * context.uiScale);
+    ImGui::InputDouble("Order", &state.orderDraft, 0.0, 0.0, "%.6g");
+    active |= ImGui::IsItemActive();
+    commit |= ImGui::IsItemDeactivatedAfterEdit();
+    state.editingOrder = active;
+    if (commit && std::isfinite(state.orderDraft)) {
+        properties.order = state.orderDraft;
+        apply();
+    }
+}
+
 void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context) {
-    std::string windowTitle = std::format("Sequence Editor - Track {}###SequenceEditor{}", trackIndex, trackIndex);
+    std::string windowTitle = trackIndex == uapmd::kMasterTrackIndex
+        ? std::format("Track Details - Master Track###SequenceEditor{}", trackIndex)
+        : std::format("Track Details - Track {}###SequenceEditor{}", trackIndex + 1, trackIndex);
 
     bool windowOpen = state.visible;
     std::string windowSizeId = std::format("SequenceEditorWindow{}", trackIndex);
@@ -403,11 +552,11 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
     }
 
     if (context.setNextChildWindowSize) {
-        context.setNextChildWindowSize(windowSizeId, ImVec2(baseWidth * context.uiScale, 350.0f * context.uiScale));
+        context.setNextChildWindowSize(windowSizeId, ImVec2(baseWidth * context.uiScale, 480.0f * context.uiScale));
     }
 
     ImGui::SetNextWindowSizeConstraints(
-        ImVec2(400.0f * context.uiScale, 150.0f * context.uiScale),
+        ImVec2(400.0f * context.uiScale, 300.0f * context.uiScale),
         ImVec2(FLT_MAX, FLT_MAX)
     );
 
@@ -416,8 +565,10 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
             context.updateChildWindowSizeState(windowSizeId);
         }
 
-        float clipRegionHeight = ImGui::GetContentRegionAvail().y;
-        clipRegionHeight = std::max(150.0f * context.uiScale, clipRegionHeight);
+        renderTrackProperties(trackIndex, state, context);
+        ImGui::SeparatorText("Clips");
+        float clipRegionHeight = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 2.0f;
+        clipRegionHeight = std::max(60.0f * context.uiScale, clipRegionHeight);
         renderClipTable(trackIndex, state, context, clipRegionHeight);
 
         ImGui::Spacing();
@@ -530,13 +681,8 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     const double playheadFrame = playheadSeconds >= 0.0
         ? static_cast<double>(axis_.frameFromSeconds(playheadSeconds)) : -1.0;
 
-    // Whole-song overview lanes, in the same track order the timeline sections use
-    // (sorted track index; kMasterTrackIndex naturally sorts first).
-    std::vector<int32_t> sortedTracks;
-    sortedTracks.reserve(windows_.size());
-    for (const auto& [trackIndex, _] : windows_)
-        sortedTracks.push_back(trackIndex);
-    std::sort(sortedTracks.begin(), sortedTracks.end());
+    // Overview lanes share the timeline's presentation order.
+    const auto sortedTracks = sortedTrackIndices(context);
     std::vector<NavigatorClip> overview;
     for (size_t row = 0; row < sortedTracks.size(); ++row)
         for (const auto& clip : windows_[sortedTracks[row]].displayClips)
@@ -1016,7 +1162,7 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                 if (context.clipActions.renderMenu)
                     context.clipActions.renderMenu(trackIndex, -1, trackState.requestedAddPosition);
                 const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
-                if (contextActionMenuItem("Edit Clips...", isVisible(trackIndex))) {
+                if (contextActionMenuItem("Track Details...", isVisible(trackIndex))) {
                     showWindow(trackIndex);
                     if (context.refreshClips) context.refreshClips(trackIndex);
                     ImGui::CloseCurrentPopup();
@@ -1154,12 +1300,7 @@ void SequenceEditor::rebuildTimeline(const RenderContext& context) {
 
     const float baseHeight = std::max(80.0f * context.uiScale, 40.0f);
 
-    // Sort tracks: kMasterTrackIndex (INT32_MIN) naturally sorts first
-    std::vector<int32_t> sortedTracks;
-    sortedTracks.reserve(windows_.size());
-    for (const auto& [trackIndex, _] : windows_)
-        sortedTracks.push_back(trackIndex);
-    std::sort(sortedTracks.begin(), sortedTracks.end());
+    const auto sortedTracks = sortedTrackIndices(context);
     timeline_.sectionToTrack = sortedTracks;
 
     int32_t maxFrame = 0;
@@ -1199,6 +1340,14 @@ void SequenceEditor::rebuildTimeline(const RenderContext& context) {
         props.mHeight = sectionHeight;
         props.mBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, header, 0.20f));
         props.mBackgroundColorTwo = ImGui::GetColorU32(mixColor(childBg, header, 0.10f));
+        const auto properties = trackProperties(trackIndex, context);
+        if (properties.color) {
+            const auto rgb = *properties.color;
+            const ImVec4 color((rgb >> 16) / 255.0f, ((rgb >> 8) & 0xFF) / 255.0f,
+                               (rgb & 0xFF) / 255.0f, 1.0f);
+            props.mBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, color, 0.35f));
+            props.mBackgroundColorTwo = ImGui::GetColorU32(mixColor(childBg, color, 0.20f));
+        }
         props.mForegroundColor = ImGui::GetColorU32(withAlpha(text, 1.0f));
         props.BorderRadius = 6.0f * context.uiScale;
         props.BorderThickness = 1.0f;

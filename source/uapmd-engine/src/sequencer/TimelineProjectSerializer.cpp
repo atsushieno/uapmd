@@ -228,20 +228,23 @@ namespace uapmd::timeline_detail {
                 projectTrack->solo(sequencerTrack->solo());
             }
 
-            // An empty track with default mixer state carries no information,
-            // so it is not written at all.
+            // Empty tracks can still carry authored mixer or presentation state.
             const bool hasClips = !projectTrack->clips().empty();
             const bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
             const bool hasMixerState = sequencerTrack
                 && (sequencerTrack->trackGain() != 1.0
                     || sequencerTrack->muted()
                     || sequencerTrack->solo());
+            const auto& properties = timelineTrack->properties();
+            const bool hasProperties = properties.color || !properties.path.empty()
+                || properties.order != static_cast<double>(trackIndex);
             // A track holding a graph this build could not construct looks
             // empty -- its plug-ins were never instantiated -- but dropping it
             // would discard the very graph we are preserving.
             const bool hasUnresolvedGraph = sequencerTrack
                 && !sequencerTrack->unresolvedGraphPayload().empty();
-            if (!options.preserve_empty_tracks && !hasClips && !hasPlugins && !hasMixerState && !hasUnresolvedGraph)
+            if (!options.preserve_empty_tracks && !hasClips && !hasPlugins && !hasMixerState
+                && !hasProperties && !hasUnresolvedGraph)
                 continue;
 
             queueProjectGraphSerialization(

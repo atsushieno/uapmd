@@ -140,7 +140,8 @@ namespace uapmd {
         return ProjectTrackSnapshot{
             .trackId = track->referenceId(),
             .trackIndex = trackIndexFor(*track),
-            .masterTrack = track == master_timeline_track_.get()
+            .masterTrack = track == master_timeline_track_.get(),
+            .properties = track->properties()
         };
     }
 

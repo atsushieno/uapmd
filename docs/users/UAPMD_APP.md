@@ -236,7 +236,7 @@ effect plugins.
 The clipboard icon in the track legend opens the clip menu, which applies to the track as a
 whole:
 
-- **Edit Clips...** -- opens the per-track clip editor window.
+- **Track Details...** -- opens track properties and the per-track clip editor. Choose a color (or reset to the theme default), edit the organizational path, and adjust order with the slider or numeric input. Tracks sort by case-sensitive path (non-empty first), then numeric order, retaining their existing order for ties. The master track always stays first. Properties support undo/redo and are saved in `extensions/track-properties/tracks.json` inside the project package.
 - **Add an Empty MIDI2 Clip** / **Add Empty Audio Clip**.
 - **Create Audio Clip From File...** -- `.wav`, `.ogg`, `.flac`.
 - **Add a MIDI Clip from File...** -- a MIDI 1.0 `.mid` file, translated to MIDI 2.0.
@@ -614,6 +614,27 @@ the bundled `Demo`, `PluginState`, and `TestDAG` scripts. The demo script docume
 There is also an object-oriented wrapper (`PluginScanTool`, `sequencer`) imported from
 `remidy-bridge`; both styles work.
 
+Track listings from `uapmd.sequencer.getTrackInfos()` include a `properties` object with
+`color`, `path`, and `order`. Use the stable `trackId` to read or edit these properties:
+
+```js
+const trackId = uapmd.sequencer.getTrackInfos()[0].trackId;
+uapmd.sequencer.getTrackProperties(trackId);
+uapmd.sequencer.setTrackProperties(trackId, {
+    color: "#8E55BC",
+    path: "Orchestra/Strings",
+    order: 2.5
+});
+uapmd.sequencer.setTrackProperties(trackId, {color: null}); // Reset to theme default
+```
+
+Updates are synchronous and return the updated properties. Omitted fields stay unchanged;
+an empty `path` clears the path. Colors use `#RRGGBB` or `null`, and order must be a finite
+number. Invalid updates throw without changing any properties. Each update is one undoable
+edit and participates in compound history steps. The `remidy-bridge` `sequencer` wrapper
+provides the same methods. Master-track IDs are supported; the master track remains pinned
+first regardless of its path and order.
+
 ### MCP
 
 ![MCP Settings](../images/uapmd-app-guide-mcp-settings.png)
@@ -629,12 +650,19 @@ Press **Connect** to start and **Disconnect** to stop; the status line above the
 what it is doing. Launching with `--mcp-server [port]` starts server mode without visiting this
 window.
 
-The tool surface covers tracks (`list_tracks`, `create_track`, `add_plugin_to_track`), clips
+The tool surface covers tracks (`list_tracks`, `get_track_properties`, `set_track_properties`,
+`create_track`, `add_plugin_to_track`), clips
 (`list_clips`, `add_midi_clip`, `create_empty_midi_clip`, `add_ump_event`, `remove_ump_event`),
 transport (`play`, `stop`, `jump`, `set_tempo`), the graph (`connect_track_graph`,
 `ensure_dag_track_graph`, `revert_track_graph_to_simple`), history (`undo`, `redo`,
 `begin_compound`, `end_compound`), projects (`save_project`, `load_project`), presets, freezing,
 latency compensation state, and `run_script` for the JavaScript API above.
+
+`list_tracks` includes each track's `properties`. Call `get_track_properties` with
+`{"trackId":"track_1"}`, or `set_track_properties` with
+`{"trackId":"track_1","properties":{"color":"#8E55BC","path":"Orchestra/Strings","order":2.5}}`.
+Both return `{trackId, properties}` and also accept `masterTrackId` from `list_tracks`.
+The setter uses the same partial-update, validation, and undo behavior as scripting.
 
 On the Web build MCP is always active as a JavaScript export instead, called through
 `Module.ccall('uapmd_mcp_call', ...)`, with `Module.ccall('uapmd_eval', ...)` for scripts.

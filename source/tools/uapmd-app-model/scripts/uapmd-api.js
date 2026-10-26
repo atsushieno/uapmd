@@ -4,6 +4,12 @@
 // IMPORTANT: The __remidy_* functions are internal implementation details
 // and are NOT part of the stable API. Always use the uapmd.* API instead.
 
+function unwrapTrackProperties(result) {
+    if (result.error)
+        throw new Error(result.error);
+    return result;
+}
+
 // PluginInstance class - wraps instance control methods
 class PluginInstance {
     constructor(instanceId) {
@@ -235,7 +241,11 @@ globalThis.uapmd = {
         isPluginBypassed: (instanceId) => __remidy_sequencer_isPluginBypassed(instanceId),
         setPluginBypassed: (instanceId, bypassed) => __remidy_sequencer_setPluginBypassed(instanceId, bypassed),
         getTrackInfos: () => __remidy_sequencer_getTrackInfos(),
-        // Track mutations return a MutationJob. Poll it through
+        getTrackProperties: (trackId) => unwrapTrackProperties(__remidy_sequencer_getTrackProperties(trackId)),
+        // Partial update; color is #RRGGBB or null (theme default), path is a
+        // string, order is a finite number. Returns the updated properties.
+        setTrackProperties: (trackId, properties) => unwrapTrackProperties(__remidy_sequencer_setTrackProperties(trackId, properties)),
+        // Structural track mutations return a MutationJob. Poll it through
         // uapmd.mutations.getJob(jobId); the engine model thread is never
         // blocked waiting for asynchronous restoration or history capture.
         addTrack: () => __remidy_sequencer_add_track(),

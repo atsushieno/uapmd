@@ -1362,7 +1362,8 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     const double projectEndSeconds = std::max({snapshot->maxTimeSeconds,
                                                contentBounds.hasContent ? contentBounds.endSeconds : 0.0,
                                                0.0});
-    std::string signature = std::format("{}|{:.3f}|", clips.size(), projectEndSeconds);
+    std::string signature = std::format("{}|{:.3f}|{}|", clips.size(), projectEndSeconds,
+        masterTrack->properties().color.value_or(0x1000000));
     for (const auto& clip : clips)
         signature += std::format("{}:{}:{}:{};",
             clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
@@ -1503,6 +1504,16 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     const float pad = 4.0f * currentUiScale_;
     const float legendWidth = legendArea.GetWidth();
     ImGui::PushClipRect(legendArea.Min, legendArea.Max, true);
+    auto* timelineTrack = trackIndex == uapmd::kMasterTrackIndex
+        ? appModel.getMasterTimelineTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(appModel.getTimelineTracks().size())
+            ? appModel.getTimelineTracks()[trackIndex] : nullptr);
+    if (timelineTrack && timelineTrack->properties().color) {
+        const auto rgb = *timelineTrack->properties().color;
+        ImGui::GetWindowDrawList()->AddRectFilled(legendArea.Min,
+            ImVec2(legendArea.Min.x + 3.0f * currentUiScale_, legendArea.Max.y),
+            IM_COL32(rgb >> 16, (rgb >> 8) & 0xFF, rgb & 0xFF, 255));
+    }
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, legendArea.Min.y + pad));
     ImGui::PushID(trackIndex);
 
@@ -1513,7 +1524,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         frozenTrackManager.isTrackBusy(trackIndex);
 
     // Row 1: Clips + Graph + Gain Slider + [Mute] + [Solo]
-    if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
+    if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Track details and clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
     if (trackBusy)
@@ -1706,7 +1717,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
         renderClipEditMenu(trackIndex, -1, appModel.timeline().playheadPosition.toSeconds(appModel.sampleRate()));
         const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
-        if (contextActionMenuItem("Edit Clips...", sequenceEditor_.isVisible(trackIndex))) {
+        if (contextActionMenuItem("Track Details...", sequenceEditor_.isVisible(trackIndex))) {
             sequenceEditor_.showWindow(trackIndex);
             refreshSequenceEditorForTrack(trackIndex);
         }
@@ -2027,7 +2038,9 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
         return a.clipId < b.clipId;
     });
 
-    std::string signature = std::to_string(clips.size());
+    const auto& properties = track->properties();
+    std::string signature = std::format("{}|{}|{}|{}", clips.size(),
+        properties.path, properties.order, properties.color.value_or(0x1000000));
     signature.reserve(signature.size() + clips.size() * 96);
     for (const auto& clip : clips) {
         uint64_t midiHash = 0;

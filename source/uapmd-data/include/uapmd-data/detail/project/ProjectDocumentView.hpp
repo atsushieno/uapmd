@@ -8,6 +8,7 @@
 #include "ProjectDocumentEvents.hpp"
 #include "ProjectSelection.hpp"
 #include "ProjectMasterTrackSnapshot.hpp"
+#include "TrackProperties.hpp"
 #include "../timeline/TimelineTypes.hpp"
 
 namespace uapmd {
@@ -16,6 +17,7 @@ namespace uapmd {
         ProjectObjectId trackId;
         int32_t trackIndex{-1};
         bool masterTrack{false};
+        TrackProperties properties;
     };
 
     struct ProjectClipSnapshot {

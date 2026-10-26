@@ -24,6 +24,7 @@ namespace uapmd {
 
         auto fragment = std::make_shared<ProjectTrackFragment>();
         fragment->referenceId = timelineTrack->referenceId();
+        fragment->properties = timelineTrack->properties();
         fragment->volume = sequencerTrack->trackGain();
         fragment->muted = sequencerTrack->muted();
         fragment->solo = sequencerTrack->solo();
@@ -205,7 +206,9 @@ namespace uapmd {
                     auto* timelineTrack = resolveTrack(state->publishedTrackIndex);
                     if (!timelineTrack) {
                         error = "The created timeline track is unavailable";
-                    } else {for (auto* extension : projectSerializationExtensionsSnapshot()) {
+                    } else {
+                        timelineTrack->properties(source->properties);
+                        for (auto* extension : projectSerializationExtensionsSnapshot()) {
                             const auto it = source->extensionState.find(std::string(extension->extensionId()));
                             static const std::vector<uint8_t> kNoState{};
                             const auto& extensionState = it == source->extensionState.end()

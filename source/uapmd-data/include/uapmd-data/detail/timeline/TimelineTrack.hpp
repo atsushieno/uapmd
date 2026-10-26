@@ -6,6 +6,7 @@
 #include <mutex>
 #include <vector>
 #include "TimelineTypes.hpp"
+#include "../project/TrackProperties.hpp"
 #include "ClipManager.hpp"
 #include "SourceNode.hpp"
 #include "AudioSourceNode.hpp"
@@ -63,6 +64,14 @@ namespace uapmd {
         uint32_t channelCount() const { return channel_count_; }
         double sampleRate() const { return sample_rate_; }
         const std::string& referenceId() const { return reference_id_; }
+        // Presentation metadata is never read by the audio thread.
+        const TrackProperties& properties() const { return properties_; }
+        bool properties(const TrackProperties& value) {
+            if (!value.valid())
+                return false;
+            properties_ = value;
+            return true;
+        }
         bool hasDeviceInputSource() const;
 
         // NRPN parameter mapping callback.
@@ -78,6 +87,7 @@ namespace uapmd {
 
     private:
         std::string reference_id_;
+        TrackProperties properties_;
         uint32_t channel_count_;
         double sample_rate_;
 

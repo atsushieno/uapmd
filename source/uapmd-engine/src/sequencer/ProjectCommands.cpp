@@ -207,6 +207,12 @@ namespace uapmd {
         return executeTrack<TrackGainProperty>(trackIndex, gain, origin);
     }
 
+    bool ProjectCommandsImpl::setTrackProperties(
+            int32_t trackIndex, const TrackProperties& properties, ProjectMutationOrigin origin) {
+        return properties.valid()
+            && executeTrack<TrackPropertiesProperty>(trackIndex, properties, origin);
+    }
+
     bool ProjectCommandsImpl::setTrackMuted(
         int32_t trackIndex, bool muted, ProjectMutationOrigin origin) {
         return executeTrack<TrackMutedProperty>(trackIndex, muted, origin);

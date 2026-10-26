@@ -10,6 +10,7 @@
 #include "../project/MidiClipDocument.hpp"
 #include "../timeline/TimelineTypes.hpp"
 #include "../project/LatencyCompensationTypes.hpp"
+#include "../project/TrackProperties.hpp"
 
 namespace uapmd {
 
@@ -74,6 +75,8 @@ public:
     // Track properties. These address their track by its stable document
     // identity during replay, so inserting or removing another track does not
     // redirect an undo to the wrong one.
+    virtual bool setTrackProperties(int32_t trackIndex, const TrackProperties& properties,
+                                    ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setTrackGain(int32_t trackIndex, double gain,
                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setTrackMuted(int32_t trackIndex, bool muted,

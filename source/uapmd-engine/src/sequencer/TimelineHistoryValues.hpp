@@ -32,6 +32,10 @@ namespace uapmd::timeline_detail {
             + value.name.capacity();
     }
 
+    inline size_t retainedValueSize(const TrackProperties& value) {
+        return sizeof(value) + value.path.capacity();
+    }
+
     inline size_t retainedValueSize(const AudioWarpPoint& value) {
         return sizeof(value)
             + value.referenceClipId.capacity()
@@ -169,6 +173,7 @@ namespace uapmd::timeline_detail {
     inline size_t retainedValueSize(const ProjectTrackFragment& fragment) {
         size_t result = sizeof(fragment)
             + fragment.referenceId.capacity()
+            + fragment.properties.path.capacity()
             + fragment.graphType.capacity()
             + fragment.graphBytes.capacity();
         for (const auto& plugin : fragment.plugins)

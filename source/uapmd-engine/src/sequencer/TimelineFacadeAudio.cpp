@@ -196,6 +196,11 @@ namespace uapmd {
         } else
             trackReferenceId = std::format("track_{}", next_timeline_track_reference_++);
         auto newTrack = std::make_shared<TimelineTrack>(trackReferenceId, outputChannels, sampleRate, bufferSizeInFrames);
+        TrackProperties properties;
+        // Append after the largest existing order, including when tracks were reordered.
+        for (const auto& track : timeline_tracks_)
+            properties.order = std::max(properties.order, track->properties().order + 1.0);
+        newTrack->properties(properties);
 
         newTrack->setNrpnParameterCallback(
             [this, trackReferenceId](uint8_t group, uint32_t paramIdx, uint32_t rawValue, bool isRelative) {

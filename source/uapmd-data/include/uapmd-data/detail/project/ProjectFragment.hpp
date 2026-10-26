@@ -7,6 +7,7 @@
 
 #include "MidiTimelineEvents.hpp"
 #include "MidiClipDocument.hpp"
+#include "TrackProperties.hpp"
 #include <optional>
 #include "../timeline/TimelineTypes.hpp"
 
@@ -97,6 +98,7 @@ namespace uapmd {
     // so both capturing and attaching one are asynchronous.
     struct ProjectTrackFragment {
         std::string referenceId{};
+        TrackProperties properties;
         double volume{1.0};
         bool muted{false};
         bool solo{false};

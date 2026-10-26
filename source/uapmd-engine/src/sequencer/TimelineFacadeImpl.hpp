@@ -28,6 +28,7 @@
 #include "TimelineProjectSerializer.hpp"
 #include "TimelineProperties.hpp"
 #include "ProjectCommandsImpl.hpp"
+#include "TrackPropertiesSerialization.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include "uapmd-plugin-hosting/uapmd-plugin-hosting.hpp"
@@ -149,6 +150,7 @@ namespace uapmd {
         std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
         mutable std::mutex project_serialization_extensions_mutex_{};
         std::vector<ProjectSerializationExtension*> project_serialization_extensions_{};
+        TrackPropertiesSerialization track_properties_serialization_{*this};
         std::unordered_map<int32_t, std::unordered_map<int32_t, double>> plugin_parameter_values_{};
         std::unordered_map<int32_t, remidy::EventListenerId> plugin_parameter_listener_ids_{};
         std::unordered_map<int32_t, std::vector<uint8_t>> plugin_state_values_{};
@@ -523,6 +525,7 @@ namespace uapmd {
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
             , history_(makeHistory(std::move(historyFactory)))
         {
+            addProjectSerializationExtension(track_properties_serialization_);
             project_document_events_.setDeliveryHooks([this] {
                 project_selections_.beginDocumentBatch();
                 reconcileDocumentObjects();

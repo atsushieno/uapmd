@@ -131,6 +131,12 @@ private:
         SequenceEditorState& operator=(SequenceEditorState&&) noexcept = default;
         ~SequenceEditorState() = default;
         bool visible = false;
+        std::vector<char> pathDraft;
+        ImVec4 colorDraft;
+        double orderDraft{0.0};
+        double orderMin{0.0};
+        double orderMax{1.0};
+        bool editingOrder{false};
         std::vector<ClipRow> displayClips;
         int32_t selectedClipId = -1;
         int32_t contextMenuClipId = -1;
@@ -183,6 +189,9 @@ private:
                          ImVec2 areaMin, ImVec2 areaMax, bool acceptsInput);
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
+    void renderTrackProperties(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
+    uapmd::TrackProperties trackProperties(int32_t trackIndex, const RenderContext& context) const;
+    std::vector<int32_t> sortedTrackIndices(const RenderContext& context) const;
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
     void rebuildTimeline(const RenderContext& context);
     void drawRuler(const RenderContext& context, float clipAreaMinX, float clipAreaMinY,

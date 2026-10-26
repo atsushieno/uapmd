@@ -20,6 +20,7 @@
 #include <optional>
 #include <queue>
 #include "ScriptDocumentIds.hpp"
+#include "ScriptTrackProperties.hpp"
 
 using namespace uapmd_graph;
 
@@ -426,8 +427,18 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "list_tracks",
-            "List all sequencer tracks with their trackId, graph nodes, and plugin instances. Also returns masterTrackId.",
+            "List all sequencer tracks with their trackId, presentation properties (color, path, order), graph nodes, and plugin instances. Also returns masterTrackId.",
             R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "get_track_properties",
+            "Get track color (#RRGGBB or null for the theme default), organizational path, and numeric order. The master track always stays first in the timeline.",
+            R"j({"type":"object","required":["trackId"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; masterTrackId is also supported"}}})j"
+        },
+        {
+            "set_track_properties",
+            "Partially update track presentation properties as one undoable edit. Omitted fields stay unchanged; color:null resets the theme default, path:\"\" clears the path, and order must be finite. Timeline sorts non-empty paths first, then path and order. Returns the updated properties.",
+            R"j({"type":"object","required":["trackId","properties"],"properties":{"trackId":{"type":"string","description":"Track ID from list_tracks; masterTrackId is also supported"},"properties":{"type":"object","additionalProperties":false,"properties":{"color":{"type":["string","null"],"pattern":"^#[0-9a-fA-F]{6}$","description":"#RRGGBB; null resets the theme default"},"path":{"type":"string","description":"Organizational path; an empty string clears it"},"order":{"type":"number","description":"Finite sort order within the same path"}}}}})j"
         },
         {
             "get_history_state",
@@ -753,6 +764,7 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
     {
         auto t = choc::value::createObject ("");
         t.setMember ("trackId", script_ids::trackId (i));
+        t.setMember ("properties", script_track_properties::get(script_ids::trackId(i)));
         auto instances = choc::value::createEmptyArray();
         auto nodes = choc::value::createEmptyArray();
         for (const auto& [nodeId, graphNode] : tracks[static_cast<size_t>(i)]->graph().nodes())
@@ -1664,6 +1676,17 @@ struct McpServer::Impl {
 
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
+            else if (toolName == "get_track_properties" || toolName == "set_track_properties") {
+                const auto trackIndex = getTrackArg(args);
+                const auto trackId = script_ids::trackId(trackIndex);
+                if (toolName == "set_track_properties" && !args.hasObjectMember("properties"))
+                    throw std::invalid_argument("properties is required");
+                toolResult = choc::value::createObject("");
+                toolResult.setMember("trackId", trackId);
+                toolResult.setMember("properties", toolName == "get_track_properties"
+                    ? script_track_properties::get(trackId)
+                    : script_track_properties::set(trackId, args["properties"]));
+            }
             else if (toolName == "get_audio_worker_diagnostics") {
                 ensureJSRuntime();
                 toolResult = choc::json::parse(evalScript("__remidy_audio_worker_diagnostics()"));
