@@ -249,7 +249,10 @@ index db75acd..36757f9 100644
          ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
  
          ImRect nodeRect = ImRect(slotP1, slotP2);
-@@ -96,4 +118,4 @@
+@@ -93,7 +115,7 @@
+         ImTimelineUtility::sprint_f(nodeDebugText, "id: %d - index: %d", node.ID, index);
+         draw_list->AddText(nodeRect.Min + ImVec2(10, 20), node.displayProperties.mForegroundColor, nodeDebugText.c_str());
+ #endif
 -        bool bIsSelected = ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
 +        bool bIsSelected = section_hovered && ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
          bool bInputDelay = (pContext->GetLastInputData().MouseDownDuration > 40.0f);
