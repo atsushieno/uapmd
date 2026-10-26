@@ -253,7 +253,7 @@ index db75acd..36757f9 100644
 -        bool bIsSelected = ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
 +        bool bIsSelected = section_hovered && ImRect(slotP1, slotP2).Contains(pContext->GetLastInputData().MousePos) && pContext->GetLastInputData().LeftMouseDown;
          bool bInputDelay = (pContext->GetLastInputData().MouseDownDuration > 40.0f);
-
+ 
          if (bIsSelected && pContext->mDragData.DragState == eDragState::None) {
 @@ -134,12 +156,10 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
          bgColor = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColor;
