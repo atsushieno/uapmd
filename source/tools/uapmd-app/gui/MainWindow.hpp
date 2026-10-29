@@ -43,6 +43,10 @@ struct GLFWwindow;
 
 namespace uapmd_app_gui {
 
+#if defined(__ANDROID__)
+class AndroidPluginEditor;
+#endif
+
 struct GuiDefaults {
     std::string pluginName;
     std::string formatName;
@@ -115,6 +119,9 @@ class MainWindow {
         // Device state structures moved to AppModel - use AppModel::DeviceState, etc.
 
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
+#if defined(__ANDROID__)
+        std::unordered_map<int32_t, std::shared_ptr<AndroidPluginEditor>> android_plugin_editors_;
+#endif
 #if UAPMD_HAS_JSFX
         uapmd_app::JsfxResourcesWindow jsfxResourcesWindow_;
         // JSFX is built in rather than loaded as an addin, so it has nothing of its own to
@@ -168,6 +175,9 @@ class MainWindow {
     public:
         explicit MainWindow(GuiDefaults defaults = {});
         void render(void* window);  // Generic window pointer
+#if defined(__ANDROID__)
+        void syncAndroidPluginEditors();
+#endif
         void update();
         bool& isOpen() { return isOpen_; }
         bool requestClose();

@@ -20,6 +20,9 @@
 #include "FontLoader.hpp"
 
 #include "MainWindow.hpp"
+#if defined(__ANDROID__)
+#include "AndroidPluginEditor.hpp"
+#endif
 
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
@@ -200,6 +203,9 @@ MainWindow::MainWindow(GuiDefaults defaults)
     uapmd_app::AppModel::instance().instanceRemoved.push_back(
         [this](int32_t instanceId) {
             // Cleanup plugin UI windows
+#if defined(__ANDROID__)
+            android_plugin_editors_.erase(instanceId);
+#endif
             auto windowIt = pluginWindows_.find(instanceId);
             if (windowIt != pluginWindows_.end()) {
                 windowIt->second->show(false);
@@ -872,8 +878,30 @@ void MainWindow::render(void* window) {
     }
 #endif
 
+#if defined(__ANDROID__)
+    std::vector<int32_t> editorIds;
+    for (const auto& [id, editor] : android_plugin_editors_)
+        if (pluginWindowVisible_[id])
+            editorIds.push_back(id);
+    for (const auto id : editorIds) {
+        const auto editor = android_plugin_editors_.find(id);
+        if (editor != android_plugin_editors_.end() && !editor->second->render())
+            uapmd_app::AppModel::instance().hidePluginUI(id);
+    }
+#endif
+
     uiScaleDirty_ = false;
 }
+
+#if defined(__ANDROID__)
+void MainWindow::syncAndroidPluginEditors() {
+    std::vector<AndroidPluginEditor*> editors;
+    for (const auto& [id, editor] : android_plugin_editors_)
+        if (pluginWindowVisible_[id])
+            editors.push_back(editor.get());
+    AndroidPluginEditor::sync(std::move(editors));
+}
+#endif
 
 void MainWindow::renderTimeStatus() {
     auto& appModel = uapmd_app::AppModel::instance();
@@ -911,6 +939,10 @@ bool MainWindow::requestClose() {
 }
 
 void MainWindow::shutdown() {
+#if defined(__ANDROID__)
+    android_plugin_editors_.clear();
+    AndroidPluginEditor::sync({});
+#endif
     timelineEditor_.pluginGraphEditor().hide();
     // Editor instances may contain code from dynamically loaded addins.
     timelineEditor_.setClipEditorRegistry(nullptr);
@@ -1717,6 +1749,9 @@ void MainWindow::refreshInstances() {
 
     for (auto it = pluginWindows_.begin(); it != pluginWindows_.end();) {
         if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
+#if defined(__ANDROID__)
+            android_plugin_editors_.erase(it->first);
+#endif
             it = pluginWindows_.erase(it);
         } else {
             ++it;
@@ -1907,6 +1942,12 @@ void MainWindow::handleShowUI(int32_t instanceId) {
         return;
     }
 
+#if defined(__ANDROID__)
+    auto& editor = android_plugin_editors_[instanceId];
+    if (!editor)
+        editor = std::make_shared<AndroidPluginEditor>(container->getHandle(), pluginName + " (" + pluginFormat + ")");
+    editor->raise();
+#endif
     container->show(true);
     void* parentHandle = container->getHandle();
 

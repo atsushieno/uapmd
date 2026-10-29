@@ -1,6 +1,40 @@
 
 ![latest screenshot](docs/images/sshot-latest.png)
 
+## AAP editor composition
+
+AAP editor title bars, window focus, resize grips and scrollbars belong to ImGui.
+The plugin content stays in its live Android SurfaceView. SDL uses an RGBA surface
+above those views; a transparent aperture in each editor's ImGui draw list exposes
+the remote content at the corresponding point in the window order. Raising an
+editor updates both ImGui and Android surface order, so other editors, host
+windows, popups and tooltips can cover its content and title bar.
+
+A transparent input window routes host controls and background-editor activation
+to SDL. An unobscured, focused editor is placed above SDL and excluded from that
+window's touchable region, allowing Android to deliver plugin gestures directly.
+Transparent SDL pixels still count as an obscuring surface to Android's input
+dispatcher, so leaving the focused editor below SDL would block its input. When a
+host window overlaps the editor, its content stays below SDL for composition and
+ImGui handles activation until it is unobscured. Tap a background editor to
+activate it before adjusting its controls. Android 13 and
+later use a single input window with a touchable region; Android 12 uses rectangular
+input windows. Android 16 and later use SurfaceView composition orders; earlier
+versions reapply SurfaceControl layers after surface and layout changes. No editor
+images are captured or substituted, and background editors keep rendering.
+
+Editor content measurements update scrolling without resizing the host window.
+Preferred-size and explicit host resize requests are tracked separately, and
+scrollbar space is reserved only when needed. This prevents responsive Compose
+layouts from feeding a larger viewport back into another window-size request.
+
+Verified on 2026-10-29 with a Galaxy SM-X230 running Android 16: Dexed buttons and
+parameter drags receive input, Escape dismisses its parameter dialog, an ImGui
+plugin selector covers the editor, and switching between two overlapping Dexed
+editors directs parameter changes to the focused instance.
+MDA DX10's Compose editor also keeps a stable size on opening, manual resizing,
+and reopening.
+
 ## AAP audio buses
 
 remidy uses aap-core's buses API to expose the plugin's main and auxiliary audio

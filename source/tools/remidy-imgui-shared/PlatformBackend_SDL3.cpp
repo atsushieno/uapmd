@@ -48,6 +48,7 @@ public:
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 
         __android_log_print(ANDROID_LOG_INFO, "UAPMD", "SDL3 initialized for Android/GLES3");
 #elif defined(USE_SDL_RENDERER)
@@ -130,7 +131,7 @@ public:
         // Android: Create fullscreen window
         SDL_Window* window = SDL_CreateWindow(
             title, width, height,
-            SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY
+            SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_TRANSPARENT
         );
 
         if (!window) {

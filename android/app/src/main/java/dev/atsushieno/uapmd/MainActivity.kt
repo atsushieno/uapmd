@@ -1,16 +1,91 @@
 package dev.atsushieno.uapmd
 
 import android.content.Intent
+import android.content.Context
+import android.graphics.PixelFormat
 import android.os.Build
 import android.util.DisplayMetrics
 import android.view.View
+import android.view.MotionEvent
+import android.view.SurfaceControl
+import android.view.SurfaceView
 import android.view.WindowInsets
 import kotlinx.coroutines.runBlocking
 import org.androidaudioplugin.hosting.GuiHelper
 import org.libsdl.app.SDLActivity
+import org.libsdl.app.SDLSurface
+import dev.atsushieno.uapmd.ui.PluginUiOverlayManager
 
 class MainActivity : SDLActivity() {
+    var compositorResumed = false
+        private set
+
+    override fun createSDLSurface(context: Context): SDLSurface =
+        super.createSDLSurface(context).apply {
+            // ImGui clears transparent apertures for the live plugin surfaces below SDL.
+            holder.setFormat(PixelFormat.TRANSLUCENT)
+            setZOrderOnTop(true)
+            if (Build.VERSION.SDK_INT >= 36)
+                setCompositionOrder(COMPOSITOR_ORDER)
+        }
+
+    fun compositorSurface(): SurfaceView? = mSurface
+
+    fun updateCompositorOrder() {
+        val surface = mSurface ?: return
+        if (Build.VERSION.SDK_INT >= 36) {
+            surface.setCompositionOrder(COMPOSITOR_ORDER)
+        } else {
+            val control = surface.surfaceControl ?: return
+            if (control.isValid)
+                SurfaceControl.Transaction().use { it.setLayer(control, COMPOSITOR_ORDER).apply() }
+        }
+    }
+
+    private fun compositorEvent(event: MotionEvent): MotionEvent {
+        val location = IntArray(2)
+        mSurface.getLocationOnScreen(location)
+        return MotionEvent.obtain(event).apply {
+            setLocation(event.rawX - location[0], event.rawY - location[1])
+        }
+    }
+
+    fun forwardCompositorTouch(event: MotionEvent) {
+        val translated = compositorEvent(event)
+        try {
+            mSurface.onTouch(mSurface, translated)
+        } finally {
+            translated.recycle()
+        }
+    }
+
+    fun forwardCompositorMotion(event: MotionEvent): Boolean {
+        val translated = compositorEvent(event)
+        return try {
+            mSurface.dispatchGenericMotionEvent(translated)
+        } finally {
+            translated.recycle()
+        }
+    }
+
+    override fun onPause() {
+        compositorResumed = false
+        PluginUiOverlayManager.closeInputShield()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        compositorResumed = true
+    }
+
+    override fun onDestroy() {
+        PluginUiOverlayManager.releaseActivity(this)
+        super.onDestroy()
+    }
+
     companion object {
+        const val COMPOSITOR_ORDER = 1_000_000
         @JvmStatic external fun nativeExecuteUiThreadTask(token: Long)
         @JvmStatic external fun nativeHandleActivityResult(requestCode: Int, resultCode: Int, data: Intent?)
         @JvmStatic external fun nativeOnOverlayClosed(handle: Long)

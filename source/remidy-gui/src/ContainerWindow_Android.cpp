@@ -185,7 +185,7 @@ public:
     }
 
     void setResizable(bool) override {
-        // Surface-based overlays do not currently support host-driven resize handles.
+        // ImGui owns editor resizing; the viewport callback scrolls the remote content.
     }
 
     Bounds getBounds() const override {

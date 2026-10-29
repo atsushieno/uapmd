@@ -484,6 +484,9 @@ int runMainLoop(int argc, char** argv) {
 
         // Rendering
         ImGui::Render();
+#if defined(__ANDROID__)
+        mainWindow.syncAndroidPluginEditors();
+#endif
 
 #if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)
         // Reassert before we execute GL commands in case a plugin reclaimed it mid-frame
