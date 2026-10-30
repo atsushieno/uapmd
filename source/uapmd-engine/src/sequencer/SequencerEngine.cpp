@@ -1376,14 +1376,15 @@ namespace uapmd {
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
 
-        // When engine is inactive, output silence and return.
-        if (!engine_active_.load(std::memory_order_acquire)) {
+        // The engine switch controls realtime output; offline rendering must
+        // still advance the timeline and process the graph while it is off.
+        const bool offline = offline_rendering_.load(std::memory_order_acquire);
+        if (!offline && !engine_active_.load(std::memory_order_acquire)) {
             process.clearAudioOutputs();
             return 0;
         }
 
         const bool captureTiming = audio_performance_counter_.enabled();
-        const bool offline = offline_rendering_.load(std::memory_order_acquire);
         const auto timingBlock = audio_performance_counter_.nextBlockNumber();
         const auto timingSampleRate = sampleRate;
         using TimingClock = std::chrono::steady_clock;
@@ -1785,7 +1786,7 @@ namespace uapmd {
         const bool silenceStoppedFreezeOutput =
             tail_process_manager_->shouldSilenceStoppedOutput() &&
             !isPlaybackActive;
-        if ((output_muted_.load(std::memory_order_acquire) ||
+        if (((!offline && output_muted_.load(std::memory_order_acquire)) ||
              silenceStoppedFreezeOutput) &&
             process.audioOutBusCount() > 0) {
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)

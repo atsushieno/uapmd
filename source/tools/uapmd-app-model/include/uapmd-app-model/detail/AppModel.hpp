@@ -180,6 +180,7 @@ namespace uapmd_app {
         // Read by the scan worker, so atomic.
         std::atomic<bool> shutting_down_{false};
         bool pluginsProcessingStopped_{false}; // main-thread only
+        bool renderProcessingActive_{false}; // main-thread only; defers engine switch changes
         std::atomic<bool> initialPluginScanStarted_{false};
         mutable std::mutex devicesMutex_;
         std::vector<DeviceEntry> devices_;

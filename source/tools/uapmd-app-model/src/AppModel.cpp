@@ -27,7 +27,7 @@
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
-#include <remidy/detail/event-loop.hpp>
+#include <remidy/remidy.hpp>
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
@@ -1255,7 +1255,7 @@ void uapmd_app::AppModel::joinAudioShutdownWorker() {
 void uapmd_app::AppModel::completeAudioEngineShutdown() {
     // Bail out if the engine was re-enabled while draining, or if an earlier queued
     // completion already performed the shutdown.
-    if (isAudioEngineEnabled() || pluginsProcessingStopped_)
+    if (isAudioEngineEnabled() || pluginsProcessingStopped_ || renderProcessingActive_)
         return;
 
     const auto bufferPeriodMs = sample_rate_ > 0
@@ -1282,6 +1282,11 @@ void uapmd_app::AppModel::completeAudioEngineShutdown() {
 }
 
 void uapmd_app::AppModel::setAudioEngineEnabled(bool enabled) {
+    // Apply switch changes after the render releases the plugins and contexts.
+    if (renderProcessingActive_) {
+        audioEngineEnabled_.store(enabled, std::memory_order_release);
+        return;
+    }
     joinAudioShutdownWorker();
 
     if (enabled && isAudioEngineEnabled())
@@ -4055,27 +4060,72 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
 
     bool resumeAudio = false;
     bool resumeTransport = false;
+    bool engineWasEnabled = false;
+    bool processingPrepared = false;
+
+    // Plugin activation and shutdown state belong to the main thread. Forward
+    // exceptions to this worker so failed preparation also restores the engine.
+    auto onMainThread = [](auto task) {
+        std::exception_ptr error;
+        remidy::EventLoop::runTaskOnMainThread([&]() {
+            try {
+                task();
+            } catch (...) {
+                error = std::current_exception();
+            }
+        });
+        if (error)
+            std::rethrow_exception(error);
+    };
 
     auto restoreRealtime = [&]() {
-        if (resumeAudio) {
-            sequencer_.startAudio();
-            resumeAudio = false;
-        }
-        if (resumeTransport) {
-            transportController_->resume();
-            resumeTransport = false;
-        }
+        if (!processingPrepared)
+            return;
+        onMainThread([&]() {
+            renderProcessingActive_ = false;
+            if (!isAudioEngineEnabled()) {
+                completeAudioEngineShutdown();
+            } else {
+                sequencer_.engine()->setEngineActive(true);
+                if (resumeAudio || !engineWasEnabled)
+                    sequencer_.startAudio();
+                if (resumeTransport)
+                    transportController_->resume();
+            }
+            processingPrepared = false;
+        });
     };
 
     try {
-        if (transportController_->isPlaying()) {
-            transportController_->pause();
-            resumeTransport = true;
-        }
-        if (sequencer_.isAudioPlaying() != 0) {
-            sequencer_.stopAudio();
-            resumeAudio = true;
-        }
+        onMainThread([&]() {
+            // Finish an in-flight engine-off drain before taking ownership of
+            // processing. Its queued completion must not stop plugins mid-render.
+            joinAudioShutdownWorker();
+            engineWasEnabled = isAudioEngineEnabled();
+            if (!engineWasEnabled)
+                completeAudioEngineShutdown();
+
+            if (transportController_->isPlaying()) {
+                transportController_->pause();
+                resumeTransport = true;
+            }
+            if (sequencer_.isAudioPlaying() != 0) {
+                sequencer_.stopAudio();
+                resumeAudio = true;
+            }
+
+            renderProcessingActive_ = true;
+            processingPrepared = true;
+            if (pluginsProcessingStopped_) {
+                // Reactivate DSP for export without starting the audio device.
+                // Mark it first so a partial activation is cleaned up on failure.
+                pluginsProcessingStopped_ = false;
+                auto* host = sequencer_.engine()->pluginHost();
+                for (auto id : host->instanceIds())
+                    if (host->getInstance(id)->startProcessing() != 0)
+                        throw std::runtime_error(std::format("Failed to start plugin {} for rendering.", id));
+            }
+        });
 
         OfflineRenderSettings renderSettings{};
         renderSettings.outputPath = rendererOutputPath;
