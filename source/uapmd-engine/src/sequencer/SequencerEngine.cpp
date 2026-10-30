@@ -1177,9 +1177,6 @@ namespace uapmd {
 
         resetOutputAlignmentBuffers();
 
-        // Reset any leftover tail processing so a restart does not continue a drain.
-        tail_process_manager_->cancelTailProcessing();
-
         // Drop events that were queued for plugins but never delivered; replaying them
         // on restart would trigger stale notes and parameter changes.
         auto clearTrackEvents = [](SequencerTrack* track) {
@@ -1198,6 +1195,9 @@ namespace uapmd {
             input_analyser_->reset();
         if (output_analyser_)
             output_analyser_->reset();
+
+        // Publish quiet only after all host-side output has been discarded.
+        tail_process_manager_->resetProcessingState();
     }
 
     void SequencerEngineImpl::clearTrackProcessingState(
@@ -1847,6 +1847,11 @@ namespace uapmd {
 
         auto session = std::make_unique<OfflineTrackRenderSession>();
         session->settings = settings;
+        // Freezing reuses the prepared graph and its bus buffers. A larger
+        // offline quantum would exceed their capacity (and the plugins' maximum
+        // block size), even if the private render context was allocated larger.
+        session->settings.bufferSize = static_cast<uint32_t>(std::min<size_t>(
+            settings.bufferSize, audio_buffer_size_in_frames));
         session->result.startSample = settings.startSample;
         session->current_sample = settings.startSample;
         session->previous_timeline_state = timeline_->state();
@@ -1867,14 +1872,14 @@ namespace uapmd {
         session->device_context->configureMainBus(
             static_cast<int32_t>(default_input_channels_),
             static_cast<int32_t>(default_output_channels_),
-            settings.bufferSize);
+            session->settings.bufferSize);
 
         session->track_context = std::make_unique<AudioProcessContext>(
             session->master_context, settings.umpBufferSize);
         session->track_context->configureMainBus(
             std::max(1, sourceContext->inputChannelCount(0)),
             std::max(1, sourceContext->outputChannelCount(0)),
-            settings.bufferSize);
+            session->settings.bufferSize);
         session->track_context->configureAudioInputBuses(
             sourceContext->audioInputSpecs());
         session->track_context->configureAudioOutputBuses(

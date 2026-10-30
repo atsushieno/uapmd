@@ -448,6 +448,13 @@ void FrozenTrackManager::projectTrackBecameDirty(int32_t trackIndex) {
 bool FrozenTrackManager::requestPlaybackAfterBusyTrackRestored(
     std::function<void()> startPlayback) {
     std::lock_guard lock(mutex_);
+    // Queued tracks are Live while another track owns the renderer. Preserve
+    // their requests before clearing the execution queue for playback; the
+    // Rendering-only cancellation below cannot discover these waiting tracks.
+    for (const auto& referenceId : queued_renders_)
+        if (policies_by_track_reference_.contains(referenceId))
+            runtime_by_track_reference_[referenceId]
+                .render_deferred_until_transport_quiet = true;
     bool hasActiveRender = false;
     for (auto& [referenceId, runtime] : runtime_by_track_reference_) {
         if (runtime.state != RuntimeState::Rendering ||

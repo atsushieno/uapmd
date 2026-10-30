@@ -56,6 +56,7 @@ public:
     void transportStarted();
     void beginStoppedTransport(int64_t drainFrames);
     void cancelTailProcessing();
+    void resetProcessingState();
     void processAudio(float outputPeak, int32_t frameCount);
 
     void holdStoppedOutputSilent();

@@ -97,6 +97,16 @@ void TailProcessManagerImpl::cancelTailProcessing() {
     transport_quiet_silence_frames_.store(0, std::memory_order_release);
 }
 
+void TailProcessManagerImpl::resetProcessingState() {
+    cancelTailProcessing();
+    // A full reset discards the stopped transport's remaining output. Engine
+    // shutdown also removes the callbacks that would normally detect silence,
+    // so release deferred renders here instead of waiting for another block.
+    if (!is_playback_active_.load(std::memory_order_acquire) &&
+        !isTransportQuiet())
+        signalTransportQuiet();
+}
+
 void TailProcessManagerImpl::processAudio(
     float outputPeak,
     int32_t frameCount) {

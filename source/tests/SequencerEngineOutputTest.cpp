@@ -739,6 +739,144 @@ TEST_F(
         uapmd::FrozenTrackManager::RuntimeState::Rendering);
 }
 
+TEST_F(SequencerEngineOutputTest, FreezingContinuesAfterAudioEngineShutdown) {
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        sampleRate, bufferSize, 65536, std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    engine->setEngineActive(true);
+    for (int32_t index = 0; index < 3; ++index) {
+        ASSERT_EQ(engine->addEmptyTrack(), index);
+        ASSERT_TRUE(engine->timeline().addAudioClipToTrack(
+            index, uapmd::TimelinePosition::fromSamples(0, sampleRate),
+            std::make_unique<SineAudioFileReader>(
+                sampleRate / 10, 2, sampleRate, 440.0, 0.25f),
+            "synthetic://freeze-shutdown").success);
+    }
+
+    auto& manager = engine->frozenTrackManager();
+    using FreezePolicy = uapmd::FrozenTrackManager::FreezePolicy;
+    using RuntimeState = uapmd::FrozenTrackManager::RuntimeState;
+    engine->startPlayback();
+    ASSERT_TRUE(manager.setFreezePolicyForTrack(0, FreezePolicy::On));
+    EXPECT_EQ(manager.runtimeStateForTrack(0), RuntimeState::Live);
+    engine->resetProcessingState();
+    EXPECT_FALSE(engine->tailProcessManager().isTransportQuiet());
+
+    // Match engine shutdown before the callback has reported a quiet tail.
+    // Once disabled there are no more callbacks to complete that detection.
+    engine->stopPlayback();
+    engine->setEngineActive(false);
+    engine->resetProcessingState();
+    EXPECT_TRUE(engine->tailProcessManager().isTransportQuiet());
+
+    auto waitForFrozen = [&](int32_t trackIndex) {
+        for (int attempt = 0;
+             attempt < 200 &&
+             manager.runtimeStateForTrack(trackIndex) != RuntimeState::Frozen;
+             ++attempt) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_EQ(manager.runtimeStateForTrack(trackIndex), RuntimeState::Frozen)
+            << manager.errorMessageForTrack(trackIndex);
+    };
+    waitForFrozen(0);
+
+    // New requests work with the device off and again after it is enabled.
+    ASSERT_TRUE(manager.setFreezePolicyForTrack(1, FreezePolicy::On));
+    waitForFrozen(1);
+    engine->setEngineActive(true);
+    ASSERT_TRUE(manager.setFreezePolicyForTrack(2, FreezePolicy::On));
+    waitForFrozen(2);
+
+    remidy::AudioProcessContext process(engine->data().masterContext(), 65536);
+    process.configureMainBus(2, 2, bufferSize);
+    process.frameCount(bufferSize);
+    engine->startPlayback();
+    float peak = 0.0f;
+    for (int block = 0; block < 4; ++block) {
+        ASSERT_EQ(engine->processAudio(process), 0);
+        for (uint32_t frame = 0; frame < bufferSize; ++frame)
+            peak = std::max(peak, std::abs(process.getFloatOutBuffer(0, 0)[frame]));
+    }
+    EXPECT_GT(peak, 0.1f);
+    for (int32_t index = 0; index < 3; ++index)
+        EXPECT_EQ(manager.runtimeStateForTrack(index), RuntimeState::Frozen);
+}
+
+TEST_F(SequencerEngineOutputTest, QueuedFreezingSurvivesPlaybackAndShutdown) {
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    // Queue before Play, while Play is waiting for plugin restoration, and
+    // during playback. Also shut down before the deferred Play can start.
+    for (const auto& [scenario, name] : {
+             std::pair{0, "queued before Play"},
+             std::pair{1, "queued during playback"},
+             std::pair{2, "queued while Play awaits restoration"},
+             std::pair{3, "shutdown before deferred Play starts"}}) {
+        SCOPED_TRACE(name);
+        ScopedTestEventLoop eventLoop;
+        auto engine = uapmd::SequencerEngine::createWithPluginHost(
+            sampleRate, bufferSize, 65536, std::make_unique<TestPluginHostingAPI>());
+        ASSERT_NE(engine, nullptr);
+        engine->setEngineActive(true);
+        for (int32_t index = 0; index < 2; ++index) {
+            ASSERT_EQ(engine->addEmptyTrack(), index);
+            ASSERT_TRUE(engine->timeline().addAudioClipToTrack(
+                index, uapmd::TimelinePosition::fromSamples(0, sampleRate),
+                std::make_unique<SineAudioFileReader>(
+                    sampleRate / 10, 2, sampleRate, 440.0, 0.25f),
+                "synthetic://freeze-queue").success);
+        }
+        auto& manager = engine->frozenTrackManager();
+        using FreezePolicy = uapmd::FrozenTrackManager::FreezePolicy;
+        using RuntimeState = uapmd::FrozenTrackManager::RuntimeState;
+        auto pumpUntil = [&](const auto& done) {
+            for (int attempt = 0; attempt < 200 && !done(); ++attempt) {
+                remidy::EventLoop::processQueuedTasks();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return done();
+        };
+
+        ASSERT_TRUE(manager.setFreezePolicyForTrack(0, FreezePolicy::On));
+        remidy::EventLoop::processQueuedTasks();
+        ASSERT_TRUE(manager.renderProgressForTrack(0).has_value());
+        if (scenario == 0) {
+            ASSERT_TRUE(manager.setFreezePolicyForTrack(1, FreezePolicy::On));
+            remidy::EventLoop::processQueuedTasks();
+            ASSERT_EQ(manager.runtimeStateForTrack(1), RuntimeState::Live);
+        }
+        engine->startPlayback();
+        EXPECT_FALSE(engine->isPlaybackActive()); // Restoration precedes Play.
+        if (scenario >= 2)
+            ASSERT_TRUE(manager.setFreezePolicyForTrack(1, FreezePolicy::On));
+        if (scenario != 3) {
+            ASSERT_TRUE(pumpUntil([&] { return engine->isPlaybackActive(); }));
+            if (scenario == 1)
+                ASSERT_TRUE(manager.setFreezePolicyForTrack(1, FreezePolicy::On));
+        }
+        engine->stopPlayback();
+        engine->setEngineActive(false);
+        engine->resetProcessingState();
+
+        EXPECT_TRUE(pumpUntil([&] {
+            return manager.runtimeStateForTrack(0) == RuntimeState::Frozen &&
+                manager.runtimeStateForTrack(1) == RuntimeState::Frozen;
+        }));
+        for (int32_t index = 0; index < 2; ++index) {
+            EXPECT_EQ(manager.runtimeStateForTrack(index), RuntimeState::Frozen)
+                << manager.errorMessageForTrack(index);
+            EXPECT_EQ(manager.freezePolicyForTrack(index), FreezePolicy::On);
+        }
+        EXPECT_FALSE(engine->isPlaybackActive());
+        EXPECT_FALSE(manager.hasBusyTrack());
+    }
+}
+
 TEST_F(SequencerEngineOutputTest, OfflineRenderProducesAudibleSamples) {
     constexpr int32_t sampleRate = 48000;
     constexpr uint32_t bufferSize = 256;
@@ -3763,6 +3901,73 @@ TEST_F(SequencerEngineOutputTest, TrackFragmentCaptureIsRefusedInsideATransactio
 }
 
 // ── Frozen render revocation ──────────────────────────────────────────────────
+
+TEST_F(SequencerEngineOutputTest, SoloAndMuteAuditionFrozenAudioWithoutRerendering) {
+    constexpr int32_t sampleRate = 48000;
+    constexpr uint32_t bufferSize = 256;
+    ScopedTestEventLoop eventLoop;
+    auto engine = uapmd::SequencerEngine::createWithPluginHost(
+        sampleRate, bufferSize, 65536, std::make_unique<TestPluginHostingAPI>());
+    ASSERT_NE(engine, nullptr);
+    engine->setEngineActive(true);
+    ASSERT_EQ(engine->addEmptyTrack(), 0);
+    ASSERT_EQ(engine->addEmptyTrack(), 1);
+    auto& timeline = engine->timeline();
+    ASSERT_TRUE(timeline.addAudioClipToTrack(
+        0, uapmd::TimelinePosition::fromSamples(0, sampleRate),
+        std::make_unique<SineAudioFileReader>(
+            sampleRate / 10, 2, sampleRate, 440.0, 0.25f),
+        "synthetic://frozen-audition").success);
+    auto& manager = engine->frozenTrackManager();
+    using RuntimeState = uapmd::FrozenTrackManager::RuntimeState;
+    ASSERT_TRUE(timeline.commands().setTrackFreezePolicyEnabled(0, true));
+    for (int attempt = 0;
+         attempt < 200 && manager.runtimeStateForTrack(0) != RuntimeState::Frozen;
+         ++attempt) {
+        remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(manager.runtimeStateForTrack(0), RuntimeState::Frozen);
+    const auto generation = manager.invalidationGenerationForTrack(0);
+    remidy::AudioProcessContext process(engine->data().masterContext(), 65536);
+    process.configureMainBus(2, 2, bufferSize);
+    process.frameCount(bufferSize);
+    auto outputPeak = [&] {
+        EXPECT_EQ(engine->processAudio(process), 0);
+        float peak = 0.0f;
+        for (uint32_t frame = 0; frame < bufferSize; ++frame)
+            peak = std::max(peak, std::abs(process.getFloatOutBuffer(0, 0)[frame]));
+        EXPECT_EQ(manager.runtimeStateForTrack(0), RuntimeState::Frozen);
+        EXPECT_EQ(manager.invalidationGenerationForTrack(0), generation);
+        return peak;
+    };
+    engine->startPlayback();
+    ASSERT_TRUE(timeline.commands().setTrackSolo(0, true));
+    EXPECT_GT(outputPeak(), 0.2f);
+    ASSERT_TRUE(timeline.commands().setTrackMuted(0, true));
+    EXPECT_FLOAT_EQ(outputPeak(), 0.0f);
+    auto result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_GT(outputPeak(), 0.2f);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FLOAT_EQ(outputPeak(), 0.0f);
+
+    ASSERT_TRUE(timeline.commands().setTrackMuted(0, false));
+    ASSERT_TRUE(timeline.commands().setTrackSolo(0, false));
+    ASSERT_TRUE(timeline.commands().setTrackSolo(1, true));
+    EXPECT_FLOAT_EQ(outputPeak(), 0.0f);
+    result = moveHistory(timeline, false);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_GT(outputPeak(), 0.2f);
+    result = moveHistory(timeline, true);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->succeeded()) << result->error;
+    EXPECT_FLOAT_EQ(outputPeak(), 0.0f);
+}
 
 TEST_F(SequencerEngineOutputTest, ClipMutationsRevokeTheTracksFrozenRender) {
     // A frozen render records what a track produced at one moment, so any clip
