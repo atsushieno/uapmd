@@ -3497,10 +3497,7 @@ bool uapmd_app::AppModel::setTrackMuted(int32_t trackIndex, bool muted) {
     const auto& tracks = engine->tracks();
     if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[trackIndex])
         return false;
-    if (!engine->commands().setTrackMuted(trackIndex, muted))
-        return false;
-    engine->markTrackDirty(trackIndex);
-    return true;
+    return engine->commands().setTrackMuted(trackIndex, muted);
 }
 
 bool uapmd_app::AppModel::setTrackSolo(int32_t trackIndex, bool solo) {
@@ -3508,10 +3505,7 @@ bool uapmd_app::AppModel::setTrackSolo(int32_t trackIndex, bool solo) {
     const auto& tracks = engine->tracks();
     if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[trackIndex])
         return false;
-    if (!engine->commands().setTrackSolo(trackIndex, solo))
-        return false;
-    engine->markTrackDirty(trackIndex);
-    return true;
+    return engine->commands().setTrackSolo(trackIndex, solo);
 }
 
 void uapmd_app::AppModel::removeTrack(

@@ -543,6 +543,12 @@ void FrozenTrackManager::trackRemoved(const ProjectDocumentEvent& event) {
 }
 
 void FrozenTrackManager::trackChanged(const ProjectDocumentEvent& event) {
+    // Mute and solo gate the mixer after the track graph (or frozen cache), so
+    // they do not change the rendered audio. Keep the cache when auditioning it,
+    // including when these controls are changed through undo or redo.
+    if (event.type() == "track-mute-changed" ||
+        event.type() == "track-solo-changed")
+        return;
     // The policy transition itself creates or revokes the frozen render. It is
     // not source material that should invalidate the render it just started.
     if (event.type() == "track-freeze-policy-changed")
