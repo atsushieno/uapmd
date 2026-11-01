@@ -164,7 +164,7 @@ std::pair<std::vector<uapmd_ump_t>, std::vector<uint64_t>> makeMasterClip(
     for (const auto& [time, numerator, denominator] : signatures) {
         const auto tick = analysisTimeToTicks(result, time);
         clipEvents.push_back({tick, 1, {umppi::UmpFactory::timeSignatureDirect(
-            kTempoGroup, kTempoChannel, numerator, denominator, 0)}});
+            kTempoGroup, kTempoChannel, numerator, uapmd::encodeMidiTimeSignatureDenominator(denominator), 0)}});
     }
 
     for (const auto& [time, label] : result.chords) {

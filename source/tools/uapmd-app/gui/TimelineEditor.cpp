@@ -1351,8 +1351,10 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         return a.position.samples < b.position.samples;
     });
 
-    // Signature covers each clip's id, position, duration, and name. The clip
-    // count leads it so that an empty master track still produces a non-empty
+    // Signature covers clip extents and the actual tempo/meter data. Recompilation or
+    // undo can replace that data without changing a clip's duration or identity; the
+    // ruler and previews must then be rebuilt even though its bounding box is unchanged.
+    // The clip count leads it so that an empty master track still produces a non-empty
     // signature -- invalidateMasterTrackSnapshot() clears the cached signature
     // to "", and a bare "" would compare equal to it, leaving the rows of the
     // clips that were just deleted on screen.
@@ -1362,11 +1364,19 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     const double projectEndSeconds = std::max({snapshot->maxTimeSeconds,
                                                contentBounds.hasContent ? contentBounds.endSeconds : 0.0,
                                                0.0});
-    std::string signature = std::format("{}|{:.3f}|{}|", clips.size(), projectEndSeconds,
+    std::string signature = std::format("{}|{}|{}|{}|", clips.size(),
+        std::bit_cast<uint64_t>(projectEndSeconds), std::bit_cast<uint64_t>(sampleRate),
         masterTrack->properties().color.value_or(0x1000000));
     for (const auto& clip : clips)
         signature += std::format("{}:{}:{}:{};",
             clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
+    for (const auto& point : snapshot->tempoPoints)
+        signature += std::format("t:{}:{}:{};", point.tickPosition,
+            std::bit_cast<uint64_t>(point.timeSeconds), std::bit_cast<uint64_t>(point.bpm));
+    for (const auto& point : snapshot->timeSignaturePoints)
+        signature += std::format("s:{}:{}:{}/{};", point.tickPosition,
+            std::bit_cast<uint64_t>(point.timeSeconds),
+            point.signature.numerator, point.signature.denominator);
 
     const bool signatureChanged = (signature != masterTrackSignature_);
     if (!signatureChanged && masterTrackSectionCreated_) return;

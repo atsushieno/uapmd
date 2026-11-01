@@ -285,7 +285,7 @@ std::vector<umppi::Ump> buildMasterTrackSmf2Clip(const uapmd_app::AppModel::Mast
             kTempoGroup,
             kTempoChannel,
             sig.signature.numerator,
-            sig.signature.denominator,
+            uapmd::encodeMidiTimeSignatureDenominator(sig.signature.denominator),
             0);
         events.push_back(evt);
     }

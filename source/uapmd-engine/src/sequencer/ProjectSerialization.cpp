@@ -181,7 +181,7 @@ namespace uapmd::sequencer_detail {
                         kTempoGroup,
                         kTempoChannel,
                         sig.numerator,
-                        sig.denominator,
+                        encodeMidiTimeSignatureDenominator(sig.denominator),
                         0);
                     result.events.push_back(entry);
                     timeSigTicks.insert(entry.tick);

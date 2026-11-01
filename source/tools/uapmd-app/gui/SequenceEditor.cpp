@@ -1782,7 +1782,8 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
                        warpHash);
 }
 
-void SequenceEditor::applyPreviewTimeMapping(const ClipRow& clip, ClipPreview& preview) const {
+void SequenceEditor::applyPreviewTimeMapping(const ClipRow& clip, ClipPreview& preview,
+                                           const uapmd::ClipData* clipData) const {
     // The node's box spans timelineStart..timelineEnd *frames*, so an instant inside the clip
     // belongs wherever the axis puts it -- which is not proportional to seconds once a tempo
     // curve is involved. Re-applied on every lookup rather than only on construction, because a
@@ -1792,6 +1793,27 @@ void SequenceEditor::applyPreviewTimeMapping(const ClipRow& clip, ClipPreview& p
     const double startSeconds = axis_.secondsFromFrame(static_cast<double>(clip.timelineStart));
     const int32_t startFrame = clip.timelineStart;
     const TimelineAxis* axis = &axis_;
+    if (clip.isMidiClip && clipData && preview.rawMidiData) {
+        // MIDI document seconds are an editing coordinate at the clip's fixed reference
+        // tempo, not elapsed playback time. Recover beats before applying the master map,
+        // just as MidiClipSourceNode does when scheduling the corresponding events.
+        auto& app = uapmd_app::AppModel::instance();
+        const auto* tempoMap = &app.masterTempoMap();
+        const double sourceStartSeconds =
+            static_cast<double>(clipData->position.samples - clipData->sourceOffsetSamples) /
+            std::max(1.0, static_cast<double>(app.sampleRate()));
+        const double sourceStartBeat = tempoMap->secondsToBeats(std::max(0.0, sourceStartSeconds));
+        const double sourceBeatsPerSecond = std::max(1.0, preview.rawMidiData->clipTempo) / 60.0;
+        preview.timeToFraction = [axis, tempoMap, sourceStartSeconds, sourceStartBeat,
+                                  sourceBeatsPerSecond, startFrame, spanFrames](double seconds) {
+            const double projectSeconds = tempoMap->hasTempoData()
+                ? tempoMap->beatsToSeconds(sourceStartBeat + std::max(0.0, seconds) * sourceBeatsPerSecond)
+                : sourceStartSeconds + std::max(0.0, seconds);
+            const double frame = static_cast<double>(axis->frameFromSeconds(projectSeconds));
+            return (frame - static_cast<double>(startFrame)) / spanFrames;
+        };
+        return;
+    }
     preview.timeToFraction = [axis, startSeconds, startFrame, spanFrames](double seconds) {
         const double frame =
             static_cast<double>(axis->frameFromSeconds(startSeconds + std::max(0.0, seconds)));
@@ -1816,7 +1838,7 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
         existingIt->second &&
         existingIt->second->signature == signature) {
         existingIt->second->displayName = clip.name;
-        applyPreviewTimeMapping(clip, *existingIt->second);
+        applyPreviewTimeMapping(clip, *existingIt->second, clipData);
         return existingIt->second;
     }
 
@@ -1857,7 +1879,7 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
 
     preview->signature = signature;
     preview->displayName = clip.name;
-    applyPreviewTimeMapping(clip, *preview);
+    applyPreviewTimeMapping(clip, *preview, clipData);
     state.clipPreviews[clip.clipId] = preview;
     return preview;
 }

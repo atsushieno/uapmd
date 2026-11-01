@@ -64,7 +64,7 @@ bool extractFlexTimeSignature(const umppi::Ump& ump, MidiTimeSignatureChange& si
     }
 
     sig.numerator = static_cast<uint8_t>((ump.int2 >> 24) & 0xFF);
-    sig.denominator = static_cast<uint8_t>((ump.int2 >> 16) & 0xFF);
+    sig.denominator = decodeMidiTimeSignatureDenominator(static_cast<uint8_t>((ump.int2 >> 16) & 0xFF));
     return true;
 }
 
@@ -169,7 +169,7 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
             sig.tickPosition = currentTick;
             if (isTimeSignature) {
                 sig.numerator = it->getTimeSignatureNumerator();
-                sig.denominator = it->getTimeSignatureDenominator();
+                sig.denominator = decodeMidiTimeSignatureDenominator(it->getTimeSignatureDenominator());
             } else {
                 sig.numerator = flexSig.numerator;
                 sig.denominator = flexSig.denominator;

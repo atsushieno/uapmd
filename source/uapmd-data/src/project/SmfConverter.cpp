@@ -18,12 +18,6 @@ double microsecondsPerQuarterToBpm(uint32_t value) {
     return 60000000.0 / static_cast<double>(value);
 }
 
-uint8_t pow2ToDenominator(uint8_t exponent) {
-    if (exponent > 7)
-        exponent = 7;
-    return static_cast<uint8_t>(1u << exponent);
-}
-
 void collectMetaEvent(const std::shared_ptr<umppi::Midi1Message>& msg,
                       uint64_t absoluteTicks,
                       SmfConverter::ConvertResult& result,
@@ -59,7 +53,7 @@ void collectMetaEvent(const std::shared_ptr<umppi::Midi1Message>& msg,
             const auto& extraData = compound->getExtraData();
             if (extraData.size() >= 2) {
                 uint8_t numerator = extraData[0];
-                uint8_t denominator = pow2ToDenominator(extraData[1]);
+                uint8_t denominator = decodeMidiTimeSignatureDenominator(extraData[1]);
                 uint8_t clocksPerClick = extraData.size() >= 3 ? extraData[2] : 24;
                 uint8_t thirtySecondsPerQuarter = extraData.size() >= 4 ? extraData[3] : 8;
                 result.timeSignatureChanges.push_back(
