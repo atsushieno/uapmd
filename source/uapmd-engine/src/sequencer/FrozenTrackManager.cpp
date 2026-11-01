@@ -843,7 +843,13 @@ void FrozenTrackManager::beginRender(std::string trackReferenceId) {
 void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     if (stopping_.load(std::memory_order_acquire))
         return;
-    if (playback_active_.load(std::memory_order_acquire) ||
+    bool trackRenderActive;
+    {
+        std::lock_guard lock(mutex_);
+        trackRenderActive = static_cast<bool>(active_render_);
+    }
+    if ((engine_.offlineRendering() && !trackRenderActive) ||
+        playback_active_.load(std::memory_order_acquire) ||
         !engine_.tailProcessManager().isTransportQuiet()) {
         std::lock_guard lock(mutex_);
         auto runtime =
@@ -921,43 +927,19 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
         failRender(operation, "The track has no renderable timeline content.");
         return;
     }
-    auto* track =
-        engine_.tracks()[static_cast<size_t>(trackIndex)];
-    const auto tailSeconds =
-        track ? std::max(0.0, track->tailLengthInSeconds()) : 0.0;
-    if (!std::isfinite(tailSeconds)) {
-        failRender(
-            operation,
-            "Tracks with an infinite plugin tail cannot be frozen.");
-        return;
-    }
-    const auto tailSampleCount = std::ceil(
-        static_cast<long double>(tailSeconds) *
-        static_cast<long double>(operation->settings.sampleRate));
-    if (tailSampleCount >
-        static_cast<long double>(std::numeric_limits<int64_t>::max())) {
-        failRender(operation, "The track tail is too long to render.");
-        return;
-    }
-    const auto tailSamples = static_cast<int64_t>(tailSampleCount);
-    const auto latencySamples = track
-        ? static_cast<int64_t>(track->latencyInSamples())
-        : 0;
-    const auto availableAfterContent =
-        std::numeric_limits<int64_t>::max() - bounds.lastSample;
-    if (latencySamples > availableAfterContent ||
-        tailSamples > availableAfterContent - latencySamples) {
-        failRender(operation, "The track render range is too long.");
-        return;
-    }
-    operation->settings.endSample =
-        bounds.lastSample + tailSamples + latencySamples;
+    operation->settings.endSample = bounds.lastSample;
+    operation->settings.include_plugin_tail = true;
     operation->progress.totalFrames =
         operation->settings.endSample - operation->settings.startSample;
     operation->progress.totalSeconds =
         static_cast<double>(operation->progress.totalFrames) /
         static_cast<double>(operation->settings.sampleRate);
 
+    {
+        std::lock_guard lock(mutex_);
+        runtime_by_track_reference_[operation->track_reference_id].state = RuntimeState::Rendering;
+    }
+    updatePlaybackState(operation->track_reference_id);
     std::string error;
     if (!engine_.beginOfflineTrackRender(operation->settings, error)) {
         failRender(operation, std::move(error));

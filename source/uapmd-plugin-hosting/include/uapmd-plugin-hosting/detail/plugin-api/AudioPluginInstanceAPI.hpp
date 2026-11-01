@@ -10,6 +10,11 @@
 #include "../CommonTypes.hpp"
 
 namespace uapmd_plugin_hosting {
+    enum class AudioProcessingMode {
+        Realtime,
+        Offline
+    };
+
     struct ParameterNamedValue {
         double value;
         std::string name;
@@ -52,6 +57,8 @@ namespace uapmd_plugin_hosting {
     };
 
     class AudioPluginInstanceAPI {
+        AudioProcessingMode processing_mode_{AudioProcessingMode::Realtime};
+
     public:
         virtual ~AudioPluginInstanceAPI() = default;
         virtual std::string& displayName() const = 0;
@@ -61,6 +68,11 @@ namespace uapmd_plugin_hosting {
         virtual void bypassed(bool value) = 0;
         virtual uapmd_status_t startProcessing() = 0;
         virtual uapmd_status_t stopProcessing() = 0;
+        // Select while processing is stopped, before startProcessing(). Formats
+        // with mode-independent DSP can use the default implementation.
+        // Overrides call the base implementation to publish the requested mode.
+        virtual void setAudioProcessingMode(AudioProcessingMode mode) { processing_mode_ = mode; }
+        AudioProcessingMode audioProcessingMode() const { return processing_mode_; }
         virtual uapmd_status_t processAudio(remidy::AudioProcessContext &process) = 0;
         virtual uint32_t latencyInSamples() const = 0;
         virtual double tailLengthInSeconds() const = 0;

@@ -370,6 +370,12 @@ namespace uapmd_app {
         // Notifies all registered callbacks when complete
         void removePluginInstance(int32_t instanceId);
 
+        // Applies on the main thread, stopping and restarting DSP as needed.
+        // A render owns its temporary modes until it completes or is canceled.
+        bool setAudioProcessingMode(int32_t instanceId,
+                                    uapmd_plugin_hosting::AudioProcessingMode mode,
+                                    std::string& error);
+
         // Enable virtual MIDI device for an instance
         // Notifies all registered callbacks when complete
         void enableUmpDevice(int32_t instanceId, const std::string& deviceName);

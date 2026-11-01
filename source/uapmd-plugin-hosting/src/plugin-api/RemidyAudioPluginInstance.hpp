@@ -162,9 +162,12 @@ namespace uapmd_plugin_hosting {
             return static_cast<uapmd_status_t>(instance->startProcessing());
         }
 
-        void setAudioProcessingMode(remidy::PluginInstance::AudioProcessingMode mode) {
+        void setAudioProcessingMode(AudioProcessingMode mode) override {
             if (instance)
-                instance->setAudioProcessingMode(mode);
+                instance->setAudioProcessingMode(mode == AudioProcessingMode::Offline
+                    ? remidy::PluginInstance::AudioProcessingMode::Offline
+                    : remidy::PluginInstance::AudioProcessingMode::Realtime);
+            AudioPluginInstanceAPI::setAudioProcessingMode(mode);
         }
 
         uapmd_status_t stopProcessing() override {

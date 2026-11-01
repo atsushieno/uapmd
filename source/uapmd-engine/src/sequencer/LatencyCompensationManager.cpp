@@ -178,6 +178,10 @@ namespace uapmd {
         return nullptr;
     }
 
+    void LatencyCompensationManagerImpl::refreshPluginTimingInfo(int32_t instanceId) {
+        handlePluginTimingInfoChange(instanceId, {.latency_changed = true, .tail_changed = true});
+    }
+
     void LatencyCompensationManagerImpl::handlePluginTimingInfoChange(
         int32_t instanceId,
         remidy::PluginTimingInfoChange change) {

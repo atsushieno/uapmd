@@ -151,6 +151,13 @@ namespace uapmd {
         virtual void setSampleRate(int32_t sampleRate) = 0;
         virtual bool offlineRendering() const = 0;
         virtual void offlineRendering(bool enabled) = 0;
+        // Control-thread operation. Excludes audio callbacks while stopping,
+        // selecting the mode and restarting this instance. Pass false only when
+        // the caller already owns a stopped plugin lifecycle (engine disabled).
+        virtual uapmd_status_t setAudioProcessingMode(
+            int32_t instanceId,
+            uapmd_plugin_hosting::AudioProcessingMode mode,
+            bool restartProcessing = true) = 0;
 
         virtual void setEngineActive(bool active) = 0;
 

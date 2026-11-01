@@ -13,6 +13,7 @@
 #include <uapmd-engine/uapmd-engine.hpp>
 
 #include "StopDrainUtilities.hpp"
+#include "ScopedPluginProcessingMode.hpp"
 
 using namespace uapmd_graph;
 
@@ -68,8 +69,9 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
 
 class EngineStateGuard {
 public:
-    explicit EngineStateGuard(SequencerEngine& engine)
+    explicit EngineStateGuard(SequencerEngine& engine, bool& pluginProcessingRestored)
         : engine_(engine),
+          plugin_processing_restored_(pluginProcessingRestored),
           timelineState_(&engine.timeline().state()),
           previousTimelineState_(*timelineState_),
           previousPlaybackPosition_(engine.playbackPosition()),
@@ -80,11 +82,12 @@ public:
 
     ~EngineStateGuard() {
         engine_.pausePlayback();
+        engine_.resetProcessingState();
         engine_.playbackPosition(previousPlaybackPosition_);
         if (timelineState_)
             *timelineState_ = previousTimelineState_;
         engine_.offlineRendering(previousOffline_);
-        if (playbackWasActive_)
+        if (playbackWasActive_ && plugin_processing_restored_)
             engine_.resumePlayback();
         else
             engine_.pausePlayback();
@@ -92,6 +95,7 @@ public:
 
 private:
     SequencerEngine& engine_;
+    bool& plugin_processing_restored_;
     TimelineState* timelineState_{nullptr};
     TimelineState previousTimelineState_{};
     int64_t previousPlaybackPosition_{0};
@@ -157,13 +161,6 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
     const int64_t userGuardFrames = settings.tailSeconds > 0.0
         ? static_cast<int64_t>(std::llround(settings.tailSeconds * static_cast<double>(settings.sampleRate)))
         : 0;
-    const int64_t engineStopDrainFrames =
-        computeOfflineStopDrainFrames(engine, settings.sampleRate, settings.infiniteTailPolicy);
-    const int64_t guardFrames = std::max(userGuardFrames, engineStopDrainFrames);
-    const int64_t hardStopSample = contentEndSample + guardFrames;
-    const int64_t totalRenderFrames = std::max<int64_t>(1, hardStopSample - startSample);
-    const double totalRenderSeconds = static_cast<double>(totalRenderFrames) / static_cast<double>(settings.sampleRate);
-
     const bool silenceStopEnabled = settings.enableSilenceStop && settings.silenceDurationSeconds > 0.0;
     const int64_t silenceStartSample = std::max(contentEndSample, startSample);
     const int64_t silenceHoldFrames = silenceStopEnabled
@@ -183,9 +180,48 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
     }
 
     try {
-        EngineStateGuard engineState(engine);
-        engine.pausePlayback();
+        if (engine.frozenTrackManager().hasBusyTrack()) {
+            result.errorMessage = "A track freeze render is already active.";
+            return result;
+        }
+        EngineStateGuard engineState(engine, result.plugin_processing_restored);
+        ScopedPluginProcessingMode pluginModes(engine, &result.plugin_processing_restored);
         engine.offlineRendering(true);
+        engine.pausePlayback();
+        std::vector<int32_t> renderInstances;
+        const auto& tracks = engine.tracks();
+        for (size_t index = 0; index < tracks.size(); ++index)
+            if (tracks[index] && engine.frozenTrackManager().runtimeStateForTrack(static_cast<int32_t>(index)) !=
+                    FrozenTrackManager::RuntimeState::Frozen) {
+                const auto ids = tracks[index]->orderedInstanceIds();
+                renderInstances.insert(renderInstances.end(), ids.begin(), ids.end());
+            }
+        if (auto* master = engine.masterTrack()) {
+            const auto ids = master->orderedInstanceIds();
+            renderInstances.insert(renderInstances.end(), ids.begin(), ids.end());
+        }
+        pluginModes.prepare(renderInstances);
+
+        auto finish = [&]() {
+            const auto restoreError = pluginModes.restore();
+            if (!restoreError.empty()) {
+                result.success = false;
+                if (!result.errorMessage.empty())
+                    result.errorMessage += "; ";
+                result.errorMessage += restoreError;
+                std::error_code removeEc;
+                std::filesystem::remove(settings.outputPath, removeEc);
+            }
+            return result;
+        };
+
+        // Offline algorithms can report different timing from realtime DSP.
+        const int64_t engineStopDrainFrames =
+            computeOfflineStopDrainFrames(engine, settings.sampleRate, settings.infiniteTailPolicy);
+        const int64_t guardFrames = std::max(userGuardFrames, engineStopDrainFrames);
+        const int64_t hardStopSample = contentEndSample + guardFrames;
+        const int64_t totalRenderFrames = std::max<int64_t>(1, hardStopSample - startSample);
+        const double totalRenderSeconds = static_cast<double>(totalRenderFrames) / static_cast<double>(settings.sampleRate);
 
         auto& timelineState = engineState.timelineState();
         timelineState.isPlaying = true;
@@ -218,7 +254,7 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
             result.errorMessage = "Failed to open output file for writing.";
             std::error_code removeEc;
             std::filesystem::remove(settings.outputPath, removeEc);
-            return result;
+            return finish();
         }
 
         int64_t currentSample = startSample;
@@ -312,14 +348,15 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
             std::error_code removeEc;
             std::filesystem::remove(settings.outputPath, removeEc);
             result.errorMessage = "Render canceled.";
-            return result;
+            return finish();
         }
 
         result.success = true;
         result.renderedSeconds = static_cast<double>(std::max<int64_t>(0, currentSample - startSample)) /
                                  static_cast<double>(settings.sampleRate);
-        return result;
+        return finish();
     } catch (const std::exception& e) {
+        result.success = false;
         result.errorMessage = e.what();
         std::error_code removeEc;
         std::filesystem::remove(settings.outputPath, removeEc);

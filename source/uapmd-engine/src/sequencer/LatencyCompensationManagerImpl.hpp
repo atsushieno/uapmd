@@ -85,6 +85,7 @@ namespace uapmd {
 
         void attachTrackRoutingManager(TrackRoutingManager& trackRoutingManager);
         void syncPluginTimingListeners();
+        void refreshPluginTimingInfo(int32_t instanceId);
         void removePluginTimingListener(int32_t instanceId);
         void clearPluginTimingListeners();
         bool trackRecordArmed(uapmd_track_index_t trackIndex) const override;

@@ -51,6 +51,7 @@ struct OfflineRenderCallbacks {
 struct OfflineRenderResult {
     bool success{false};
     bool canceled{false};
+    bool plugin_processing_restored{true};
     double renderedSeconds{0.0};
     std::string errorMessage;
 };
@@ -63,6 +64,8 @@ struct OfflineTrackRenderSettings {
     uint32_t bufferSize{1024};
     uint32_t umpBufferSize{65536};
     uint64_t maximumBytes{512ULL * 1024ULL * 1024ULL};
+    // endSample is the content end; append the offline plugin tail and latency.
+    bool include_plugin_tail{false};
 };
 
 struct OfflineTrackRenderResult {

@@ -15,7 +15,6 @@
 #include <unordered_set>
 #include <umppi/umppi.hpp>
 
-#include <remidy/detail/event-loop.hpp>
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
 #include "LatencyCompensationManagerImpl.hpp"
@@ -23,6 +22,7 @@
 #include "TrackRoutingManager.hpp"
 #include "AudioWorkers.hpp"
 #include "AudioPerformanceCounter.hpp"
+#include "ScopedPluginProcessingMode.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include "../devices/WebAudioWorkletIODevice.hpp"
@@ -263,6 +263,8 @@ namespace uapmd {
             SequenceProcessContext render_sequence;
             std::vector<std::pair<int32_t, std::vector<uint8_t>>>
                 plugin_states;
+            std::unique_ptr<ScopedPluginProcessingMode> plugin_processing_mode;
+            std::vector<uint32_t> offline_bus_latencies;
         };
         std::unique_ptr<OfflineTrackRenderSession> track_freeze_render_session_;
         using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
@@ -619,6 +621,9 @@ namespace uapmd {
 
         bool offlineRendering() const override;
         void offlineRendering(bool enabled) override;
+        uapmd_status_t setAudioProcessingMode(
+            int32_t instanceId, AudioProcessingMode mode, bool restartProcessing) override;
+        std::string restoreOfflineTrackPlugins(OfflineTrackRenderSession& session);
 
         void setEngineActive(bool active) override {
             engine_active_.store(active, std::memory_order_release);
@@ -1824,6 +1829,10 @@ namespace uapmd {
             error = "Another track render is already active.";
             return false;
         }
+        if (offlineRendering()) {
+            error = "A project render is already active.";
+            return false;
+        }
         if (settings.trackIndex < 0 ||
             static_cast<size_t>(settings.trackIndex) >= tracks_.size()) {
             error = "Track index is invalid.";
@@ -1895,20 +1904,7 @@ namespace uapmd {
             session->result.busChannelCounts.push_back(channels);
             channelCount += channels;
         }
-        const auto totalFrames = static_cast<uint64_t>(
-            settings.endSample - settings.startSample);
-        if (channelCount == 0 ||
-            totalFrames > settings.maximumBytes / sizeof(float) / channelCount) {
-            error =
-                "The frozen audio would exceed the per-track memory limit.";
-            return false;
-        }
-
         try {
-            session->result.channels.resize(static_cast<size_t>(channelCount));
-            for (auto& channel : session->result.channels)
-                channel.resize(static_cast<size_t>(totalFrames), 0.0f);
-
             session->render_sequence.tracks.resize(
                 static_cast<size_t>(settings.trackIndex) + 1, nullptr);
             session->render_sequence.tracks[
@@ -1933,7 +1929,31 @@ namespace uapmd {
                     instanceId, instance->saveStateSync());
             }
 
-            clearTrackProcessingState(settings.trackIndex, true);
+            clearTrackProcessingState(settings.trackIndex, false);
+            session->plugin_processing_mode = std::make_unique<ScopedPluginProcessingMode>(*this);
+            session->plugin_processing_mode->prepare(track->orderedInstanceIds());
+            session->offline_bus_latencies.reserve(session->result.busChannelCounts.size());
+            for (uint32_t bus = 0; bus < session->result.busChannelCounts.size(); ++bus)
+                session->offline_bus_latencies.push_back(track->graph().outputLatencyInSamples(bus));
+
+            if (settings.include_plugin_tail) {
+                const auto tail = track->tailLengthInSeconds();
+                if (!std::isfinite(tail))
+                    throw std::runtime_error("Tracks with an infinite plugin tail cannot be frozen.");
+                const auto tailFrames = std::ceil(
+                    static_cast<long double>(std::max(0.0, tail)) * settings.sampleRate);
+                const auto latency = track->latencyInSamples();
+                if (tailFrames > static_cast<long double>(std::numeric_limits<int64_t>::max() - settings.endSample) - latency)
+                    throw std::runtime_error("The track render range is too long.");
+                session->settings.endSample += static_cast<int64_t>(tailFrames) + latency;
+            }
+            const auto totalFrames = static_cast<uint64_t>(
+                session->settings.endSample - session->settings.startSample);
+            if (channelCount == 0 || totalFrames > settings.maximumBytes / sizeof(float) / channelCount)
+                throw std::runtime_error("The frozen audio would exceed the per-track memory limit.");
+            session->result.channels.resize(static_cast<size_t>(channelCount));
+            for (auto& channel : session->result.channels)
+                channel.resize(static_cast<size_t>(totalFrames), 0.0f);
             offline_rendering_.store(true, std::memory_order_release);
             track_freeze_render_session_ = std::move(session);
             return true;
@@ -1943,10 +1963,14 @@ namespace uapmd {
             error = "Failed to prepare existing plugin instances for rendering.";
         }
 
+        const auto restoreError = restoreOfflineTrackPlugins(*session);
+        if (!restoreError.empty())
+            error += "; " + restoreError;
         timeline_->state() = session->previous_timeline_state;
         playbackPosition(session->previous_playback_position);
         offline_rendering_.store(
             session->previous_offline_rendering, std::memory_order_release);
+        resetProcessingState();
         track_freeze_render_active_.store(false, std::memory_order_release);
         return false;
     }
@@ -2064,6 +2088,41 @@ namespace uapmd {
         return step;
     }
 
+    std::string SequencerEngineImpl::restoreOfflineTrackPlugins(OfflineTrackRenderSession& session) {
+        // Preparation can fail while saving states, before any instance was
+        // stopped or switched. Leave those still-running instances alone.
+        if (!session.plugin_processing_mode || !session.plugin_processing_mode->hasInstances())
+            return {};
+        std::string error;
+        for (auto& [id, state] : session.plugin_states) {
+            auto* instance = getPluginInstance(id);
+            if (!instance)
+                continue;
+            try {
+                if (instance->stopProcessing() != 0)
+                    throw std::runtime_error("Failed to stop plugin " + std::to_string(id));
+                instance->loadStateSync(state);
+            } catch (const std::exception& exception) {
+                if (!error.empty())
+                    error += "; ";
+                error += exception.what();
+            } catch (...) {
+                if (!error.empty())
+                    error += "; ";
+                error += "Failed to restore state for plugin " + std::to_string(id);
+            }
+        }
+        if (session.plugin_processing_mode) {
+            const auto modeError = session.plugin_processing_mode->restore();
+            if (!modeError.empty()) {
+                if (!error.empty())
+                    error += "; ";
+                error += modeError;
+            }
+        }
+        return error;
+    }
+
     OfflineTrackRenderResult
     SequencerEngineImpl::finishOfflineTrackRender(
         bool canceled,
@@ -2080,28 +2139,45 @@ namespace uapmd {
         if (canceled)
             result.errorMessage = "Track render canceled.";
 
-        auto* track =
-            tracks_[static_cast<size_t>(session->settings.trackIndex)].get();
-        if (track)
-            for (const auto instanceId : track->orderedInstanceIds())
-                if (auto* instance = getPluginInstance(instanceId))
-                    instance->stopProcessing();
-        try {
-            for (auto& [instanceId, state] : session->plugin_states)
-                if (auto* instance = getPluginInstance(instanceId))
-                    instance->loadStateSync(state);
-        } catch (const std::exception& exception) {
-            result.errorMessage = std::format(
-                "Failed to restore plugin state after freezing: {}",
-                exception.what());
-        } catch (...) {
-            result.errorMessage =
-                "Failed to restore plugin state after freezing.";
+        const auto restoreError = restoreOfflineTrackPlugins(*session);
+        if (!restoreError.empty()) {
+            if (!result.errorMessage.empty())
+                result.errorMessage += "; ";
+            result.errorMessage += restoreError;
         }
-        if (track)
-            for (const auto instanceId : track->orderedInstanceIds())
-                if (auto* instance = getPluginInstance(instanceId))
-                    instance->startProcessing();
+
+        // Cached output is substituted for the realtime graph. Match that graph's
+        // latency even when the plugin uses a different algorithm offline.
+        if (!canceled && result.errorMessage.empty()) {
+            try {
+                auto& graph = tracks_[static_cast<size_t>(session->settings.trackIndex)]->graph();
+                std::vector<int64_t> shifts;
+                uint64_t totalSamples = 0;
+                size_t channelIndex = 0;
+                for (uint32_t bus = 0; bus < result.busChannelCounts.size(); ++bus) {
+                    const int64_t shift = static_cast<int64_t>(graph.outputLatencyInSamples(bus)) -
+                        session->offline_bus_latencies[bus];
+                    shifts.push_back(shift);
+                    for (uint32_t channel = 0; channel < result.busChannelCounts[bus]; ++channel) {
+                        const auto size = static_cast<int64_t>(result.channels[channelIndex++].size());
+                        totalSamples += static_cast<uint64_t>(std::max<int64_t>(0, size + shift));
+                    }
+                }
+                if (totalSamples > session->settings.maximumBytes / sizeof(float))
+                    throw std::runtime_error("The latency-aligned frozen audio would exceed the per-track memory limit.");
+                channelIndex = 0;
+                for (size_t bus = 0; bus < shifts.size(); ++bus)
+                    for (uint32_t channel = 0; channel < result.busChannelCounts[bus]; ++channel) {
+                        auto& audio = result.channels[channelIndex++];
+                        if (shifts[bus] > 0)
+                            audio.insert(audio.begin(), static_cast<size_t>(shifts[bus]), 0.0f);
+                        else if (shifts[bus] < 0)
+                            audio.erase(audio.begin(), audio.begin() + std::min(audio.size(), static_cast<size_t>(-shifts[bus])));
+                    }
+            } catch (const std::exception& exception) {
+                result.errorMessage = exception.what();
+            }
+        }
 
         timeline_->state() = session->previous_timeline_state;
         playbackPosition(session->previous_playback_position);
@@ -2215,7 +2291,7 @@ namespace uapmd {
             static_cast<uint32_t>(audio_buffer_size_in_frames),
             default_input_channels_,
             default_output_channels_,
-            false,
+            offlineRendering() && !track_freeze_render_active_.load(std::memory_order_acquire),
             format,
             pluginId,
             [this, preparedImpl, callback = std::move(callback),
@@ -2480,7 +2556,7 @@ namespace uapmd {
                                           static_cast<uint32_t>(audio_buffer_size_in_frames),
                                           default_input_channels_,
                                           default_output_channels_,
-                                          false,
+                                          offlineRendering() && !track_freeze_render_active_.load(std::memory_order_acquire),
                                           format,
                                           pluginId,
                                           [this, trackIndex, targetMaster, callback,
@@ -3423,6 +3499,54 @@ namespace uapmd {
 
     void uapmd::SequencerEngineImpl::offlineRendering(bool enabled) {
         offline_rendering_.store(enabled, std::memory_order_release);
+    }
+
+    uapmd_status_t SequencerEngineImpl::setAudioProcessingMode(
+        int32_t instanceId, AudioProcessingMode mode, bool restartProcessing) {
+        uapmd_status_t status = -1;
+        remidy::EventLoop::runTaskOnMainThread([&] {
+            StructureMutationGuard guard(*this);
+            auto* instance = getPluginInstance(instanceId);
+            if (!instance)
+                return;
+            const auto previousMode = instance->audioProcessingMode();
+            try {
+                if (restartProcessing) {
+                    status = instance->stopProcessing();
+                    if (status != 0)
+                        return;
+                }
+                instance->setAudioProcessingMode(mode);
+                status = restartProcessing ? instance->startProcessing() : 0;
+                if (status == 0) {
+                    if (restartProcessing)
+                        latency_compensation_manager_->refreshPluginTimingInfo(instanceId);
+                    return;
+                }
+            } catch (const std::exception& error) {
+                status = -1;
+                remidy::Logger::global()->logError("Plugin %d processing mode change failed: %s", instanceId, error.what());
+            } catch (...) {
+                status = -1;
+                remidy::Logger::global()->logError("Plugin %d processing mode change failed", instanceId);
+            }
+
+            // A failed start can leave a partially activated instance. Restore
+            // its previous request before the caller decides whether to resume.
+            try {
+                if (restartProcessing)
+                    instance->stopProcessing();
+                instance->setAudioProcessingMode(previousMode);
+                if (restartProcessing) {
+                    if (instance->startProcessing() != 0)
+                        remidy::Logger::global()->logError("Failed to restart plugin %d after processing mode change", instanceId);
+                    latency_compensation_manager_->refreshPluginTimingInfo(instanceId);
+                }
+            } catch (...) {
+                remidy::Logger::global()->logError("Failed to restore plugin %d after processing mode change", instanceId);
+            }
+        });
+        return status;
     }
 
     void uapmd::SequencerEngineImpl::cleanupEmptyTracks() {

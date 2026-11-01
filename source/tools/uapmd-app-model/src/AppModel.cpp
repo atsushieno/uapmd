@@ -1408,6 +1408,30 @@ void uapmd_app::AppModel::resumeTransportAfterPluginMutation(bool resumeTranspor
     transportController_->resume();
 }
 
+bool uapmd_app::AppModel::setAudioProcessingMode(
+    int32_t instanceId, uapmd_plugin_hosting::AudioProcessingMode mode, std::string& error) {
+    bool success = false;
+    remidy::EventLoop::runTaskOnMainThread([&] {
+        error.clear();
+        auto* engine = sequencer_.engine();
+        if (renderProcessingActive_ || engine->frozenTrackManager().isInstanceBusy(instanceId)) {
+            error = "A render currently owns this plugin's processing mode.";
+            return;
+        }
+        const auto* instance = engine->getPluginInstance(instanceId);
+        const bool changed = instance && instance->audioProcessingMode() != mode;
+        if (engine->setAudioProcessingMode(instanceId, mode, !pluginsProcessingStopped_) != 0) {
+            error = std::format("Failed to change processing mode for plugin {}.", instanceId);
+            return;
+        }
+        const auto trackIndex = engine->findTrackIndexForInstance(instanceId);
+        if (changed && trackIndex >= 0)
+            engine->frozenTrackManager().projectTrackBecameDirty(trackIndex);
+        success = true;
+    });
+    return success;
+}
+
 void uapmd_app::AppModel::markPluginInstanceTrackDirty(int32_t instanceId) {
     const auto trackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
     if (trackIndex >= 0 || trackIndex == kMasterTrackIndex)
@@ -1418,7 +1442,7 @@ void uapmd_app::AppModel::handlePluginStateChange(int32_t instanceId) {
     // State restoration while a frozen track is rendering can make the plugin
     // report a change. It is not a document edit and must not cancel or loop a
     // freeze render.
-    if (sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
+    if (renderProcessingActive_ || sequencer_.engine()->frozenTrackManager().isInstanceBusy(instanceId))
         return;
     markPluginInstanceTrackDirty(instanceId);
 }
@@ -4056,6 +4080,8 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
     bool resumeTransport = false;
     bool engineWasEnabled = false;
     bool processingPrepared = false;
+    bool previousOffline = false;
+    bool pluginProcessingRestored = true;
 
     // Plugin activation and shutdown state belong to the main thread. Forward
     // exceptions to this worker so failed preparation also restores the engine.
@@ -4077,6 +4103,9 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
             return;
         onMainThread([&]() {
             renderProcessingActive_ = false;
+            sequencer_.engine()->offlineRendering(previousOffline);
+            if (!pluginProcessingRestored)
+                audioEngineEnabled_.store(false, std::memory_order_release);
             if (!isAudioEngineEnabled()) {
                 completeAudioEngineShutdown();
             } else {
@@ -4099,6 +4128,13 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
             if (!engineWasEnabled)
                 completeAudioEngineShutdown();
 
+            if (sequencer_.engine()->frozenTrackManager().hasBusyTrack())
+                throw std::runtime_error("A track freeze render is already active.");
+            previousOffline = sequencer_.engine()->offlineRendering();
+            renderProcessingActive_ = true;
+            processingPrepared = true;
+            sequencer_.engine()->offlineRendering(true);
+
             if (transportController_->isPlaying()) {
                 transportController_->pause();
                 resumeTransport = true;
@@ -4108,8 +4144,6 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
                 resumeAudio = true;
             }
 
-            renderProcessingActive_ = true;
-            processingPrepared = true;
             if (pluginsProcessingStopped_) {
                 // Reactivate DSP for export without starting the audio device.
                 // Mark it first so a partial activation is cleaned up on failure.
@@ -4152,6 +4186,7 @@ void uapmd_app::AppModel::runRenderToFile(RenderToFileSettings settings, std::sh
         };
 
         auto result = renderOfflineProject(*sequencer_.engine(), renderSettings, callbacks);
+        pluginProcessingRestored = result.plugin_processing_restored;
         restoreRealtime();
 
         if (result.canceled) {
