@@ -1576,10 +1576,32 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 ImGui::SetTooltip("Track volume: %.1f dB (%.3fx)", linearGainToSliderDb(linearGain), linearGain);
         }
 
-        if (trackIndex != uapmd::kMasterTrackIndex) {
+        {
+            const bool isMasterTrack = trackIndex == uapmd::kMasterTrackIndex;
+            auto toggleTracks = [&](bool mute, bool enabled) {
+                auto setState = [&](int32_t index) {
+                    return mute ? appModel.setTrackMuted(index, enabled)
+                                : appModel.setTrackSolo(index, enabled);
+                };
+                if (!isMasterTrack) {
+                    setState(trackIndex);
+                    return;
+                }
+                ScopedCommandStep step(undo, mute
+                    ? (enabled ? "Mute all tracks" : "Unmute all tracks")
+                    : (enabled ? "Solo all tracks" : "Unsolo all tracks"));
+                if (!step.opened())
+                    return;
+                for (int32_t i = 0; i < static_cast<int32_t>(tracksRef.size()); ++i)
+                    if (tracksRef[i] && !setState(i))
+                        return;
+                step.commit();
+            };
             ImGui::SameLine();
-            auto& model = uapmd_app::AppModel::instance();
-            const bool muted = model.isTrackMuted(trackIndex);
+            ImGui::BeginDisabled(isMasterTrack && tracksRef.empty());
+            const bool muted = isMasterTrack
+                ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->muted(); })
+                : appModel.isTrackMuted(trackIndex);
             if (muted) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.16f, 0.16f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.22f, 0.22f, 1.0f));
@@ -1587,13 +1609,17 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             }
             if (contextActionButton(
                     std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    muted ? "Track muted (click to unmute)" : "Mute track"))
-                model.setTrackMuted(trackIndex, !muted);
+                    isMasterTrack
+                        ? (muted ? "Unmute all tracks" : "Mute all tracks")
+                        : (muted ? "Track muted (click to unmute)" : "Mute track")))
+                toggleTracks(true, !muted);
             if (muted)
                 ImGui::PopStyleColor(3);
 
             ImGui::SameLine();
-            const bool solo = model.isTrackSolo(trackIndex);
+            const bool solo = isMasterTrack
+                ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->solo(); })
+                : appModel.isTrackSolo(trackIndex);
             if (solo) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.82f, 0.52f, 0.08f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.96f, 0.66f, 0.12f, 1.0f));
@@ -1601,10 +1627,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             }
             if (contextActionButton(
                     std::format("S##LegSolo{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    solo ? "Track soloed (click to clear)" : "Solo track"))
-                model.setTrackSolo(trackIndex, !solo);
+                    isMasterTrack
+                        ? (solo ? "Unsolo all tracks" : "Solo all tracks")
+                        : (solo ? "Track soloed (click to clear)" : "Solo track")))
+                toggleTracks(false, !solo);
             if (solo)
                 ImGui::PopStyleColor(3);
+            ImGui::EndDisabled();
         }
     }
     const bool isRegularTrack = track && trackIndex != uapmd::kMasterTrackIndex;
