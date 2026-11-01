@@ -992,9 +992,10 @@ void FrozenTrackManager::renderNextChunk(
         return;
     }
 
-    constexpr uint32_t kBlocksPerEventLoopTurn = 8;
+    // The engine bounds each step by elapsed time, so cheap DSP can process
+    // many blocks without waiting for another GUI frame after every eight.
     auto step =
-        engine_.renderOfflineTrackStep(kBlocksPerEventLoopTurn);
+        engine_.renderOfflineTrackStep(std::numeric_limits<uint32_t>::max());
     {
         std::lock_guard lock(mutex_);
         if (active_render_ == operation)

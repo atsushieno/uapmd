@@ -4,14 +4,15 @@
 // buffers, render offsets, tempo/marker snapshots and content bounds.
 
 namespace uapmd {
-    void TimelineFacadeImpl::processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) {
+    void TimelineFacadeImpl::processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence,
+                                              const TimelineState* offlineTransport) {
         // Protect the snapshot for the duration of this callback so that
         // tracks added or removed on the UI thread cannot destroy TrackList
         // elements while we are iterating them.
         auto snapshot = timeline_tracks_snapshot_.protect();
 
-        auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {
-            if (!timeline_.loopEnabled || timeline_.loopEnd.samples <= timeline_.loopStart.samples)
+        auto wrapToLoopRange = [this, offlineTransport](int64_t samplePosition) -> int64_t {
+            if (offlineTransport || !timeline_.loopEnabled || timeline_.loopEnd.samples <= timeline_.loopStart.samples)
                 return samplePosition;
             const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
             if (samplePosition < timeline_.loopStart.samples)
@@ -44,29 +45,31 @@ namespace uapmd {
             }
         };
 
-        const bool offlineRenderPlaying = engine_.offlineRendering();
-        timeline_.isPlaying = engine_.isPlaybackActive();
-        const auto audiblePlayheadSamples = engine_.playbackPosition();
-        const auto renderPlayheadRaw = engine_.renderPlaybackPosition();
-        timeline_.playheadPosition.samples = wrapToLoopRange(audiblePlayheadSamples);
-        updateTransportMetaForPlayhead(timeline_);
+        const bool offlineRenderPlaying = offlineTransport ? offlineTransport->isPlaying : engine_.offlineRendering();
+        const auto audiblePlayheadSamples = offlineTransport
+            ? offlineTransport->playheadPosition.samples : engine_.playbackPosition();
+        const auto renderPlayheadRaw = offlineTransport
+            ? audiblePlayheadSamples : engine_.renderPlaybackPosition();
+        if (!offlineTransport) {
+            timeline_.isPlaying = engine_.isPlaybackActive();
+            timeline_.playheadPosition.samples = wrapToLoopRange(audiblePlayheadSamples);
+            updateTransportMetaForPlayhead(timeline_);
 
-        // Update legacy_beats
-        double secondsPerBeat = 60.0 / timeline_.tempo;
-        int64_t samplesPerBeat = static_cast<int64_t>(secondsPerBeat * sampleRate_);
-        if (samplesPerBeat > 0) {
-            timeline_.playheadPosition.legacy_beats =
-                static_cast<double>(timeline_.playheadPosition.samples) / static_cast<double>(samplesPerBeat);
+            const double secondsPerBeat = 60.0 / timeline_.tempo;
+            const int64_t samplesPerBeat = static_cast<int64_t>(secondsPerBeat * sampleRate_);
+            if (samplesPerBeat > 0)
+                timeline_.playheadPosition.legacy_beats =
+                    static_cast<double>(timeline_.playheadPosition.samples) / static_cast<double>(samplesPerBeat);
         }
 
         // Sync to MasterContext
-        TimelineState renderTransport = timeline_;
+        TimelineState renderTransport = offlineTransport ? *offlineTransport : timeline_;
         // Offline source nodes need the same private running transport as
         // the plugins they feed. Keep the shared application timeline
         // stopped, but allow audio sources and MIDI clips to produce the
         // content being frozen.
-        renderTransport.isPlaying =
-            timeline_.isPlaying || offlineRenderPlaying;
+        renderTransport.isPlaying = offlineTransport
+            ? offlineTransport->isPlaying : timeline_.isPlaying || offlineRenderPlaying;
         renderTransport.playheadPosition.samples = wrapToLoopRange(
             (timeline_.isPlaying || offlineRenderPlaying ||
              renderPlayheadRaw != audiblePlayheadSamples) ?
@@ -86,8 +89,7 @@ namespace uapmd {
         // Offline render transport is private processing state. Plugins
         // must see a running transport to render correctly, but the shared
         // application timeline must remain stopped.
-        masterCtx.isPlaying(
-            timeline_.isPlaying || offlineRenderPlaying);
+        masterCtx.isPlaying(renderTransport.isPlaying);
         uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / renderTransport.tempo);
         masterCtx.tempo(tempoMicros);
         masterCtx.timeSignatureNumerator(renderTransport.timeSignatureNumerator);
@@ -123,7 +125,7 @@ namespace uapmd {
 
             auto renderTimeline = renderTransport;
             TimelinePosition renderPosition{};
-            const auto trackOffset = trackRenderOffsetInSamples(static_cast<int32_t>(i));
+            const auto trackOffset = offlineTransport ? 0 : trackRenderOffsetInSamples(static_cast<int32_t>(i));
             const auto renderBaseSample =
                 (timeline_.isPlaying || offlineRenderPlaying ||
                  renderPlayheadRaw != audiblePlayheadSamples) ?
@@ -150,7 +152,7 @@ namespace uapmd {
 
                 int32_t segmentFrames = remainingFrames;
                 bool wrapsAtLoopEnd = false;
-                if (timeline_.loopEnabled &&
+                if (!offlineTransport && timeline_.loopEnabled &&
                     timeline_.loopEnd.samples > timeline_.loopStart.samples &&
                     segmentStartSample < timeline_.loopEnd.samples &&
                     segmentStartSample + remainingFrames > timeline_.loopEnd.samples) {

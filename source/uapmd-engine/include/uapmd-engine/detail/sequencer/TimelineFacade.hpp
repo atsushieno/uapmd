@@ -363,7 +363,10 @@ public:
     // Audio preprocess callback — feeds clip source nodes into track input buffers.
     // Called by SequencerEngineImpl via the registered AudioPreprocessCallback.
     // Writes into targetSequence.tracks[i], typically pump ring-buffer slots.
-    virtual void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) = 0;
+    // An explicit offline transport feeds raw track inputs without changing the
+    // public transport or applying realtime track/master latency offsets.
+    virtual void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence,
+                                    const TimelineState* offlineTransport = nullptr) = 0;
 
     // Lifecycle hooks called by SequencerEngineImpl when tracks are added/removed
     virtual void onTrackAdded(uint32_t outputChannels,

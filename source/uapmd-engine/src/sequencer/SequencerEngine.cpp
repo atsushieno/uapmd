@@ -254,6 +254,7 @@ namespace uapmd {
             OfflineTrackRenderSettings settings;
             OfflineTrackRenderResult result;
             TimelineState previous_timeline_state;
+            TimelineState render_timeline_state;
             int64_t previous_playback_position{0};
             bool previous_offline_rendering{false};
             int64_t current_sample{0};
@@ -1869,6 +1870,10 @@ namespace uapmd {
         // synchronously dispatch the deferred render before their caller
         // regains control.
         session->previous_timeline_state.isPlaying = false;
+        session->render_timeline_state = session->previous_timeline_state;
+        session->render_timeline_state.isPlaying = true;
+        session->render_timeline_state.loopEnabled = false;
+        session->render_timeline_state.sample_rate = settings.sampleRate;
         session->previous_playback_position =
             session->previous_timeline_state.playheadPosition.samples;
         session->previous_offline_rendering = offlineRendering();
@@ -1987,11 +1992,17 @@ namespace uapmd {
         if (maximumBlocks == 0)
             maximumBlocks = 1;
 
+        // Yield for UI work based on elapsed DSP time, not the number of audio
+        // quanta. A fixed small block count caps fast renders at the UI rate.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(8);
+
         try {
             for (uint32_t block = 0;
                  block < maximumBlocks &&
                  session->current_sample < session->settings.endSample;
                  ++block) {
+                if (block > 0 && std::chrono::steady_clock::now() >= deadline)
+                    break;
                 const auto frames = static_cast<int32_t>(std::min<int64_t>(
                     session->settings.endSample - session->current_sample,
                     session->settings.bufferSize));
@@ -2004,25 +2015,12 @@ namespace uapmd {
                 clearAudioInputBuses(*session->track_context);
                 session->track_context->clearAudioOutputs();
 
-                // TimelineFacade currently derives clip events from the
-                // engine's transport. Install the render transport only for
-                // this bounded call, then restore the public stopped state
-                // before yielding back to the application event loop.
-                timeline_->state() = session->previous_timeline_state;
-                timeline_->state().loopEnabled = false;
-                playbackPosition(session->current_sample);
+                // Feed only this track's sources with a private transport.
+                // Public seeks reset alignment buffers for the whole project.
+                session->render_timeline_state.playheadPosition.samples = session->current_sample;
                 executing_track_freeze_render_step_ = true;
-                try {
-                    timeline_->processTracksAudio(
-                        *session->device_context, session->render_sequence);
-                } catch (...) {
-                    timeline_->state() = session->previous_timeline_state;
-                    playbackPosition(session->previous_playback_position);
-                    executing_track_freeze_render_step_ = false;
-                    throw;
-                }
-                timeline_->state() = session->previous_timeline_state;
-                playbackPosition(session->previous_playback_position);
+                timeline_->processTracksAudio(
+                    *session->device_context, session->render_sequence, &session->render_timeline_state);
                 auto& renderTrack = *tracks_[static_cast<size_t>(session->settings.trackIndex)];
                 renderTrack.clearPluginOutputEvents();
                 refreshProcessingGroups(renderTrack);

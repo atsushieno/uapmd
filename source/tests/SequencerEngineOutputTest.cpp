@@ -808,7 +808,6 @@ TEST_F(SequencerEngineOutputTest, FreezingContinuesAfterAudioEngineShutdown) {
 }
 
 TEST_F(SequencerEngineOutputTest, QueuedFreezingSurvivesPlaybackAndShutdown) {
-    constexpr int32_t sampleRate = 48000;
     constexpr uint32_t bufferSize = 256;
     // Queue before Play, while Play is waiting for plugin restoration, and
     // during playback. Also shut down before the deferred Play can start.
@@ -819,18 +818,17 @@ TEST_F(SequencerEngineOutputTest, QueuedFreezingSurvivesPlaybackAndShutdown) {
              std::pair{3, "shutdown before deferred Play starts"}}) {
         SCOPED_TRACE(name);
         ScopedTestEventLoop eventLoop;
-        auto engine = uapmd::SequencerEngine::createWithPluginHost(
-            sampleRate, bufferSize, 65536, std::make_unique<TestPluginHostingAPI>());
+        std::vector<MutableTimingPlugin*> plugins;
+        auto engine = createWorkerTestEngine(bufferSize, plugins);
         ASSERT_NE(engine, nullptr);
-        engine->setEngineActive(true);
-        for (int32_t index = 0; index < 2; ++index) {
-            ASSERT_EQ(engine->addEmptyTrack(), index);
-            ASSERT_TRUE(engine->timeline().addAudioClipToTrack(
-                index, uapmd::TimelinePosition::fromSamples(0, sampleRate),
-                std::make_unique<SineAudioFileReader>(
-                    sampleRate / 10, 2, sampleRate, 440.0, 0.25f),
-                "synthetic://freeze-queue").success);
-        }
+        // Keep the first render in flight while Play and another freeze are
+        // queued, independently of how many cheap blocks fit in a UI turn.
+        plugins.front()->onProcess([remaining = 20]() mutable {
+            if (remaining > 0) {
+                --remaining;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
         auto& manager = engine->frozenTrackManager();
         using FreezePolicy = uapmd::FrozenTrackManager::FreezePolicy;
         using RuntimeState = uapmd::FrozenTrackManager::RuntimeState;

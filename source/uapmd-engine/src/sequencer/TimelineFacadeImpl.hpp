@@ -1191,7 +1191,8 @@ namespace uapmd {
 
         bool trackHasLiveInput(int32_t trackIndex) override;
 
-        void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override;
+        void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence,
+                                const TimelineState* offlineTransport = nullptr) override;
 
         void onTrackAdded(
             uint32_t outputChannels,
