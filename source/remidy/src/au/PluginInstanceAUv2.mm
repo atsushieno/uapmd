@@ -243,7 +243,8 @@ remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& c
         return ret;
 
     // it could be an invalid property. maybe just ignore that.
-    result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
+    UInt32 offline = processing_mode_ == AudioProcessingMode::Offline ? 1 : 0;
+    result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &offline, sizeof(offline));
     if (result != noErr) {
         logger()->logWarning("%s: configure() on PluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
     }
@@ -303,12 +304,43 @@ remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& c
         logger()->logError("%s: PluginInstanceAUv2::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
+    processing_mode_changed_ = false;
 
     return StatusCode::OK;
 }
 
 
+void remidy::PluginInstanceAUv2::setAudioProcessingMode(AudioProcessingMode mode) {
+    if (processing_mode_ != mode) {
+        processing_mode_ = mode;
+        processing_mode_changed_ = true;
+    }
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv2::startProcessing() {
+    if (processing_mode_changed_) {
+        const auto previousLatency = latencyInSamples();
+        const auto previousTail = tailLengthInSeconds();
+        auto result = AudioUnitUninitialize(instance);
+        if (result != noErr) {
+            logger()->logError("%s: failed to uninitialize for processing mode change: %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_START_PROCESSING;
+        }
+        UInt32 offline = processing_mode_ == AudioProcessingMode::Offline ? 1 : 0;
+        result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &offline, sizeof(offline));
+        if (result != noErr)
+            logger()->logWarning("%s: failed to set processing mode: %d", name.c_str(), result);
+        result = AudioUnitInitialize(instance);
+        if (result != noErr) {
+            logger()->logError("%s: failed to initialize after processing mode change: %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_START_PROCESSING;
+        }
+        processing_mode_changed_ = false;
+        notifyTimingInfoChanged({
+            .latency_changed = latencyInSamples() != previousLatency,
+            .tail_changed = tailLengthInSeconds() != previousTail,
+        });
+    }
     process_timestamp.mSampleTime = 0;
     host_transport_info.currentSample = 0.0;
     host_transport_info.currentBeat = 0.0;

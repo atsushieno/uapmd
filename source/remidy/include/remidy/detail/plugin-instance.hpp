@@ -51,10 +51,14 @@ namespace remidy {
         struct ConfigurationRequest {
             uint32_t sampleRate{48000};
             uint32_t bufferSizeInSamples{4096};
-            bool offlineMode{false};
             AudioContentType dataType{AudioContentType::Float32};
             std::optional<uint32_t> mainInputChannels{};
             std::optional<uint32_t> mainOutputChannels{};
+        };
+
+        enum class AudioProcessingMode {
+            Realtime,
+            Offline
         };
 
         virtual ~PluginInstance() = default;
@@ -81,6 +85,7 @@ namespace remidy {
 
         virtual uint32_t latencyInSamples() const = 0;
         virtual double tailLengthInSeconds() const = 0;
+        virtual void setAudioProcessingMode(AudioProcessingMode mode) = 0;
 
         virtual PluginAudioBuses* audioBuses() = 0;
 

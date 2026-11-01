@@ -162,6 +162,11 @@ namespace uapmd_plugin_hosting {
             return static_cast<uapmd_status_t>(instance->startProcessing());
         }
 
+        void setAudioProcessingMode(remidy::PluginInstance::AudioProcessingMode mode) {
+            if (instance)
+                instance->setAudioProcessingMode(mode);
+        }
+
         uapmd_status_t stopProcessing() override {
             if (!instance)
                 return -1;

@@ -443,6 +443,7 @@ namespace remidy {
         HostParameterChanges processDataOutputParameterChanges{};
         ProcessSetup last_process_setup{};
         bool has_process_setup{false};
+        AudioProcessingMode processing_mode_{AudioProcessingMode::Realtime};
 
         void allocateProcessData(ProcessSetup& setup);
 
@@ -457,6 +458,7 @@ namespace remidy {
         bool componentActive{false};
         bool processingActive{false};
         std::atomic<uint32_t> cached_latency_samples_{0};
+        double reported_tail_seconds_{0.0};
 
         // Cached MIDI mappings (retrieved on UI thread, used on audio thread)
         // From IMidiMapping2 (VST3.8.0+)
@@ -503,6 +505,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
         uint32_t latencyInSamples() const override;
         double tailLengthInSeconds() const override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
 
         // port helpers
         PluginAudioBuses* audioBuses() override { return audio_buses; }

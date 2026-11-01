@@ -65,8 +65,6 @@ bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlug
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& configuration) {
-    // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
-
     if (instance)
         // we need to save state delete instance, recreate instance with the
         // new configuration, and restore the state.
@@ -76,7 +74,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
     audio_buses->configure(configuration);
     sample_rate = configuration.sampleRate;
     instance = instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
-                                  configuration.sampleRate, configuration.offlineMode);
+                                  configuration.sampleRate);
     if (!instance)
         return StatusCode::FAILED_TO_INSTANTIATE;
 
@@ -161,6 +159,14 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         lv2_ports.emplace_back(lv2Port);
     }
 
+    auto* freeWheeling = lilv_new_uri(implContext.world, LV2_CORE__freeWheeling);
+    const auto* freeWheelingPort = lilv_plugin_get_port_by_designation(
+        plugin, implContext.statics->input_port_uri_node, freeWheeling);
+    free_wheeling_port_index_ = freeWheelingPort && implContext.IS_CONTROL_PORT(plugin, freeWheelingPort)
+        ? static_cast<int32_t>(lilv_port_get_index(plugin, freeWheelingPort))
+        : -1;
+    lilv_node_free(freeWheeling);
+    updateFreeWheelingPort();
     updateLatencyFromPort(false);
 
     auto ensureFallbackSize = [&](std::vector<std::vector<float>>& buffers, size_t count) {
@@ -188,9 +194,22 @@ void remidy::PluginInstanceLV2::updateLatencyFromPort(bool notifyChange) {
         timing_change_pending_.store(true, std::memory_order_release);
 }
 
+void remidy::PluginInstanceLV2::setAudioProcessingMode(AudioProcessingMode mode) {
+    processing_mode_ = mode;
+}
+
+void remidy::PluginInstanceLV2::updateFreeWheelingPort() {
+    if (free_wheeling_port_index_ < 0)
+        return;
+    auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(free_wheeling_port_index_)].port_buffer);
+    if (buffer)
+        *buffer = processing_mode_ == AudioProcessingMode::Offline ? 1.0f : 0.0f;
+}
+
 remidy::StatusCode remidy::PluginInstanceLV2::startProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
+    updateFreeWheelingPort();
     processing_requested_.store(true, std::memory_order_release);
     return StatusCode::OK;
 }
@@ -280,6 +299,9 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
 
     ump_input_dispatcher.process(process);
 
+    // The host owns this designated control even if a state load or parameter
+    // event supplied another value.
+    updateFreeWheelingPort();
     lilv_instance_run(instance, process.frameCount());
 
     updateLatencyFromPort(true);

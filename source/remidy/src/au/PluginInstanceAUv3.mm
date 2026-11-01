@@ -265,17 +265,47 @@ remidy::StatusCode remidy::PluginInstanceAUv3::configure(ConfigurationRequest& c
         audioUnit.maximumFramesToRender = configuration.bufferSizeInSamples;
 
         // Allocate render resources
+        audioUnit.renderingOffline = processing_mode_ == AudioProcessingMode::Offline;
         if (![audioUnit allocateRenderResourcesAndReturnError:&error]) {
             logger()->logError("%s: PluginInstanceAUv3::configure failed to allocate render resources: %s",
                              name.c_str(), [[error localizedDescription] UTF8String]);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
+        processing_mode_changed_ = false;
 
         return StatusCode::OK;
     }
 }
 
+void remidy::PluginInstanceAUv3::setAudioProcessingMode(AudioProcessingMode mode) {
+    if (processing_mode_ != mode) {
+        processing_mode_ = mode;
+        processing_mode_changed_ = true;
+    }
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv3::startProcessing() {
+    @autoreleasepool {
+        if (audioUnit == nil)
+            return StatusCode::FAILED_TO_START_PROCESSING;
+        if (processing_mode_changed_) {
+            const auto previousLatency = latencyInSamples();
+            const auto previousTail = tailLengthInSeconds();
+            [audioUnit deallocateRenderResources];
+            audioUnit.renderingOffline = processing_mode_ == AudioProcessingMode::Offline;
+            NSError* error = nil;
+            if (![audioUnit allocateRenderResourcesAndReturnError:&error]) {
+                logger()->logError("%s: failed to allocate resources after processing mode change: %s",
+                                  name.c_str(), [[error localizedDescription] UTF8String]);
+                return StatusCode::FAILED_TO_START_PROCESSING;
+            }
+            processing_mode_changed_ = false;
+            notifyTimingInfoChanged({
+                .latency_changed = latencyInSamples() != previousLatency,
+                .tail_changed = tailLengthInSeconds() != previousTail,
+            });
+        }
+    }
     host_transport_info.currentSample = 0.0;
     host_transport_info.currentBeat = 0.0;
     host_transport_info.transportStateChanged = true;

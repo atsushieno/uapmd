@@ -355,6 +355,8 @@ namespace remidy {
         std::vector<LV2PortInfo> lv2_ports{};
         int32_t control_atom_port_index{-1};
         int32_t latency_port_index_{-1};
+        int32_t free_wheeling_port_index_{-1};
+        AudioProcessingMode processing_mode_{AudioProcessingMode::Realtime};
         std::atomic<uint32_t> cached_latency_samples_{0};
         std::atomic<bool> timing_monitor_running_{true};
         std::atomic<bool> timing_change_pending_{false};
@@ -401,6 +403,7 @@ namespace remidy {
         void enqueueAtomEvent(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer);
         void flushPendingAtomEvents();
         void updateLatencyFromPort(bool notifyChange);
+        void updateFreeWheelingPort();
 
         int32_t portIndexForAtomGroupIndex(bool isInput, uint8_t atomGroup) {
             for (int i = 0, n = lv2_ports.size(); i < n; i++)
@@ -431,6 +434,7 @@ namespace remidy {
         StatusCode configure(ConfigurationRequest &configuration) override;
 
         StatusCode startProcessing() override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
 
         StatusCode stopProcessing() override;
 

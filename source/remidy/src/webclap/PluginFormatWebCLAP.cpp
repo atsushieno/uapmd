@@ -1182,6 +1182,12 @@ StatusCode PluginInstanceWebCLAP::configure(ConfigurationRequest& cfg) {
     return StatusCode::OK;
 }
 
+void PluginInstanceWebCLAP::setAudioProcessingMode(AudioProcessingMode mode) {
+    // Worklet-owned instances run on the browser's realtime audio clock.
+    if (mode == AudioProcessingMode::Offline)
+        Logger::global()->logWarning("%s: WebCLAP does not support offline worklet rendering", info()->displayName().c_str());
+}
+
 StatusCode PluginInstanceWebCLAP::startProcessing() {
     std::ostringstream args;
     args << "[" << slot_ << "]";

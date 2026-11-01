@@ -254,7 +254,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &c
     setup.sampleRate = configuration.sampleRate;
     setup.maxSamplesPerBlock = static_cast<int32_t>(configuration.bufferSizeInSamples);
     setup.symbolicSampleSize = configuration.dataType == AudioContentType::Float64 ? kSample64 : kSample32;
-    setup.processMode = configuration.offlineMode ? kOffline : kRealtime;
+    setup.processMode = processing_mode_ == AudioProcessingMode::Offline ? kOffline : kRealtime;
 
     // setup audio buses
     audio_buses->configure(configuration);
@@ -285,6 +285,10 @@ void remidy::PluginInstanceVST3::allocateProcessData(ProcessSetup& setup) {
     // ensure process data stays in sync with the last setup used during allocation.
 }
 
+void remidy::PluginInstanceVST3::setAudioProcessingMode(AudioProcessingMode mode) {
+    processing_mode_ = mode;
+}
+
 remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
     if (!has_process_setup) {
         owner->getLogger()->logError("%s: startProcessing() called before configure()", pluginName.c_str());
@@ -295,19 +299,25 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
     tresult activationResult = kResultOk;
     bool attemptedActivation = false;
     EventLoop::runTaskOnMainThread([&] {
+        const auto previousLatency = latencyInSamples();
+        const auto previousTail = reported_tail_seconds_;
+        last_process_setup.processMode = processing_mode_ == AudioProcessingMode::Offline ? kOffline : kRealtime;
+        processData.processMode = last_process_setup.processMode;
         owner->getLogger()->logInfo("%s: setting up processing", pluginName.c_str());
         setupResult = processor->setupProcessing(last_process_setup);
         if (setupResult == kResultOk) {
-            const auto previousLatency = cached_latency_samples_.exchange(
-                processor->getLatencySamples(),
-                std::memory_order_acq_rel);
-            if (const auto newLatency = cached_latency_samples_.load(std::memory_order_acquire);
-                newLatency != previousLatency)
-                notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
             owner->getLogger()->logInfo("%s: activating component", pluginName.c_str());
             activationResult = component->setActive(true);
             attemptedActivation = true;
             componentActive = activationResult == kResultOk;
+            if (componentActive) {
+                cached_latency_samples_.store(processor->getLatencySamples(), std::memory_order_release);
+                reported_tail_seconds_ = tailLengthInSeconds();
+                notifyTimingInfoChanged({
+                    .latency_changed = latencyInSamples() != previousLatency,
+                    .tail_changed = reported_tail_seconds_ != previousTail,
+                });
+            }
         }
     });
 
@@ -802,10 +812,11 @@ void remidy::PluginInstanceVST3::refreshTimingInfoOnMainThread() {
         return;
 
     const auto previousLatency = cached_latency_samples_.load(std::memory_order_acquire);
-    const auto previousTail = tailLengthInSeconds();
+    const auto previousTail = reported_tail_seconds_;
     const auto newLatency = processor->getLatencySamples();
     cached_latency_samples_.store(newLatency, std::memory_order_release);
     const auto newTail = tailLengthInSeconds();
+    reported_tail_seconds_ = newTail;
 
     notifyTimingInfoChanged({
         .latency_changed = newLatency != previousLatency,

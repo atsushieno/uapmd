@@ -72,6 +72,12 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     return StatusCode::OK;
 }
 
+void remidy::PluginInstanceAAP::setAudioProcessingMode(AudioProcessingMode mode) {
+    // AAP does not expose a processing mode hint to plugins.
+    if (mode == AudioProcessingMode::Offline)
+        Logger::global()->logWarning("%s: AAP does not expose an offline rendering mode", info()->displayName().c_str());
+}
+
 remidy::StatusCode remidy::PluginInstanceAAP::startProcessing() {
     auto* instance = aapInstance();
     if (!instance)

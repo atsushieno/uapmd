@@ -554,6 +554,5 @@ public:
         LV2ImplWorldContext* worldContext,
         LV2ImplPluginContext* pluginContext,
         const LilvPlugin* plugin,
-        int sampleRate,
-        bool offlineMode);
+        int sampleRate);
 }

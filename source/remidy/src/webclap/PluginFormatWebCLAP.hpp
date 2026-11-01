@@ -231,6 +231,7 @@ namespace remidy {
 
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext& ctx) override;
         // The actual DSP runs in the AudioWorklet thread via wclap.mjs, which

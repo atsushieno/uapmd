@@ -152,9 +152,11 @@ namespace uapmd_plugin_hosting {
                 remidy::PluginInstance::ConfigurationRequest configuration{};
                 configuration.sampleRate = options.sampleRate;
                 configuration.bufferSizeInSamples = options.bufferSizeInSamples;
-                configuration.offlineMode = options.offlineMode;
                 configuration.mainInputChannels = options.mainInputChannels;
                 configuration.mainOutputChannels = options.mainOutputChannels;
+                api->setAudioProcessingMode(options.offlineMode
+                    ? remidy::PluginInstance::AudioProcessingMode::Offline
+                    : remidy::PluginInstance::AudioProcessingMode::Realtime);
                 auto code = api->configure(configuration);
                 if (code != remidy::StatusCode::OK) {
                     callback(nullptr, std::format("configure() failed. Error code {}", static_cast<int32_t>(code)));

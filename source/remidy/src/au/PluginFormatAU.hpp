@@ -291,6 +291,7 @@ namespace remidy {
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode process(AudioProcessContext &process) override;
         StatusCode startProcessing() override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
         StatusCode stopProcessing() override;
 
         PluginParameterSupport* parameters() override {
@@ -318,6 +319,9 @@ namespace remidy {
         uint32_t latencyInSamples() const override;
         double tailLengthInSeconds() const override;
         bool requiresReplacingProcess() const override { return false; }
+    private:
+        AudioProcessingMode processing_mode_{AudioProcessingMode::Realtime};
+        bool processing_mode_changed_{false};
     };
 
     // AUv2
@@ -580,6 +584,7 @@ namespace remidy {
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode process(AudioProcessContext &process) override;
         StatusCode startProcessing() override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
         StatusCode stopProcessing() override;
 
         AUVersion auVersion();
@@ -610,6 +615,9 @@ namespace remidy {
         uint32_t latencyInSamples() const override;
         double tailLengthInSeconds() const override;
         bool requiresReplacingProcess() const override { return false; }
+    private:
+        AudioProcessingMode processing_mode_{AudioProcessingMode::Realtime};
+        bool processing_mode_changed_{false};
     };
 
 }

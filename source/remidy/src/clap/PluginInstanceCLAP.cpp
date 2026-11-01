@@ -207,7 +207,6 @@ namespace remidy {
 
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
-        is_offline_ = configuration.offlineMode;
         use_double_precision_ = useDouble;
         sample_rate_ = configuration.sampleRate;
 
@@ -243,12 +242,14 @@ namespace remidy {
         // It seems we have to activate plugin buses first.
         buffer_size_ = configuration.bufferSizeInSamples;
         EventLoop::runTaskOnMainThread([&] {
+            if (!applyAudioProcessingMode())
+                return;
             activated_ = plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
             refreshTimingInfoOnMainThread();
         });
         if (!activated_)
             return StatusCode::FAILED_TO_CONFIGURE;
-        applyOfflineRenderingMode();
+        processing_mode_changed_ = false;
 
         requires_replacing_process_ = false;
         for (const auto& outInfo : outputPortInfos) {
@@ -288,31 +289,53 @@ namespace remidy {
         return StatusCode::OK;
     }
 
-    void PluginInstanceCLAP::applyOfflineRenderingMode() {
-        EventLoop::runTaskOnMainThread([&] {
-            if (!plugin->canUseRender()) {
-                if (is_offline_)
-                    owner->getLogger()->logWarning("%s: offlineMode requested but plugin lacks CLAP_EXT_RENDER",
-                                                   info()->displayName().c_str());
-                return;
-            }
+    bool PluginInstanceCLAP::applyAudioProcessingMode() {
+        if (!plugin->canUseRender())
+            // Plugins without this optional extension use the same DSP in both modes.
+            return true;
 
-            if (is_offline_ && plugin->renderHasHardRealtimeRequirement()) {
-                owner->getLogger()->logWarning("%s: plugin requires realtime rendering, cannot switch to offline",
-                                               info()->displayName().c_str());
-                return;
-            }
+        if (is_offline_ && plugin->renderHasHardRealtimeRequirement()) {
+            owner->getLogger()->logWarning("%s: plugin requires realtime rendering, cannot switch to offline",
+                                           info()->displayName().c_str());
+            return false;
+        }
 
-            auto mode = is_offline_ ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
-            if (!plugin->renderSet(mode)) {
-                owner->getLogger()->logWarning("%s: failed to set render mode to %s", info()->displayName().c_str(),
-                                               is_offline_ ? "offline" : "realtime");
-            }
-        });
+        auto mode = is_offline_ ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
+        if (!plugin->renderSet(mode)) {
+            owner->getLogger()->logWarning("%s: failed to set render mode to %s", info()->displayName().c_str(),
+                                           is_offline_ ? "offline" : "realtime");
+            return false;
+        }
+        return true;
     }
 
+    void PluginInstanceCLAP::setAudioProcessingMode(AudioProcessingMode mode) {
+        const bool offline = mode == AudioProcessingMode::Offline;
+        if (is_offline_ != offline) {
+            is_offline_ = offline;
+            processing_mode_changed_ = true;
+        }
+    }
 
     StatusCode PluginInstanceCLAP::startProcessing() {
+        if (processing_mode_changed_ || !activated_) {
+            EventLoop::runTaskOnMainThread([&] {
+                // Mode changes can affect latency, which must stay fixed while active.
+                if (activated_) {
+                    plugin->deactivate();
+                    activated_ = false;
+                }
+                if (!applyAudioProcessingMode())
+                    return;
+                activated_ = plugin->activate(sample_rate_, 1, buffer_size_);
+                if (activated_) {
+                    processing_mode_changed_ = false;
+                    refreshTimingInfoOnMainThread();
+                }
+            });
+        }
+        if (!activated_)
+            return StatusCode::FAILED_TO_START_PROCESSING;
         is_processing.store(true, std::memory_order_release);
         return StatusCode::OK;
     }

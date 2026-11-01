@@ -308,6 +308,7 @@ namespace remidy {
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
+        bool processing_mode_changed_{false};
         bool use_double_precision_{false};
         double sample_rate_{48000.0};
         uint32_t buffer_size_{4096};
@@ -329,7 +330,7 @@ namespace remidy {
         void resizeAudioPortBuffers(size_t newSize, bool isDouble);
         void resetAudioPortBuffers();
         void cleanupBuffers();
-        void applyOfflineRenderingMode();
+        bool applyAudioProcessingMode();
         void refreshLatencyOnMainThread();
         void refreshTailOnMainThread();
         void refreshTimingInfoOnMainThread();
@@ -365,6 +366,7 @@ namespace remidy {
         // audio processing core features
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
+        void setAudioProcessingMode(AudioProcessingMode mode) override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
         uint32_t latencyInSamples() const override { return cached_latency_samples_.load(std::memory_order_acquire); }
