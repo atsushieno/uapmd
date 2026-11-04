@@ -937,9 +937,9 @@ namespace uapmd::timeline_detail {
     //
     // A property is an address and a value; this also needs the event buffer
     // size to rebuild with, which is neither. Callers supply it from their own
-    // configuration -- the application model, the engine, the project loader --
-    // and although those agree today, nothing makes them agree, so the value
-    // the caller asked for travels with the command.
+    // configuration -- the application model, the engine -- and although those
+    // agree today, nothing makes them agree, so the value the caller asked for
+    // travels with the command.
     //
     // Applying a snapshot replaces the graph wholesale rather than migrating
     // the existing one, so the forward payload is just the requested type and

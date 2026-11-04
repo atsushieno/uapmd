@@ -31,6 +31,7 @@
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include <uapmd-app-model/uapmd-app-model.hpp>
+#include "ProjectResultWait.hpp"
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -113,21 +114,21 @@ int64_t defaultEmptyMidiClipDurationSamples(int32_t sampleRate,
     return std::max<int64_t>(1, static_cast<int64_t>(std::llround(seconds * safeSampleRate)));
 }
 
-void markTimelineTrackClipsNeedsFileSave(AppModel& appModel, TimelineTrack* track, int32_t trackIndex) {
+// Part of finishing a load, not an edit, so this goes straight to the clips. A command would be
+// refused wherever a load completes off the model thread (uapmd-cmp on macOS: the event loop is on
+// AppKit's main thread, the model on the EDT), and the next save would then leave the clips behind.
+void markTimelineTrackClipsNeedsFileSave(TimelineTrack* track) {
     if (!track)
         return;
 
-    auto& commands = appModel.sequencer().engine()->commands();
     for (const auto& clip : track->clipManager().getAllClips())
-        commands.setClipNeedsFileSave(
-            trackIndex, clip.clipId, true, ProjectMutationOrigin::Internal);
+        track->clipManager().setClipNeedsFileSave(clip.clipId, true);
 }
 
 void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
-    auto timelineTracks = appModel.getTimelineTracks();
-    for (size_t i = 0; i < timelineTracks.size(); ++i)
-        markTimelineTrackClipsNeedsFileSave(appModel, timelineTracks[i], static_cast<int32_t>(i));
-    markTimelineTrackClipsNeedsFileSave(appModel, appModel.getMasterTimelineTrack(), kMasterTrackIndex);
+    for (auto* track : appModel.getTimelineTracks())
+        markTimelineTrackClipsNeedsFileSave(track);
+    markTimelineTrackClipsNeedsFileSave(appModel.getMasterTimelineTrack());
 }
 
 } // namespace
@@ -3727,6 +3728,33 @@ void uapmd_app::AppModel::saveProjectToDocument(DocumentHandle handle,
                 });
 }
 
+void uapmd_app::AppModel::loadProjectFromDocument(DocumentHandle handle,
+                                                  std::function<void(ProjectResult)> callback)
+{
+    auto* provider = documentProvider();
+    if (!provider) {
+        callback({false, "Document provider unavailable"});
+        return;
+    }
+
+    provider->resolveToPath(std::move(handle),
+        [this, callback = std::move(callback)](DocumentIOResult ioResult, std::filesystem::path projectPath) mutable {
+            if (!ioResult.success) {
+                callback({false, std::move(ioResult.error)});
+                return;
+            }
+            const bool wasEnabled = isAudioEngineEnabled();
+            if (wasEnabled)
+                setAudioEngineEnabled(false);
+            loadProjectFromResolvedPath(projectPath,
+                [this, wasEnabled, callback = std::move(callback)](ProjectResult result) mutable {
+                    if (wasEnabled)
+                        setAudioEngineEnabled(true);
+                    callback(std::move(result));
+                });
+        });
+}
+
 void uapmd_app::AppModel::loadProjectFromResolvedPath(
     const std::filesystem::path& projectFile,
     std::function<void(ProjectResult)> callback)
@@ -3787,40 +3815,38 @@ void uapmd_app::AppModel::loadProjectFromResolvedPath(
         });
 }
 
-uapmd_app::AppModel::ProjectResult uapmd_app::AppModel::loadProjectFromHandleToken(const std::string& token)
-{
-    ProjectResult failureResult;
-    if (token.empty()) {
-        failureResult.error = "Project handle token is empty.";
-        return failureResult;
+// Project operations post their steps and completions to the main thread. A wait on that thread
+// has to drain the queue, so that the operation can finish instead of deadlocking against itself.
+uapmd_app::AppModel::ProjectResult uapmd_app::waitForProjectResult(std::future<AppModel::ProjectResult>& future) {
+    while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (remidy::EventLoop::runningOnMainThread())
+            remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
+    return future.get();
+}
 
-    auto* provider = documentProvider();
-    if (!provider) {
-        failureResult.error = "Document provider unavailable";
-        return failureResult;
-    }
+uapmd_app::AppModel::ProjectResult uapmd_app::loadProjectFromHandleTokenAndWait(const std::string& token)
+{
+    if (token.empty())
+        return {false, "Project handle token is empty."};
+
+    auto& model = AppModel::instance();
+    auto* provider = model.documentProvider();
+    if (!provider)
+        return {false, "Document provider unavailable"};
 
     auto handle = provider->restoreHandle(token);
-    if (!handle || !handle->valid()) {
-        failureResult.error = "Project handle token is invalid or no longer accessible.";
-        return failureResult;
-    }
+    if (!handle || !handle->valid())
+        return {false, "Project handle token is invalid or no longer accessible."};
 
-    auto promise = std::make_shared<std::promise<ProjectResult>>();
+    auto promise = std::make_shared<std::promise<AppModel::ProjectResult>>();
     auto future = promise->get_future();
-    provider->resolveToPath(*handle,
-        [this, promise](DocumentIOResult ioResult, std::filesystem::path path) mutable {
-            if (!ioResult.success) {
-                promise->set_value(ProjectResult{false, ioResult.error});
-                return;
-            }
-            loadProjectFromResolvedPath(path,
-                [promise](ProjectResult result) mutable {
-                    promise->set_value(std::move(result));
-                });
+    model.loadProjectFromDocument(std::move(*handle),
+        [promise](AppModel::ProjectResult result) mutable {
+            promise->set_value(std::move(result));
         });
-    return future.get();
+    return waitForProjectResult(future);
 }
 
 uapmd_app::AppModel::ProjectResult uapmd_app::AppModel::saveProjectSync(const std::filesystem::path& projectFile) {
@@ -3830,15 +3856,7 @@ uapmd_app::AppModel::ProjectResult uapmd_app::AppModel::saveProjectSync(const st
                 [promise](ProjectResult result) {
                     promise->set_value(std::move(result));
                 });
-    // saveProject requests each plugin's state asynchronously, posting completions back to
-    // the main thread; drain the queue while waiting so the save can finish instead of
-    // deadlocking against its own main-thread completions.
-    while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
-        if (remidy::EventLoop::runningOnMainThread())
-            remidy::EventLoop::processQueuedTasks();
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    }
-    return future.get();
+    return waitForProjectResult(future);
 }
 
 void uapmd_app::AppModel::saveProject(const std::filesystem::path& projectFile, ProjectSaveCallback callback) {

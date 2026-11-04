@@ -2083,31 +2083,18 @@ void MainWindow::handleLoadProject() {
     uapmd_app::AppModel::instance().documentProvider()->pickOpenDocuments(
         filters,
         false,
-        [this](uapmd::DocumentPickResult pickResult) {
+        [](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty())
                 return;
-            resolveDocumentHandle(
-                pickResult.handles[0],
-                [this](const std::filesystem::path& projectPath) {
-                    auto& appModel = uapmd_app::AppModel::instance();
-                    const bool wasEnabled = appModel.isAudioEngineEnabled();
-                    if (wasEnabled)
-                        appModel.setAudioEngineEnabled(false);
-                    appModel.loadProjectFromResolvedPath(projectPath,
-                        [this, wasEnabled](uapmd_app::AppModel::ProjectResult result) {
-                            if (wasEnabled)
-                                uapmd_app::AppModel::instance().setAudioEngineEnabled(true);
-                            if (!result.success) {
-                                platformError("Load Failed", result.error);
-                                return;
-                            }
-                            // GUI refresh (including the initial timeline view) happens generically
-                            // via AppModel::projectLoaded, registered in the constructor -- fires
-                            // for any successful load, GUI-initiated or scripted.
-                        });
-                },
-                [](const std::string& error) {
-                    platformError("Load Failed", error);
+            uapmd_app::AppModel::instance().loadProjectFromDocument(pickResult.handles[0],
+                [](uapmd_app::AppModel::ProjectResult result) {
+                    if (!result.success) {
+                        platformError("Load Failed", result.error);
+                        return;
+                    }
+                    // GUI refresh (including the initial timeline view) happens generically
+                    // via AppModel::projectLoaded, registered in the constructor -- fires
+                    // for any successful load, GUI-initiated or scripted.
                 });
         }
     );

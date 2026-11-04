@@ -660,7 +660,10 @@ namespace uapmd_app {
         void newProject(std::function<void(ProjectResult)> callback);
         void saveProjectToDocument(uapmd::DocumentHandle handle, uapmd::IDocumentProvider::WriteCallback callback);
         void loadProjectFromResolvedPath(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
-        ProjectResult loadProjectFromHandleToken(const std::string& token);
+        // Loads the project behind a document picked from documentProvider(), as the GUI's
+        // Load Project does: resolves the handle, keeps the audio engine off for the load
+        // and turns it back on afterwards if it was on.
+        void loadProjectFromDocument(uapmd::DocumentHandle handle, std::function<void(ProjectResult)> callback);
 
         struct MasterTrackSnapshot {
             struct TempoPoint {

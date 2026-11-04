@@ -19,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include "ProjectResultWait.hpp"
 #include "ScriptDocumentIds.hpp"
 #include "ScriptTrackProperties.hpp"
 
@@ -918,7 +919,7 @@ static choc::value::Value toolLoadProject(const choc::value::Value& args)
         [loadPromise](AppModel::ProjectResult r) mutable {
             loadPromise->set_value(std::move(r));
         });
-    auto loadResult = loadFuture.get();
+    auto loadResult = waitForProjectResult(loadFuture);
     auto result = choc::value::createObject ("");
     result.setMember ("success", loadResult.success);
     result.setMember ("error", loadResult.error);
@@ -931,7 +932,7 @@ static choc::value::Value toolLoadProjectHandle(const choc::value::Value& args)
     if (token.empty())
         throw std::invalid_argument("token is required");
 
-    auto loadResult = AppModel::instance().loadProjectFromHandleToken(token);
+    auto loadResult = loadProjectFromHandleTokenAndWait(token);
     auto result = choc::value::createObject ("");
     result.setMember ("success", loadResult.success);
     result.setMember ("error", loadResult.error);

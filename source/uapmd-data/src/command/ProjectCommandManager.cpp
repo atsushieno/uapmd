@@ -2,6 +2,7 @@
 
 #include "CommandExecution.hpp"
 
+#include <iostream>
 #include <optional>
 #include <thread>
 #include <utility>
@@ -81,11 +82,15 @@ namespace uapmd {
         ProjectCommandResult executeSynchronously(
             ProjectCommandPtr command,
             ProjectMutationOrigin origin) {
-            if (std::this_thread::get_id() != model_thread_id_)
+            if (std::this_thread::get_id() != model_thread_id_) {
+                // Many callers ignore the result, so this would otherwise be a silent loss of the edit.
+                std::cerr << "Warning: refused project command " << command->commandId()
+                          << " off the model thread." << std::endl;
                 return {
                     .status = ProjectUndoStatus::Busy,
                     .error = "A command can only be executed synchronously on the model thread."
                 };
+            }
 
             std::optional<ProjectCommandResult> result;
             execute(

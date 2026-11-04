@@ -62,6 +62,15 @@ namespace uapmd::timeline_detail {
         // exits; giving it a single exit would let it become a scoped guard.
         virtual void setLoadInProgress(bool value) = 0;
 
+        // Gives a loaded track the graph type it was saved with. This is part of
+        // establishing the project, not an edit, so it is not a command: a load
+        // finishes on the event loop's main thread, and commands are refused on
+        // any thread but the model's, which need not be the same one.
+        virtual bool applyLoadedTrackGraphType(
+            int32_t trackIndex,
+            const std::string& graphTypeId,
+            size_t eventBufferSizeInBytes) = 0;
+
         // A load starts from a fresh master track rather than clearing the
         // existing one in place.
         virtual void replaceMasterTimelineTrack(std::shared_ptr<TimelineTrack> track) = 0;

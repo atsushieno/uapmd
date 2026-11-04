@@ -304,6 +304,22 @@ namespace uapmd {
             suppress_project_document_events_ = value;
         }
 
+        bool applyLoadedTrackGraphType(
+            int32_t trackIndex,
+            const std::string& graphTypeId,
+            size_t eventBufferSizeInBytes) override {
+            auto* track = resolveSequencerTrack(trackIndex);
+            auto trackReferenceId = addresses_.trackReferenceId(trackIndex);
+            if (!track || !trackReferenceId)
+                return false;
+            auto* current = audio_graph_provider_registry_.get(track->graph());
+            if (current && current->id() == graphTypeId)
+                return true;
+            TrackGraphSnapshot requested;
+            requested.graphType = graphTypeId;
+            return applyTrackGraphSnapshot(*trackReferenceId, requested, eventBufferSizeInBytes);
+        }
+
         std::vector<ClipMarker> masterTrackMarkers() const override {
             return engine_.masterTrackMarkers();
         }

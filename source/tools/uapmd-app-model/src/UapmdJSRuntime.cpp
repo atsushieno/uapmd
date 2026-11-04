@@ -18,6 +18,7 @@
 #include <future>
 #include <limits>
 #include <stdexcept>
+#include "ProjectResultWait.hpp"
 #include "ScriptDocumentIds.hpp"
 #include "ScriptTrackProperties.hpp"
 
@@ -252,7 +253,7 @@ void UapmdJSRuntime::registerProjectAPI()
             return result;
         }
 
-        auto projectResult = uapmd_app::AppModel::instance().loadProjectFromHandleToken(token);
+        auto projectResult = uapmd_app::loadProjectFromHandleTokenAndWait(token);
         result.setMember ("success", projectResult.success);
         result.setMember ("error", projectResult.error);
         return result;

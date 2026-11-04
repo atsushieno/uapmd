@@ -1252,7 +1252,12 @@ namespace uapmd::timeline_detail {
             }
             auto step = (*steps)[(*nextIndex)++];
             step([runNext]() mutable {
-                (*runNext)();
+                // Posted rather than run from here: a plug-in can complete inline, and the
+                // whole load would then be one uninterrupted task on the main thread, which
+                // could not draw or take input until the last plug-in is done.
+                remidy::EventLoop::enqueueTaskOnMainThread([runNext]() mutable {
+                    (*runNext)();
+                });
             });
         };
         (*runNext)();
@@ -1342,11 +1347,7 @@ namespace uapmd::timeline_detail {
 
         if (trackIndex == -1)
             return false;
-        if (!facade_.commands().replaceTrackGraphType(
-                trackIndex,
-                provider->id(),
-                eventBufferSizeInBytes,
-                ProjectMutationOrigin::Internal))
+        if (!host_.applyLoadedTrackGraphType(trackIndex, provider->id(), eventBufferSizeInBytes))
             return false;
         return provider->deserializeRuntimeGraph(
             projectTrack->graph(), sequencerTrack->graph(), sequencerTrack->orderedInstanceIds());
