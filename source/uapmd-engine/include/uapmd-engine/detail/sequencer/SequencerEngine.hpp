@@ -21,6 +21,10 @@
 #include "TimelineFacade.hpp"
 
 namespace uapmd {
+    // The largest block that the graph and plugins are prepared for. The audio device can use
+    // any smaller buffer, and offline rendering uses this size to avoid per-block plugin costs.
+    constexpr size_t kAudioBlockCapacityInFrames = 8192;
+
     class SequencerEngine;
     class SequencerTrack;
     class FrozenTrackManager;

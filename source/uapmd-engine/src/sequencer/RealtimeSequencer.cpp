@@ -22,7 +22,7 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
 ) : buffer_size_in_frames(audioBufferSizeInFrames),
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     dispatcher(dispatcher),
-    sequencer(SequencerEngine::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes)) {
+    sequencer(SequencerEngine::create(sampleRate, std::max(buffer_size_in_frames, kAudioBlockCapacityInFrames), umpBufferSizeInBytes)) {
     // Configure default channels based on audio device
     auto* initialAudioDevice = dispatcher->audio();
     const auto inputChannels = initialAudioDevice ? std::max(initialAudioDevice->inputChannels(), 2u) : 2;

@@ -4,6 +4,7 @@
 #include <functional>
 #include <limits>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include <remidy/remidy.hpp>
@@ -14,7 +15,7 @@ namespace {
 
 constexpr std::string_view kManifestHeader = "uapmd-track-freezing-v2";
 constexpr std::string_view kLegacyManifestHeader = "uapmd-track-freezing-v1";
-constexpr uint32_t kRenderBufferSize = 1024;
+constexpr uint32_t kRenderBufferSize = kAudioBlockCapacityInFrames;
 constexpr uint64_t kMaximumFrozenTrackBytes = 512ULL * 1024ULL * 1024ULL;
 
 std::string_view trim(std::string_view value) {
@@ -121,6 +122,7 @@ FrozenTrackManager::~FrozenTrackManager() {
         timeline_.projectDocumentEvents().removeProjectDocumentEventListener(
             project_document_event_listener_token_);
 
+    joinRenderThread();
     if (active_render_)
         engine_.finishOfflineTrackRender(true);
 }
@@ -954,25 +956,51 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
         runtime.state = RuntimeState::Rendering;
     }
     updatePlaybackState(operation->track_reference_id);
-    enqueueRenderStep(operation);
+    startRenderThread(operation);
 }
 
-void FrozenTrackManager::enqueueRenderStep(
+void FrozenTrackManager::startRenderThread(
     const std::shared_ptr<RenderOperation>& operation) {
+    joinRenderThread();
+    render_thread_ = std::thread([this, operation] { renderOnThread(operation); });
+}
+
+void FrozenTrackManager::joinRenderThread() {
+    if (render_thread_.joinable())
+        render_thread_.join();
+}
+
+void FrozenTrackManager::renderOnThread(
+    const std::shared_ptr<RenderOperation>& operation) {
+    OfflineTrackRenderStepResult step;
+    while (operationIsCurrent(*operation)) {
+        step = engine_.renderOfflineTrackStep(std::numeric_limits<uint32_t>::max());
+        {
+            std::lock_guard lock(mutex_);
+            if (active_render_ == operation)
+                operation->progress = step.progress;
+        }
+        if (step.state != OfflineTrackRenderStepState::InProgress)
+            break;
+        // A project edit may be waiting for the step that just ended.
+        std::this_thread::yield();
+    }
     const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
     remidy::EventLoop::enqueueTaskOnMainThread(
-        [weakLifetime, operation] {
+        [weakLifetime, operation, step] {
             const auto lifetime = weakLifetime.lock();
             auto* owner = lifetime
                 ? lifetime->owner.load(std::memory_order_acquire)
                 : nullptr;
             if (owner)
-                owner->renderNextChunk(operation);
+                owner->finishRenderOnMainThread(operation, step);
         });
 }
 
-void FrozenTrackManager::renderNextChunk(
-    const std::shared_ptr<RenderOperation>& operation) {
+void FrozenTrackManager::finishRenderOnMainThread(
+    const std::shared_ptr<RenderOperation>& operation,
+    OfflineTrackRenderStepResult step) {
+    joinRenderThread();
     if (!operationIsCurrent(*operation)) {
         engine_.finishOfflineTrackRender(
             true,
@@ -989,20 +1017,6 @@ void FrozenTrackManager::renderNextChunk(
                 updatePlaybackState(operation->track_reference_id);
             });
         completeRenderOperation(operation);
-        return;
-    }
-
-    // The engine bounds each step by elapsed time, so cheap DSP can process
-    // many blocks without waiting for another GUI frame after every eight.
-    auto step =
-        engine_.renderOfflineTrackStep(std::numeric_limits<uint32_t>::max());
-    {
-        std::lock_guard lock(mutex_);
-        if (active_render_ == operation)
-            operation->progress = step.progress;
-    }
-    if (step.state == OfflineTrackRenderStepState::InProgress) {
-        enqueueRenderStep(operation);
         return;
     }
 

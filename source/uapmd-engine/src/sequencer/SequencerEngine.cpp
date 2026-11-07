@@ -249,7 +249,13 @@ namespace uapmd {
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
         std::atomic<bool> track_freeze_render_active_{false};
-        bool executing_track_freeze_render_step_{false};
+        // A render step runs on the freeze render thread, like processAudio() does on the audio
+        // thread. It announces itself first, then checks structure_mutation_active_.
+        std::atomic<bool> in_track_freeze_render_step_{false};
+        std::atomic<std::thread::id> track_freeze_render_step_thread_{};
+        bool isOnTrackFreezeRenderStepThread() const {
+            return track_freeze_render_step_thread_.load(std::memory_order_seq_cst) == std::this_thread::get_id();
+        }
         struct OfflineTrackRenderSession {
             OfflineTrackRenderSettings settings;
             OfflineTrackRenderResult result;
@@ -258,6 +264,7 @@ namespace uapmd {
             int64_t previous_playback_position{0};
             bool previous_offline_rendering{false};
             int64_t current_sample{0};
+            const void* render_track{nullptr};
             remidy::MasterContext master_context;
             std::unique_ptr<AudioProcessContext> device_context;
             std::unique_ptr<AudioProcessContext> track_context;
@@ -310,15 +317,23 @@ namespace uapmd {
         // wait for those participants as well before mutating any shared storage.
         struct StructureMutationGuard {
             SequencerEngineImpl& engine;
-            explicit StructureMutationGuard(SequencerEngineImpl& e) : engine(e) {
+            // A render step already excludes the control thread, and it must not wait for itself.
+            const bool on_render_step_thread;
+            explicit StructureMutationGuard(SequencerEngineImpl& e)
+                : engine(e), on_render_step_thread(e.isOnTrackFreezeRenderStepThread()) {
+                if (on_render_step_thread)
+                    return;
                 if (engine.structure_mutation_depth_++ != 0)
                     return;
                 engine.structure_mutation_active_.store(true, std::memory_order_seq_cst);
-                while (engine.in_process_audio_.load(std::memory_order_seq_cst))
+                while (engine.in_process_audio_.load(std::memory_order_seq_cst) ||
+                       engine.in_track_freeze_render_step_.load(std::memory_order_seq_cst))
                     std::this_thread::yield();
                 engine.waitForWorkerContexts();
             }
             ~StructureMutationGuard() {
+                if (on_render_step_thread)
+                    return;
                 if (--engine.structure_mutation_depth_ == 0)
                     engine.structure_mutation_active_.store(false, std::memory_order_release);
             }
@@ -440,7 +455,7 @@ namespace uapmd {
 
         bool setInstanceGroup(int32_t instanceId, uint8_t group) override {
             StructureMutationGuard guard(*this);
-            if (!executing_track_freeze_render_step_ &&
+            if (!isOnTrackFreezeRenderStepThread() &&
                 frozen_track_manager_->isInstanceBusy(instanceId))
                 return false;
             // Find which track owns this instance and set the group there.
@@ -1924,6 +1939,7 @@ namespace uapmd {
             tail_process_manager_->holdStoppedOutputSilent();
 
             auto* track = tracks_[static_cast<size_t>(settings.trackIndex)].get();
+            session->render_track = track;
             for (const auto instanceId : track->orderedInstanceIds()) {
                 auto* instance = getPluginInstance(instanceId);
                 if (!instance)
@@ -1992,17 +2008,32 @@ namespace uapmd {
         if (maximumBlocks == 0)
             maximumBlocks = 1;
 
-        // Yield for UI work based on elapsed DSP time, not the number of audio
-        // quanta. A fixed small block count caps fast renders at the UI rate.
+        struct RenderStepScope {
+            SequencerEngineImpl& engine;
+            explicit RenderStepScope(SequencerEngineImpl& e) : engine(e) {
+                engine.in_track_freeze_render_step_.store(true, std::memory_order_seq_cst);
+                engine.track_freeze_render_step_thread_.store(std::this_thread::get_id(), std::memory_order_seq_cst);
+            }
+            ~RenderStepScope() {
+                engine.track_freeze_render_step_thread_.store(std::thread::id{}, std::memory_order_seq_cst);
+                engine.in_track_freeze_render_step_.store(false, std::memory_order_seq_cst);
+            }
+        } renderStepScope(*this);
+
+        // Bounded by elapsed time, so that a project edit never waits long for this step to end.
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(8);
 
         try {
             for (uint32_t block = 0;
                  block < maximumBlocks &&
-                 session->current_sample < session->settings.endSample;
+                 session->current_sample < session->settings.endSample &&
+                 !structure_mutation_active_.load(std::memory_order_seq_cst);
                  ++block) {
                 if (block > 0 && std::chrono::steady_clock::now() >= deadline)
                     break;
+                if (static_cast<size_t>(session->settings.trackIndex) >= tracks_.size() ||
+                    tracks_[static_cast<size_t>(session->settings.trackIndex)].get() != session->render_track)
+                    throw std::runtime_error("The track being rendered was removed.");
                 const auto frames = static_cast<int32_t>(std::min<int64_t>(
                     session->settings.endSample - session->current_sample,
                     session->settings.bufferSize));
@@ -2018,7 +2049,6 @@ namespace uapmd {
                 // Feed only this track's sources with a private transport.
                 // Public seeks reset alignment buffers for the whole project.
                 session->render_timeline_state.playheadPosition.samples = session->current_sample;
-                executing_track_freeze_render_step_ = true;
                 timeline_->processTracksAudio(
                     *session->device_context, session->render_sequence, &session->render_timeline_state);
                 auto& renderTrack = *tracks_[static_cast<size_t>(session->settings.trackIndex)];
@@ -2026,7 +2056,6 @@ namespace uapmd {
                 refreshProcessingGroups(renderTrack);
                 renderTrack.graph().processAudio(*session->track_context);
                 dispatchTrackPluginOutput(renderTrack);
-                executing_track_freeze_render_step_ = false;
 
                 size_t cachedChannel = 0;
                 const auto destinationOffset =
@@ -2055,11 +2084,9 @@ namespace uapmd {
                 session->current_sample += frames;
             }
         } catch (const std::exception& error) {
-            executing_track_freeze_render_step_ = false;
             step.errorMessage = error.what();
             return step;
         } catch (...) {
-            executing_track_freeze_render_step_ = false;
             step.errorMessage = "Existing plugin processing failed.";
             return step;
         }
@@ -2649,7 +2676,7 @@ namespace uapmd {
 
     bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
         StructureMutationGuard mutationGuard(*this);
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return false;
         // Hide and destroy UI first (if caller didn't already)
@@ -2974,7 +3001,7 @@ namespace uapmd {
             }
             // Offline/freeze rendering cannot depend on UI event-loop timing or
             // replay preset requests later against the live project.
-            if (offline_rendering_.load(std::memory_order_acquire) || executing_track_freeze_render_step_) {
+            if (offline_rendering_.load(std::memory_order_acquire) || isOnTrackFreezeRenderStepThread()) {
                 plugin_control_dispatch_->dropped_presets.fetch_add(1, std::memory_order_relaxed);
                 continue;
             }
@@ -3098,7 +3125,7 @@ namespace uapmd {
 
     // UMP routing
     void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         auto scheduleForTrack = [&](SequencerTrack* track) {
@@ -3426,7 +3453,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         uapmd_ump_t umps[2];
@@ -3437,7 +3464,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::sendNoteOff(int32_t instanceId, int32_t note) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         uapmd_ump_t umps[2];
@@ -3448,7 +3475,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::sendPitchBend(int32_t instanceId, float normalizedValue) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         uapmd_ump_t umps[2];
@@ -3461,7 +3488,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::sendChannelPressure(int32_t instanceId, float pressure) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         uapmd_ump_t umps[2];
@@ -3474,7 +3501,7 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::setParameterValue(int32_t instanceId, int32_t index, double value) {
-        if (!executing_track_freeze_render_step_ &&
+        if (!isOnTrackFreezeRenderStepThread() &&
             frozen_track_manager_->isInstanceBusy(instanceId))
             return;
         auto* instance = getPluginInstance(instanceId);

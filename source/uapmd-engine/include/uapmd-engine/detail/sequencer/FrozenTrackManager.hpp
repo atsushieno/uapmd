@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -138,8 +139,13 @@ private:
     void transportBecameQuiet();
     void beginRender(std::string trackReferenceId);
     void prepareRender(std::string trackReferenceId);
-    void enqueueRenderStep(const std::shared_ptr<RenderOperation>& operation);
-    void renderNextChunk(const std::shared_ptr<RenderOperation>& operation);
+    // Rendering runs on its own thread; beginning and finishing it stay on the main thread.
+    void startRenderThread(const std::shared_ptr<RenderOperation>& operation);
+    void renderOnThread(const std::shared_ptr<RenderOperation>& operation);
+    void joinRenderThread();
+    void finishRenderOnMainThread(
+        const std::shared_ptr<RenderOperation>& operation,
+        OfflineTrackRenderStepResult step);
     void completeRenderOperation(
         const std::shared_ptr<RenderOperation>& operation);
     void startNextQueuedRender();
@@ -168,6 +174,7 @@ private:
     std::deque<std::string> queued_renders_;
     std::function<void()> pending_playback_start_;
     std::atomic<bool> stopping_{false};
+    std::thread render_thread_;
     std::atomic<bool> playback_active_{false};
     std::shared_ptr<AsyncLifetime> async_lifetime_;
     uint64_t transport_quiet_listener_token_{0};
