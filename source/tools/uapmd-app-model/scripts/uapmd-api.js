@@ -10,6 +10,14 @@ function unwrapTrackProperties(result) {
     return result;
 }
 
+// The state carries its own error message for a failed render, so a failed call
+// is recognized by the absence of the TrackFreezeState object instead.
+function unwrapTrackFreezeState(result) {
+    if (result._objectName !== "TrackFreezeState")
+        throw new Error(result.error);
+    return result;
+}
+
 // PluginInstance class - wraps instance control methods
 class PluginInstance {
     constructor(instanceId) {
@@ -242,6 +250,11 @@ globalThis.uapmd = {
         setPluginBypassed: (instanceId, bypassed) => __remidy_sequencer_setPluginBypassed(instanceId, bypassed),
         getTrackInfos: () => __remidy_sequencer_getTrackInfos(),
         getTrackProperties: (trackId) => unwrapTrackProperties(__remidy_sequencer_getTrackProperties(trackId)),
+        // Freeze policy ("on"/"off"), runtimeState ("live", "rendering", "frozen" or
+        // "error"), error message, and render progress of a regular track.
+        getTrackFreezeState: (trackId) => unwrapTrackFreezeState(__remidy_sequencer_getTrackFreezeState(trackId)),
+        // policy is "on" or "off". Rendering runs asynchronously; poll getTrackFreezeState().
+        setTrackFreezePolicy: (trackId, policy) => unwrapTrackFreezeState(__remidy_sequencer_setTrackFreezePolicy(trackId, policy)),
         // Partial update; color is #RRGGBB or null (theme default), path is a
         // string, order is a finite number. Returns the updated properties.
         setTrackProperties: (trackId, properties) => unwrapTrackProperties(__remidy_sequencer_setTrackProperties(trackId, properties)),

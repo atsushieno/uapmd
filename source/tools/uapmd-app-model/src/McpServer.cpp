@@ -22,6 +22,7 @@
 #include "ProjectResultWait.hpp"
 #include "ScriptDocumentIds.hpp"
 #include "ScriptTrackProperties.hpp"
+#include "ScriptTrackFreezeState.hpp"
 
 using namespace uapmd_graph;
 
@@ -818,80 +819,16 @@ static choc::value::Value toolCreateTrack(const choc::value::Value&)
     return result;
 }
 
-static choc::value::Value serializeTrackFreezeState(int32_t trackIndex)
-{
-    auto* engine = AppModel::instance().sequencer().engine();
-    if (!engine || trackIndex < 0 ||
-        static_cast<size_t>(trackIndex) >= engine->tracks().size())
-        throw std::invalid_argument("trackId is invalid");
-
-    auto& manager = engine->frozenTrackManager();
-    auto result = choc::value::createObject("");
-    result.setMember("trackId", script_ids::trackId(trackIndex));
-    result.setMember(
-        "policy",
-        manager.freezePolicyForTrack(trackIndex) ==
-                uapmd::FrozenTrackManager::FreezePolicy::On
-            ? "on"
-            : "off");
-    switch (manager.runtimeStateForTrack(trackIndex)) {
-        case uapmd::FrozenTrackManager::RuntimeState::Live:
-            result.setMember("runtimeState", "live");
-            break;
-        case uapmd::FrozenTrackManager::RuntimeState::Rendering:
-            result.setMember("runtimeState", "rendering");
-            break;
-        case uapmd::FrozenTrackManager::RuntimeState::Frozen:
-            result.setMember("runtimeState", "frozen");
-            break;
-        case uapmd::FrozenTrackManager::RuntimeState::Error:
-            result.setMember("runtimeState", "error");
-            break;
-    }
-    result.setMember(
-        "error", manager.errorMessageForTrack(trackIndex));
-    const auto progress = manager.renderProgressForTrack(trackIndex);
-    result.setMember(
-        "renderProgress", progress ? progress->progress : 0.0);
-    result.setMember(
-        "renderedSeconds", progress ? progress->renderedSeconds : 0.0);
-    result.setMember(
-        "totalSeconds", progress ? progress->totalSeconds : 0.0);
-    result.setMember(
-        "renderedFrames",
-        choc::value::createInt64(progress ? progress->renderedFrames : 0));
-    result.setMember(
-        "totalFrames",
-        choc::value::createInt64(progress ? progress->totalFrames : 0));
-    return result;
-}
-
 static choc::value::Value toolGetTrackFreezeState(
     const choc::value::Value& args)
 {
-    return serializeTrackFreezeState(getRegularTrackArg(args));
+    return script_track_freeze_state::get(getRegularTrackArg(args));
 }
 
 static choc::value::Value toolSetTrackFreezePolicy(
     const choc::value::Value& args)
 {
-    const auto trackIndex = getRegularTrackArg(args);
-    const auto policyText = getStringArg(args, "policy");
-    uapmd::FrozenTrackManager::FreezePolicy policy;
-    if (policyText == "on")
-        policy = uapmd::FrozenTrackManager::FreezePolicy::On;
-    else if (policyText == "off")
-        policy = uapmd::FrozenTrackManager::FreezePolicy::Off;
-    else
-        throw std::invalid_argument("policy must be off or on");
-
-    auto* engine = AppModel::instance().sequencer().engine();
-    if (!engine || static_cast<size_t>(trackIndex) >= engine->tracks().size())
-        throw std::invalid_argument("trackId is invalid");
-    engine->commands().setTrackFreezePolicyEnabled(
-        trackIndex,
-        policy == uapmd::FrozenTrackManager::FreezePolicy::On);
-    return serializeTrackFreezeState(trackIndex);
+    return script_track_freeze_state::set(getRegularTrackArg(args), getStringArg(args, "policy"));
 }
 
 static choc::value::Value toolSaveProject(const choc::value::Value& args)

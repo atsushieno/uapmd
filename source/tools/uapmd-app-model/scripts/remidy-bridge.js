@@ -353,6 +353,12 @@ export const sequencer = {
     getTrackProperties: function(trackId) {
         return globalThis.uapmd.sequencer.getTrackProperties(trackId);
     },
+    getTrackFreezeState: function(trackId) {
+        return globalThis.uapmd.sequencer.getTrackFreezeState(trackId);
+    },
+    setTrackFreezePolicy: function(trackId, policy) {
+        return globalThis.uapmd.sequencer.setTrackFreezePolicy(trackId, policy);
+    },
     setTrackProperties: function(trackId, properties) {
         return globalThis.uapmd.sequencer.setTrackProperties(trackId, properties);
     },

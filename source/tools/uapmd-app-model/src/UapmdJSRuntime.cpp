@@ -21,6 +21,7 @@
 #include "ProjectResultWait.hpp"
 #include "ScriptDocumentIds.hpp"
 #include "ScriptTrackProperties.hpp"
+#include "ScriptTrackFreezeState.hpp"
 
 using namespace uapmd_graph;
 
@@ -963,6 +964,20 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             if (args.size() != 2 || args[1] == nullptr)
                 throw std::invalid_argument("setTrackProperties requires trackId and properties");
             return script_track_properties::set(args.get<std::string>(0, ""), args[1]->getView());
+        });
+    });
+
+    impl_->context.registerFunction ("__remidy_sequencer_getTrackFreezeState", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        return script_track_properties::invokeForJavaScript([&] {
+            return script_track_freeze_state::get(args.get<std::string>(0, ""));
+        });
+    });
+
+    impl_->context.registerFunction ("__remidy_sequencer_setTrackFreezePolicy", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        return script_track_properties::invokeForJavaScript([&] {
+            return script_track_freeze_state::set(args.get<std::string>(0, ""), args.get<std::string>(1, ""));
         });
     });
 

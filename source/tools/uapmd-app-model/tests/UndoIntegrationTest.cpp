@@ -285,6 +285,59 @@ TEST(AppLayerUndoIntegrationTest, JavaScriptTrackJobParticipatesInHistory) {
     EXPECT_EQ(model.trackCount(), initialTrackCount);
 }
 
+TEST(AppLayerUndoIntegrationTest, JavaScriptReadsTrackFreezeState) {
+    ScopedTestEventLoop eventLoop;
+    struct ScopedAppModelInstance {
+        ScopedAppModelInstance() { uapmd_app::AppModel::instantiate(); }
+        ~ScopedAppModelInstance() { uapmd_app::AppModel::cleanupInstance(); }
+    } appModelInstance;
+
+    auto& model = uapmd_app::AppModel::instance();
+    uapmd_app::UapmdJSRuntime runtime;
+    runtime.ensureApiBootstrapped();
+    auto job = choc::json::parse(runtime.evaluateScript("uapmd.sequencer.addTrack()"));
+    const auto jobId = job["jobId"].get<int32_t>();
+    for (int i = 0; i < 200 && job["state"].get<std::string>() == "running"; ++i) {
+        remidy::EventLoop::processQueuedTasks();
+        job = choc::json::parse(runtime.evaluateScript(
+            "uapmd.mutations.getJob(" + std::to_string(jobId) + ")"));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(job["state"].get<std::string>(), "completed");
+    const auto trackId = job["result"]["trackId"].get<std::string>();
+
+    auto state = choc::json::parse(runtime.evaluateScript(
+        "uapmd.sequencer.getTrackFreezeState(\"" + trackId + "\")"));
+    EXPECT_EQ(state["trackId"].get<std::string>(), trackId);
+    EXPECT_EQ(state["policy"].get<std::string>(), "off");
+    EXPECT_EQ(state["runtimeState"].get<std::string>(), "live");
+    EXPECT_EQ(state["error"].get<std::string>(), "");
+    EXPECT_EQ(state["totalFrames"].get<int64_t>(), 0);
+    EXPECT_TRUE(state["frozenAudio"].isVoid());
+
+    const auto errorOf = [&](const std::string& id) {
+        return runtime.evaluateScript(
+            "(() => { try { uapmd.sequencer.getTrackFreezeState(\"" + id +
+            "\"); return \"\"; } catch (e) { return e.message; } })()");
+    };
+    EXPECT_NE(errorOf("no-such-track").find("Unknown trackId"), std::string::npos);
+
+    const auto policyError = runtime.evaluateScript(
+        "(() => { try { uapmd.sequencer.setTrackFreezePolicy(\"" + trackId +
+        "\", \"bogus\"); return \"\"; } catch (e) { return e.message; } })()");
+    EXPECT_NE(policyError.find("policy must be off or on"), std::string::npos);
+    auto turnedOn = choc::json::parse(runtime.evaluateScript(
+        "uapmd.sequencer.setTrackFreezePolicy(\"" + trackId + "\", \"on\")"));
+    EXPECT_EQ(turnedOn["policy"].get<std::string>(), "on");
+    auto turnedOff = choc::json::parse(runtime.evaluateScript(
+        "uapmd.sequencer.setTrackFreezePolicy(\"" + trackId + "\", \"off\")"));
+    EXPECT_EQ(turnedOff["policy"].get<std::string>(), "off");
+    const auto masterId = model.sequencer().engine()->timeline().document().view()
+        .masterTrackId().value_or("");
+    if (!masterId.empty())
+        EXPECT_NE(errorOf(masterId).find("master track"), std::string::npos);
+}
+
 TEST(AppLayerUndoIntegrationTest, JavaScriptUndoAndRedoUseMutationJobs) {
     ScopedTestEventLoop eventLoop;
     struct ScopedAppModelInstance {
