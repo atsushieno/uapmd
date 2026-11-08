@@ -1,14 +1,19 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <remidy/remidy.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
+
+#include "FrozenTrackAudio.hpp"
 
 namespace uapmd {
 namespace {
@@ -16,7 +21,10 @@ namespace {
 constexpr std::string_view kManifestHeader = "uapmd-track-freezing-v2";
 constexpr std::string_view kLegacyManifestHeader = "uapmd-track-freezing-v1";
 constexpr uint32_t kRenderBufferSize = kAudioBlockCapacityInFrames;
-constexpr uint64_t kMaximumFrozenTrackBytes = 512ULL * 1024ULL * 1024ULL;
+constexpr auto kLoaderPollInterval = std::chrono::milliseconds(5);
+// Stored renders the current document does not refer to are removed, least recently used first, beyond this.
+constexpr uint64_t kStoredCachedAudioLimitBytes = 1024ULL * 1024ULL * 1024ULL;
+constexpr std::string_view kCachePrefix{"cache."};
 
 std::string_view trim(std::string_view value) {
     while (!value.empty() &&
@@ -28,6 +36,22 @@ std::string_view trim(std::string_view value) {
             value.back() == '\r'))
         value.remove_suffix(1);
     return value;
+}
+
+// What a render of this track must match to be reused; bus count is that of the render.
+FrozenTrackAudioIdentity identityForTrack(SequencerEngine& engine, int32_t trackIndex, size_t busCount) {
+    FrozenTrackAudioIdentity identity;
+    identity.sampleRate = std::max(1, engine.currentSampleRate());
+    auto& tracks = engine.tracks();
+    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks.size() || !tracks[static_cast<size_t>(trackIndex)])
+        return identity;
+    auto* track = tracks[static_cast<size_t>(trackIndex)];
+    for (uint32_t bus = 0; bus < busCount; ++bus)
+        identity.busLatencies.push_back(track->graph().outputLatencyInSamples(bus));
+    for (const auto instanceId : track->orderedInstanceIds())
+        if (auto* instance = engine.getPluginInstance(instanceId))
+            identity.plugins.push_back(instance->formatName() + "\n" + instance->pluginId());
+    return identity;
 }
 
 } // namespace
@@ -109,6 +133,8 @@ FrozenTrackManager::FrozenTrackManager(
     project_document_event_listener_token_ =
         timeline_.projectDocumentEvents().addProjectDocumentEventListener(*this);
     publishPlaybackSnapshot();
+    // Stored renders wait for the document that refers to them, which is not known yet.
+    FrozenTrackAudio::removeAbandonedFiles(cachedAudioDirectory());
 }
 
 FrozenTrackManager::~FrozenTrackManager() {
@@ -125,6 +151,14 @@ FrozenTrackManager::~FrozenTrackManager() {
     joinRenderThread();
     if (active_render_)
         engine_.finishOfflineTrackRender(true);
+
+    {
+        std::lock_guard lock(loader_mutex_);
+        loader_stopping_ = true;
+    }
+    loader_wake_.notify_all();
+    if (loader_thread_.joinable())
+        loader_thread_.join();
 }
 
 FrozenTrackManagerProjectSerializationExtension&
@@ -171,13 +205,18 @@ void FrozenTrackManager::processAudio(
     const auto* snapshot =
         active_playback_snapshot_.load(std::memory_order_acquire);
     if (!snapshot || trackIndex < 0 ||
-        static_cast<size_t>(trackIndex) >= snapshot->tracks.size() ||
-        !engine.isPlaybackActive())
+        static_cast<size_t>(trackIndex) >= snapshot->tracks.size())
         return;
 
-    const auto* state = snapshot->tracks[static_cast<size_t>(trackIndex)];
-    const auto* cachedAudio =
-        state ? state->cached_audio.load(std::memory_order_acquire) : nullptr;
+    auto* state = snapshot->tracks[static_cast<size_t>(trackIndex)];
+    if (!state)
+        return;
+    // Announce the cache before using it, so that the main thread does not release it meanwhile.
+    CachedAudio* cachedAudio;
+    do {
+        cachedAudio = state->cached_audio.load(std::memory_order_seq_cst);
+        state->cached_audio_in_use.store(cachedAudio, std::memory_order_seq_cst);
+    } while (cachedAudio != state->cached_audio.load(std::memory_order_seq_cst));
     if (!cachedAudio)
         return;
 
@@ -187,29 +226,25 @@ void FrozenTrackManager::processAudio(
     // transitions can update the global position between those two stages.
     const int64_t cacheFrame =
         context.masterContext().playbackPositionSamples() -
-        cachedAudio->start_sample;
-    const int32_t frameCount = std::max(0, context.frameCount());
-    size_t cachedChannel = 0;
-    for (int32_t bus = 0; bus < context.audioOutBusCount(); ++bus)
-        for (uint32_t channel = 0;
-             channel <
-             static_cast<uint32_t>(context.outputChannelCount(bus));
-             ++channel) {
-            auto* output = context.getFloatOutBuffer(bus, channel);
-            if (!output || cachedChannel >= cachedAudio->channels.size()) {
+        cachedAudio->startSample();
+    // Also while stopped, so that the loader has the playhead loaded when playback starts.
+    cachedAudio->playbackPosition(cacheFrame);
+    if (engine.isPlaybackActive()) {
+        const bool waitForDisk = engine.offlineRendering();
+        const int32_t frameCount = std::max(0, context.frameCount());
+        uint32_t cachedChannel = 0;
+        for (int32_t bus = 0; bus < context.audioOutBusCount(); ++bus)
+            for (uint32_t channel = 0;
+                 channel <
+                 static_cast<uint32_t>(context.outputChannelCount(bus));
+                 ++channel) {
+                auto* output = context.getFloatOutBuffer(bus, channel);
+                if (output && cachedChannel < cachedAudio->channelCount())
+                    cachedAudio->read(cachedChannel, cacheFrame, output, frameCount, waitForDisk);
                 ++cachedChannel;
-                continue;
             }
-            const auto& input = cachedAudio->channels[cachedChannel++];
-            for (int32_t frame = 0; frame < frameCount; ++frame) {
-                const int64_t sourceFrame = cacheFrame + frame;
-                output[frame] =
-                    sourceFrame >= 0 &&
-                    static_cast<size_t>(sourceFrame) < input.size()
-                    ? input[static_cast<size_t>(sourceFrame)]
-                    : 0.0f;
-            }
-        }
+    }
+    state->cached_audio_in_use.store(nullptr, std::memory_order_release);
 }
 
 void FrozenTrackManager::audioContentChanged(int32_t trackIndex) {
@@ -403,27 +438,29 @@ FrozenTrackManager::frozenAudioSummaryForTrack(int32_t trackIndex) const {
     const auto referenceId = trackReferenceIdForIndex(trackIndex);
     if (referenceId.empty())
         return std::nullopt;
-    std::lock_guard lock(mutex_);
-    const auto it = playback_states_by_track_reference_.find(referenceId);
-    const auto* cachedAudio = it != playback_states_by_track_reference_.end() && it->second
-        ? it->second->cached_audio.load(std::memory_order_acquire)
-        : nullptr;
+    std::shared_ptr<CachedAudio> cachedAudio;
+    {
+        std::lock_guard lock(mutex_);
+        const auto it = playback_states_by_track_reference_.find(referenceId);
+        const auto* published = it != playback_states_by_track_reference_.end() && it->second
+            ? it->second->cached_audio.load(std::memory_order_acquire)
+            : nullptr;
+        if (!published)
+            return std::nullopt;
+        for (const auto& retained : retained_cached_audio_)
+            if (retained.get() == published)
+                cachedAudio = retained;
+    }
     if (!cachedAudio)
         return std::nullopt;
+    // Reads the file without the lock; the shared reference keeps it open.
+    const auto measured = cachedAudio->summarize();
     FrozenAudioSummary summary;
-    summary.startSample = cachedAudio->start_sample;
-    summary.channels = static_cast<uint32_t>(cachedAudio->channels.size());
-    double sumOfSquares = 0.0;
-    uint64_t samples = 0;
-    for (const auto& channel : cachedAudio->channels) {
-        summary.frames = std::max<uint64_t>(summary.frames, channel.size());
-        for (const auto sample : channel) {
-            summary.peak = std::max(summary.peak, std::abs(sample));
-            sumOfSquares += static_cast<double>(sample) * sample;
-        }
-        samples += channel.size();
-    }
-    summary.rms = samples ? std::sqrt(sumOfSquares / static_cast<double>(samples)) : 0.0;
+    summary.startSample = cachedAudio->startSample();
+    summary.channels = cachedAudio->channelCount();
+    summary.frames = measured.frames;
+    summary.peak = measured.peak;
+    summary.rms = measured.rms;
     return summary;
 }
 
@@ -651,9 +688,22 @@ bool FrozenTrackManager::saveProjectExtensionData(
     ProjectSerializationWriteContext& context,
     std::string& error) {
     std::unordered_map<std::string, FreezePolicy> policies;
+    // A render that is Frozen now matches the document being saved, as every edit revokes it.
+    std::vector<std::pair<std::string, std::shared_ptr<CachedAudio>>> frozen;
     {
         std::lock_guard lock(mutex_);
         policies = policies_by_track_reference_;
+        for (const auto& [referenceId, runtime] : runtime_by_track_reference_) {
+            if (runtime.state != RuntimeState::Frozen || !policies.contains(referenceId))
+                continue;
+            const auto state = playback_states_by_track_reference_.find(referenceId);
+            const auto* published = state != playback_states_by_track_reference_.end() && state->second
+                ? state->second->cached_audio.load(std::memory_order_acquire)
+                : nullptr;
+            for (const auto& retained : retained_cached_audio_)
+                if (published && retained.get() == published)
+                    frozen.emplace_back(referenceId, retained);
+        }
     }
 
     std::string manifest(kManifestHeader);
@@ -661,12 +711,20 @@ bool FrozenTrackManager::saveProjectExtensionData(
     for (const auto& [referenceId, policy] : policies)
         if (!referenceId.empty() && policy == FreezePolicy::On)
             manifest += "track." + referenceId + "=on\n";
+    std::vector<std::string> storedTokens;
+    for (const auto& [referenceId, audio] : frozen)
+        if (audio->persist()) {
+            manifest += std::string(kCachePrefix) + referenceId + "=" + audio->token() + "\n";
+            storedTokens.push_back(audio->token());
+        }
 
-    return context.writeExtensionFile(
+    const bool written = context.writeExtensionFile(
         extensionId(),
         kManifestPath,
         std::vector<uint8_t>(manifest.begin(), manifest.end()),
         error);
+    FrozenTrackAudio::collectGarbage(cachedAudioDirectory(), kStoredCachedAudioLimitBytes, storedTokens);
+    return written;
 }
 
 bool FrozenTrackManager::loadProjectExtensionData(
@@ -676,6 +734,7 @@ bool FrozenTrackManager::loadProjectExtensionData(
     auto bytes =
         context.readExtensionFile(extensionId(), kManifestPath, readError);
     std::unordered_map<std::string, FreezePolicy> policies;
+    std::unordered_map<std::string, std::string> tokens;
     if (bytes) {
         std::string_view manifest(
             reinterpret_cast<const char*>(bytes->data()), bytes->size());
@@ -704,27 +763,39 @@ bool FrozenTrackManager::loadProjectExtensionData(
                 const auto referenceId = key.substr(trackPrefix.size());
                 if (!referenceId.empty())
                     policies.emplace(referenceId, FreezePolicy::On);
-            }
+            } else if (key.starts_with(kCachePrefix) && !value.empty())
+                tokens.emplace(std::string(key.substr(kCachePrefix.size())), std::string(value));
         }
     }
 
     std::vector<std::string> toRender;
+    std::vector<std::tuple<std::string, std::string, uint64_t>> toRestore;
     {
         std::lock_guard lock(mutex_);
         policies_by_track_reference_ = std::move(policies);
         runtime_by_track_reference_.clear();
         for (const auto& [referenceId, _] : policies_by_track_reference_) {
+            // Restoring counts as Rendering: busy, so that state reports from loading plugins revoke nothing.
             auto& runtime = runtime_by_track_reference_[referenceId];
             runtime.state = RuntimeState::Rendering;
             auto& state = playback_states_by_track_reference_[referenceId];
             if (!state)
                 state = std::make_unique<PlaybackState>();
             state->cached_audio.store(nullptr, std::memory_order_release);
-            toRender.push_back(referenceId);
+            if (const auto token = tokens.find(referenceId); token != tokens.end())
+                toRestore.emplace_back(referenceId, token->second, runtime.invalidation_generation);
+            else
+                toRender.push_back(referenceId);
         }
     }
     clearAllPlaybackCaches();
     error.clear();
+    std::vector<std::string> storedTokens;
+    for (const auto& [_, token] : tokens)
+        storedTokens.push_back(token);
+    FrozenTrackAudio::collectGarbage(cachedAudioDirectory(), kStoredCachedAudioLimitBytes, storedTokens);
+    for (auto& [referenceId, token, generation] : toRestore)
+        beginRestore(std::move(referenceId), std::move(token), generation);
     for (const auto& referenceId : toRender)
         beginRender(referenceId);
     return true;
@@ -935,7 +1006,9 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     operation->settings.bufferSize = kRenderBufferSize;
     operation->settings.umpBufferSize =
         static_cast<uint32_t>(engine_.umpBufferSizeInBytes());
-    operation->settings.maximumBytes = kMaximumFrozenTrackBytes;
+    std::string audioError;
+    operation->audio = FrozenTrackAudio::create(cachedAudioDirectory(), audioError);
+    operation->settings.sink = operation->audio.get();
     {
         std::lock_guard lock(mutex_);
         auto runtime =
@@ -945,6 +1018,11 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
                 operation->track_reference_id))
             return;
         operation->generation = runtime->second.invalidation_generation;
+    }
+
+    if (!operation->audio) {
+        failRender(operation, std::move(audioError));
+        return;
     }
 
     if (engine_.trackHasLiveInput(trackIndex)) {
@@ -1112,15 +1190,82 @@ void FrozenTrackManager::finishRender(
         return;
     }
 
-    auto cachedAudio = std::make_unique<CachedAudio>();
-    cachedAudio->start_sample = result.startSample;
-    cachedAudio->bus_channel_counts = std::move(result.busChannelCounts);
-    cachedAudio->channels = std::move(result.channels);
-
     const auto trackIndex =
         trackIndexForReferenceId(operation->track_reference_id);
     if (trackIndex < 0)
         return;
+
+    auto cachedAudio = std::move(operation->audio);
+    std::string error;
+    if (!cachedAudio ||
+        !cachedAudio->finishWriting(
+            result.startSample,
+            result.busChannelCounts,
+            result.busLatencyShifts,
+            identityForTrack(engine_, trackIndex, result.busChannelCounts.size()),
+            error)) {
+        failRender(operation, std::move(error));
+        return;
+    }
+    publishCachedAudio(operation->track_reference_id, operation->generation, trackIndex, std::move(cachedAudio));
+}
+
+void FrozenTrackManager::beginRestore(std::string trackReferenceId, std::string token, uint64_t generation) {
+    const std::weak_ptr<AsyncLifetime> weakLifetime(async_lifetime_);
+    remidy::EventLoop::enqueueTaskOnMainThread(
+        [weakLifetime, trackReferenceId = std::move(trackReferenceId), token = std::move(token), generation] {
+            const auto lifetime = weakLifetime.lock();
+            auto* owner = lifetime
+                ? lifetime->owner.load(std::memory_order_acquire)
+                : nullptr;
+            if (owner)
+                owner->restoreCachedAudio(trackReferenceId, token, generation);
+        });
+}
+
+void FrozenTrackManager::restoreCachedAudio(
+    const std::string& trackReferenceId,
+    const std::string& token,
+    uint64_t generation) {
+    if (stopping_.load(std::memory_order_acquire))
+        return;
+    {
+        std::lock_guard lock(mutex_);
+        const auto runtime = runtime_by_track_reference_.find(trackReferenceId);
+        // Revoked meanwhile: whatever revoked it has taken care of rendering again.
+        if (runtime == runtime_by_track_reference_.end() ||
+            runtime->second.invalidation_generation != generation ||
+            runtime->second.state != RuntimeState::Rendering ||
+            !policies_by_track_reference_.contains(trackReferenceId))
+            return;
+    }
+    const auto trackIndex = trackIndexForReferenceId(trackReferenceId);
+    std::shared_ptr<CachedAudio> cachedAudio;
+    if (trackIndex >= 0 && !playback_active_.load(std::memory_order_acquire) &&
+        engine_.tailProcessManager().isTransportQuiet()) {
+        std::string error;
+        cachedAudio = FrozenTrackAudio::open(cachedAudioDirectory(), token, error);
+        if (cachedAudio &&
+            cachedAudio->identity() !=
+                identityForTrack(engine_, trackIndex, cachedAudio->identity().busLatencies.size()))
+            cachedAudio.reset();
+    }
+    if (!cachedAudio) {
+        prepareRender(trackReferenceId);
+        return;
+    }
+    publishCachedAudio(trackReferenceId, generation, trackIndex, std::move(cachedAudio));
+}
+
+void FrozenTrackManager::publishCachedAudio(
+    const std::string& trackReferenceId,
+    uint64_t generation,
+    int32_t trackIndex,
+    std::shared_ptr<CachedAudio> cachedAudio) {
+    // Load the playhead's surroundings now, so that playback starts with them in memory.
+    cachedAudio->playbackPosition(engine_.playbackPosition() - cachedAudio->startSample());
+    while (cachedAudio->loadAhead()) {
+    }
 
     // Clear live graph buffers and publish the immutable cache as one audio-
     // excluded transition. Otherwise a callback can refill an alignment or
@@ -1128,26 +1273,24 @@ void FrozenTrackManager::finishRender(
     engine_.resetTrackProcessingState(
         trackIndex,
         false,
-        [this, &operation, &cachedAudio] {
+        [this, &trackReferenceId, generation, &cachedAudio] {
             std::lock_guard lock(mutex_);
             if (playback_active_.load(std::memory_order_acquire))
                 return;
             auto runtime = runtime_by_track_reference_.find(
-                operation->track_reference_id);
+                trackReferenceId);
             if (runtime == runtime_by_track_reference_.end() ||
-                runtime->second.invalidation_generation !=
-                    operation->generation ||
+                runtime->second.invalidation_generation != generation ||
                 !policies_by_track_reference_.contains(
-                    operation->track_reference_id))
+                    trackReferenceId))
                 return;
 
             auto& playbackState =
-                playback_states_by_track_reference_[
-                    operation->track_reference_id];
+                playback_states_by_track_reference_[trackReferenceId];
             if (!playbackState)
                 playbackState = std::make_unique<PlaybackState>();
-            const auto* published = cachedAudio.get();
-            retained_cached_audio_.push_back(std::move(cachedAudio));
+            auto* published = cachedAudio.get();
+            retainCachedAudio(std::move(cachedAudio));
             playbackState->cached_audio.store(
                 published, std::memory_order_release);
             runtime->second.state = RuntimeState::Frozen;
@@ -1156,6 +1299,7 @@ void FrozenTrackManager::finishRender(
                 FreezePolicy::On, std::memory_order_release);
             playbackState->runtime_state.store(
                 RuntimeState::Frozen, std::memory_order_release);
+            releaseUnusedCachedAudio();
         });
 }
 
@@ -1214,6 +1358,7 @@ void FrozenTrackManager::updatePlaybackState(
     state->runtime_state.store(runtime, std::memory_order_release);
     if (runtime != RuntimeState::Frozen)
         state->cached_audio.store(nullptr, std::memory_order_release);
+    releaseUnusedCachedAudio();
 }
 
 void FrozenTrackManager::publishPlaybackSnapshot() {
@@ -1233,6 +1378,72 @@ void FrozenTrackManager::publishPlaybackSnapshot() {
     const auto* published = snapshot.get();
     playback_snapshots_.push_back(std::move(snapshot));
     active_playback_snapshot_.store(published, std::memory_order_release);
+    releaseUnusedCachedAudio();
+}
+
+void FrozenTrackManager::releaseUnusedCachedAudio() {
+    const auto inUse = [this](const CachedAudio* audio) {
+        for (const auto& [_, state] : playback_states_by_track_reference_)
+            if (state &&
+                (state->cached_audio.load(std::memory_order_seq_cst) == audio ||
+                 state->cached_audio_in_use.load(std::memory_order_seq_cst) == audio))
+                return true;
+        return false;
+    };
+    std::vector<std::shared_ptr<CachedAudio>> kept;
+    std::vector<std::shared_ptr<CachedAudio>> released;
+    for (auto& audio : retained_cached_audio_)
+        (inUse(audio.get()) ? kept : released).push_back(std::move(audio));
+    retained_cached_audio_ = std::move(kept);
+    if (released.empty())
+        return;
+    std::lock_guard lock(loader_mutex_);
+    std::erase_if(loader_cached_audio_, [&released](const auto& audio) {
+        return std::ranges::find(released, audio) != released.end();
+    });
+}
+
+void FrozenTrackManager::retainCachedAudio(std::shared_ptr<CachedAudio> audio) {
+    retained_cached_audio_.push_back(audio);
+    {
+        std::lock_guard lock(loader_mutex_);
+        loader_cached_audio_.push_back(std::move(audio));
+        if (!loader_thread_.joinable())
+            loader_thread_ = std::thread([this] { runCachedAudioLoader(); });
+    }
+    loader_wake_.notify_all();
+}
+
+void FrozenTrackManager::runCachedAudioLoader() {
+    std::vector<std::shared_ptr<CachedAudio>> cachedAudio;
+    std::unique_lock lock(loader_mutex_);
+    while (!loader_stopping_) {
+        cachedAudio = loader_cached_audio_;
+        lock.unlock();
+        bool loaded = false;
+        for (const auto& audio : cachedAudio)
+            loaded = audio->loadAhead() || loaded;
+        // A released cache closes its file here, outside the lock.
+        cachedAudio.clear();
+        lock.lock();
+        // Playback position is polled; the audio thread never signals.
+        if (!loaded)
+            loader_wake_.wait_for(lock, kLoaderPollInterval, [this] { return loader_stopping_; });
+    }
+}
+
+std::filesystem::path FrozenTrackManager::cachedAudioDirectory() {
+    const auto& cacheDirectory = uapmd_plugin_hosting::applicationCacheDirectory();
+    if (!cacheDirectory.empty())
+        return cacheDirectory / "frozen-tracks";
+    const auto& dataDirectory = uapmd_plugin_hosting::applicationDataDirectory();
+    if (!dataDirectory.empty())
+        return dataDirectory / "frozen-tracks";
+    std::error_code ec;
+    auto directory = std::filesystem::temp_directory_path(ec);
+    if (ec || directory.empty())
+        directory = ".";
+    return directory / "uapmd-frozen-tracks";
 }
 
 void FrozenTrackManager::clearAllPlaybackCaches() {

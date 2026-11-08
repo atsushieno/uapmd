@@ -1,8 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -21,6 +23,7 @@
 namespace uapmd {
 
 class TimelineFacade;
+class FrozenTrackAudio;
 class FrozenTrackAudioProcessorExtension;
 class FrozenTrackManagerProjectSerializationExtension;
 
@@ -78,16 +81,14 @@ private:
     static constexpr std::string_view kExtensionId{"org.uapmd.app.track-freezing"};
     static constexpr std::string_view kManifestPath{"track-freezing.ini"};
 
-    struct CachedAudio {
-        int64_t start_sample{0};
-        std::vector<uint32_t> bus_channel_counts;
-        std::vector<std::vector<float>> channels;
-    };
+    using CachedAudio = FrozenTrackAudio;
 
     struct PlaybackState {
         std::atomic<FreezePolicy> policy{FreezePolicy::Off};
         std::atomic<RuntimeState> runtime_state{RuntimeState::Live};
-        std::atomic<const CachedAudio*> cached_audio{nullptr};
+        std::atomic<CachedAudio*> cached_audio{nullptr};
+        // The cache the audio thread is reading for this track; it is not released meanwhile.
+        std::atomic<CachedAudio*> cached_audio_in_use{nullptr};
     };
 
     struct PlaybackSnapshot {
@@ -106,6 +107,7 @@ private:
         uint64_t generation{0};
         OfflineTrackRenderSettings settings;
         OfflineRenderProgress progress;
+        std::shared_ptr<CachedAudio> audio;
     };
 
     struct AsyncLifetime {
@@ -162,6 +164,15 @@ private:
     void finishRender(
         const std::shared_ptr<RenderOperation>& operation,
         OfflineTrackRenderResult result);
+    // Reuses a render a saved document referred to, or renders again when it no longer matches.
+    void beginRestore(std::string trackReferenceId, std::string token, uint64_t generation);
+    void restoreCachedAudio(const std::string& trackReferenceId, const std::string& token, uint64_t generation);
+    // Clears the live graph buffers and publishes the cache as one audio-excluded transition.
+    void publishCachedAudio(
+        const std::string& trackReferenceId,
+        uint64_t generation,
+        int32_t trackIndex,
+        std::shared_ptr<CachedAudio> cachedAudio);
     void failRender(
         const std::shared_ptr<RenderOperation>& operation,
         std::string error);
@@ -169,6 +180,12 @@ private:
     void updatePlaybackState(std::string_view trackReferenceId);
     void publishPlaybackSnapshot();
     void clearAllPlaybackCaches();
+    // Requires mutex_. Releases retained caches no track publishes or reads any longer.
+    void releaseUnusedCachedAudio();
+    // Requires mutex_. Keeps a published cache and has the loader stream it.
+    void retainCachedAudio(std::shared_ptr<CachedAudio> audio);
+    void runCachedAudioLoader();
+    static std::filesystem::path cachedAudioDirectory();
 
     SequencerEngine& engine_;
     TimelineFacade& timeline_;
@@ -179,7 +196,12 @@ private:
         playback_states_by_track_reference_;
     std::vector<std::unique_ptr<PlaybackSnapshot>> playback_snapshots_;
     std::atomic<const PlaybackSnapshot*> active_playback_snapshot_{nullptr};
-    std::vector<std::unique_ptr<CachedAudio>> retained_cached_audio_;
+    std::vector<std::shared_ptr<CachedAudio>> retained_cached_audio_;
+    std::mutex loader_mutex_;
+    std::condition_variable loader_wake_;
+    std::vector<std::shared_ptr<CachedAudio>> loader_cached_audio_;
+    bool loader_stopping_{false};
+    std::thread loader_thread_;
     std::shared_ptr<RenderOperation> active_render_;
     std::deque<std::string> queued_renders_;
     std::function<void()> pending_playback_start_;

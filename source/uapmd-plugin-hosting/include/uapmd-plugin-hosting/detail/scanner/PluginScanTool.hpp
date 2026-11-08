@@ -25,6 +25,9 @@ namespace uapmd_plugin_hosting {
     // is cached, nothing persists, and scanning simply runs again next launch.
     void applicationDataDirectory(std::filesystem::path path);
     const std::filesystem::path& applicationDataDirectory();
+    // Where data that can be produced again may be kept, which the platform may purge; empty when unknown.
+    void applicationCacheDirectory(std::filesystem::path path);
+    const std::filesystem::path& applicationCacheDirectory();
 
     enum class ScanMode {
         InProcess,

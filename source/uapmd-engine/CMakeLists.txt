@@ -202,6 +202,7 @@ target_sources(uapmd-engine PRIVATE
         src/devices/MidiIODevice.cpp
         src/sequencer/LatencyCompensationManager.cpp
         src/sequencer/MidiRecorder.cpp
+        src/sequencer/FrozenTrackAudio.cpp
         src/sequencer/FrozenTrackManager.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/ProjectCommands.cpp

@@ -56,6 +56,14 @@ struct OfflineRenderResult {
     std::string errorMessage;
 };
 
+// Receives a track render block by block, so that the render is never held in memory as a whole.
+class OfflineTrackRenderSink {
+public:
+    virtual ~OfflineTrackRenderSink() = default;
+    // channels holds one buffer per output channel, across all output buses in order.
+    virtual bool writeFrames(const float* const* channels, uint32_t channelCount, uint32_t frames, std::string& error) = 0;
+};
+
 struct OfflineTrackRenderSettings {
     int32_t trackIndex{0};
     int64_t startSample{0};
@@ -63,9 +71,10 @@ struct OfflineTrackRenderSettings {
     int32_t sampleRate{48000};
     uint32_t bufferSize{1024};
     uint32_t umpBufferSize{65536};
-    uint64_t maximumBytes{512ULL * 1024ULL * 1024ULL};
     // endSample is the content end; append the offline plugin tail and latency.
     bool include_plugin_tail{false};
+    // Required; it must outlive the render.
+    OfflineTrackRenderSink* sink{nullptr};
 };
 
 struct OfflineTrackRenderResult {
@@ -73,7 +82,10 @@ struct OfflineTrackRenderResult {
     bool canceled{false};
     int64_t startSample{0};
     std::vector<uint32_t> busChannelCounts;
-    std::vector<std::vector<float>> channels;
+    // Frames written to the sink per channel.
+    int64_t renderedFrames{0};
+    // Per bus: sink frame f plays at output frame f + shift, matching the realtime graph latency.
+    std::vector<int64_t> busLatencyShifts;
     std::string errorMessage;
 };
 

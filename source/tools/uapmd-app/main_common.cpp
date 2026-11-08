@@ -110,30 +110,41 @@ namespace {
             return;
         }
 
-        std::string directory;
-        if (jclass contextClass = env->GetObjectClass(activity)) {
-            if (jmethodID getFilesDir = env->GetMethodID(contextClass, "getFilesDir",
-                                                         "()Ljava/io/File;")) {
-                if (jobject filesDir = env->CallObjectMethod(activity, getFilesDir)) {
-                    jclass fileClass = env->GetObjectClass(filesDir);
-                    if (jmethodID getAbsolutePath = env->GetMethodID(
-                            fileClass, "getAbsolutePath", "()Ljava/lang/String;")) {
-                        auto path = static_cast<jstring>(
-                                env->CallObjectMethod(filesDir, getAbsolutePath));
-                        if (path) {
-                            if (const char* chars = env->GetStringUTFChars(path, nullptr)) {
-                                directory = chars;
-                                env->ReleaseStringUTFChars(path, chars);
+        // Asks the Activity for one of its java.io.File directories, as an absolute path.
+        const auto activityDirectory = [env, activity](const char* methodName) {
+            std::string directory;
+            if (jclass contextClass = env->GetObjectClass(activity)) {
+                if (jmethodID getDirectory = env->GetMethodID(contextClass, methodName,
+                                                              "()Ljava/io/File;")) {
+                    if (jobject file = env->CallObjectMethod(activity, getDirectory)) {
+                        jclass fileClass = env->GetObjectClass(file);
+                        if (jmethodID getAbsolutePath = env->GetMethodID(
+                                fileClass, "getAbsolutePath", "()Ljava/lang/String;")) {
+                            auto path = static_cast<jstring>(
+                                    env->CallObjectMethod(file, getAbsolutePath));
+                            if (path) {
+                                if (const char* chars = env->GetStringUTFChars(path, nullptr)) {
+                                    directory = chars;
+                                    env->ReleaseStringUTFChars(path, chars);
+                                }
+                                env->DeleteLocalRef(path);
                             }
-                            env->DeleteLocalRef(path);
                         }
+                        env->DeleteLocalRef(fileClass);
+                        env->DeleteLocalRef(file);
                     }
-                    env->DeleteLocalRef(fileClass);
-                    env->DeleteLocalRef(filesDir);
                 }
+                env->DeleteLocalRef(contextClass);
             }
-            env->DeleteLocalRef(contextClass);
-        }
+            return directory;
+        };
+
+        // Frozen track audio is kept here, where Android may purge it when storage runs low.
+        const auto cacheDirectory = activityDirectory("getCacheDir");
+        if (!cacheDirectory.empty())
+            uapmd_plugin_hosting::applicationCacheDirectory(std::filesystem::path{cacheDirectory});
+
+        const auto directory = activityDirectory("getFilesDir");
 
         if (directory.empty()) {
             __android_log_print(ANDROID_LOG_WARN, "UAPMD",

@@ -273,6 +273,8 @@ namespace uapmd {
                 plugin_states;
             std::unique_ptr<ScopedPluginProcessingMode> plugin_processing_mode;
             std::vector<uint32_t> offline_bus_latencies;
+            std::vector<const float*> sink_channels;
+            std::vector<float> silent_channel;
         };
         std::unique_ptr<OfflineTrackRenderSession> track_freeze_render_session_;
         using TrackAudioProcessorExtensions = std::vector<TrackAudioProcessorExtension*>;
@@ -1854,7 +1856,7 @@ namespace uapmd {
             error = "Track index is invalid.";
             return false;
         }
-        if (settings.sampleRate <= 0 || settings.bufferSize == 0 ||
+        if (!settings.sink || settings.sampleRate <= 0 || settings.bufferSize == 0 ||
             settings.umpBufferSize == 0 || settings.endSample <= settings.startSample) {
             error = "Track render settings are invalid.";
             return false;
@@ -1968,13 +1970,10 @@ namespace uapmd {
                     throw std::runtime_error("The track render range is too long.");
                 session->settings.endSample += static_cast<int64_t>(tailFrames) + latency;
             }
-            const auto totalFrames = static_cast<uint64_t>(
-                session->settings.endSample - session->settings.startSample);
-            if (channelCount == 0 || totalFrames > settings.maximumBytes / sizeof(float) / channelCount)
-                throw std::runtime_error("The frozen audio would exceed the per-track memory limit.");
-            session->result.channels.resize(static_cast<size_t>(channelCount));
-            for (auto& channel : session->result.channels)
-                channel.resize(static_cast<size_t>(totalFrames), 0.0f);
+            if (channelCount == 0)
+                throw std::runtime_error("Track has no output channel to render.");
+            session->sink_channels.resize(static_cast<size_t>(channelCount), nullptr);
+            session->silent_channel.resize(session->settings.bufferSize, 0.0f);
             offline_rendering_.store(true, std::memory_order_release);
             track_freeze_render_session_ = std::move(session);
             return true;
@@ -2057,31 +2056,34 @@ namespace uapmd {
                 renderTrack.graph().processAudio(*session->track_context);
                 dispatchTrackPluginOutput(renderTrack);
 
-                size_t cachedChannel = 0;
-                const auto destinationOffset =
-                    static_cast<size_t>(
-                        session->current_sample -
-                        session->settings.startSample);
+                size_t sinkChannel = 0;
                 for (int32_t bus = 0;
-                     bus < session->track_context->audioOutBusCount();
+                     bus < session->track_context->audioOutBusCount() &&
+                     sinkChannel < session->sink_channels.size();
                      ++bus)
                     for (uint32_t channel = 0;
                          channel < static_cast<uint32_t>(
-                             session->track_context->outputChannelCount(bus));
+                             session->track_context->outputChannelCount(bus)) &&
+                         sinkChannel < session->sink_channels.size();
                          ++channel) {
                         const auto* input =
                             session->track_context->getFloatOutBuffer(
                                 bus, channel);
-                        if (input)
-                            std::copy_n(
-                                input,
-                                frames,
-                                session->result.channels[cachedChannel].begin() +
-                                    static_cast<std::ptrdiff_t>(destinationOffset));
-                        ++cachedChannel;
+                        session->sink_channels[sinkChannel++] =
+                            input ? input : session->silent_channel.data();
                     }
+                std::string sinkError;
+                if (!session->settings.sink->writeFrames(
+                        session->sink_channels.data(),
+                        static_cast<uint32_t>(session->sink_channels.size()),
+                        static_cast<uint32_t>(frames),
+                        sinkError))
+                    throw std::runtime_error(
+                        sinkError.empty() ? "Failed to store the rendered track audio." : sinkError);
 
                 session->current_sample += frames;
+                session->result.renderedFrames =
+                    session->current_sample - session->settings.startSample;
             }
         } catch (const std::exception& error) {
             step.errorMessage = error.what();
@@ -2176,29 +2178,11 @@ namespace uapmd {
         if (!canceled && result.errorMessage.empty()) {
             try {
                 auto& graph = tracks_[static_cast<size_t>(session->settings.trackIndex)]->graph();
-                std::vector<int64_t> shifts;
-                uint64_t totalSamples = 0;
-                size_t channelIndex = 0;
-                for (uint32_t bus = 0; bus < result.busChannelCounts.size(); ++bus) {
-                    const int64_t shift = static_cast<int64_t>(graph.outputLatencyInSamples(bus)) -
-                        session->offline_bus_latencies[bus];
-                    shifts.push_back(shift);
-                    for (uint32_t channel = 0; channel < result.busChannelCounts[bus]; ++channel) {
-                        const auto size = static_cast<int64_t>(result.channels[channelIndex++].size());
-                        totalSamples += static_cast<uint64_t>(std::max<int64_t>(0, size + shift));
-                    }
-                }
-                if (totalSamples > session->settings.maximumBytes / sizeof(float))
-                    throw std::runtime_error("The latency-aligned frozen audio would exceed the per-track memory limit.");
-                channelIndex = 0;
-                for (size_t bus = 0; bus < shifts.size(); ++bus)
-                    for (uint32_t channel = 0; channel < result.busChannelCounts[bus]; ++channel) {
-                        auto& audio = result.channels[channelIndex++];
-                        if (shifts[bus] > 0)
-                            audio.insert(audio.begin(), static_cast<size_t>(shifts[bus]), 0.0f);
-                        else if (shifts[bus] < 0)
-                            audio.erase(audio.begin(), audio.begin() + std::min(audio.size(), static_cast<size_t>(-shifts[bus])));
-                    }
+                result.busLatencyShifts.clear();
+                for (uint32_t bus = 0; bus < result.busChannelCounts.size(); ++bus)
+                    result.busLatencyShifts.push_back(
+                        static_cast<int64_t>(graph.outputLatencyInSamples(bus)) -
+                        session->offline_bus_latencies[bus]);
             } catch (const std::exception& exception) {
                 result.errorMessage = exception.what();
             }
@@ -2216,8 +2200,9 @@ namespace uapmd {
 
         result.success = !result.canceled && result.errorMessage.empty();
         if (!result.success) {
-            result.channels.clear();
             result.busChannelCounts.clear();
+            result.busLatencyShifts.clear();
+            result.renderedFrames = 0;
         }
         if (transition)
             transition(result);

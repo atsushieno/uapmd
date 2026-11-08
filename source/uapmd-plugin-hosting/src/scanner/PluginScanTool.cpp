@@ -235,6 +235,21 @@ const std::filesystem::path& applicationDataDirectory() {
     return applicationDataDirectoryStorage();
 }
 
+namespace {
+    std::filesystem::path& applicationCacheDirectoryStorage() {
+        static std::filesystem::path instance{};
+        return instance;
+    }
+}
+
+void applicationCacheDirectory(std::filesystem::path path) {
+    applicationCacheDirectoryStorage() = std::move(path);
+}
+
+const std::filesystem::path& applicationCacheDirectory() {
+    return applicationCacheDirectoryStorage();
+}
+
 PluginScanToolImpl::PluginScanToolImpl() {
 #if ANDROID
     std::filesystem::path dir{};
