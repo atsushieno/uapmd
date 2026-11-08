@@ -398,6 +398,35 @@ FrozenTrackManager::renderProgressForTrack(int32_t trackIndex) const {
     return active_render_->progress;
 }
 
+std::optional<FrozenTrackManager::FrozenAudioSummary>
+FrozenTrackManager::frozenAudioSummaryForTrack(int32_t trackIndex) const {
+    const auto referenceId = trackReferenceIdForIndex(trackIndex);
+    if (referenceId.empty())
+        return std::nullopt;
+    std::lock_guard lock(mutex_);
+    const auto it = playback_states_by_track_reference_.find(referenceId);
+    const auto* cachedAudio = it != playback_states_by_track_reference_.end() && it->second
+        ? it->second->cached_audio.load(std::memory_order_acquire)
+        : nullptr;
+    if (!cachedAudio)
+        return std::nullopt;
+    FrozenAudioSummary summary;
+    summary.startSample = cachedAudio->start_sample;
+    summary.channels = static_cast<uint32_t>(cachedAudio->channels.size());
+    double sumOfSquares = 0.0;
+    uint64_t samples = 0;
+    for (const auto& channel : cachedAudio->channels) {
+        summary.frames = std::max<uint64_t>(summary.frames, channel.size());
+        for (const auto sample : channel) {
+            summary.peak = std::max(summary.peak, std::abs(sample));
+            sumOfSquares += static_cast<double>(sample) * sample;
+        }
+        samples += channel.size();
+    }
+    summary.rms = samples ? std::sqrt(sumOfSquares / static_cast<double>(samples)) : 0.0;
+    return summary;
+}
+
 uint64_t FrozenTrackManager::invalidationGenerationForTrack(
     int32_t trackIndex) const {
     const auto referenceId = trackReferenceIdForIndex(trackIndex);
@@ -900,8 +929,9 @@ void FrozenTrackManager::prepareRender(std::string trackReferenceId) {
     operation->track_reference_id = std::move(trackReferenceId);
     operation->settings.trackIndex = trackIndex;
     operation->settings.startSample = 0;
+    // The plugins run at the engine rate; the timeline state keeps its default.
     operation->settings.sampleRate =
-        std::max(1, timeline_.state().sample_rate);
+        std::max(1, engine_.currentSampleRate());
     operation->settings.bufferSize = kRenderBufferSize;
     operation->settings.umpBufferSize =
         static_cast<uint32_t>(engine_.umpBufferSizeInBytes());

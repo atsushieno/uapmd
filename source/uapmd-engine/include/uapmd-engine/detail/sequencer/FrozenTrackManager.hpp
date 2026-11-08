@@ -52,6 +52,16 @@ public:
         int32_t trackIndex) const;
     uint64_t invalidationGenerationForTrack(int32_t trackIndex) const;
     std::string errorMessageForTrack(int32_t trackIndex) const;
+
+    struct FrozenAudioSummary {
+        int64_t startSample{0};
+        uint64_t frames{0};
+        uint32_t channels{0};
+        float peak{0.0f};
+        double rms{0.0};
+    };
+    // Measures the published frozen audio of a track; nothing when it has none.
+    std::optional<FrozenAudioSummary> frozenAudioSummaryForTrack(int32_t trackIndex) const;
     bool isTrackBusy(int32_t trackIndex) const;
     bool isInstanceBusy(int32_t instanceId) const;
     bool hasBusyTrack() const;

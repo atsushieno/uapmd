@@ -305,6 +305,22 @@ namespace uapmd_graph {
 
         void prepareStopFlush(uapmd::EventSequence& eventIn, uint8_t group) {
             clearQueuedEvents();
+            // The flush goes at the start of the block, in front of the events this
+            // cycle already carries (e.g. notes after a stop that no callback
+            // flushed), so that those still play.
+            size_t heldNotes = 0;
+            if (has_active_notes_)
+                for (const auto& channels : active_notes_)
+                    for (const auto& halves : channels)
+                        for (const auto bits : halves)
+                            heldNotes += static_cast<size_t>(std::popcount(bits));
+            const size_t flushBytes = (16 * 2 + heldNotes) * 2 * sizeof(uapmd_ump_t);
+            auto* messages = static_cast<uint8_t*>(eventIn.getMessages());
+            size_t keptBytes = eventIn.position();
+            if (flushBytes + keptBytes > eventIn.maxMessagesInBytes())
+                keptBytes = 0;
+            else
+                std::memmove(messages + flushBytes, messages, keptBytes);
             eventIn.position(0);
             bool flushComplete = true;
 
@@ -351,6 +367,8 @@ namespace uapmd_graph {
                     has_active_notes_ = false;
             }
 
+            if (flushComplete && eventIn.position() == flushBytes)
+                eventIn.position(flushBytes + keptBytes);
             if (!flushComplete)
                 stop_flush_requested_.store(true, std::memory_order_release);
         }
