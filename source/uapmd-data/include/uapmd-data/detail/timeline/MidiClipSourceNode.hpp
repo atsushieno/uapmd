@@ -114,7 +114,8 @@ namespace uapmd {
             remidy::EventSequence& seq,
             const uapmd_ump_t* words,
             size_t wordCount,
-            uint32_t frameOffset
+            uint32_t frameOffset,
+            int32_t sampleRate
         );
 
         // Pre-compute sample timestamps using tempo change map

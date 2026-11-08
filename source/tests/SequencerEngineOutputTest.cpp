@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <future>
 #include <map>
@@ -148,7 +149,8 @@ public:
         output_buses_.push_back(&output_configuration_);
     }
 
-    bool hasEventInputs() override { return false; }
+    bool hasEventInputs() override { return event_inputs_; }
+    void eventInputs(bool value) { event_inputs_ = value; }
     bool hasEventOutputs() override { return false; }
     const std::vector<remidy::AudioBusConfiguration*>& audioInputBuses() const override {
         return input_buses_;
@@ -164,6 +166,7 @@ private:
     remidy::AudioBusConfiguration output_configuration_;
     std::vector<remidy::AudioBusConfiguration*> input_buses_;
     std::vector<remidy::AudioBusConfiguration*> output_buses_;
+    bool event_inputs_{false};
 };
 
 class TestPluginParameterSupport final : public remidy::PluginParameterSupport {
@@ -255,11 +258,28 @@ public:
     std::string& pluginId() const override { return plugin_id_; }
     bool bypassed() const override { return bypassed_; }
     void bypassed(bool value) override { bypassed_ = value; }
-    uapmd_status_t startProcessing() override { return 0; }
-    uapmd_status_t stopProcessing() override { return 0; }
+    uapmd_status_t startProcessing() override {
+        processing_ = true;
+        return 0;
+    }
+    uapmd_status_t stopProcessing() override {
+        processing_ = false;
+        voices_.clear();
+        return 0;
+    }
+    // Makes this a sine instrument that plays each note from its JR Timestamp
+    // position. Like a deactivated plugin, it is silent while processing is stopped.
+    void synthesizeNotes(bool enabled) {
+        synthesize_notes_ = enabled;
+        audio_buses_.eventInputs(enabled);
+    }
     uapmd_status_t processAudio(remidy::AudioProcessContext& process) override {
         if (on_process_)
             on_process_();
+        if (synthesize_notes_) {
+            renderNotes(process);
+            return 0;
+        }
         process.copyInputsToOutputs();
         if (output_nrpn_) {
             uapmd_ump_t words[]{static_cast<uint32_t>(*output_nrpn_ >> 32), static_cast<uint32_t>(*output_nrpn_)};
@@ -412,6 +432,60 @@ public:
     }
 
 private:
+    struct Voice {
+        uint8_t note;
+        uint64_t age;
+    };
+
+    void renderNotes(remidy::AudioProcessContext& process) {
+        const auto frames = std::max(0, process.frameCount());
+        const auto sampleRate = static_cast<double>(process.masterContext().sampleRate());
+        struct NoteEvent {
+            int32_t frame;
+            uint32_t word0;
+            uint32_t word1;
+        };
+        std::vector<NoteEvent> events;
+        const auto* words = static_cast<const uint32_t*>(process.eventIn().getMessages());
+        const size_t count = process.eventIn().position() / sizeof(uint32_t);
+        uint64_t ticks = 0;
+        for (size_t i = 0; i < count;) {
+            const auto type = words[i] >> 28;
+            const size_t size = std::max<size_t>(1, umppi::umpSizeInInts(static_cast<uint8_t>(type)));
+            if (type == 0 && ((words[i] >> 16) & 0xF0u) == 0x20u)
+                ticks += words[i] & 0xFFFFu;
+            else if (type == 4 && i + 1 < count)
+                events.push_back({std::min(frames - 1, static_cast<int32_t>(ticks * sampleRate / 31250)),
+                                  words[i], words[i + 1]});
+            i += size;
+        }
+
+        size_t next = 0;
+        for (int32_t frame = 0; frame < frames; ++frame) {
+            for (; next < events.size() && events[next].frame <= frame; ++next) {
+                const auto status = (events[next].word0 >> 20) & 0xFu;
+                const auto index = static_cast<uint8_t>((events[next].word0 >> 8) & 0x7Fu);
+                if (status == 0x9u && (events[next].word1 >> 16) != 0)
+                    voices_.push_back({index, 0});
+                else if (status == 0x8u || status == 0x9u)
+                    std::erase_if(voices_, [index](const Voice& voice) { return voice.note == index; });
+                else if (status == 0xBu && (index == 120 || index == 123))
+                    voices_.clear();
+            }
+            float sample = 0.0f;
+            for (auto& voice : voices_) {
+                const auto hz = 110.0 * std::pow(2.0, (voice.note - 45) / 12.0);
+                sample += 0.2f * static_cast<float>(std::sin(2.0 * std::numbers::pi * hz * voice.age++ / sampleRate));
+            }
+            if (!processing_)
+                sample = 0.0f;
+            for (uint32_t channel = 0; channel < process.outputChannelCount(0); ++channel)
+                process.getFloatOutBuffer(0, channel)[frame] = sample;
+        }
+        if (!processing_)
+            voices_.clear();
+    }
+
     void scheduleStateCompletionParameterNotification(uint32_t remainingTurns) {
         if (remainingTurns != 0) {
             remidy::EventLoop::enqueueTaskOnMainThread(
@@ -447,6 +521,9 @@ private:
     std::vector<uint8_t> state_{};
     TestPluginParameterSupport parameter_support_{};
     TestAudioBuses audio_buses_{};
+    bool processing_{true};
+    bool synthesize_notes_{false};
+    std::vector<Voice> voices_{};
     bool defer_state_load_{false};
     std::vector<uint8_t> pending_state_{};
     void* pending_state_context_{nullptr};
@@ -873,6 +950,161 @@ TEST_F(SequencerEngineOutputTest, QueuedFreezingSurvivesPlaybackAndShutdown) {
         EXPECT_FALSE(engine->isPlaybackActive());
         EXPECT_FALSE(manager.hasBusyTrack());
     }
+}
+
+namespace {
+    // At 31250 Hz a JR Timestamp tick is exactly one frame, so a note keeps the
+    // same frame whether it falls in a 256-frame live block or an 8192-frame
+    // freeze block, and frozen output must equal live output sample by sample.
+    constexpr int32_t kSynthSampleRate = 31250;
+    constexpr uint32_t kSynthCapacity = uapmd::kAudioBlockCapacityInFrames;
+    constexpr uint32_t kLiveBlock = 256;
+
+    struct SynthNote {
+        uint8_t note;
+        uint64_t startTick;
+        uint64_t lengthTicks;
+    };
+
+    // One synth track per entry; the clips use 480 ticks per quarter at 120 BPM.
+    std::unique_ptr<uapmd::SequencerEngine> createSynthEngine(
+        const std::vector<std::vector<SynthNote>>& tracks,
+        std::vector<int32_t>& instanceIds) {
+        auto host = std::make_unique<TestPluginHostingAPI>();
+        auto* hostPtr = host.get();
+        auto engine = uapmd::SequencerEngine::createWithPluginHost(
+            kSynthSampleRate, kSynthCapacity, 65536, std::move(host));
+        engine->setEngineActive(true);
+        for (const auto& notes : tracks) {
+            const auto trackIndex = engine->addEmptyTrack();
+            std::string format = "Test";
+            std::string pluginId = "test.plugin";
+            int32_t instanceId = -1;
+            engine->addPluginToTrack(trackIndex, format, pluginId,
+                [&](int32_t id, int32_t, std::string error) {
+                    EXPECT_TRUE(error.empty());
+                    instanceId = id;
+                });
+            if (instanceId < 0)
+                return {};
+            hostPtr->mutableInstance(instanceId)->synthesizeNotes(true);
+            instanceIds.push_back(instanceId);
+
+            struct Message { uint64_t tick; uapmd_ump_t word0; uapmd_ump_t word1; };
+            std::vector<Message> messages;
+            for (const auto& n : notes) {
+                messages.push_back({n.startTick, 0x40900000u | (uint32_t{n.note} << 8), 0x80000000u});
+                messages.push_back({n.startTick + n.lengthTicks, 0x40800000u | (uint32_t{n.note} << 8), 0u});
+            }
+            std::stable_sort(messages.begin(), messages.end(),
+                [](const Message& a, const Message& b) { return a.tick < b.tick; });
+            std::vector<uapmd_ump_t> ump;
+            std::vector<uint64_t> ticks;
+            for (const auto& m : messages) {
+                ump.insert(ump.end(), {m.word0, m.word1});
+                ticks.insert(ticks.end(), {m.tick, m.tick});
+            }
+            EXPECT_TRUE(engine->timeline().addMidiClipToTrack(
+                trackIndex, uapmd::TimelinePosition::fromSamples(0, kSynthSampleRate),
+                ump, ticks, 480, 120.0, {}, {}, "Synth notes").success);
+        }
+        return engine;
+    }
+
+    // Plays from the start in live-sized blocks, then lets the stopped transport
+    // go quiet so that a freeze can begin.
+    std::vector<float> playAndCapture(uapmd::SequencerEngine& engine, int32_t blocks) {
+        remidy::AudioProcessContext process(engine.data().masterContext(), 65536);
+        process.configureMainBus(2, 2, kSynthCapacity);
+        process.frameCount(kLiveBlock);
+        engine.startPlayback();
+        for (int attempt = 0; attempt < 200 && !engine.isPlaybackActive(); ++attempt) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_TRUE(engine.isPlaybackActive());
+        std::vector<float> output;
+        for (int32_t block = 0; block < blocks; ++block) {
+            EXPECT_EQ(engine.processAudio(process), 0);
+            const auto* left = process.getFloatOutBuffer(0, 0);
+            output.insert(output.end(), left, left + kLiveBlock);
+        }
+        engine.stopPlayback();
+        for (int32_t block = 0; block < kSynthSampleRate / 4 / static_cast<int32_t>(kLiveBlock) + 2; ++block)
+            engine.processAudio(process);
+        return output;
+    }
+
+    bool waitForFrozen(uapmd::FrozenTrackManager& manager, int32_t trackIndex) {
+        using RuntimeState = uapmd::FrozenTrackManager::RuntimeState;
+        for (int attempt = 0; attempt < 2000; ++attempt) {
+            const auto state = manager.runtimeStateForTrack(trackIndex);
+            if (state == RuntimeState::Frozen || state == RuntimeState::Error)
+                break;
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return manager.runtimeStateForTrack(trackIndex) == RuntimeState::Frozen;
+    }
+}
+
+TEST_F(SequencerEngineOutputTest, FrozenTrackMixedWithLiveTrackMatchesAllLiveOutput) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<int32_t> instanceIds;
+    // Notes start and end inside blocks of both sizes, several in one freeze block.
+    auto engine = createSynthEngine({
+        {{57, 3, 20}, {60, 41, 30}, {64, 97, 25}, {67, 170, 40}, {69, 251, 20}, {62, 520, 60}},
+        {{45, 7, 60}, {52, 133, 50}, {48, 260, 30}, {50, 515, 40}}}, instanceIds);
+    ASSERT_NE(engine, nullptr);
+    constexpr int32_t blocks = kSynthSampleRate * 2 / 3 / static_cast<int32_t>(kLiveBlock);
+
+    const auto allLive = playAndCapture(*engine, blocks);
+    float livePeak = 0.0f;
+    for (const auto sample : allLive)
+        livePeak = std::max(livePeak, std::abs(sample));
+    ASSERT_GT(livePeak, 0.1f);
+
+    auto& manager = engine->frozenTrackManager();
+    ASSERT_TRUE(manager.setFreezePolicyForTrack(0, uapmd::FrozenTrackManager::FreezePolicy::On));
+    ASSERT_TRUE(waitForFrozen(manager, 0)) << manager.errorMessageForTrack(0);
+    const auto frozenAudio = manager.frozenAudioSummaryForTrack(0);
+    ASSERT_TRUE(frozenAudio.has_value());
+    EXPECT_GT(frozenAudio->peak, 0.1f);
+
+    const auto frozenAndLive = playAndCapture(*engine, blocks);
+    ASSERT_EQ(frozenAndLive.size(), allLive.size());
+    size_t mismatches = 0;
+    std::string firstMismatches;
+    for (size_t i = 0; i < allLive.size(); ++i)
+        if (std::abs(frozenAndLive[i] - allLive[i]) > 1e-6f && ++mismatches <= 4)
+            firstMismatches += std::format(" frame {}: {} vs {};", i, frozenAndLive[i], allLive[i]);
+    EXPECT_EQ(mismatches, 0u) << "frozen+live vs all-live:" << firstMismatches;
+}
+
+TEST_F(SequencerEngineOutputTest, FreezeAfterSwitchingEngineOffKeepsNotesInFirstRenderBlock) {
+    ScopedTestEventLoop eventLoop;
+    std::vector<int32_t> instanceIds;
+    // Both notes fall in the first 8192-frame freeze block.
+    auto engine = createSynthEngine({{{48, 10, 100}, {55, 10, 100}}}, instanceIds);
+    ASSERT_NE(engine, nullptr);
+    playAndCapture(*engine, 8);
+
+    // What the app does when the audio engine is switched off: stop the
+    // transport, then stop every plugin and reset the processing state, with no
+    // further audio callbacks.
+    engine->startPlayback();
+    engine->stopPlayback();
+    engine->setEngineActive(false);
+    for (const auto id : instanceIds)
+        engine->getPluginInstance(id)->stopProcessing();
+    engine->resetProcessingState();
+
+    auto& manager = engine->frozenTrackManager();
+    ASSERT_TRUE(manager.setFreezePolicyForTrack(0, uapmd::FrozenTrackManager::FreezePolicy::On));
+    ASSERT_TRUE(waitForFrozen(manager, 0)) << manager.errorMessageForTrack(0);
+    const auto frozenAudio = manager.frozenAudioSummaryForTrack(0);
+    ASSERT_TRUE(frozenAudio.has_value());
+    EXPECT_GT(frozenAudio->peak, 0.1f) << "the frozen track is silent";
 }
 
 TEST_F(SequencerEngineOutputTest, OfflineRenderProducesAudibleSamples) {
@@ -4035,3 +4267,65 @@ TEST_F(SequencerEngineOutputTest, PluginRemovalNotifiesListenersWithoutHoldingIn
 }
 
 } // namespace
+
+namespace {
+    // 480 ticks per quarter at 120 BPM and 48 kHz: one tick is 50 samples.
+    std::unique_ptr<uapmd::MidiClipSourceNode> createNotesNode(const std::vector<uint64_t>& ticks) {
+        std::vector<uapmd_ump_t> events;
+        std::vector<uint64_t> timestamps;
+        for (size_t i = 0; i < ticks.size(); i++) {
+            const auto note = static_cast<uint32_t>(60 + i);
+            for (const auto word : {0x40900000u | (note << 8), 0x80000000u}) {
+                events.push_back(word);
+                timestamps.push_back(ticks[i]);
+            }
+        }
+        auto node = std::make_unique<uapmd::MidiClipSourceNode>(
+            0, std::move(events), std::move(timestamps), 480, 120.0, 48000.0,
+            std::vector<uapmd::MidiTempoChange>{}, std::vector<uapmd::MidiTimeSignatureChange>{});
+        node->setPlaying(true);
+        return node;
+    }
+
+    class TimestampRecorder : public remidy::TypedUmpInputDispatcher {
+    public:
+        std::vector<std::pair<uint8_t, uint64_t>> notes;
+    protected:
+        void onNoteOn(remidy::uint4_t, remidy::uint4_t, remidy::uint7_t note, uint8_t, uint16_t, uint16_t) override {
+            notes.emplace_back(note, timestamp());
+        }
+    };
+
+    std::vector<std::pair<uint8_t, uint64_t>> dispatchedNotes(const std::vector<uapmd::MidiClipSourceNode*>& nodes, int32_t frames) {
+        remidy::MasterContext master;
+        master.sampleRate(48000);
+        remidy::AudioProcessContext context(master, 4096);
+        for (auto* node : nodes)
+            node->processEvents(context.eventIn(), frames, 48000, 120.0, 0);
+        TimestampRecorder recorder;
+        recorder.process(context);
+        return recorder.notes;
+    }
+
+    void expectNear(const std::vector<std::pair<uint8_t, uint64_t>>& actual,
+                    const std::vector<std::pair<uint8_t, uint64_t>>& expected) {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (size_t i = 0; i < expected.size(); i++) {
+            EXPECT_EQ(actual[i].first, expected[i].first) << "event " << i;
+            // A JR Timestamp tick is about 1.5 samples at 48 kHz.
+            EXPECT_NEAR(static_cast<double>(actual[i].second), static_cast<double>(expected[i].second), 2.0) << "event " << i;
+        }
+    }
+}
+
+TEST(MidiClipTimestampTest, EventsInOneBlockKeepTheirPositions) {
+    auto node = createNotesNode({10, 20, 20, 150});
+    expectNear(dispatchedNotes({node.get()}, 8192), {{60, 500}, {61, 1000}, {62, 1000}, {63, 7500}});
+}
+
+TEST(MidiClipTimestampTest, ClipsSharingASequenceAreMergedInTimeOrder) {
+    auto first = createNotesNode({20, 100});
+    auto second = createNotesNode({10, 60, 120});
+    expectNear(dispatchedNotes({first.get(), second.get()}, 8192),
+               {{60, 500}, {60, 1000}, {61, 3000}, {61, 5000}, {62, 6000}});
+}

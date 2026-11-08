@@ -5,7 +5,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t
     int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atomInIndex);
     auto& forge = owner->lv2_ports[lv2PortIndex].forge;
 
-    auto timestampInSamples = static_cast<int64_t>(timestamp() * 31250 / owner->sample_rate);
+    auto timestampInSamples = static_cast<int64_t>(timestamp());
 
     lv2_atom_forge_frame_time(&forge, timestampInSamples);
     lv2_atom_forge_atom(&forge, eventSize, owner->implContext.statics->urids.urid_midi_event_type);

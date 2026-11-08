@@ -194,7 +194,7 @@ namespace uapmd {
                 }
 
                 if (!intercepted)
-                    appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset);
+                    appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset, sampleRate);
             }
 
             eventIdx += wordsNeeded;
@@ -208,30 +208,55 @@ namespace uapmd {
         remidy::EventSequence& seq,
         const uapmd_ump_t* words,
         size_t wordCount,
-        uint32_t frameOffset
+        uint32_t frameOffset,
+        int32_t sampleRate
     ) {
-        size_t pos = seq.position();
-        auto* buffer = static_cast<uint32_t*>(seq.getMessages());
-        size_t maxSize = seq.maxMessagesInBytes();
-        size_t umpPosition = pos / sizeof(uint32_t);
-        size_t umpCapacity = maxSize / sizeof(uint32_t);
+        // JR Timestamps are deltas in 1/31250 sec. units that apply to all the following messages.
+        // A track's clips share one sequence, so an event may belong before what is already there.
+        constexpr uint64_t jrTicksPerSecond = 31250;
+        constexpr uint32_t jrStatus = 0x20;
+        const uint64_t targetTicks = sampleRate > 0
+            ? (static_cast<uint64_t>(frameOffset) * jrTicksPerSecond + sampleRate / 2) / sampleRate
+            : 0;
 
-        // Write JR_TIMESTAMP utility message for sample-accurate timing
-        // MessageType=0 (utility), Status=0x20 (JR_TIMESTAMP), Data=frameOffset (16-bit)
-        if (frameOffset > 0 && umpPosition < umpCapacity) {
-            uint32_t jrTimestamp = (0x0 << 28) | (0x20 << 16) | (frameOffset & 0xFFFF);
-            buffer[umpPosition++] = jrTimestamp;
+        auto* buffer = static_cast<uint32_t*>(seq.getMessages());
+        const size_t usedWords = seq.position() / sizeof(uint32_t);
+        const size_t capacityWords = seq.maxMessagesInBytes() / sizeof(uint32_t);
+
+        size_t insertAt = usedWords;
+        uint64_t ticksAtInsert = 0;
+        uint32_t followingDelta = 0;
+        for (size_t i = 0; i < usedWords;) {
+            const auto messageType = static_cast<uint8_t>(buffer[i] >> 28);
+            if (messageType == 0 && ((buffer[i] >> 16) & 0xF0u) == jrStatus) {
+                const uint32_t delta = buffer[i] & 0xFFFFu;
+                if (ticksAtInsert + delta > targetTicks) {
+                    insertAt = i;
+                    followingDelta = static_cast<uint32_t>(ticksAtInsert + delta - targetTicks);
+                    break;
+                }
+                ticksAtInsert += delta;
+            }
+            const size_t size = umppi::umpSizeInInts(messageType);
+            i += size == 0 ? 1 : size;
         }
 
-        // Check that we have room for all words before writing any
-        if (umpPosition + wordCount > umpCapacity)
+        const uint64_t ownDelta = targetTicks - ticksAtInsert;
+        const size_t neededWords = wordCount + (ownDelta > 0 ? 1 : 0);
+        if (usedWords + neededWords > capacityWords)
             return; // Buffer full - drop event
 
-        // Write all words of the complete UMP message
+        std::memmove(buffer + insertAt + neededWords, buffer + insertAt, (usedWords - insertAt) * sizeof(uint32_t));
+        size_t writeAt = insertAt;
+        if (ownDelta > 0)
+            buffer[writeAt++] = (jrStatus << 16) | static_cast<uint32_t>(std::min<uint64_t>(ownDelta, 0xFFFFu));
         for (size_t i = 0; i < wordCount; i++)
-            buffer[umpPosition++] = words[i];
+            buffer[writeAt++] = words[i];
+        // The timestamp that follows now counts from this event.
+        if (insertAt < usedWords)
+            buffer[writeAt] = (jrStatus << 16) | followingDelta;
 
-        seq.position(umpPosition * sizeof(uint32_t));
+        seq.position((usedWords + neededWords) * sizeof(uint32_t));
     }
 
     void MidiClipSourceNode::rebuildSampleTimelines() {

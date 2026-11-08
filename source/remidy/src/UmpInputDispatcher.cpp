@@ -12,7 +12,7 @@ inline uint16_t midi2NoteAttributeData(const umppi::Ump& ump) {
 }
 
 void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
-    _timestamp = 0;
+    _jr_timestamp_ticks = 0;
     master_context = &src.masterContext();
 
     onProcessStart(src);
@@ -41,8 +41,7 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
                         master_context->deltaClockstampTicksPerQuarterNotes(ump.getDCTPQ());
                         break;
                     case umppi::MidiUtilityStatus::JR_TIMESTAMP:
-                        // FIXME: convert to sample-based timestamp (here?)
-                        _timestamp += ump.getJRTimestamp();
+                        _jr_timestamp_ticks += ump.getJRTimestamp();
                         break;
                     case umppi::MidiUtilityStatus::DELTA_CLOCKSTAMP:
                         // FIXME: implement (calculate timestamp delta)

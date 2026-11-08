@@ -13,7 +13,7 @@ namespace remidy {
     typedef uint8_t uint7_t;
 
     class TypedUmpInputDispatcher : public UmpInputDispatcher {
-        uint64_t _timestamp{0};
+        uint64_t _jr_timestamp_ticks{0};
         MasterContext* master_context;
 
     protected:
@@ -45,7 +45,10 @@ namespace remidy {
     public:
         void process(AudioProcessContext& src) override;
 
-        uint64_t timestamp() { return _timestamp; }
+        // The position of the current event within the block, in samples.
+        uint64_t timestamp() {
+            return master_context ? _jr_timestamp_ticks * static_cast<uint64_t>(master_context->sampleRate()) / 31250 : 0;
+        }
         MasterContext* masterContext() { return master_context; }
     };
 }
