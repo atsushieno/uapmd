@@ -13,6 +13,7 @@
 // Instance::setArray().
 
 #include <cstddef>  // size_t — must precede wclap-host-cpp headers
+#include <vector>  // wclap-js-instance.h uses std::vector without including it
 #include "wclap-js-instance.h"
 
 #include <cmath>

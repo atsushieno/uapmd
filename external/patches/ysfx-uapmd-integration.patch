@@ -136,3 +136,14 @@ diff -ruN a/sources/ysfx_uapmd_placeholder.cpp b/sources/ysfx_uapmd_placeholder.
 +namespace {
 +    [[maybe_unused]] int ysfx_uapmd_placeholder = 0;
 +}
+diff -ruN a/sources/ysfx_utils.cpp b/sources/ysfx_utils.cpp
+--- a/sources/ysfx_utils.cpp	2026-11-08 07:45:15
++++ b/sources/ysfx_utils.cpp	2026-11-08 07:45:15
+@@ -23,6 +23,7 @@
+ #include <cctype>
+ #include <string>
+ #include <clocale>
++#include <cstdlib>
+ #include <cstring>
+ #include <cassert>
+ #if !defined(_WIN32)

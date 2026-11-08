@@ -548,6 +548,12 @@ foreach(_uapmd_bsr_target bs_roformer ggml ggml-base ggml-cpu ggml-blas)
     uapmd_optimize_heavy_audio_feature_target_in_debug(${_uapmd_bsr_target})
 endforeach()
 
+# ggml v0.9.11's gguf.cpp uses errno without <cerrno>, which newer libc++ (e.g. Emscripten 7) no longer includes transitively.
+if(TARGET ggml-base AND NOT MSVC)
+    set_source_files_properties("${ggml_SOURCE_DIR}/src/gguf.cpp" TARGET_DIRECTORY ggml-base
+            PROPERTIES COMPILE_OPTIONS "-include;cerrno")
+endif()
+
 add_library(uapmd-bsroformer STATIC
         src/BSRoformerAddin.cpp
         src/BSRoformerStemSeparator.cpp
