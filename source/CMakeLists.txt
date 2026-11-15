@@ -317,7 +317,7 @@ if(UAPMD_ENABLE_ARA AND NOT UAPMD_BUILDING_WASM AND NOT EMSCRIPTEN)
     CPMAddPackage(
             NAME           ARA_SDK
             GIT_REPOSITORY https://github.com/Celemony/ARA_SDK.git
-            GIT_TAG        1f4b2c9ba4c06ac2135dfcdefdfb146e2c214ce7
+            GIT_TAG        releases/2.3.0
             DOWNLOAD_ONLY  YES
     )
 

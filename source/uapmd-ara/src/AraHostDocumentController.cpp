@@ -602,7 +602,7 @@ namespace uapmd::ara {
                 .notifyAudioModificationContentChanged = notifyAudioModificationContentChanged,
                 .notifyPlaybackRegionContentChanged = notifyPlaybackRegionContentChanged,
                 .notifyDocumentDataChanged = notifyDocumentDataChanged,
-                .notifyRegionSequenceDataChanged = notifyRegionSequenceDataChanged
+                //.notifyRegionSequenceDataChanged = notifyRegionSequenceDataChanged
             };
             host_instance = ARA::ARADocumentControllerHostInstance{
                 .structSize = ARA::kARADocumentControllerHostInstanceMinSize,
@@ -985,7 +985,7 @@ namespace uapmd::ara {
                 .orderIndex = track.trackIndex,
                 .musicalContextRef = musical_context_ref,
                 .color = nullptr,
-                .persistentID = host.persistent_id.c_str()
+                //.persistentID = host.persistent_id.c_str()
             };
         }
 
@@ -1928,8 +1928,8 @@ namespace uapmd::ara {
                 .audioSourceRefs = &scope.audio_source,
                 .audioModificationRefsCount = scope.audio_modification ? 1u : 0u,
                 .audioModificationRefs = scope.audio_modification ? &scope.audio_modification : nullptr,
-                .regionSequenceRefsCount = 0,
-                .regionSequenceRefs = nullptr
+                //.regionSequenceRefsCount = 0,
+                //.regionSequenceRefs = nullptr
             };
 
             HostArchive hostArchive{
@@ -1992,9 +1992,9 @@ namespace uapmd::ara {
                     !hasModification || archivedAudioModificationPersistentId == scope.audio_modification_persistent_id
                         ? nullptr
                         : modificationCurrentIds,
-                .regionSequenceIDsCount = 0,
-                .regionSequenceArchiveIDs = nullptr,
-                .regionSequenceCurrentIDs = nullptr
+                //.regionSequenceIDsCount = 0,
+                //.regionSequenceArchiveIDs = nullptr,
+                //.regionSequenceCurrentIDs = nullptr
             };
 
             HostArchive hostArchive{
@@ -2046,8 +2046,8 @@ namespace uapmd::ara {
                 .audioSourceRefs = nullptr,
                 .audioModificationRefsCount = 0,
                 .audioModificationRefs = nullptr,
-                .regionSequenceRefsCount = 1,
-                .regionSequenceRefs = &regionSequenceRef
+                //.regionSequenceRefsCount = 1,
+                //.regionSequenceRefs = &regionSequenceRef
             };
 
             HostArchive hostArchive{
@@ -2088,12 +2088,12 @@ namespace uapmd::ara {
                 .audioModificationIDsCount = 0,
                 .audioModificationArchiveIDs = nullptr,
                 .audioModificationCurrentIDs = nullptr,
-                .regionSequenceIDsCount = 1,
-                .regionSequenceArchiveIDs = archiveIds,
-                .regionSequenceCurrentIDs =
-                    archivedRegionSequencePersistentId == hostIt->second.persistent_id
-                        ? nullptr
-                        : currentIds
+                //.regionSequenceIDsCount = 1,
+                //.regionSequenceArchiveIDs = archiveIds,
+                //.regionSequenceCurrentIDs =
+                //    archivedRegionSequencePersistentId == hostIt->second.persistent_id
+                //        ? nullptr
+                //        : currentIds
             };
 
             HostArchive hostArchive{
@@ -2278,8 +2278,8 @@ namespace uapmd::ara {
                     return ARA::kARAContentTypeKeySignatures;
                 case AraContentKind::Chords:
                     return ARA::kARAContentTypeSheetChords;
-                case AraContentKind::Lyrics:
-                    return ARA::kARAContentTypeLyricEntries;
+                //case AraContentKind::Lyrics:
+                //    return ARA::kARAContentTypeLyricEntries;
                 default:
                     return std::nullopt;
             }
@@ -2441,8 +2441,8 @@ namespace uapmd::ara {
                     .audioSourceRefs = audioSourceRefs.empty() ? nullptr : audioSourceRefs.data(),
                     .audioModificationRefsCount = static_cast<ARA::ARASize>(audioModificationRefs.size()),
                     .audioModificationRefs = audioModificationRefs.empty() ? nullptr : audioModificationRefs.data(),
-                    .regionSequenceRefsCount = static_cast<ARA::ARASize>(regionSequenceRefs.size()),
-                    .regionSequenceRefs = regionSequenceRefs.empty() ? nullptr : regionSequenceRefs.data()
+                    //.regionSequenceRefsCount = static_cast<ARA::ARASize>(regionSequenceRefs.size()),
+                    //.regionSequenceRefs = regionSequenceRefs.empty() ? nullptr : regionSequenceRefs.data()
                 };
                 return controller->storeObjectsToArchive(
                     controller_instance->documentControllerRef,
