@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstring>
+#include <type_traits>
 #include <aap/ext/midi.h>
 
 #include "PluginFormatAAP.hpp"
@@ -24,14 +25,66 @@ int32_t remidy::PluginInstanceAAP::Extensibility::instanceId() const {
     return aap ? aap->getInstanceId() : -1;
 }
 
+void remidy::PluginInstanceAAP::installTailSupport() {
+    static_assert(std::is_standard_layout_v<TailHostExtension>);
+    tail_host_extension_ = {{nullptr, staticNotifyTailLengthChanged}, this};
+    auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
+    if (!remote || !remote->getPluginInformation()->hasExtension(AAP_TAIL_EXTENSION_URI))
+        return;
+    remote->getHostExtension = [this](aap::RemotePluginInstance*, uint8_t, const char* uri) -> void* {
+        return uri && !strcmp(uri, AAP_TAIL_EXTENSION_URI) ? &tail_host_extension_.ext : nullptr;
+    };
+}
+
+void remidy::PluginInstanceAAP::uninstallTailSupport() {
+    tail_state_->owner.store(nullptr, std::memory_order_release);
+    if (auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance))
+        remote->getHostExtension = nullptr;
+}
+
+void remidy::PluginInstanceAAP::refreshTailLength() {
+    auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
+    if (!remote || !remote->getPluginInformation()->hasExtension(AAP_TAIL_EXTENSION_URI))
+        return;
+    auto* aapxs = remote->getAAPXSDispatcher().getPluginAAPXSByUri(AAP_TAIL_EXTENSION_URI);
+    auto* tail = aapxs ? dynamic_cast<aap::xs::TailClientAAPXS*>(static_cast<aap::xs::TypedAAPXS*>(aapxs->typed_client)) : nullptr;
+    if (!tail)
+        return;
+    // Async on purpose: while ACTIVE the request travels on the audio cycle, so blocking here could stall.
+    tail->getTailLengthAsync([weak = std::weak_ptr<TailState>(tail_state_)](aap::Result<double> result) {
+        auto state = weak.lock();
+        if (!state || !result.isOk())
+            return;
+        if (state->seconds.exchange(result.value, std::memory_order_acq_rel) == result.value)
+            return;
+        EventLoop::enqueueTaskOnMainThread([weak] {
+            auto state = weak.lock();
+            if (auto* owner = state ? state->owner.load(std::memory_order_acquire) : nullptr)
+                owner->notifyTimingInfoChanged({.tail_changed = true});
+        });
+    });
+}
+
+void remidy::PluginInstanceAAP::staticNotifyTailLengthChanged(aap_tail_host_extension_t* ext, AndroidAudioPluginHost*) {
+    // It arrives on an AAPXS worker thread; query the new length from the main thread.
+    auto* owner = reinterpret_cast<TailHostExtension*>(ext)->owner;
+    EventLoop::enqueueTaskOnMainThread([weak = std::weak_ptr<TailState>(owner->tail_state_)] {
+        auto state = weak.lock();
+        if (auto* owner = state ? state->owner.load(std::memory_order_acquire) : nullptr)
+            owner->refreshTailLength();
+    });
+}
+
 remidy::PluginInstanceAAP::PluginInstanceAAP(
         PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance
 ) : PluginInstance(entry), format(format), instance(aapInstance) {
     extensibility_ = std::make_unique<Extensibility>(*this);
     extensibility_->refresh();
+    installTailSupport();
 }
 
 remidy::PluginInstanceAAP::~PluginInstanceAAP() {
+    uninstallTailSupport();
     if (!format || !instance)
         return;
     format->destroyInstance(instance);
@@ -68,6 +121,8 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
         return StatusCode::FAILED_TO_INSTANTIATE;
 
     use_double = configuration.dataType == AudioContentType::Float64;
+
+    refreshTailLength();
 
     return StatusCode::OK;
 }

@@ -402,6 +402,25 @@ namespace remidy {
                            std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
+        // Shared with AAPXS completions, which may outlive this instance.
+        struct TailState {
+            std::atomic<PluginInstanceAAP*> owner;
+            std::atomic<double> seconds{0.0};
+            explicit TailState(PluginInstanceAAP* owner) : owner(owner) {}
+        };
+        // The C struct comes first so that the notification can recover the owner from it.
+        struct TailHostExtension {
+            aap_tail_host_extension_t ext;
+            PluginInstanceAAP* owner;
+        };
+        std::shared_ptr<TailState> tail_state_{std::make_shared<TailState>(this)};
+        TailHostExtension tail_host_extension_{};
+
+        static void staticNotifyTailLengthChanged(aap_tail_host_extension_t* ext, AndroidAudioPluginHost* host);
+        void installTailSupport();
+        void uninstallTailSupport();
+        void refreshTailLength();
+
         PluginFormatAAPImpl* format;
         std::unique_ptr<PluginBusesAAP> buses{};
         std::unique_ptr<ParameterSupport> params{};
@@ -460,7 +479,7 @@ namespace remidy {
         }
 
         uint32_t latencyInSamples() const override { return 0; }
-        double tailLengthInSeconds() const override { return 0.0; }
+        double tailLengthInSeconds() const override { return tail_state_->seconds.load(std::memory_order_acquire); }
         bool requiresReplacingProcess() const override { return false; }
     };
 
