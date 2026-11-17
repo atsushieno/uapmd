@@ -64,8 +64,7 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
                     return created;
             }
 
-            auto* byId = android_host->getInstanceById(instanceID);
-            return matches(byId) ? byId : nullptr;
+            return android_host->getInstance(info->pluginId().c_str(), instanceID);
         };
 
         std::function<void(size_t,int32_t,std::string&)> aapCallback = [this, info, callback, resolveCreatedInstance](size_t previousInstanceCount, int32_t instanceID, std::string& error) {
