@@ -416,10 +416,28 @@ namespace remidy {
         std::shared_ptr<TailState> tail_state_{std::make_shared<TailState>(this)};
         TailHostExtension tail_host_extension_{};
 
+        // Shared with AAPXS completions, which may outlive this instance.
+        struct LatencyState {
+            std::atomic<PluginInstanceAAP*> owner;
+            std::atomic<uint32_t> samples{0};
+            explicit LatencyState(PluginInstanceAAP* owner) : owner(owner) {}
+        };
+        // The C struct comes first so that the notification can recover the owner from it.
+        struct LatencyHostExtension {
+            aap_latency_host_extension_t ext;
+            PluginInstanceAAP* owner;
+        };
+        std::shared_ptr<LatencyState> latency_state_{std::make_shared<LatencyState>(this)};
+        LatencyHostExtension latency_host_extension_{};
+
         static void staticNotifyTailLengthChanged(aap_tail_host_extension_t* ext, AndroidAudioPluginHost* host);
+        static void staticNotifyLatencyChanged(aap_latency_host_extension_t* ext, AndroidAudioPluginHost* host);
         void installTailSupport();
         void uninstallTailSupport();
         void refreshTailLength();
+        void installLatencySupport();
+        void uninstallLatencySupport();
+        void refreshLatency();
 
         PluginFormatAAPImpl* format;
         std::unique_ptr<PluginBusesAAP> buses{};
@@ -478,7 +496,7 @@ namespace remidy {
             return (ui_ ? ui_ : ui_ = std::make_unique<UISupport>(this)).get();
         }
 
-        uint32_t latencyInSamples() const override { return 0; }
+        uint32_t latencyInSamples() const override { return latency_state_->samples.load(std::memory_order_acquire); }
         double tailLengthInSeconds() const override { return tail_state_->seconds.load(std::memory_order_acquire); }
         bool requiresReplacingProcess() const override { return false; }
     };

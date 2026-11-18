@@ -475,6 +475,22 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::createFloat64 (value);
     });
 
+    impl_->context.registerFunction ("__remidy_instance_get_latency_in_samples", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto* instance = instanceId < 0 ? nullptr
+            : uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance (instanceId);
+        return choc::value::createInt64 (instance ? instance->latencyInSamples() : 0);
+    });
+
+    impl_->context.registerFunction ("__remidy_instance_get_tail_length_in_seconds", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto* instance = instanceId < 0 ? nullptr
+            : uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance (instanceId);
+        return choc::value::createFloat64 (instance ? instance->tailLengthInSeconds() : 0.0);
+    });
+
     impl_->context.registerFunction ("__remidy_instance_set_parameter_value", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);

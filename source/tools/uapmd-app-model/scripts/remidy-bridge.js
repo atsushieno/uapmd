@@ -125,6 +125,16 @@ export class PluginInstance {
         return __remidy_instance_get_parameter_value(this.instanceId, id);
     }
 
+    // As the plugin last reported it.
+    getLatencyInSamples() {
+        return __remidy_instance_get_latency_in_samples(this.instanceId);
+    }
+
+    // As the plugin last reported it.
+    getTailLengthInSeconds() {
+        return __remidy_instance_get_tail_length_in_seconds(this.instanceId);
+    }
+
     setParameterValue(id, value) {
         __remidy_instance_set_parameter_value(this.instanceId, id, value);
     }

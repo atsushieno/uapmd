@@ -42,12 +42,34 @@ void remidy::PluginInstanceAAP::uninstallTailSupport() {
         remote->getHostExtension = nullptr;
 }
 
+void remidy::PluginInstanceAAP::installLatencySupport() {
+    static_assert(std::is_standard_layout_v<LatencyHostExtension>);
+    latency_host_extension_ = {{nullptr, staticNotifyLatencyChanged}, this};
+    auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
+    if (!remote || !remote->getPluginInformation()->hasExtension(AAP_LATENCY_EXTENSION_URI))
+        return;
+    // The tail host extension, installed before, stays reachable through the previous hook.
+    remote->getHostExtension = [this, previous = remote->getHostExtension](aap::RemotePluginInstance* r, uint8_t urid, const char* uri) -> void* {
+        if (uri && !strcmp(uri, AAP_LATENCY_EXTENSION_URI))
+            return &latency_host_extension_.ext;
+        return previous ? previous(r, urid, uri) : nullptr;
+    };
+}
+
+void remidy::PluginInstanceAAP::uninstallLatencySupport() {
+    latency_state_->owner.store(nullptr, std::memory_order_release);
+    if (auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance))
+        remote->getHostExtension = nullptr;
+}
+
 void remidy::PluginInstanceAAP::refreshTailLength() {
     auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
     if (!remote || !remote->getPluginInformation()->hasExtension(AAP_TAIL_EXTENSION_URI))
         return;
     auto* aapxs = remote->getAAPXSDispatcher().getPluginAAPXSByUri(AAP_TAIL_EXTENSION_URI);
-    auto* tail = aapxs ? dynamic_cast<aap::xs::TailClientAAPXS*>(static_cast<aap::xs::TypedAAPXS*>(aapxs->typed_client)) : nullptr;
+    // Not dynamic_cast: this header-only type has its own RTTI in each library, and the client
+    // comes from libandroidaudioplugin. The standard registry creates this type for the URI.
+    auto* tail = aapxs ? static_cast<aap::xs::TailClientAAPXS*>(static_cast<aap::xs::TypedAAPXS*>(aapxs->typed_client)) : nullptr;
     if (!tail)
         return;
     // Async on purpose: while ACTIVE the request travels on the audio cycle, so blocking here could stall.
@@ -75,15 +97,52 @@ void remidy::PluginInstanceAAP::staticNotifyTailLengthChanged(aap_tail_host_exte
     });
 }
 
+void remidy::PluginInstanceAAP::refreshLatency() {
+    auto* remote = dynamic_cast<aap::RemotePluginInstance*>(instance);
+    if (!remote || !remote->getPluginInformation()->hasExtension(AAP_LATENCY_EXTENSION_URI))
+        return;
+    auto* aapxs = remote->getAAPXSDispatcher().getPluginAAPXSByUri(AAP_LATENCY_EXTENSION_URI);
+    // See refreshTailLength() for why it is not dynamic_cast.
+    auto* latency = aapxs ? static_cast<aap::xs::LatencyClientAAPXS*>(static_cast<aap::xs::TypedAAPXS*>(aapxs->typed_client)) : nullptr;
+    if (!latency)
+        return;
+    // The query goes through Binder and the plugin computes it, so this thread does not wait for it.
+    latency->getLatencyAsync([weak = std::weak_ptr<LatencyState>(latency_state_)](aap::Result<int32_t> result) {
+        auto state = weak.lock();
+        if (!state || !result.isOk())
+            return;
+        auto samples = (uint32_t) std::max(result.value, 0);
+        if (state->samples.exchange(samples, std::memory_order_acq_rel) == samples)
+            return;
+        EventLoop::enqueueTaskOnMainThread([weak] {
+            auto state = weak.lock();
+            if (auto* owner = state ? state->owner.load(std::memory_order_acquire) : nullptr)
+                owner->notifyTimingInfoChanged({.latency_changed = true});
+        });
+    });
+}
+
+void remidy::PluginInstanceAAP::staticNotifyLatencyChanged(aap_latency_host_extension_t* ext, AndroidAudioPluginHost*) {
+    // It arrives on a Binder thread; query the new latency from the main thread.
+    auto* owner = reinterpret_cast<LatencyHostExtension*>(ext)->owner;
+    EventLoop::enqueueTaskOnMainThread([weak = std::weak_ptr<LatencyState>(owner->latency_state_)] {
+        auto state = weak.lock();
+        if (auto* owner = state ? state->owner.load(std::memory_order_acquire) : nullptr)
+            owner->refreshLatency();
+    });
+}
+
 remidy::PluginInstanceAAP::PluginInstanceAAP(
         PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance
 ) : PluginInstance(entry), format(format), instance(aapInstance) {
     extensibility_ = std::make_unique<Extensibility>(*this);
     extensibility_->refresh();
     installTailSupport();
+    installLatencySupport();
 }
 
 remidy::PluginInstanceAAP::~PluginInstanceAAP() {
+    uninstallLatencySupport();
     uninstallTailSupport();
     if (!format || !instance)
         return;
@@ -123,6 +182,7 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     use_double = configuration.dataType == AudioContentType::Float64;
 
     refreshTailLength();
+    refreshLatency();
 
     return StatusCode::OK;
 }
