@@ -235,6 +235,13 @@ void PianoRollSession::resizeNote(int index, double startSeconds,
     note.note = noteNumber;
 }
 
+void PianoRollSession::setNoteVelocity(int index, float velocity) {
+    if (index < 0 || index >= static_cast<int>(editNotes.size()) || editNotes[index].deleted)
+        return;
+    editNotes[index].velocity = std::clamp(velocity, 0.0f, 1.0f);
+    dirtyAfterEdit = true;
+}
+
 void PianoRollSession::finishNoteDrag(int index, double originalStart,
                                      double originalEnd, uint8_t originalNote) {
     if (index < 0 || index >= static_cast<int>(editNotes.size()))

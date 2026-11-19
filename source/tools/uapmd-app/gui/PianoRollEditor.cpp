@@ -989,8 +989,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
     ImGui::SetNextItemWidth(200.0f);
     ImGui::SliderFloat("Velocity##pr_vel", &vel, 0.0f, 1.0f, "%.3f");
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-        note.velocity = std::clamp(vel, 0.0f, 1.0f);
-        state.document->dirtyAfterEdit = true;
+        state.document->setNoteVelocity(state.document->selectedNoteIdx, vel);
     } else if (ImGui::IsItemActive()) {
         note.velocity = std::clamp(vel, 0.0f, 1.0f); // live preview in panel
     }

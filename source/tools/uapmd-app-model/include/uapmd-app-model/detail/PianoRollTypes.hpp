@@ -59,6 +59,8 @@ struct PianoRollSession {
     void resizeNote(int index, double startSeconds, double durationSeconds, uint8_t noteNumber);
     void finishNoteDrag(int index, double originalStart, double originalEnd, uint8_t originalNote);
     void createNote(double startSeconds, double durationSeconds, uint8_t noteNumber, float velocity);
+    // Clamped to 0..1; the change reaches the clip on commit().
+    void setNoteVelocity(int index, float velocity);
     void deleteNote(int index);
     void loadNotes(const std::vector<PianoRollMidiNote>& notes,
                    std::shared_ptr<PianoRollRawMidiData> raw,
