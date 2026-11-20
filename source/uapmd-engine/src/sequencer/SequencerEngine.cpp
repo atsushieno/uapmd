@@ -701,6 +701,19 @@ namespace uapmd {
         void removePlatformMidiTrackConnections(std::string_view trackId);
         void refreshPlatformMidiTrackIndices();
         void requestAllNotesOff();
+        // Audio thread. Both positions move together, so the loop wraps them by the same amount.
+        void advancePlaybackPositions(int32_t frames, bool preroll) {
+            render_playback_position_samples_.fetch_add(frames, std::memory_order_release);
+            if (preroll)
+                return;
+            playback_position_samples_.fetch_add(frames, std::memory_order_release);
+            const auto audible = playback_position_samples_.load(std::memory_order_acquire);
+            const auto wrapped = timeline_->wrapToLoopRT(audible);
+            if (wrapped == audible)
+                return;
+            playback_position_samples_.fetch_add(wrapped - audible, std::memory_order_release);
+            render_playback_position_samples_.fetch_add(wrapped - audible, std::memory_order_release);
+        }
         void applyLatencyCompensationTimingUpdateLocked();
         TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
@@ -1623,9 +1636,7 @@ namespace uapmd {
                     // it once so recovery cannot replay its notes/automation.
                     const bool preroll = render_playback_position_samples_.load(std::memory_order_acquire) <
                         playback_position_samples_.load(std::memory_order_acquire);
-                    render_playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
-                    if (!preroll)
-                        playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+                    advancePlaybackPositions(process.frameCount(), preroll);
                 }
                 if (!offline) {
                     audio_performance_counter_.recordRealtimeBlock(timingSampleRate > 0 &&
@@ -1816,11 +1827,8 @@ namespace uapmd {
                 memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
         }
 
-        if (isPlaybackActive) {
-            render_playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
-            if (!prerollActive)
-                playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
-        }
+        if (isPlaybackActive)
+            advancePlaybackPositions(process.frameCount(), prerollActive);
         tail_process_manager_->processAudio(
             outputPeak, process.frameCount());
 

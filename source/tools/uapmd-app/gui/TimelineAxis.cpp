@@ -105,6 +105,90 @@ int32_t TimelineAxis::trailingPadFrames() const {
     return static_cast<int32_t>((isBeats() ? 16.0 : 4.0) * framesPerUnit());
 }
 
+std::vector<TimelineAxis::BarRegion> TimelineAxis::barRegions() const {
+    // TempoMap owns the meter regions: the list starts at beat zero and carries one entry per
+    // actual change, so each region's own start is where its bars begin.
+    std::vector<uapmd::TempoMap::EffectiveSignature> regions;
+    if (tempoMap_)
+        regions = tempoMap_->effectiveSignatures();
+    if (regions.empty()) {
+        uapmd::TempoMap::EffectiveSignature defaultRegion;
+        defaultRegion.startBeat = 0.0;
+        defaultRegion.endBeat = std::numeric_limits<double>::infinity();
+        regions.push_back(defaultRegion);
+    }
+
+    // Bar numbers run continuously, so each region needs the count of the bars before it.
+    std::vector<BarRegion> laid;
+    laid.reserve(regions.size());
+    long long nextBarNumber = 1;
+    for (const auto& region : regions) {
+        const long long numerator = region.numerator > 0 ? region.numerator : 4;
+        const uint8_t denominator = region.denominator > 0 ? region.denominator : 4;
+        // One "signature beat" (e.g. an eighth note in 6/8) spans this many quarter-note beats.
+        const double signatureBeatLength = 4.0 / static_cast<double>(denominator);
+        if (signatureBeatLength <= 0.0)
+            continue;
+        const double barLength = signatureBeatLength * static_cast<double>(numerator);
+        if (!laid.empty()) {
+            const auto& previous = laid.back();
+            nextBarNumber += previous.barLength > 0.0
+                ? static_cast<long long>(std::llround(
+                      (region.startBeat - previous.startBeat) / previous.barLength))
+                : 0;
+        }
+        laid.push_back({std::max(0.0, region.startBeat), region.endBeat,
+                        signatureBeatLength, barLength, numerator, nextBarNumber});
+    }
+    return laid;
+}
+
+const TimelineAxis::BarRegion* TimelineAxis::regionAt(const std::vector<BarRegion>& regions, double beat) {
+    const BarRegion* found = regions.empty() ? nullptr : &regions.front();
+    for (const auto& region : regions)
+        if (region.startBeat <= beat + 1e-9)
+            found = &region;
+    return found;
+}
+
+TimelineAxis::BarSpan TimelineAxis::barAt(double seconds) const {
+    const double beat = std::max(0.0, quarterBeatsFromSeconds(seconds));
+    const auto regions = barRegions();
+    const auto* region = regionAt(regions, beat);
+    if (!region || region->barLength <= 0.0)
+        return {0.0, secondsFromQuarterBeats(4.0)};
+    const double barIndex = std::floor((beat - region->startBeat) / region->barLength + 1e-9);
+    const double startBeat = region->startBeat + barIndex * region->barLength;
+    return {secondsFromQuarterBeats(startBeat), secondsFromQuarterBeats(startBeat + region->barLength)};
+}
+
+std::string TimelineAxis::formatPosition(double seconds) const {
+    if (!isBeats())
+        return std::format("{:.2f} s", std::max(0.0, seconds));
+    const double beat = std::max(0.0, quarterBeatsFromSeconds(seconds));
+    const auto regions = barRegions();
+    const auto* region = regionAt(regions, beat);
+    if (!region || region->barLength <= 0.0)
+        return std::format("{:.2f}", beat);
+    const double intoRegion = beat - region->startBeat;
+    const auto barIndex = static_cast<long long>(std::floor(intoRegion / region->barLength + 1e-9));
+    // Beats within the bar, counted in the signature's own beat and from 1, as the ruler counts bars.
+    const double beatInBar = (intoRegion - static_cast<double>(barIndex) * region->barLength)
+        / region->signatureBeatLength + 1.0;
+    const long long bar = region->firstBarNumber + barIndex;
+    if (std::fabs(beatInBar - std::round(beatInBar)) < 1e-3)
+        return std::format("{}.{}", bar, static_cast<long long>(std::llround(beatInBar)));
+    return std::format("{}.{:.2f}", bar, beatInBar);
+}
+
+double TimelineAxis::quarterBeatsFromSeconds(double seconds) const {
+    return tempoMap_ ? tempoMap_->secondsToBeats(seconds) : std::max(0.0, seconds) * (kFallbackBpm / 60.0);
+}
+
+double TimelineAxis::secondsFromQuarterBeats(double beats) const {
+    return tempoMap_ ? tempoMap_->beatsToSeconds(beats) : std::max(0.0, beats) * (60.0 / kFallbackBpm);
+}
+
 void TimelineAxis::drawRuler(const RulerGeometry& geometry) const {
     if (geometry.scale <= 0.0f || geometry.contentMaxX <= geometry.contentMinX)
         return;
@@ -189,18 +273,6 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
     const double endBeat = startBeat +
         static_cast<double>(g.contentMaxX - g.contentMinX) / pixelsPerBeat;
 
-    // TempoMap owns the meter regions: the list starts at beat zero and carries one entry per
-    // actual change, so each region's own start is where its bars begin.
-    std::vector<uapmd::TempoMap::EffectiveSignature> regions;
-    if (tempoMap_)
-        regions = tempoMap_->effectiveSignatures();
-    if (regions.empty()) {
-        uapmd::TempoMap::EffectiveSignature defaultRegion;
-        defaultRegion.startBeat = 0.0;
-        defaultRegion.endBeat = std::numeric_limits<double>::infinity();
-        regions.push_back(defaultRegion);
-    }
-
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImVec4 text = style.Colors[ImGuiCol_Text];
     const ImVec4 textDisabled = style.Colors[ImGuiCol_TextDisabled];
@@ -218,36 +290,7 @@ void TimelineAxis::drawBeatsRuler(const RulerGeometry& g) const {
     headerList->PushClipRect(ImVec2(g.contentMinX, g.headerMinY),
                              ImVec2(g.contentMaxX, g.headerMaxY), true);
 
-    // Bar numbers run continuously, so each region needs the count of the bars before it.
-    struct RulerRegion {
-        double startBeat{0.0};
-        double endBeat{std::numeric_limits<double>::infinity()};
-        double signatureBeatLength{1.0};
-        double barLength{4.0};
-        long long numerator{4};
-        long long firstBarNumber{1};
-    };
-    std::vector<RulerRegion> laid;
-    laid.reserve(regions.size());
-    long long nextBarNumber = 1;
-    for (const auto& region : regions) {
-        const long long numerator = region.numerator > 0 ? region.numerator : 4;
-        const uint8_t denominator = region.denominator > 0 ? region.denominator : 4;
-        // One "signature beat" (e.g. an eighth note in 6/8) spans this many quarter-note beats.
-        const double signatureBeatLength = 4.0 / static_cast<double>(denominator);
-        if (signatureBeatLength <= 0.0)
-            continue;
-        const double barLength = signatureBeatLength * static_cast<double>(numerator);
-        if (!laid.empty()) {
-            const auto& previous = laid.back();
-            nextBarNumber += previous.barLength > 0.0
-                ? static_cast<long long>(std::llround(
-                      (region.startBeat - previous.startBeat) / previous.barLength))
-                : 0;
-        }
-        laid.push_back({std::max(0.0, region.startBeat), region.endBeat,
-                        signatureBeatLength, barLength, numerator, nextBarNumber});
-    }
+    const auto laid = barRegions();
 
     int drawn = 0;
     for (const auto& region : laid) {

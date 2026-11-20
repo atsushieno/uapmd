@@ -337,7 +337,8 @@ namespace uapmd {
         const TimelineState& timeline,
         int64_t renderStartSample,
         int32_t destinationOffsetFrames,
-        int32_t renderFrameCount
+        int32_t renderFrameCount,
+        bool sendNoteOffsAtEnd
     ) {
         const auto& renderTimeline = timeline;
         const int32_t frameCount = renderFrameCount;
@@ -441,6 +442,14 @@ namespace uapmd {
                     renderTimeline.tempo,
                     static_cast<uint32_t>(destinationOffsetFrames + renderWindow->destinationOffsetFrames)
                 );
+                // A clip that ends here, or a segment the transport leaves, must not leave its notes held.
+                const bool clipEndsHere = absPos.samples + clip.durationSamples <= renderStartSample + frameCount;
+                if (clipEndsHere || sendNoteOffsAtEnd)
+                    midiNode->sendNoteOffsForActiveNotes(
+                        process.eventIn(),
+                        static_cast<uint32_t>(destinationOffsetFrames + renderWindow->destinationOffsetFrames
+                            + std::max(0, renderWindow->processFrameCount - 1)),
+                        static_cast<int32_t>(sample_rate_));
             }
         }
 

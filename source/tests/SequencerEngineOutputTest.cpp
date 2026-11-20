@@ -4,6 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <tuple>
 #include <fstream>
 #include <future>
 #include <map>
@@ -4328,4 +4329,126 @@ TEST(MidiClipTimestampTest, ClipsSharingASequenceAreMergedInTimeOrder) {
     auto second = createNotesNode({10, 60, 120});
     expectNear(dispatchedNotes({first.get(), second.get()}, 8192),
                {{60, 500}, {60, 1000}, {61, 3000}, {61, 5000}, {62, 6000}});
+}
+
+namespace {
+    class NoteRecorder : public remidy::TypedUmpInputDispatcher {
+    public:
+        std::vector<std::tuple<bool, uint8_t, uint64_t>> notes;
+    protected:
+        void onNoteOn(remidy::uint4_t, remidy::uint4_t, remidy::uint7_t note, uint8_t, uint16_t, uint16_t) override {
+            notes.emplace_back(true, note, timestamp());
+        }
+        void onNoteOff(remidy::uint4_t, remidy::uint4_t, remidy::uint7_t note, uint8_t, uint16_t, uint16_t) override {
+            notes.emplace_back(false, note, timestamp());
+        }
+    };
+
+    // One held note: on at tick 0, off at tick 960 (48000 samples, far past every window below).
+    std::unique_ptr<uapmd::MidiClipSourceNode> createHeldNoteNode(int32_t instanceId) {
+        auto node = std::make_unique<uapmd::MidiClipSourceNode>(
+            instanceId, std::vector<uapmd_ump_t>{0x40903C00u, 0x80000000u, 0x40803C00u, 0u},
+            std::vector<uint64_t>{0, 0, 960, 960}, 480, 120.0, 48000.0,
+            std::vector<uapmd::MidiTempoChange>{}, std::vector<uapmd::MidiTimeSignatureChange>{});
+        return node;
+    }
+
+    std::vector<std::tuple<bool, uint8_t, uint64_t>> renderHeldNote(int64_t clipDurationSamples, bool sendNoteOffsAtEnd) {
+        uapmd::TimelineTrack track("track", 2, 48000.0, 256);
+        auto node = createHeldNoteNode(7);
+        uapmd::ClipData clip;
+        clip.clipType = uapmd::ClipType::Midi;
+        clip.position.samples = 0;
+        clip.durationSamples = clipDurationSamples;
+        clip.sourceNodeInstanceId = 7;
+        clip.setTimeReference(uapmd::TimeReference::fromContainerStart({}, 0.0), 48000);
+        EXPECT_GE(track.addClip(clip, std::move(node)), 0);
+
+        remidy::MasterContext master;
+        master.sampleRate(48000);
+        remidy::AudioProcessContext context(master, 4096);
+        context.configureMainBus(2, 2, 256);
+        context.frameCount(256);
+        uapmd::TimelineState state;
+        state.isPlaying = true;
+        track.processAudioForRenderSegment(context, state, 0, 0, 256, sendNoteOffsAtEnd);
+        NoteRecorder recorder;
+        recorder.process(context);
+        return recorder.notes;
+    }
+}
+
+TEST(MidiClipActiveNotesTest, ASegmentLeftForTheLoopStartEndsItsNotes) {
+    const auto notes = renderHeldNote(48000 * 10, true);
+    ASSERT_EQ(notes.size(), 2u);
+    EXPECT_TRUE(std::get<0>(notes[0]));
+    EXPECT_FALSE(std::get<0>(notes[1]));
+    EXPECT_EQ(std::get<1>(notes[1]), 60);
+    EXPECT_NEAR(static_cast<double>(std::get<2>(notes[1])), 255.0, 2.0);
+}
+
+TEST(MidiClipActiveNotesTest, AClipEndingInsideTheBlockEndsItsNotes) {
+    const auto notes = renderHeldNote(200, false);
+    ASSERT_EQ(notes.size(), 2u);
+    EXPECT_FALSE(std::get<0>(notes[1]));
+    EXPECT_NEAR(static_cast<double>(std::get<2>(notes[1])), 199.0, 2.0);
+}
+
+TEST(MidiClipActiveNotesTest, AContinuingClipKeepsItsNotes) {
+    const auto notes = renderHeldNote(48000 * 10, false);
+    ASSERT_EQ(notes.size(), 1u);
+    EXPECT_TRUE(std::get<0>(notes[0]));
+}
+
+TEST(MidiClipActiveNotesTest, NoteOffsAreSentOnceAndAJumpClearsActiveNotes) {
+    auto node = createHeldNoteNode(1);
+    node->setPlaying(true);
+    node->seek(0);
+    remidy::MasterContext master;
+    master.sampleRate(48000);
+    remidy::AudioProcessContext first(master, 4096);
+    node->processEvents(first.eventIn(), 256, 48000, 120.0, 0);
+    node->sendNoteOffsForActiveNotes(first.eventIn(), 100, 48000);
+    node->sendNoteOffsForActiveNotes(first.eventIn(), 120, 48000);
+    NoteRecorder once;
+    once.process(first);
+    EXPECT_EQ(once.notes.size(), 2u);
+
+    remidy::AudioProcessContext second(master, 4096);
+    node->seek(0);
+    node->processEvents(second.eventIn(), 256, 48000, 120.0, 0);
+    node->seek(24000);
+    node->sendNoteOffsForActiveNotes(second.eventIn(), 10, 48000);
+    NoteRecorder jumped;
+    jumped.process(second);
+    ASSERT_EQ(jumped.notes.size(), 1u);
+    EXPECT_TRUE(std::get<0>(jumped.notes[0]));
+}
+
+TEST_F(SequencerEngineOutputTest, PlaybackWrapsAtTheLoopEndSampleAccurately) {
+    constexpr int32_t bufferSize = 256;
+    auto engine = uapmd::SequencerEngine::create(48000, bufferSize, 65536);
+    ASSERT_NE(engine, nullptr);
+    engine->setEngineActive(true);
+    ASSERT_GE(engine->addEmptyTrack(), 0);
+    // Neither edge on a block boundary, so the wrap happens inside a block.
+    engine->timeline().loopRegion({true, 1000, 3000});
+    EXPECT_TRUE(engine->timeline().loopRegion().enabled);
+    engine->startPlayback();
+
+    remidy::AudioProcessContext process(engine->data().masterContext(), 65536);
+    process.configureMainBus(2, 2, bufferSize);
+    process.frameCount(bufferSize);
+    int64_t transport = engine->playbackPosition();
+    for (int block = 0; block < 40; ++block) {
+        ASSERT_EQ(engine->processAudio(process), 0);
+        transport += bufferSize;
+        const int64_t expected = transport < 3000 ? transport : 1000 + (transport - 1000) % 2000;
+        ASSERT_EQ(engine->playbackPosition(), expected) << "block " << block;
+    }
+    engine->timeline().loopRegion({false, 1000, 3000});
+    const auto before = engine->playbackPosition();
+    ASSERT_EQ(engine->processAudio(process), 0);
+    EXPECT_EQ(engine->playbackPosition(), before + bufferSize);
+    engine->stopPlayback();
 }

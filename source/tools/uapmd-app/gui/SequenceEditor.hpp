@@ -174,6 +174,20 @@ private:
         bool hasExplicitZoom = false;  // once true, rebuildTimeline stops resetting scale
         float keptScale = -1.0f;  // explicit zoom held across reset(), which drops the Timeline
         float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
+        // A press on the ruler: drawing a new loop region, moving one of its edges, or moving it whole.
+        struct LoopDrag {
+            enum class Mode { None, Create, Start, End, Move };
+            Mode mode = Mode::None;
+            float pressX = 0.0f;
+            double pressSeconds = 0.0;
+            double originalStart = 0.0;
+            double originalEnd = 0.0;
+            double start = 0.0;  // the region the drag proposes
+            double end = 0.0;
+            bool moved = false;
+        } loopDrag;
+        // A click on the loop band toggles it once the double-click time passes, so a double-click only jumps.
+        double pendingLoopToggleAt = -1.0;
         bool hasPendingFit = false;  // fitToSpan was called before any width was known yet
         double pendingFitSpanSeconds = 0.0;
     };
@@ -208,6 +222,9 @@ private:
     };
 
     std::vector<AnchorOption> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
+    // Draws the transport loop region on the ruler and over the lanes, and runs the ruler's loop gestures.
+    void renderLoopRegion(const RenderContext& context, float headerMinY, float headerMaxY,
+                          float lanesMaxY, float contentMaxX, bool acceptsInput);
     void drawPlayheadIndicator(
         float clipAreaMinX,
         float clipAreaMinY,

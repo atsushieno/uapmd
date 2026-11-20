@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -87,6 +88,9 @@ namespace uapmd {
     }
 
     void MidiClipSourceNode::seek(int64_t samplePosition) {
+        // The engine flushes all notes on a jump, so the active notes need no note-off.
+        if (samplePosition != next_block_position_)
+            clearActiveNotes();
         playback_position_.store(samplePosition, std::memory_order_release);
 
         // Binary search for first event at or after samplePosition
@@ -113,7 +117,57 @@ namespace uapmd {
     }
 
     void MidiClipSourceNode::setPlaying(bool playing) {
+        if (!playing)
+            clearActiveNotes();
         is_playing_.store(playing, std::memory_order_release);
+    }
+
+    void MidiClipSourceNode::clearActiveNotes() {
+        if (!has_active_notes_)
+            return;
+        std::memset(active_notes_, 0, sizeof(active_notes_));
+        has_active_notes_ = false;
+    }
+
+    void MidiClipSourceNode::addOrRemoveActiveNote(const uapmd_ump_t* words, uint8_t messageType) {
+        // MIDI 1.0 (type 2) and MIDI 2.0 (type 4) channel voice; only MIDI 1.0 treats velocity 0 as a note-off.
+        if (messageType != 2 && messageType != 4)
+            return;
+        const uint32_t word = words[0];
+        const uint8_t status = static_cast<uint8_t>((word >> 20) & 0xF);
+        if (status != 0x9 && status != 0x8)
+            return;
+        const uint32_t group = (word >> 24) & 0xF;
+        const uint32_t channel = (word >> 16) & 0xF;
+        const uint32_t note = (word >> 8) & 0x7F;
+        const bool on = status == 0x9 && (messageType == 4 || (word & 0x7F) != 0);
+        const uint64_t bit = uint64_t{1} << (note & 63);
+        if (on) {
+            active_notes_[group][channel][note >> 6] |= bit;
+            has_active_notes_ = true;
+        } else {
+            active_notes_[group][channel][note >> 6] &= ~bit;
+        }
+    }
+
+    void MidiClipSourceNode::sendNoteOffsForActiveNotes(remidy::EventSequence& eventOut, uint32_t frameOffset, int32_t sampleRate) {
+        if (!has_active_notes_)
+            return;
+        for (uint32_t group = 0; group < 16; ++group)
+            for (uint32_t channel = 0; channel < 16; ++channel)
+                for (uint32_t half = 0; half < 2; ++half) {
+                    uint64_t bits = active_notes_[group][channel][half];
+                    while (bits) {
+                        const uint32_t note = half * 64 + static_cast<uint32_t>(std::countr_zero(bits));
+                        bits &= bits - 1;
+                        const uapmd_ump_t noteOff[2] = {
+                            (uint32_t{0x4} << 28) | (group << 24) | (uint32_t{0x8} << 20) | (channel << 16) | (note << 8),
+                            0
+                        };
+                        appendUmpToEventSequence(eventOut, noteOff, 2, frameOffset, sampleRate);
+                    }
+                }
+        clearActiveNotes();
     }
 
     void MidiClipSourceNode::setTimelineTempoMap(const TempoMap& tempoMap, double clipStartSeconds) {
@@ -193,14 +247,17 @@ namespace uapmd {
                     }
                 }
 
-                if (!intercepted)
+                if (!intercepted) {
                     appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset, sampleRate);
+                    addOrRemoveActiveNote(&ump_events_[eventIdx], messageType);
+                }
             }
 
             eventIdx += wordsNeeded;
         }
 
         next_event_index_.store(eventIdx, std::memory_order_release);
+        next_block_position_ = windowEnd;
     }
 
 

@@ -53,6 +53,7 @@ namespace uapmd {
             double tempo,
             uint32_t frameOffsetInBlock = 0
         ) override;
+        void sendNoteOffsForActiveNotes(remidy::EventSequence& eventOut, uint32_t frameOffset, int32_t sampleRate) override;
 
         // NRPN intercept: when set, Assignable Controller (NRPN) events in this clip
         // are routed to the callback instead of being forwarded as raw UMP.
@@ -104,6 +105,14 @@ namespace uapmd {
 
         // Playback state
         std::atomic<size_t> next_event_index_{0};  // Next event to emit
+
+        // Active notes (note-on sent, note-off not yet), [group][channel][note / 64]; audio thread only.
+        uint64_t active_notes_[16][16][2]{};
+        bool has_active_notes_{false};
+        // Where the next block starts if playback continues; a seek anywhere else clears the active notes.
+        int64_t next_block_position_{-1};
+        void addOrRemoveActiveNote(const uapmd_ump_t* words, uint8_t messageType);
+        void clearActiveNotes();
 
         // Optional NRPN intercept callback (set once from non-audio thread)
         NrpnInterceptCallback nrpn_intercept_callback_{};

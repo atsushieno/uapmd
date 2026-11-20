@@ -796,6 +796,37 @@ void MainWindow::render(void* window) {
                 ImGui::EndDisabled();
             ImGui::SameLine();
 
+            // The region is drawn and edited on the timeline ruler; without one, the button loops the bar under the playhead.
+            {
+                auto& appModel = uapmd_app::AppModel::instance();
+                const auto& axis = timelineEditor_.sequenceEditor().axis();
+                const bool looping = transport.isLooping();
+                const bool hasLoopRegion = transport.loopEndSeconds() > transport.loopStartSeconds();
+                if (looping)
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                if (ImGui::Button("Loop##TransportLoop")) {
+                    if (hasLoopRegion) {
+                        transport.setLooping(!looping);
+                    } else {
+                        const auto bar = axis.barAt(appModel.timeline().playheadPosition.toSeconds(appModel.sampleRate()));
+                        transport.setLoop(bar.startSeconds, bar.endSeconds);
+                    }
+                }
+                if (looping)
+                    ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) {
+                    const auto range = std::format("{} - {}", axis.formatPosition(transport.loopStartSeconds()),
+                        axis.formatPosition(transport.loopEndSeconds()));
+                    if (looping)
+                        ImGui::SetTooltip("Looping %s. Click to stop looping.", range.c_str());
+                    else if (hasLoopRegion)
+                        ImGui::SetTooltip("Loop %s. Click to start looping.", range.c_str());
+                    else
+                        ImGui::SetTooltip("Click to loop the bar under the playhead, or drag on the ruler to draw the loop region.");
+                }
+            }
+            ImGui::SameLine();
+
             // Spectrum analyzers - shrunken to half size
             ImVec2 spectrumSize = ImVec2(80.0f * uiScale_, 32.0f * uiScale_);
             inputSpectrumAnalyzer_.setSize(spectrumSize);

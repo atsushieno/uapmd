@@ -62,6 +62,14 @@ namespace uapmd_app {
         void resume();
         void jump(double positionSeconds);
         void record();
+
+        // Sample-accurate looping; the region is session state, not saved with the project.
+        void setLoop(double startSeconds, double endSeconds);
+        // Turns looping on or off, keeping the region; on does nothing without a region.
+        void setLooping(bool enabled);
+        bool isLooping() const;
+        double loopStartSeconds() const;
+        double loopEndSeconds() const;
     };
 
     class AppModel : uapmd_midi_service::MidiIOManagerFeature {

@@ -219,11 +219,11 @@ void ExporterWindow::refreshBounds() {
         state_.customEndSeconds = bounds.endSeconds;
     }
 
-    auto& timeline = app.timeline();
-    if (timeline.loopEnabled && timeline.loopEnd.samples > timeline.loopStart.samples) {
+    const auto loop = app.sequencer().engine()->timeline().loopRegion();
+    if (loop.enabled) {
         state_.hasLoopRange = true;
-        state_.loopStartSeconds = timeline.loopStart.toSeconds(app.sampleRate());
-        state_.loopEndSeconds = timeline.loopEnd.toSeconds(app.sampleRate());
+        state_.loopStartSeconds = static_cast<double>(loop.startSamples) / app.sampleRate();
+        state_.loopEndSeconds = static_cast<double>(loop.endSamples) / app.sampleRate();
     } else {
         state_.hasLoopRange = false;
     }

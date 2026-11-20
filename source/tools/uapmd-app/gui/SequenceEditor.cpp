@@ -29,6 +29,12 @@ constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
+constexpr ImU32 kLoopBandColor = IM_COL32(70, 150, 255, 150);
+constexpr ImU32 kLoopEdgeColor = IM_COL32(120, 185, 255, 255);
+constexpr ImU32 kLoopLaneTintColor = IM_COL32(70, 150, 255, 24);
+constexpr ImU32 kLoopLaneEdgeColor = IM_COL32(120, 185, 255, 110);
+constexpr ImU32 kLoopOffBandColor = IM_COL32(150, 150, 150, 90);
+constexpr ImU32 kLoopOffEdgeColor = IM_COL32(170, 170, 170, 200);
 
 ImVec4 withAlpha(const ImVec4& color, float alpha) {
     return ImVec4(color.x, color.y, color.z, alpha);
@@ -126,7 +132,7 @@ void SequenceEditor::renderSnapCombo(const RenderContext& context) {
                             ImGui::GetStyle().FramePadding.x * 2.0f + 4.0f * context.uiScale);
     ImGui::Combo("##timeline_snap", &snapIndex_, kSnapLabels, kSnapOptionCount);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Snap for moving and resizing clips. Hold Alt while dragging to place freely.");
+        ImGui::SetTooltip("Snap for moving and resizing clips and the loop region. Hold Alt while dragging to place freely.");
 }
 
 double SequenceEditor::snapToGrid(double seconds) const {
@@ -783,7 +789,8 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
             pressedAt.y >= clipAreaMinY &&
             pressedAt.y <= clipAreaMaxY - static_cast<float>(timeline_.style.ScrollbarThickness);
         const bool hideFromTimeline = pressInLanes || timeline_.marquee.active ||
-            timeline_.rangeDrag.active || timeline_.gripDrag.active;
+            timeline_.rangeDrag.active || timeline_.gripDrag.active ||
+            timeline_.loopDrag.mode != TimelineState::LoopDrag::Mode::None;
         const bool savedSelectionMouseDown = io.MouseDown[0];
         if (hideFromTimeline)
             io.MouseDown[0] = false;
@@ -801,8 +808,12 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
         if (clipAreaMaxX > clipAreaMinX)
             drawRuler(context, clipAreaMinX, clipAreaMinY, clipAreaMaxX, clipAreaMaxY, winPos.y);
 
-        if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
+        if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y) {
+            renderLoopRegion(context, winPos.y, clipAreaMinY,
+                clipAreaMaxY - static_cast<float>(timeline_.style.ScrollbarThickness), clipAreaMaxX,
+                timelineHovered && !shouldBlockInput);
             drawPlayheadIndicator(clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
+        }
 
         const ImVec2 headerMousePos = ImGui::GetMousePos();
         if (timelineHovered &&
@@ -1212,6 +1223,12 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
                 if (contextActionMenuItem("Add Empty Audio Clip")) {
                     if (context.addEmptyAudioClipInRange)
                         context.addEmptyAudioClipInRange(trackIndex, trackState.requestedRangeStart, trackState.requestedRangeEnd);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::Separator();
+                if (contextActionMenuItem("Set Loop to Range")) {
+                    uapmd_app::AppModel::instance().transport().setLoop(
+                        trackState.requestedRangeStart, trackState.requestedRangeEnd);
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
@@ -1649,6 +1666,173 @@ void SequenceEditor::drawRangeSelectionOverlay(
     ImDrawList* drawList = timelineSelectionDrawList();
     drawList->AddRectFilled(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 40));
     drawList->AddRect(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 140), 0.0f, 1.5f);
+}
+
+void SequenceEditor::renderLoopRegion(const RenderContext& context, float headerMinY, float headerMaxY,
+                                      float lanesMaxY, float contentMaxX, bool acceptsInput) {
+    if (!timeline_.widget || headerMaxY <= headerMinY)
+        return;
+    const float scale = timeline_.widget->GetScale();
+    if (scale <= 0.0f)
+        return;
+    using Mode = TimelineState::LoopDrag::Mode;
+    auto& transport = uapmd_app::AppModel::instance().transport();
+    auto& drag = timeline_.loopDrag;
+    const double now = ImGui::GetTime();
+
+    if (timeline_.pendingLoopToggleAt >= 0.0 && now >= timeline_.pendingLoopToggleAt) {
+        timeline_.pendingLoopToggleAt = -1.0;
+        transport.setLooping(!transport.isLooping());
+    }
+
+    // Same origin the ruler and the clips use (see drawRuler).
+    const float originX = timeline_.widget->mContentAreaRect.Min.x + timeline_.style.LegendWidth;
+    if (contentMaxX <= originX)
+        return;
+    const double startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
+    auto xOf = [&](double seconds) {
+        return originX + static_cast<float>(
+            (static_cast<double>(axis_.frameFromSeconds(seconds)) - startFrame) * static_cast<double>(scale));
+    };
+    auto secondsAt = [&](float x) {
+        return std::max(0.0, axis_.secondsFromFrame(startFrame + static_cast<double>((x - originX) / scale)));
+    };
+
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const float handleReach = 5.0f * context.uiScale;
+    // The band fills the lower part of the ruler, under the tick marks; the bar numbers stay clear above it.
+    const float bandTop = headerMaxY - (headerMaxY - headerMinY) * 0.45f;
+    const bool inHeader = mouse.x >= originX && mouse.x <= contentMaxX &&
+        mouse.y >= headerMinY && mouse.y < headerMaxY;
+
+    const double savedStart = transport.loopStartSeconds();
+    const double savedEnd = transport.loopEndSeconds();
+    const bool savedHasRegion = savedEnd > savedStart;
+
+    // What a press at the pointer would do: an edge resizes, the band moves or toggles, anywhere else draws.
+    Mode hoverMode = Mode::Create;
+    if (savedHasRegion && inHeader) {
+        const float x0 = xOf(savedStart), x1 = xOf(savedEnd);
+        const bool nearStart = std::abs(mouse.x - x0) <= handleReach;
+        const bool nearEnd = std::abs(mouse.x - x1) <= handleReach;
+        if (nearStart && nearEnd)
+            hoverMode = mouse.x >= (x0 + x1) * 0.5f ? Mode::End : Mode::Start;
+        else if (nearStart)
+            hoverMode = Mode::Start;
+        else if (nearEnd)
+            hoverMode = Mode::End;
+        else if (mouse.x > x0 && mouse.x < x1 && mouse.y >= bandTop)
+            hoverMode = Mode::Move;
+    }
+
+    if (acceptsInput && inHeader && drag.mode == Mode::None && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (ImGui::GetIO().MouseClickedCount[ImGuiMouseButton_Left] >= 2) {
+            // The second press of a double-click: it jumps the playhead, so the first was no toggle.
+            timeline_.pendingLoopToggleAt = -1.0;
+        } else {
+            drag = {};
+            drag.mode = hoverMode;
+            drag.pressX = mouse.x;
+            drag.pressSeconds = secondsAt(mouse.x);
+            drag.originalStart = savedStart;
+            drag.originalEnd = savedEnd;
+            drag.start = savedStart;
+            drag.end = savedEnd;
+        }
+    }
+
+    if (drag.mode != Mode::None) {
+        if (std::abs(mouse.x - drag.pressX) >= 4.0f * context.uiScale)
+            drag.moved = true;
+        const double pointer = secondsAt(std::clamp(mouse.x, originX, contentMaxX));
+        const double minLength = 0.001;
+        switch (drag.mode) {
+            case Mode::Create: {
+                const double a = snapToGrid(drag.pressSeconds), b = snapToGrid(pointer);
+                drag.start = std::min(a, b);
+                drag.end = std::max(a, b);
+                break;
+            }
+            case Mode::Start:
+                drag.start = std::max(0.0, std::min(snapToGrid(pointer), drag.originalEnd - minLength));
+                drag.end = drag.originalEnd;
+                break;
+            case Mode::End:
+                drag.start = drag.originalStart;
+                drag.end = std::max(snapToGrid(pointer), drag.originalStart + minLength);
+                break;
+            case Mode::Move: {
+                const double length = drag.originalEnd - drag.originalStart;
+                drag.start = std::max(0.0, snapToGrid(drag.originalStart + (pointer - drag.pressSeconds)));
+                drag.end = drag.start + length;
+                break;
+            }
+            case Mode::None:
+                break;
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            drag = {};
+        } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            if (drag.moved && drag.end > drag.start) {
+                // Drawing a region starts looping it; reshaping one leaves looping as it was.
+                const bool wasLooping = transport.isLooping();
+                transport.setLoop(drag.start, drag.end);
+                if (drag.mode != Mode::Create && !wasLooping)
+                    transport.setLooping(false);
+            } else if (!drag.moved && drag.mode == Mode::Move) {
+                timeline_.pendingLoopToggleAt = now + ImGui::GetIO().MouseDoubleClickTime;
+            }
+            drag = {};
+        }
+    }
+
+    const bool previewing = drag.mode != Mode::None && drag.moved;
+    const double start = previewing ? drag.start : savedStart;
+    const double end = previewing ? drag.end : savedEnd;
+    const bool on = previewing && drag.mode == Mode::Create ? true : transport.isLooping();
+
+    const Mode cursorMode = drag.mode != Mode::None ? drag.mode : (inHeader && acceptsInput ? hoverMode : Mode::None);
+    if (cursorMode == Mode::Start || cursorMode == Mode::End)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    else if (cursorMode == Mode::Move)
+        ImGui::SetMouseCursor(drag.moved ? ImGuiMouseCursor_ResizeAll : ImGuiMouseCursor_Hand);
+
+    if (end > start) {
+        const float x0 = xOf(start), x1 = std::max(xOf(end), x0 + 1.0f);
+        const float edgeThickness = 2.0f * context.uiScale;
+        ImDrawList* header = ImGui::GetWindowDrawList();
+        header->PushClipRect(ImVec2(originX, headerMinY), ImVec2(contentMaxX, headerMaxY), true);
+        header->AddRectFilled(ImVec2(x0, bandTop), ImVec2(x1, headerMaxY), on ? kLoopBandColor : kLoopOffBandColor);
+        const ImU32 edge = on ? kLoopEdgeColor : kLoopOffEdgeColor;
+        header->AddLine(ImVec2(x0, headerMinY), ImVec2(x0, headerMaxY), edge,
+            cursorMode == Mode::Start ? edgeThickness * 1.5f : edgeThickness);
+        header->AddLine(ImVec2(x1, headerMinY), ImVec2(x1, headerMaxY), edge,
+            cursorMode == Mode::End ? edgeThickness * 1.5f : edgeThickness);
+        header->PopClipRect();
+
+        if (on && lanesMaxY > headerMaxY) {
+            ImDrawList* lanes = timelineSelectionDrawList();
+            lanes->PushClipRect(ImVec2(originX, headerMaxY), ImVec2(contentMaxX, lanesMaxY), true);
+            lanes->AddRectFilled(ImVec2(x0, headerMaxY), ImVec2(x1, lanesMaxY), kLoopLaneTintColor);
+            lanes->AddLine(ImVec2(x0, headerMaxY), ImVec2(x0, lanesMaxY), kLoopLaneEdgeColor, 1.0f);
+            lanes->AddLine(ImVec2(x1, headerMaxY), ImVec2(x1, lanesMaxY), kLoopLaneEdgeColor, 1.0f);
+            lanes->PopClipRect();
+        }
+    }
+
+    const auto range = std::format("{} - {}", axis_.formatPosition(start), axis_.formatPosition(end));
+    if (previewing)
+        ImGui::SetTooltip("Loop %s", range.c_str());
+    else if (acceptsInput && inHeader && end > start) {
+        if (hoverMode == Mode::Start)
+            ImGui::SetTooltip("Loop start %s. Drag to move it.", axis_.formatPosition(start).c_str());
+        else if (hoverMode == Mode::End)
+            ImGui::SetTooltip("Loop end %s. Drag to move it.", axis_.formatPosition(end).c_str());
+        else if (hoverMode == Mode::Move)
+            ImGui::SetTooltip("Loop %s, %s. Click to turn looping %s; drag to move the region.",
+                range.c_str(), on ? "on" : "off", on ? "off" : "on");
+    }
 }
 
 void SequenceEditor::drawPlayheadIndicator(

@@ -32,6 +32,11 @@ namespace uapmd {
             double tempo,
             uint32_t frameOffsetInBlock = 0
         ) = 0;
+
+        // Appends note-offs at frameOffset for this source's active notes; audio thread only.
+        virtual void sendNoteOffsForActiveNotes(remidy::EventSequence& eventOut, uint32_t frameOffset, int32_t sampleRate) {
+            (void) eventOut; (void) frameOffset; (void) sampleRate;
+        }
     };
 
 } // namespace uapmd

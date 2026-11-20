@@ -60,6 +60,13 @@ namespace uapmd {
         // here for the RT thread to load -- the same arrangement as
         // timeline_tracks_snapshot_ above. Never null.
         RtSnapshotPublisher<MasterTrackSnapshot> master_track_snapshot_;
+        // Read by the realtime callback only; offline renders ignore the loop.
+        RtSnapshotPublisher<LoopRegion> loop_snapshot_;
+        static int64_t wrapToLoop(const LoopRegion& loop, int64_t samples) {
+            if (!loop.enabled || samples < loop.endSamples)
+                return samples;
+            return loop.startSamples + (samples - loop.startSamples) % (loop.endSamples - loop.startSamples);
+        }
         std::shared_ptr<TimelineTrack> master_timeline_track_;
         ProjectAddressBook addresses_{timeline_tracks_, master_timeline_track_};
         // Model-thread view of the same master-track curve, including its TempoMap. Not
@@ -616,6 +623,21 @@ namespace uapmd {
         // ---- TimelineFacade interface ----
 
         TimelineState& state() override { return timeline_; }
+
+        void loopRegion(const LoopRegion& region) override {
+            LoopRegion normalized = region;
+            normalized.startSamples = std::max<int64_t>(0, region.startSamples);
+            normalized.enabled = region.enabled && region.endSamples > normalized.startSamples;
+            loop_snapshot_.publish(std::make_unique<const LoopRegion>(normalized));
+            notifyTimelineChanged();
+        }
+
+        LoopRegion loopRegion() const override { return *loop_snapshot_.currentOnPublisherThread(); }
+
+        int64_t wrapToLoopRT(int64_t transportSamples) const override {
+            const auto loop = loop_snapshot_.protect();
+            return wrapToLoop(*loop, transportSamples);
+        }
 
         std::vector<TimelineTrack*> tracks() override {
             std::vector<TimelineTrack*> result;

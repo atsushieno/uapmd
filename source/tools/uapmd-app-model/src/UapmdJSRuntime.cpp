@@ -2153,9 +2153,10 @@ void UapmdJSRuntime::registerTimelineAPI()
         obj.setMember ("timeSignatureDenominator", state.timeSignatureDenominator);
         obj.setMember ("isPlaying", state.isPlaying);
         obj.setMember ("playheadSamples", choc::value::createInt64 (state.playheadPosition.samples));
-        obj.setMember ("loopEnabled", state.loopEnabled);
-        obj.setMember ("loopStartSamples", choc::value::createInt64 (state.loopStart.samples));
-        obj.setMember ("loopEndSamples", choc::value::createInt64 (state.loopEnd.samples));
+        const auto loop = uapmd_app::AppModel::instance().sequencer().engine()->timeline().loopRegion();
+        obj.setMember ("loopEnabled", loop.enabled);
+        obj.setMember ("loopStartSamples", choc::value::createInt64 (loop.startSamples));
+        obj.setMember ("loopEndSamples", choc::value::createInt64 (loop.endSamples));
         return obj;
     });
 

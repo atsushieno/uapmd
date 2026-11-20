@@ -27,8 +27,20 @@ protected:
 public:
     virtual ~TimelineFacade() = default;
 
-    // Global timeline state (tempo, time signature, playhead, loop)
+    // Global timeline state (tempo, time signature, playhead); the loop is loopRegion() below.
     virtual TimelineState& state() = 0;
+
+    // Playback returns from endSamples to startSamples while enabled; a region with end <= start is never enabled.
+    struct LoopRegion {
+        bool enabled{false};
+        int64_t startSamples{0};
+        int64_t endSamples{0};
+    };
+    // Model thread. Not part of the project: a load clears it.
+    virtual void loopRegion(const LoopRegion& region) = 0;
+    virtual LoopRegion loopRegion() const = 0;
+    // Audio thread: where a transport position plays from once the loop is applied.
+    virtual int64_t wrapToLoopRT(int64_t transportSamples) const = 0;
 
     // One TimelineTrack* per SequencerTrack, at the same index
     virtual std::vector<TimelineTrack*> tracks() = 0;

@@ -52,12 +52,14 @@ namespace uapmd {
             const TimelineState& timeline,
             int64_t renderStartSample
         );
+        // sendNoteOffsAtEnd sends note-offs for the active notes of the track's MIDI clips, for a segment the transport leaves.
         void processAudioForRenderSegment(
             remidy::AudioProcessContext& process,
             const TimelineState& timeline,
             int64_t renderStartSample,
             int32_t destinationOffsetFrames,
-            int32_t renderFrameCount
+            int32_t renderFrameCount,
+            bool sendNoteOffsAtEnd = false
         );
 
         // Channel information

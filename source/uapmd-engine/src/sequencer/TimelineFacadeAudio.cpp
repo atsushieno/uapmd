@@ -11,15 +11,11 @@ namespace uapmd {
         // elements while we are iterating them.
         auto snapshot = timeline_tracks_snapshot_.protect();
 
-        auto wrapToLoopRange = [this, offlineTransport](int64_t samplePosition) -> int64_t {
-            if (offlineTransport || !timeline_.loopEnabled || timeline_.loopEnd.samples <= timeline_.loopStart.samples)
-                return samplePosition;
-            const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
-            if (samplePosition < timeline_.loopStart.samples)
-                return samplePosition;
-            return timeline_.loopStart.samples +
-                ((samplePosition - timeline_.loopStart.samples) % loopLength);
-        };
+        // One read of the loop for the whole callback, so every track wraps at the same place.
+        LoopRegion loop{};
+        if (!offlineTransport)
+            loop = *loop_snapshot_.protect();
+        auto wrapToLoopRange = [&loop](int64_t samplePosition) { return wrapToLoop(loop, samplePosition); };
 
         // Published by the model thread; loading it is the whole cost here.
         // Building it walks and sorts every master clip, which must never
@@ -152,11 +148,10 @@ namespace uapmd {
 
                 int32_t segmentFrames = remainingFrames;
                 bool wrapsAtLoopEnd = false;
-                if (!offlineTransport && timeline_.loopEnabled &&
-                    timeline_.loopEnd.samples > timeline_.loopStart.samples &&
-                    segmentStartSample < timeline_.loopEnd.samples &&
-                    segmentStartSample + remainingFrames > timeline_.loopEnd.samples) {
-                    segmentFrames = static_cast<int32_t>(timeline_.loopEnd.samples - segmentStartSample);
+                if (loop.enabled &&
+                    segmentStartSample < loop.endSamples &&
+                    segmentStartSample + remainingFrames > loop.endSamples) {
+                    segmentFrames = static_cast<int32_t>(loop.endSamples - segmentStartSample);
                     wrapsAtLoopEnd = true;
                 }
 
@@ -168,12 +163,13 @@ namespace uapmd {
                     segmentTimeline,
                     segmentStartSample,
                     destinationOffsetFrames,
-                    segmentFrames);
+                    segmentFrames,
+                    wrapsAtLoopEnd);
 
                 destinationOffsetFrames += segmentFrames;
                 remainingFrames -= segmentFrames;
                 segmentStartSample = wrapsAtLoopEnd
-                    ? timeline_.loopStart.samples
+                    ? loop.startSamples
                     : (segmentStartSample + segmentFrames);
             }
         }

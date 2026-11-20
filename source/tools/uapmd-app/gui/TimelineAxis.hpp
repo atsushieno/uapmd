@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <imgui.h>
 
@@ -65,6 +67,12 @@ public:
     // zero or less leaves seconds as it is.
     double snapSeconds(double seconds, double unitBeats) const;
 
+    // The bar holding seconds, through the tempo map and meter changes, in either mode.
+    struct BarSpan { double startSeconds{0.0}; double endSeconds{0.0}; };
+    BarSpan barAt(double seconds) const;
+    // A position as the active ruler names it: "bar.beat" on the beats axis, seconds otherwise.
+    std::string formatPosition(double seconds) const;
+
     // All in pixels per frame, which is what ImTimeline::SetScale takes.
     float defaultScale(float uiScale) const;
     float minScale() const { return kMinScalePerUnit / static_cast<float>(framesPerUnit()); }
@@ -100,6 +108,19 @@ public:
     void drawRuler(const RulerGeometry& geometry) const;
 
 private:
+    struct BarRegion {
+        double startBeat{0.0};
+        double endBeat{0.0};
+        double signatureBeatLength{1.0};
+        double barLength{4.0};
+        long long numerator{4};
+        long long firstBarNumber{1};
+    };
+    // The meter regions in quarter-note beats, each with the number of its first bar.
+    std::vector<BarRegion> barRegions() const;
+    static const BarRegion* regionAt(const std::vector<BarRegion>& regions, double beat);
+    double quarterBeatsFromSeconds(double seconds) const;
+    double secondsFromQuarterBeats(double beats) const;
     void drawSecondsRuler(const RulerGeometry& geometry) const;
     void drawBeatsRuler(const RulerGeometry& geometry) const;
 

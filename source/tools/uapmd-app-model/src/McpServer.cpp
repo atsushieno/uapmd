@@ -1009,9 +1009,10 @@ static choc::value::Value toolGetTimelineState(const choc::value::Value&)
     result.setMember ("timeSignatureDenominator", state.timeSignatureDenominator);
     result.setMember ("isPlaying", state.isPlaying);
     result.setMember ("playheadSamples", choc::value::createInt64 (state.playheadPosition.samples));
-    result.setMember ("loopEnabled", state.loopEnabled);
-    result.setMember ("loopStartSamples", choc::value::createInt64 (state.loopStart.samples));
-    result.setMember ("loopEndSamples", choc::value::createInt64 (state.loopEnd.samples));
+    const auto loop = AppModel::instance().sequencer().engine()->timeline().loopRegion();
+    result.setMember ("loopEnabled", loop.enabled);
+    result.setMember ("loopStartSamples", choc::value::createInt64 (loop.startSamples));
+    result.setMember ("loopEndSamples", choc::value::createInt64 (loop.endSamples));
     return result;
 }
 

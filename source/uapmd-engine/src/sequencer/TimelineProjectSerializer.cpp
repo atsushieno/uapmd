@@ -610,7 +610,7 @@ namespace uapmd::timeline_detail {
 
         facade_.state().isPlaying = false;
         facade_.state().playheadPosition = TimelinePosition{};
-        facade_.state().loopEnabled = false;
+        facade_.loopRegion({});
         facade_.state().projectTickResolution = 0;
         host_.resetTrackReferenceAllocator();
         host_.replaceMasterTimelineTrack(std::make_shared<TimelineTrack>(

@@ -2238,6 +2238,34 @@ void uapmd_app::TransportController::record() {
     isRecording_ = !isRecording_;
 }
 
+void uapmd_app::TransportController::setLoop(double startSeconds, double endSeconds) {
+    const double rate = static_cast<double>(appModel_->sampleRate());
+    uapmd::TimelineFacade::LoopRegion region;
+    region.startSamples = static_cast<int64_t>(std::llround(std::max(0.0, startSeconds) * rate));
+    region.endSamples = static_cast<int64_t>(std::llround(std::max(0.0, endSeconds) * rate));
+    region.enabled = true;
+    sequencer_->engine()->timeline().loopRegion(region);
+}
+
+void uapmd_app::TransportController::setLooping(bool enabled) {
+    auto& timeline = sequencer_->engine()->timeline();
+    auto region = timeline.loopRegion();
+    region.enabled = enabled;
+    timeline.loopRegion(region);
+}
+
+bool uapmd_app::TransportController::isLooping() const {
+    return sequencer_->engine()->timeline().loopRegion().enabled;
+}
+
+double uapmd_app::TransportController::loopStartSeconds() const {
+    return static_cast<double>(sequencer_->engine()->timeline().loopRegion().startSamples) / appModel_->sampleRate();
+}
+
+double uapmd_app::TransportController::loopEndSeconds() const {
+    return static_cast<double>(sequencer_->engine()->timeline().loopRegion().endSamples) / appModel_->sampleRate();
+}
+
 std::vector<uapmd_app::AppModel::DeviceEntry> uapmd_app::AppModel::getDevices() const {
     std::lock_guard lock(devicesMutex_);
     return devices_;  // Return copy
