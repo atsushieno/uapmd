@@ -30,7 +30,11 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
     ImGui::SetCursorScreenPos(ImVec2(rowStart.x, rowStart.y + (rowHeight - sliderHeight) * 0.5f));
     const auto framesPerUnit = static_cast<float>(axis.framesPerUnit());
     float pixelsPerUnit = timeline.GetScale() * framesPerUnit;
-    ImGui::SetNextItemWidth(std::max(40.0f, barStartScreenX - rowStart.x - style.ItemSpacing.x));
+    const float minSliderWidth = ImGui::CalcTextSize("0000.00").x + style.FramePadding.x * 2.0f;
+    const float sliderWidth = std::max(minSliderWidth, barStartScreenX - rowStart.x - style.ItemSpacing.x);
+    // On narrow layouts the controller gives way to the slider instead of drawing over it.
+    barStartScreenX = std::max(barStartScreenX, rowStart.x + sliderWidth + style.ItemSpacing.x);
+    ImGui::SetNextItemWidth(sliderWidth);
     if (ImGui::SliderFloat("##Zoom", &pixelsPerUnit,
                            TimelineAxis::kMinScalePerUnit, TimelineAxis::kMaxScalePerUnit, "%.2f",
                            ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) {
