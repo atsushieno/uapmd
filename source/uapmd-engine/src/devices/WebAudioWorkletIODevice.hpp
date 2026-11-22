@@ -57,6 +57,7 @@ namespace uapmd {
         float track_input[kWebAudioMaxTracks * kWebAudioBufferSize]{};
         // engine → AudioWorklet per-track volume applied after WebCLAP chains (0 when muted, unsoloed or bypassed)
         float track_gain[kWebAudioMaxTracks]{};
+        float track_balance[kWebAudioMaxTracks]{};
         // engine → AudioWorklet WebCLAP input events produced during native graph processing
         std::atomic<uint32_t> webclap_event_count{0};
         uint32_t webclap_event_queue[kWebClapEventQueueCapacity * kWebClapEventRecordWords]{};
@@ -65,7 +66,7 @@ namespace uapmd {
     // The WebCLAP DSP lives in the AudioWorklet, so it needs each track's
     // post-native output in addition to the native master mix. These are RT-safe
     // bounded copies made by the sequencer's audio thread.
-    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context, double gain, bool audible);
+    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context, double gain, float balance, bool audible);
     void publishWebAudioTrackCount(uint32_t trackCount);
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────

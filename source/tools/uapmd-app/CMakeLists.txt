@@ -47,6 +47,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/JsfxEditorPanel.cpp
         gui/JsfxResourcesWindow.cpp
         gui/MainWindow.cpp
+        gui/MixerWindow.cpp
         gui/MixerMonitorWindow.cpp
         gui/PluginList.cpp
         gui/InstanceDetails.cpp

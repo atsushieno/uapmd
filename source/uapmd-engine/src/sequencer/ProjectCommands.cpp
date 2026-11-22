@@ -207,6 +207,11 @@ namespace uapmd {
         return executeTrack<TrackGainProperty>(trackIndex, gain, origin);
     }
 
+    bool ProjectCommandsImpl::setTrackOutputPanners(
+        int32_t trackIndex, TrackOutputPanners panners, ProjectMutationOrigin origin) {
+        return executeTrack<TrackOutputPannersProperty>(trackIndex, std::move(panners), origin);
+    }
+
     bool ProjectCommandsImpl::setTrackProperties(
             int32_t trackIndex, const TrackProperties& properties, ProjectMutationOrigin origin) {
         return properties.valid()

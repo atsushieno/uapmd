@@ -96,6 +96,7 @@ namespace uapmd {
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
         virtual SequencerTrack* masterTrack() = 0;
+        virtual void captureMixerPeaks(bool enabled) = 0;
         // Master-track markers are project timeline state and are owned by the
         // engine alongside the master track, not by an application adapter.
         virtual const std::vector<ClipMarker>& masterTrackMarkers() const = 0;

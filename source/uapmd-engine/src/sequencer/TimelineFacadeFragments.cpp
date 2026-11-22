@@ -26,6 +26,7 @@ namespace uapmd {
         fragment->referenceId = timelineTrack->referenceId();
         fragment->properties = timelineTrack->properties();
         fragment->volume = sequencerTrack->trackGain();
+        fragment->output_panners = sequencerTrack->outputPanners();
         fragment->muted = sequencerTrack->muted();
         fragment->solo = sequencerTrack->solo();
 
@@ -169,6 +170,10 @@ namespace uapmd {
 
         auto& preparedTrack = state->prepared->track();
         preparedTrack.trackGain(source->volume);
+        if (!preparedTrack.outputPanners(source->output_panners)) {
+            (*fail)("Invalid track output panner parameters");
+            return;
+        }
         preparedTrack.muted(source->muted);
         preparedTrack.solo(source->solo);
 

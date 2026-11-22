@@ -410,6 +410,15 @@ namespace uapmd {
 
         if (trackObj.hasObjectMember("volume"))
             track->volume(trackObj["volume"].getWithDefault<double>(1.0));
+        if (trackObj.hasObjectMember("balance")) {
+            const auto balance = trackObj["balance"].getWithDefault<double>(0.0);
+            if (balance >= -1.0 && balance <= 1.0 && balance != 0.0) {
+                auto parameters = choc::value::createObject("Parameters", "balance", balance);
+                track->outputPanners({{0, {
+                    std::string(kStereoBalancePannerType), choc::json::toString(parameters)
+                }}});
+            }
+        }
         if (trackObj.hasObjectMember("muted"))
             track->muted(trackObj["muted"].getWithDefault<bool>(false));
         if (trackObj.hasObjectMember("solo"))

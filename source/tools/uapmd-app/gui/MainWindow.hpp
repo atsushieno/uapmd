@@ -23,6 +23,7 @@
 #include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
 #include "MixerMonitorWindow.hpp"
+#include "MixerWindow.hpp"
 #include "AddinManagerWindow.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
@@ -98,6 +99,7 @@ class MainWindow {
         ExporterWindow exporterWindow_;
         AudioImportWindow audioImportWindow_;
         MixerMonitorWindow mixerMonitorWindow_;
+        MixerWindow mixer_window_;
         uapmd_addin::CommandRegistry commandRegistry_;
         uapmd_addin::CommandRegistry projectCommandRegistry_;
         uapmd_addin::PanelRegistry panel_registry_;

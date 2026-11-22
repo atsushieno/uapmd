@@ -8,6 +8,7 @@
 #include "MidiTimelineEvents.hpp"
 #include "MidiClipDocument.hpp"
 #include "TrackProperties.hpp"
+#include "TrackOutputPanner.hpp"
 #include <optional>
 #include "../timeline/TimelineTypes.hpp"
 
@@ -100,6 +101,7 @@ namespace uapmd {
         std::string referenceId{};
         TrackProperties properties;
         double volume{1.0};
+        TrackOutputPanners output_panners{};
         bool muted{false};
         bool solo{false};
 

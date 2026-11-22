@@ -43,6 +43,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._trackOutIdx   = (sabByteOffset + offsets.trackOut) >> 2;
         this._trackInIdx    = (sabByteOffset + offsets.trackIn) >> 2;
         this._trackGainIdx  = (sabByteOffset + offsets.trackGain) >> 2;
+        this._trackBalanceIdx = (sabByteOffset + offsets.trackBalance) >> 2;
         this._webclapEventCountIdx = (sabByteOffset + offsets.webclapEventCount) >> 2;
         this._webclapEventQueueIdx = (sabByteOffset + offsets.webclapEventQueue) >> 2;
         this._engineQuantum  = engineQuantum;
@@ -53,6 +54,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._slots            = new Map();   // slot → {ptr, active, outLOff, outROff, inLOff, inROff}
         this._trackGraphs      = new Map();   // trackIndex → [slot]
         this._trackGains       = new Float32Array(kMaxTracks).fill(NaN); // volume reached by the previous render
+        this._trackBalances    = new Float32Array(kMaxTracks);
         this._masterGraph      = [];
         this._wclapHost        = null;
         this._wclapHostPromise = null;
@@ -539,6 +541,13 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         const start = Number.isNaN(previous) ? target : previous;
         const step = (target - start) / eq;
         this._trackGains[trackIndex] = target;
+        const balance = this._f32[this._trackBalanceIdx + trackIndex];
+        const previousBalance = this._trackBalances[trackIndex];
+        this._trackBalances[trackIndex] = balance;
+        const startLeft = 1 - Math.max(0, previousBalance);
+        const startRight = 1 - Math.max(0, -previousBalance);
+        const leftStep = (1 - Math.max(0, balance) - startLeft) / eq;
+        const rightStep = (1 - Math.max(0, -balance) - startRight) / eq;
 
         const admittedL = this._trackOutIdx + offset;
         const admittedR = admittedL + eq;
@@ -550,8 +559,8 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             // rather than adding to it, so an effect is actually audible and
             // never doubles the track's dry level.
             const gain = start + step * i;
-            this._f32[dstL + i] += this._workL[i] * gain - this._f32[admittedL + i];
-            this._f32[dstR + i] += this._workR[i] * gain - this._f32[admittedR + i];
+            this._f32[dstL + i] += this._workL[i] * gain * (startLeft + leftStep * i) - this._f32[admittedL + i];
+            this._f32[dstR + i] += this._workR[i] * gain * (startRight + rightStep * i) - this._f32[admittedR + i];
         }
     }
 

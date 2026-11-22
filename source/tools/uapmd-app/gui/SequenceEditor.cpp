@@ -419,13 +419,9 @@ std::vector<int32_t> SequenceEditor::sortedTrackIndices(const RenderContext& con
             return lhs < rhs;
         const auto& a = properties.at(lhs);
         const auto& b = properties.at(rhs);
-        if (a.path.empty() != b.path.empty())
-            return !a.path.empty();
-        if (a.path != b.path)
-            return a.path < b.path;
-        if (a.order != b.order)
-            return a.order < b.order;
-        return lhs < rhs;
+        if (a.path == b.path && a.order == b.order)
+            return lhs < rhs;
+        return trackPresentationLess(a, b);
     });
     return indices;
 }

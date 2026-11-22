@@ -94,6 +94,40 @@ It is intentionally not serialized as a graph node in `graph.nodes[]`, even thou
 
 `graph.nodes[]` is reserved for graph-authored nodes that are part of the authored topology rather than the default track/master fader.
 
+### Output Panners
+
+The mixer stores output panner nodes in `extensions/output-panners/tracks.json`
+within the project package. The file has a `version` of `1` and a `tracks`
+object keyed by persistent track ID. Each track has an array of panner nodes.
+A node identifies one zero-based output `bus`, a namespaced `node_type`, and
+its type-specific `parameters` object. Each bus can have one node.
+
+```json
+{
+  "version": 1,
+  "tracks": {
+    "track_0": [
+      { "bus": 0, "node_type": "uapmd:StereoBalance", "parameters": { "balance": -0.25 } },
+      { "bus": 1, "node_type": "uapmd:ChannelMatrixPanner", "parameters": {
+        "matrix": [[0, 0, 1], [0, 1, 0], [1, 0, 0]]
+      } }
+    ]
+  }
+}
+```
+
+- `uapmd:StereoBalance` attenuates one channel on a two-channel bus. Its
+  `balance` ranges from `-1` (left) through `0` (center) to `1` (right).
+- `uapmd:ChannelMatrixPanner` takes a square matrix for a bus with three or
+  more channels. Each row gives the gains from the input channels to one
+  output channel, in bus channel order. The example swaps channels 1 and 3.
+
+Mixer panners process the graph or frozen audio output before metering and
+routing. A missing node, unsupported node type, or incompatible bus width
+passes audio through. The project retains the type and parameters even when
+the engine cannot apply the node. Readers also migrate the older top-level
+`balance` field to a stereo node on bus 0 when the sidecar is absent.
+
 ### Current Graph Persistence Behavior
 
 Today a track can persist audio processing state in one of these ways:

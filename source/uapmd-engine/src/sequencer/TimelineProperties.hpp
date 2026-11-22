@@ -634,6 +634,20 @@ namespace uapmd::timeline_detail {
         }
     };
 
+    struct TrackOutputPannersProperty : TrackPropertyDescriptor<TrackOutputPannersProperty, TrackOutputPanners> {
+        static constexpr std::string_view commandId{"track.setOutputPanners"};
+        static constexpr std::string_view changeType{"track-output-panners-changed"};
+        static constexpr std::string_view label{"Change track output panners"};
+
+        static Value read(PropertyCommandTarget&, const TrackSubject& subject) {
+            return subject.track->outputPanners();
+        }
+
+        static bool write(PropertyCommandTarget&, const TrackSubject& subject, const Value& value) {
+            return subject.track->outputPanners(value);
+        }
+    };
+
     struct TrackMutedProperty : TrackPropertyDescriptor<TrackMutedProperty, bool> {
         static constexpr std::string_view commandId{"track.setMuted"};
         static constexpr std::string_view changeType{"track-mute-changed"};

@@ -21,4 +21,12 @@ namespace uapmd {
         }
     };
 
+    inline bool trackPresentationLess(const TrackProperties& a, const TrackProperties& b) {
+        if (a.path.empty() != b.path.empty())
+            return !a.path.empty();
+        if (a.path != b.path)
+            return a.path < b.path;
+        return a.order < b.order;
+    }
+
 }

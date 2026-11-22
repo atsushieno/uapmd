@@ -359,6 +359,7 @@ MainWindow::MainWindow(GuiDefaults defaults)
             timelineEditor_.refreshAllSequenceEditorTracks();
             timelineEditor_.setInitialTimelineView();
             timelineEditor_.invalidateMasterTrackSnapshot();
+            mixer_window_.resetMeterDisplay();
             trackList_.markDirty();
         });
 
@@ -388,7 +389,8 @@ MainWindow::MainWindow(GuiDefaults defaults)
         .savePluginState = [this](int32_t instanceId) { savePluginState(instanceId); },
         .loadPluginState = [this](int32_t instanceId) { loadPluginState(instanceId); },
         .onInstanceDetailsClosed = [this](int32_t) { trackList_.markDirty(); },
-        .showMixerMonitor = [this]() { mixerMonitorWindow_.toggle(); },
+        .toggle_mixer = [this]() { mixer_window_.toggle(); },
+        .show_track_in_mixer = [this](int32_t trackIndex) { mixer_window_.showTrack(trackIndex); },
     });
 
     // Set up child window size helpers for TimelineEditor
@@ -413,6 +415,11 @@ MainWindow::MainWindow(GuiDefaults defaults)
     mixerMonitorWindow_.setCallbacks({
         .setChildSize = [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
         .updateChildSizeState = [this](const std::string& id) { updateChildWindowSizeState(id); }
+    });
+    mixer_window_.setCallbacks({
+        .set_child_size = [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
+        .update_child_size_state = [this](const std::string& id) { updateChildWindowSizeState(id); },
+        .show_latency_monitor = [this]() { mixerMonitorWindow_.toggle(); }
     });
 }
 
@@ -860,6 +867,7 @@ void MainWindow::render(void* window) {
     addinManagerWindow_.render(uiScale_);
     panel_registry_.render();
     renderVirtualMidiDevicesWindow();
+    mixer_window_.render(uiScale_);
     mixerMonitorWindow_.render(uiScale_);
     exporterWindow_.render(uiScale_);
     audioImportWindow_.render(uiScale_);

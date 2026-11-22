@@ -15,6 +15,11 @@ namespace uapmd::sequencer_detail {
     std::filesystem::path extensionDataRoot(
         const std::filesystem::path& projectDir, std::string_view extensionId);
 
+    inline constexpr std::string_view kOutputPannerExtensionId = "output-panners";
+
+    bool saveOutputPanners(UapmdProjectData& project, ProjectSerializationWriteContext& context, std::string& error);
+    bool loadOutputPanners(UapmdProjectData& project, ProjectSerializationReadContext& context, std::string& error);
+
     std::filesystem::path makeRelativePath(
         const std::filesystem::path& baseDir,
         const std::filesystem::path& target);

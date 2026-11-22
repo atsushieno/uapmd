@@ -54,7 +54,7 @@ Everything lives in a single window with four bands, top to bottom:
    position controller.
 3. **The track list** -- the master track followed by your tracks, each with a legend on the
    left and its clips on the right.
-4. **The footer** -- add a track, and open the Mixer Monitor window.
+4. **The footer** opens the Mixer and adds empty tracks.
 
 Auxiliary windows (Settings, Plugin Selector, editors, and so on) open as floating panels inside
 the main window. They can be moved and resized like ordinary windows, and their positions are
@@ -178,12 +178,12 @@ currently visible below. Drag it to scroll the track list.
 ### The master track
 
 The first row is the master track. It carries the tempo and time-signature meta events that the
-beats view is built from, and it can host its own plugin chain via **Add Master Plugin**. It has
-a gain slider but no mute or solo.
+beats view is built from, and it can host its own plugin chain via **Add Master Plugin**.
+Its fader and output meters are on the Master strip in the Mixer.
 
 ### The footer
 
-`+` adds an empty track. `Mixer Monitor` opens the mixer window described below.
+`+` adds an empty track. **Mixer** opens the [channel strips](#the-mixer).
 
 
 ## Tracks
@@ -194,15 +194,14 @@ effects.
 
 Each track legend has two rows of controls.
 
-**Row 1** -- clipboard icon, graph icon, gain slider, `M`, `S`:
+**Row 1** contains clip and graph actions and the mute and solo buttons.
 
 | Control | Behaviour |
 | --- | --- |
-| Clipboard icon | Opens the [clip menu](#clips). |
+| Clipboard icon | Opens the [clip menu](#clips), which also has **Show in Mixer**. |
 | Graph icon | Shows or hides the [track graph editor](#the-track-graph-editor). |
-| Gain slider | Track volume. Hovering shows the value in dB and as a linear factor; at the bottom of its travel it reads `Mute`. |
-| `M` | Mute. Turns red while the track is muted. |
-| `S` | Solo. Turns amber while soloed. `Ctrl`/`Cmd`-click to add a track to the current solo set instead of replacing it. |
+| `M` | Toggles mute. On the Master row, mutes or unmutes all tracks. |
+| `S` | Toggles solo. On the Master row, solos or unsolos all tracks. |
 
 **Row 2** -- snowflake icon, the plugin button, `⋮`:
 
@@ -499,11 +498,24 @@ Re-enabling the addin creates devices for existing instances only when automatic
 Note that this window lists plugin *instances*, not tracks -- one track with two plugins appears
 as two rows.
 
+### The mixer
+
+Open **Mixer** from the timeline footer. Each strip has a vertical gain fader and
+channel meters. **Balance** adjusts the selected stereo output bus on a track. Click its
+value to return to center. Use the bus numbers in the lower pane to select another output.
+Use **M** and **S** to mute and solo tracks. Several tracks can be soloed together.
+The Master strip stays visible at the right as you scroll through the other tracks.
+
+The lower pane shows the selected strip's outputs, routes, and per-channel peaks. It opens
+on Master by default. Click a strip's name, meters, or bus count to select it. For a strip
+with several buses, click a bus number to show that bus beside the fader. A **!** indicator
+jumps to the bus with an overload. **Clear peaks** resets the held peak readings.
+
 ### The mixer monitor
 
 ![The Mixer Monitor window](../images/uapmd-app-guide-mixer-monitor.png)
 
-The Mixer Monitor reports latency compensation. The header shows the audible and render
+Open **Latency Monitor** from the Mixer to see latency compensation. The header shows the audible and render
 positions and the current playback phase; below it, `Playback Compensation` and `Input
 Monitoring` select the compensation strategy, and the table breaks down each track's reported
 latency, render lead, holdback, tail, and routing.

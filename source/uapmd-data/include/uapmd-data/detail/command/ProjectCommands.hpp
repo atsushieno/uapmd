@@ -11,6 +11,7 @@
 #include "../timeline/TimelineTypes.hpp"
 #include "../project/LatencyCompensationTypes.hpp"
 #include "../project/TrackProperties.hpp"
+#include "../project/TrackOutputPanner.hpp"
 
 namespace uapmd {
 
@@ -79,6 +80,8 @@ public:
                                     ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setTrackGain(int32_t trackIndex, double gain,
                               ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
+    virtual bool setTrackOutputPanners(int32_t trackIndex, TrackOutputPanners panners,
+                                       ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setTrackMuted(int32_t trackIndex, bool muted,
                                ProjectMutationOrigin origin = ProjectMutationOrigin::User) = 0;
     virtual bool setTrackSolo(int32_t trackIndex, bool solo,

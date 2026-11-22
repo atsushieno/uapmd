@@ -307,6 +307,7 @@ namespace uapmd {
         std::atomic<bool> in_process_audio_{false};
         uint32_t structure_mutation_depth_{}; // serialized control thread only
         AudioWorkersImpl audio_workers_;
+        std::atomic<bool> capture_mixer_peaks_{false};
         void discardLateAudioWorkerContexts();
 
         void waitForWorkerContexts() {
@@ -574,6 +575,9 @@ namespace uapmd {
 
         void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
+        void captureMixerPeaks(bool enabled) override {
+            capture_mixer_peaks_.store(enabled, std::memory_order_relaxed);
+        }
         AudioWorkers& audioWorkers() override { return audio_workers_; }
         AudioPerformanceCounter& audioPerformanceCounter() override { return audio_performance_counter_; }
         uint32_t droppedPluginParameterNotificationCount() const override {
@@ -1169,6 +1173,11 @@ namespace uapmd {
     void SequencerEngineImpl::reconfigureMixBusContext() {
         if (track_routing_manager_)
             track_routing_manager_->reconfigureMixBusContext();
+        for (size_t i = 0; i < tracks_.size() && i < sequence.tracks.size(); ++i)
+            if (tracks_[i] && sequence.tracks[i])
+                tracks_[i]->configureOutputMixing(*sequence.tracks[i]);
+        if (master_track_ && master_track_context_)
+            master_track_->configureOutputMixing(*master_track_context_);
     }
 
     void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
@@ -1680,23 +1689,10 @@ namespace uapmd {
         publishWebAudioTrackCount(static_cast<uint32_t>(processTrackCount));
 #endif
 
-        for (size_t i = 0; i < sequence.tracks.size() && i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            auto* ctx = sequence.tracks[i];
-            if (!track || !ctx)
-                continue;
-#ifdef __EMSCRIPTEN__
-            // Publish the latency-aligned signal. The AudioWorklet replaces this
-            // exact dry contribution in the native master mix with WebCLAP DSP,
-            // then applies the track volume and the mute/solo gate itself.
-            const bool audible = !track->bypassed() && !track->muted() && !(anySolo && !track->solo());
-            publishWebAudioTrackOutput(static_cast<uint32_t>(i), *ctx, track->trackGain(), audible);
-#endif
-        }
-
         const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);
         const auto renderPosition = render_playback_position_samples_.load(std::memory_order_acquire);
         const bool prerollActive = isPlaybackActive && renderPosition < audiblePosition;
+        const bool capturePeaks = !offline && !prerollActive && capture_mixer_peaks_.load(std::memory_order_relaxed);
 
         // Clear main output bus (bus 0) before mixing
         if (process.audioOutBusCount() > 0) {
@@ -1731,8 +1727,17 @@ namespace uapmd {
             if (!track || !ctx)
                 continue;
             ctx->eventIn().position(0); // clean up *in* events here.
-            if (track->muted() || (anySolo && !track->solo()))
+            // Apply mixer panners to live and frozen track output before metering and routing.
+            [[maybe_unused]] const auto stereoBalance = track->applyOutputPanners(*ctx, trackFrameCount);
+            const bool admitted = !track->muted() && (!anySolo || track->solo());
+#ifdef __EMSCRIPTEN__
+            // The AudioWorklet replaces this exact dry contribution with its wet signal.
+            publishWebAudioTrackOutput(t, *ctx, track->trackGain(), stereoBalance, admitted && !track->bypassed());
+#endif
+            if (!admitted)
                 continue;
+            if (capturePeaks)
+                track->captureOutputPeaks(*ctx, trackFrameCount);
 
             for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex) {
                 const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(t), busIndex);
@@ -1768,7 +1773,10 @@ namespace uapmd {
             master_track_->clearPluginOutputEvents();
             refreshProcessingGroups(*master_track_);
             master_track_->graph().processAudio(*masterCtx);
+            master_track_->applyOutputPanners(*masterCtx, trackFrameCount);
             dispatchTrackPluginOutput(*master_track_);
+            if (capturePeaks)
+                master_track_->captureOutputPeaks(*masterCtx, trackFrameCount);
 
             if (masterCtx->audioOutBusCount() > 0 && process.audioOutBusCount() > 0) {
                 for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(masterCtx->audioOutBusCount()); ++busIndex)

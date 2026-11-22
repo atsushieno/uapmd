@@ -224,6 +224,7 @@ namespace uapmd::timeline_detail {
                 : nullptr;
             if (sequencerTrack) {
                 projectTrack->volume(sequencerTrack->trackGain());
+                projectTrack->outputPanners(sequencerTrack->outputPanners());
                 projectTrack->muted(sequencerTrack->muted());
                 projectTrack->solo(sequencerTrack->solo());
             }
@@ -233,6 +234,7 @@ namespace uapmd::timeline_detail {
             const bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
             const bool hasMixerState = sequencerTrack
                 && (sequencerTrack->trackGain() != 1.0
+                    || !projectTrack->outputPanners().empty()
                     || sequencerTrack->muted()
                     || sequencerTrack->solo());
             const auto& properties = timelineTrack->properties();
@@ -270,8 +272,10 @@ namespace uapmd::timeline_detail {
 
         masterTrack->clips().clear();
         masterTrack->markers(engine_.masterTrackMarkers());
-        if (engine_.masterTrack())
-            masterTrack->volume(engine_.masterTrack()->trackGain());
+        if (auto* sequencerMaster = engine_.masterTrack()) {
+            masterTrack->volume(sequencerMaster->trackGain());
+            masterTrack->outputPanners(sequencerMaster->outputPanners());
+        }
 
         if (auto* masterTimelineTrack = facade_.masterTimelineTrack()) {
             auto clips = sequencer_detail::sortedTrackClips(*masterTimelineTrack);
@@ -424,6 +428,12 @@ namespace uapmd::timeline_detail {
             return;
         }
         std::string extensionError;
+        sequencer_detail::FilesystemProjectSerializationWriteContext pannerContext(
+            operation->project_file, operation->project_dir);
+        if (!sequencer_detail::saveOutputPanners(*operation->project, pannerContext, extensionError)) {
+            complete({false, "Failed to save output panners: " + extensionError});
+            return;
+        }
         if (!saveProjectExtensionData(
                 operation->project_file, operation->project_dir, extensionError)) {
             complete({false, std::move(extensionError)});
@@ -567,6 +577,12 @@ namespace uapmd::timeline_detail {
             return false;
         }
         run.dir = run.file.parent_path();
+        sequencer_detail::FilesystemProjectSerializationReadContext pannerContext(run.file, run.dir);
+        std::string pannerError;
+        if (!sequencer_detail::loadOutputPanners(*run.project, pannerContext, pannerError)) {
+            run.callback({false, "Failed to load output panners: " + pannerError});
+            return false;
+        }
         run.masterTrack = run.project->masterTrack();
         if (run.masterTrack) {
             run.masterTrackMarkers = run.masterTrack->markers();
@@ -1208,12 +1224,15 @@ namespace uapmd::timeline_detail {
         for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
             if (tracks[i] && engine_.tracks()[i]) {
                 engine_.tracks()[i]->trackGain(tracks[i]->volume());
+                engine_.tracks()[i]->outputPanners(tracks[i]->outputPanners());
                 engine_.tracks()[i]->muted(tracks[i]->muted());
                 engine_.tracks()[i]->solo(tracks[i]->solo());
             }
         }
-        if (masterProjectTrack && engine_.masterTrack())
+        if (masterProjectTrack && engine_.masterTrack()) {
             engine_.masterTrack()->trackGain(masterProjectTrack->volume());
+            engine_.masterTrack()->outputPanners(masterProjectTrack->outputPanners());
+        }
 
         ProjectDocumentEvent loadedEvent(
             ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
@@ -1451,6 +1470,7 @@ namespace uapmd::timeline_detail {
         try {
             const auto destination = projectDir / "extensions";
             std::unordered_set<std::string> active;
+            active.emplace(sequencer_detail::kOutputPannerExtensionId);
             for (auto* extension : host_.serializationExtensions())
                 if (extension)
                     active.insert(sequencer_detail::extensionDataRoot({}, extension->extensionId()).filename().string());

@@ -46,6 +46,7 @@ namespace uapmd {
         bool setClipAudioWarps(int32_t, int32_t, std::vector<AudioWarpPoint>, ProjectMutationOrigin) override;
 
         bool setTrackGain(int32_t, double, ProjectMutationOrigin) override;
+        bool setTrackOutputPanners(int32_t, TrackOutputPanners, ProjectMutationOrigin) override;
         bool setTrackProperties(int32_t, const TrackProperties&, ProjectMutationOrigin) override;
         bool setTrackMuted(int32_t, bool, ProjectMutationOrigin) override;
         bool setTrackSolo(int32_t, bool, ProjectMutationOrigin) override;

@@ -27,6 +27,7 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
+#include "TrackMixActions.hpp"
 
 using namespace uapmd;
 
@@ -35,14 +36,6 @@ namespace uapmd_app_gui {
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
-constexpr float kTrackGainUiMinDb = -60.0f;
-constexpr float kTrackGainUiMaxDb = 18.0618f;
-// Slider position where 0 dB (unity gain) sits — 70% from left.
-constexpr float kSliderUnityPos = 0.7f;
-// Exponent for the sub-unity power curve: > 1 compresses the far-left extreme
-// and expands the region near 0 dB so the practical mixing range feels wider.
-constexpr float kSliderCurve = 2.0f;
-
 class PianoRollClipEditor final : public uapmd_addin::ClipEditor {
 public:
     explicit PianoRollClipEditor(TimelineEditor* timelineEditor)
@@ -220,6 +213,27 @@ bool renderIconButtonWithTooltip(const char* label, const char* tooltip) {
     return contextActionButton(label, ImVec2(0.0f, 0.0f), tooltip);
 }
 
+float legendButtonWidth(const char* label) {
+    return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+}
+
+float legendMixButtonWidth() {
+    return std::max({ImGui::GetFrameHeight(), legendButtonWidth("M"), legendButtonWidth("S")});
+}
+
+bool renderLegendMixButton(const char* label, bool active, ImVec4 color, const char* tooltip) {
+    if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, color);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImLerp(color, ImVec4(1, 1, 1, 1), 0.12f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImLerp(color, ImVec4(0, 0, 0, 1), 0.12f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+    }
+    const bool clicked = contextActionButton(label, ImVec2(legendMixButtonWidth(), ImGui::GetFrameHeight()), tooltip);
+    if (active)
+        ImGui::PopStyleColor(4);
+    return clicked;
+}
+
 bool renderRotatingIconButton(
     const char* id,
     const char* icon,
@@ -252,53 +266,11 @@ bool renderRotatingIconButton(
     return clicked;
 }
 
-float linearGainToSliderDb(double gain) {
-    if (gain <= 0.0)
-        return kTrackGainUiMinDb;
-    return std::clamp(
-        static_cast<float>(20.0 * std::log10(gain)),
-        kTrackGainUiMinDb,
-        kTrackGainUiMaxDb);
-}
-
-double sliderDbToLinearGain(float db) {
-    if (db <= kTrackGainUiMinDb)
-        return 0.0;
-    return std::clamp(
-        static_cast<double>(std::pow(10.0f, db / 20.0f)),
-        0.0,
-        8.0);
-}
-
 void notifyTimelineClipChanged(int32_t trackIndex, int32_t clipId, std::string type) {
     auto* engine = uapmd_app::AppModel::instance().sequencer().engine();
     if (!engine)
         return;
     engine->timeline().notifyClipChanged(trackIndex, clipId, std::move(type));
-}
-
-// Maps a dB value to a slider position in [0, 1].
-// Below 0 dB a power curve (exponent kSliderCurve) expands the region near
-// unity; above 0 dB the mapping is linear.  0 dB always lands at kSliderUnityPos.
-float dbToSliderPos(float db) {
-    if (db <= kTrackGainUiMinDb) return 0.0f;
-    if (db >= kTrackGainUiMaxDb) return 1.0f;
-    if (db <= 0.0f) {
-        const float norm = (db - kTrackGainUiMinDb) / (0.0f - kTrackGainUiMinDb);
-        return kSliderUnityPos * std::pow(norm, kSliderCurve);
-    }
-    return kSliderUnityPos + (1.0f - kSliderUnityPos) * (db / kTrackGainUiMaxDb);
-}
-
-// Inverse of dbToSliderPos.
-float sliderPosToDb(float t) {
-    if (t <= 0.0f) return kTrackGainUiMinDb;
-    if (t >= 1.0f) return kTrackGainUiMaxDb;
-    if (t <= kSliderUnityPos) {
-        const float norm = std::pow(t / kSliderUnityPos, 1.0f / kSliderCurve);
-        return kTrackGainUiMinDb + norm * (0.0f - kTrackGainUiMinDb);
-    }
-    return kTrackGainUiMaxDb * (t - kSliderUnityPos) / (1.0f - kSliderUnityPos);
 }
 
 uint64_t mixHash(uint64_t seed, uint64_t value) {
@@ -779,24 +751,14 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
-    // The shared legend width is the exact width of a regular track's first
-    // row. Master-specific controls must not widen the whole timeline.
     const float pad = 4.0f * uiScale;
-    const float framePadX = ImGui::GetStyle().FramePadding.x;
     const float gap = ImGui::GetStyle().ItemSpacing.x;
-    const float clipsButtonWidth = ImGui::CalcTextSize(icons::Clips).x + framePadX * 2.0f;
-    const float graphButtonWidth = ImGui::CalcTextSize(icons::Graph).x + framePadX * 2.0f;
-    const float muteButtonWidth = ImGui::CalcTextSize("M").x + framePadX * 2.0f;
-    const float soloButtonWidth = ImGui::CalcTextSize("S").x + framePadX * 2.0f;
-    const float iconBtnW = std::max({
-        ImGui::CalcTextSize(icons::Clips).x,
-        ImGui::CalcTextSize(icons::Graph).x,
-        ImGui::CalcTextSize(icons::ToggleOn).x,
-        ImGui::CalcTextSize(icons::DeleteTrack).x,
-    }) + framePadX * 2.0f;
-    const float legendWidth =
-        pad + clipsButtonWidth + gap + graphButtonWidth + gap + iconBtnW * 1.5f +
-        gap + muteButtonWidth + gap + soloButtonWidth + pad;
+    const float firstRowWidth = legendButtonWidth(icons::Clips) + legendButtonWidth(icons::Graph)
+        + 2.0f * legendMixButtonWidth() + 3.0f * gap;
+    const float secondRowWidth = legendButtonWidth(icons::Freeze) + legendButtonWidth("Add Plugin")
+        + legendButtonWidth(icons::ContextMenu) + 2.0f * gap;
+    const float legendWidth = 2.0f * pad +
+        std::max({firstRowWidth, secondRowWidth, legendButtonWidth("Add Master Plugin")});
 
     return SequenceEditor::RenderContext{
         .document = &uapmd_app::AppModel::instance().sequencer().engine()->timeline().document(),
@@ -1325,10 +1287,10 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Add track");
-    if (callbacks_.showMixerMonitor) {
+    if (callbacks_.toggle_mixer) {
         ImGui::SameLine();
-        if (ImGui::Button("Mixer Monitor"))
-            callbacks_.showMixerMonitor();
+        if (ImGui::Button("Mixer"))
+            callbacks_.toggle_mixer();
     }
 }
 
@@ -1533,7 +1495,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         trackIndex != uapmd::kMasterTrackIndex &&
         frozenTrackManager.isTrackBusy(trackIndex);
 
-    // Row 1: Clips + Graph + Gain Slider + [Mute] + [Solo]
+    // Row 1: Clip and graph actions, mute, and solo.
     if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Track details and clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
@@ -1547,131 +1509,48 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     }
     if (trackBusy)
         ImGui::EndDisabled();
-    if (track) {
-        ImGui::SameLine();
-        const float iconButtonWidth = std::max({
-            ImGui::CalcTextSize(icons::Clips).x,
-            ImGui::CalcTextSize(icons::Graph).x,
-            ImGui::CalcTextSize(icons::ToggleOn).x,
-            ImGui::CalcTextSize(icons::DeleteTrack).x,
-            ImGui::CalcTextSize("M").x,
-            ImGui::CalcTextSize("S").x,
-        }) + ImGui::GetStyle().FramePadding.x * 2.0f;
-        const float sliderWidth = iconButtonWidth * 1.5f;
-        const float gainDb = linearGainToSliderDb(track->trackGain());
-        float sliderPos = dbToSliderPos(gainDb);
-        ImGui::SetNextItemWidth(sliderWidth);
-        const bool gainChanged = ImGui::SliderFloat(
-                std::format("##LegGain{}", trackIndex).c_str(),
-                &sliderPos,
-                0.0f, 1.0f,
-                sliderPos <= 0.0f ? "Mute" : "",
-                ImGuiSliderFlags_NoInput);
-        auto& undo = sequencer.engine()->commands().history();
-        if (ImGui::IsItemActivated())
-            undo.beginGesture("Change track gain");
-        if (gainChanged) {
-            sequencer.engine()->commands().setTrackGain(
-                trackIndex,
-                sliderDbToLinearGain(sliderPosToDb(sliderPos)));
-            uapmd_app::AppModel::instance().sequencer().engine()->markTrackDirty(trackIndex);
-        }
-        if (ImGui::IsItemDeactivated())
-            undo.endGesture();
-        if (ImGui::IsItemHovered()) {
-            const double linearGain = track->trackGain();
-            if (linearGain <= 0.0)
-                ImGui::SetTooltip("Track volume: muted");
-            else
-                ImGui::SetTooltip("Track volume: %.1f dB (%.3fx)", linearGainToSliderDb(linearGain), linearGain);
-        }
-
-        {
-            const bool isMasterTrack = trackIndex == uapmd::kMasterTrackIndex;
-            auto toggleTracks = [&](bool mute, bool enabled) {
-                auto setState = [&](int32_t index) {
-                    return mute ? appModel.setTrackMuted(index, enabled)
-                                : appModel.setTrackSolo(index, enabled);
-                };
-                if (!isMasterTrack) {
-                    setState(trackIndex);
-                    return;
-                }
-                ScopedCommandStep step(undo, mute
-                    ? (enabled ? "Mute all tracks" : "Unmute all tracks")
-                    : (enabled ? "Solo all tracks" : "Unsolo all tracks"));
-                if (!step.opened())
-                    return;
-                for (int32_t i = 0; i < static_cast<int32_t>(tracksRef.size()); ++i)
-                    if (tracksRef[i] && !setState(i))
-                        return;
-                step.commit();
-            };
-            ImGui::SameLine();
-            ImGui::BeginDisabled(isMasterTrack && tracksRef.empty());
-            const bool muted = isMasterTrack
-                ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->muted(); })
-                : appModel.isTrackMuted(trackIndex);
-            if (muted) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.16f, 0.16f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.22f, 0.22f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.54f, 0.10f, 0.10f, 1.0f));
-            }
-            if (contextActionButton(
-                    std::format("M##LegMute{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    isMasterTrack
-                        ? (muted ? "Unmute all tracks" : "Mute all tracks")
-                        : (muted ? "Track muted (click to unmute)" : "Mute track")))
-                toggleTracks(true, !muted);
-            if (muted)
-                ImGui::PopStyleColor(3);
-
-            ImGui::SameLine();
-            const bool solo = isMasterTrack
-                ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->solo(); })
-                : appModel.isTrackSolo(trackIndex);
-            if (solo) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.82f, 0.52f, 0.08f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.96f, 0.66f, 0.12f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.64f, 0.37f, 0.04f, 1.0f));
-            }
-            if (contextActionButton(
-                    std::format("S##LegSolo{}", trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    isMasterTrack
-                        ? (solo ? "Unsolo all tracks" : "Solo all tracks")
-                        : (solo ? "Track soloed (click to clear)" : "Solo track")))
-                toggleTracks(false, !solo);
-            if (solo)
-                ImGui::PopStyleColor(3);
-            ImGui::EndDisabled();
-        }
-    }
     const bool isRegularTrack = track && trackIndex != uapmd::kMasterTrackIndex;
-    const float regularTrackRow1Width = isRegularTrack
-        ? ImGui::GetItemRectMax().x - (legendArea.Min.x + pad)
-        : 0.0f;
-    // Row 2: Freeze switch + Plugin context button + More menu on the right.
-    // Regular tracks use the same span as the mixer controls above. The master
-    // track keeps its full legend width for its longer plugin label.
+    if (track) {
+        const bool isMasterTrack = trackIndex == uapmd::kMasterTrackIndex;
+        const bool muted = isMasterTrack
+            ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->muted(); })
+            : track->muted();
+        const bool solo = isMasterTrack
+            ? std::ranges::any_of(tracksRef, [](auto* item) { return item && item->solo(); })
+            : track->solo();
+        auto& commands = sequencer.engine()->commands();
+        const char* muteAction = isMasterTrack ? (muted ? "Unmute all tracks" : "Mute all tracks")
+                                              : (muted ? "Unmute track" : "Mute track");
+        const char* soloAction = isMasterTrack ? (solo ? "Unsolo all tracks" : "Solo all tracks")
+                                              : (solo ? "Unsolo track" : "Solo track");
+
+        ImGui::BeginDisabled(isMasterTrack && tracksRef.empty());
+        ImGui::SameLine();
+        if (renderLegendMixButton("M##LegMute", muted, ImVec4(0.62f, 0.13f, 0.16f, 1.0f), muteAction)) {
+            if (isMasterTrack)
+                setAllTracks(commands, tracksRef, true, !muted, muteAction);
+            else
+                commands.setTrackMuted(trackIndex, !muted);
+        }
+        ImGui::SameLine();
+        if (renderLegendMixButton("S##LegSolo", solo, ImVec4(0.49f, 0.28f, 0.02f, 1.0f), soloAction)) {
+            if (isMasterTrack)
+                setAllTracks(commands, tracksRef, false, !solo, soloAction);
+            else
+                commands.setTrackSolo(trackIndex, !solo);
+        }
+        ImGui::EndDisabled();
+    }
+
+    // Row 2: Freeze switch, plug-ins, and more track actions.
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float fullButtonWidth = legendWidth - pad * 2;
-    float miscButtonWidth = 0.0f;
-    if (track && trackIndex != uapmd::kMasterTrackIndex)
-        miscButtonWidth = ImGui::CalcTextSize(icons::ContextMenu).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float miscButtonWidth = isRegularTrack ? legendButtonWidth(icons::ContextMenu) : 0.0f;
     const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float freezePolicyButtonWidth =
-        ImGui::CalcTextSize(icons::Freeze).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    const float freezePolicyWidth = isRegularTrack
-        ? freezePolicyButtonWidth
-        : 0.0f;
-    const float buttonWidth = isRegularTrack
-        ? std::min(fullButtonWidth, regularTrackRow1Width)
-        : fullButtonWidth;
+    const float freezePolicyButtonWidth = isRegularTrack ? legendButtonWidth(icons::Freeze) : 0.0f;
     const float pluginButtonWidth = std::max(
-        0.0f,
-        buttonWidth - freezePolicyWidth - miscButtonWidth -
-            (freezePolicyWidth > 0.0f ? itemSpacing : 0.0f) -
-            (miscButtonWidth > 0.0f ? itemSpacing : 0.0f));
+        ImGui::GetFrameHeight(),
+        fullButtonWidth - freezePolicyButtonWidth - miscButtonWidth - (isRegularTrack ? 2.0f * itemSpacing : 0.0f));
 
     if (track && trackIndex != uapmd::kMasterTrackIndex) {
         auto& appModel = uapmd_app::AppModel::instance();
@@ -1736,12 +1615,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     }
     if (trackBusy)
         ImGui::BeginDisabled();
-    // With no plugin, the menu would offer nothing but Add Plugin, so go straight to the selector
-    if (validInstances.empty()) {
-        if (contextActionButton(std::format("{}##LegPlug{}", pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
+    if (contextActionButton(std::format("{}##LegPlug{}", pluginLabel, trackIndex).c_str(),
+            ImVec2(pluginButtonWidth, 0), pluginLabel.c_str())) {
+        if (validInstances.empty())
             openPluginSelector();
-    } else if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
-        ImGui::OpenPopup(popupId.c_str());
+        else
+            ImGui::OpenPopup(popupId.c_str());
+    }
     if (miscButtonWidth > 0.0f) {
         ImGui::SameLine();
         if (contextActionButton(
@@ -1754,6 +1634,8 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
     // Clips popup
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
+        if (callbacks_.show_track_in_mixer && ImGui::MenuItem("Show in Mixer"))
+            callbacks_.show_track_in_mixer(trackIndex);
         renderClipEditMenu(trackIndex, -1, appModel.timeline().playheadPosition.toSeconds(appModel.sampleRate()));
         const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
         if (contextActionMenuItem("Track Details...", sequenceEditor_.isVisible(trackIndex))) {
@@ -1851,8 +1733,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         ImGui::EndPopup();
     }
 
-    // Bypass and destructive operations are kept in the more menu; standard
-    // mixer controls stay directly accessible in the track header.
+    // Bypass and destructive operations are kept in the more menu.
     if (trackIndex != uapmd::kMasterTrackIndex && ImGui::BeginPopup(miscPopupId.c_str())) {
         renderClipEditMenu(trackIndex, -1, appModel.timeline().playheadPosition.toSeconds(appModel.sampleRate()));
         if (track) {

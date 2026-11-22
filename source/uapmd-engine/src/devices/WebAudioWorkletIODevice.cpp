@@ -16,7 +16,7 @@ namespace uapmd {
         std::atomic<uint32_t> g_active_web_audio_buffer_size{0};
     }
 
-    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context, double gain, bool audible) {
+    void publishWebAudioTrackOutput(uint32_t trackIndex, const AudioProcessContext& context, double gain, float balance, bool audible) {
         auto* sab = g_active_web_audio_sab.load(std::memory_order_acquire);
         const auto bufferSize = g_active_web_audio_buffer_size.load(std::memory_order_acquire);
         if (!sab || trackIndex >= kWebAudioMaxTracks || bufferSize == 0 ||
@@ -51,6 +51,7 @@ namespace uapmd {
                 std::memset(input, 0, frames * sizeof(float));
         }
         sab->track_gain[trackIndex] = audible ? static_cast<float>(gain) : 0.0f;
+        sab->track_balance[trackIndex] = balance;
     }
 
     void publishWebAudioTrackCount(uint32_t trackCount) {
@@ -736,6 +737,7 @@ namespace uapmd {
            int trackOutOffset,
            int trackInOffset,
            int trackGainOffset,
+           int trackBalanceOffset,
            int webclapEventCountOffset,
            int webclapEventQueueOffset),
     {
@@ -763,6 +765,7 @@ namespace uapmd {
                         trackOut: trackOutOffset,
                         trackIn: trackInOffset,
                         trackGain: trackGainOffset,
+                        trackBalance: trackBalanceOffset,
                         webclapEventCount: webclapEventCountOffset,
                         webclapEventQueue: webclapEventQueueOffset,
                     }
@@ -939,6 +942,7 @@ namespace uapmd {
                                        static_cast<int>(offsetof(WebAudioSAB, track_output)),
                                        static_cast<int>(offsetof(WebAudioSAB, track_input)),
                                        static_cast<int>(offsetof(WebAudioSAB, track_gain)),
+                                       static_cast<int>(offsetof(WebAudioSAB, track_balance)),
                                        static_cast<int>(offsetof(WebAudioSAB, webclap_event_count)),
                                        static_cast<int>(offsetof(WebAudioSAB, webclap_event_queue)));
         }

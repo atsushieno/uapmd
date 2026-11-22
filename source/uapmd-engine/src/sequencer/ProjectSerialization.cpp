@@ -10,11 +10,13 @@
 #include <unordered_set>
 #include <utility>
 
+#include <choc/text/choc_JSON.h>
 #include <umppi/umppi.hpp>
 
 namespace uapmd::sequencer_detail {
 
     namespace {
+        constexpr auto kOutputPannerFile = "tracks.json";
         constexpr uint8_t kTempoGroup = 0;
         constexpr uint8_t kTempoChannel = 0;
 
@@ -457,6 +459,112 @@ namespace uapmd::sequencer_detail {
             return false;
         }
         return true;
+    }
+
+    bool saveOutputPanners(
+        UapmdProjectData& project, ProjectSerializationWriteContext& context, std::string& error) {
+        auto tracks = project.tracks();
+        if (auto* master = project.masterTrack())
+            tracks.push_back(master);
+
+        auto entries = choc::value::createObject("Tracks");
+        for (const auto* track : tracks) {
+            if (track->outputPanners().empty())
+                continue;
+            auto nodes = choc::value::createEmptyArray();
+            for (const auto& [bus, panner] : track->outputPanners()) {
+                auto entry = choc::value::createObject("Panner",
+                    "bus", static_cast<int64_t>(bus),
+                    "node_type", panner.node_type,
+                    "parameters", choc::json::parse(panner.parameters_json));
+                nodes.addArrayElement(entry);
+            }
+            entries.addMember(track->referenceId(), nodes);
+        }
+        if (entries.size() == 0) {
+            // Saving over a project where the last panner was reset must clear its sidecar.
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(
+                extensionDataRoot(context.projectDirectory(), kOutputPannerExtensionId) / kOutputPannerFile, ec);
+            if (ec) {
+                error = ec.message();
+                return false;
+            }
+            if (!exists)
+                return true;
+        }
+
+        const auto json = choc::json::toString(
+            choc::value::createObject("TrackOutputPanners", "version", 1, "tracks", entries), true);
+        return context.writeExtensionFile(kOutputPannerExtensionId, kOutputPannerFile,
+            std::vector<uint8_t>(json.begin(), json.end()), error);
+    }
+
+    bool loadOutputPanners(
+        UapmdProjectData& project, ProjectSerializationReadContext& context, std::string& error) {
+        std::error_code ec;
+        const bool exists = std::filesystem::exists(
+            extensionDataRoot(context.projectDirectory(), kOutputPannerExtensionId) / kOutputPannerFile, ec);
+        if (ec) {
+            error = ec.message();
+            return false;
+        }
+        if (!exists)
+            return true;
+        const auto bytes = context.readExtensionFile(kOutputPannerExtensionId, kOutputPannerFile, error);
+        if (!bytes)
+            return false;
+
+        try {
+            const auto root = choc::json::parse(std::string(bytes->begin(), bytes->end()));
+            if (!root.isObject()) {
+                error = "Expected an output panner sidecar object.";
+                return false;
+            }
+            const auto version = root["version"];
+            const auto entries = root["tracks"];
+            if (!version.isInt() || version.getInt64() != 1 || !entries.isObject()) {
+                error = "Unsupported output panner sidecar format.";
+                return false;
+            }
+
+            auto tracks = project.tracks();
+            if (auto* master = project.masterTrack())
+                tracks.push_back(master);
+            for (auto* track : tracks) {
+                const auto nodes = entries[track->referenceId()];
+                TrackOutputPanners panners;
+                if (nodes.isArray()) {
+                    for (const auto& node : nodes) {
+                        if (!node.isObject()) {
+                            error = "Expected an output panner node object on " + track->referenceId();
+                            return false;
+                        }
+                        const auto bus = node["bus"];
+                        const auto type = node["node_type"];
+                        const auto parameters = node["parameters"];
+                        const auto index = bus.isInt() ? bus.getInt64() : -1;
+                        if (index < 0 || index > std::numeric_limits<uint32_t>::max()
+                            || !type.isString() || type.getString().empty() || !parameters.isObject()
+                            || !panners.emplace(static_cast<uint32_t>(index), TrackOutputPanner{
+                                std::string(type.getString()), choc::json::toString(parameters)
+                            }).second) {
+                            error = "Invalid output panner node on " + track->referenceId();
+                            return false;
+                        }
+                    }
+                } else if (entries.hasObjectMember(track->referenceId())) {
+                    error = "Expected an output panner array on " + track->referenceId();
+                    return false;
+                }
+                // A sidecar takes precedence over any legacy balance in the main document.
+                track->outputPanners(std::move(panners));
+            }
+            return true;
+        } catch (const choc::json::ParseError& exception) {
+            error = exception.what();
+            return false;
+        }
     }
 
     FilesystemProjectSerializationReadContext::FilesystemProjectSerializationReadContext(

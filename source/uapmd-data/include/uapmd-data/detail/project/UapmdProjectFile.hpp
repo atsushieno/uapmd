@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "../timeline/TimelineTypes.hpp"
+#include "TrackOutputPanner.hpp"
 
 namespace uapmd {
     class UapmdClipDataReferencible {
@@ -120,6 +121,8 @@ namespace uapmd {
 
         virtual UapmdProjectPluginGraphData* graph() = 0;
         virtual double volume() = 0;
+        // Mixer sidecar state. The main document reader also migrates legacy balance here.
+        virtual const TrackOutputPanners& outputPanners() const = 0;
         virtual bool muted() = 0;
         virtual bool solo() = 0;
 
@@ -129,6 +132,7 @@ namespace uapmd {
 
         virtual void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) = 0;
         virtual void volume(double value) = 0;
+        virtual void outputPanners(TrackOutputPanners value) = 0;
         virtual void muted(bool value) = 0;
         virtual void solo(bool value) = 0;
 

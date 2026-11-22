@@ -5,11 +5,14 @@
 #include <functional>
 #include <string>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <span>
+#include <variant>
 
 #include "uapmd-midi-service/uapmd-midi-service.hpp"
 #include "uapmd-graph/uapmd-graph.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
 
@@ -27,6 +30,28 @@ namespace uapmd {
         size_t plugin_output_event_count_{};
         std::atomic<uint32_t> dropped_plugin_output_events_{0};
         std::vector<std::pair<int32_t, uint8_t>> processing_groups_;
+        struct StereoBalancePanner {
+            float balance{};
+        };
+        struct ChannelMixCoefficient {
+            uint32_t input{};
+            float gain{};
+        };
+        struct ChannelMatrixPanner {
+            std::vector<std::vector<ChannelMixCoefficient>> rows{};
+        };
+        struct OutputPannerSnapshot {
+            TrackOutputPanners authored{};
+            std::map<uint32_t, std::variant<StereoBalancePanner, ChannelMatrixPanner>> nodes{};
+        };
+        RtSnapshotPublisher<OutputPannerSnapshot> output_panners_{};
+        std::vector<float> current_stereo_balances_{};
+        std::vector<float> panner_input_{};
+        std::vector<float*> panner_channels_{};
+        std::vector<std::vector<std::atomic<float>>> output_peaks_;
+
+        void applyChannelMatrix(
+            const ChannelMatrixPanner& panner, AudioProcessContext& context, uint32_t bus, int32_t frames);
 
     protected:
         SequencerTrack() = default;
@@ -98,6 +123,21 @@ namespace uapmd {
         virtual double tailLengthInSeconds() = 0;
         virtual double trackGain() const = 0;
         virtual bool trackGain(double value) = 0;
+        // Authored state and edits belong to the control thread.
+        const TrackOutputPanners& outputPanners() const;
+        bool outputPanners(TrackOutputPanners value);
+        std::optional<float> stereoBalance(uint32_t bus) const;
+        TrackOutputPanners outputPannersWithStereoBalance(uint32_t bus, float balance) const;
+        // Audio coordinator only. Returns bus 0's stereo balance for the stereo WebCLAP bridge.
+        float applyOutputPanners(AudioProcessContext& context, int32_t frames);
+
+        // Prepare meter and panner buffers on the control thread while the callback is excluded.
+        void configureOutputMixing(const AudioProcessContext& context);
+        void captureOutputPeaks(const AudioProcessContext& context, int32_t frames);
+        size_t outputMeterBusCount() const { return output_peaks_.size(); }
+        size_t outputMeterChannelCount(size_t bus) const { return bus < output_peaks_.size() ? output_peaks_[bus].size() : 0; }
+        float consumeOutputPeak(size_t bus, size_t channel);
+
         // These control admission to the main mix without stopping the graph.
         virtual bool muted() const = 0;
         virtual void muted(bool value) = 0;
