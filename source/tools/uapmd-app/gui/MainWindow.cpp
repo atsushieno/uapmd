@@ -477,7 +477,12 @@ void MainWindow::render(void* window) {
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
-        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
+        #if defined(__ANDROID__)
+        constexpr ImGuiWindowFlags toolbarFlags = ImGuiWindowFlags_HorizontalScrollbar;
+#else
+        constexpr ImGuiWindowFlags toolbarFlags = ImGuiWindowFlags_NoScrollbar;
+#endif
+        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, toolbarFlags)) {
             auto& appModel = uapmd_app::AppModel::instance();
             const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
             const auto audioFault = appModel.sequencer().engine()->audioWorkers().fault();
