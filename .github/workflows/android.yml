@@ -1,3 +1,4 @@
+# Rebuild after G-DaW mobile orientation and UI updates
 name: build android
 
 # Android build can be run manually or on the dedicated G-DaW development branch.
