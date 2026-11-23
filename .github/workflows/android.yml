@@ -1,10 +1,12 @@
 name: build android
 
-# Opt-in only: Android build depends on an unpublished aap-core, so we do not
-# run it on every push. The ARA backend also builds the unpublished aap-ara.
-# Trigger manually with compatible refs for both repositories.
+# Android build can be run manually or on the dedicated G-DaW development branch.
+# The ARA backend also builds the unpublished aap-ara.
 
 on:
+  push:
+    branches:
+      - gusho/android-debug-apk
   workflow_call:
     inputs:
       aap_core_ref:
@@ -102,6 +104,13 @@ jobs:
       env:
         CPM_SOURCE_CACHE: /home/runner/.cache/CPM/uapmd
       run: ./gradlew --no-daemon assembleDebug bundleRelease
+
+    - name: upload debug APK
+      if: success()
+      uses: actions/upload-artifact@v6
+      with:
+        name: G-DaW-android-debug
+        path: android/app/build/outputs/apk/debug/*.apk
 
     - name: sign release app bundle
       uses: r0adkll/sign-android-release@v1
