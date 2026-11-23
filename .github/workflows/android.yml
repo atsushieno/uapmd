@@ -99,6 +99,20 @@ jobs:
         key: cpm-android-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
         restore-keys: cpm-android-${{ runner.os }}-
 
+    # services.gradle.org redirected to a host returning HTTP 403 in CI.
+    # Use Gradle's direct distribution host for both external projects.
+    - name: use direct Gradle distribution host
+      shell: bash
+      run: |
+        for properties in \
+          android/external/aap-core/gradle/wrapper/gradle-wrapper.properties \
+          android/external/aap-ara/gradle/wrapper/gradle-wrapper.properties; do
+          sed -i 's#services\.gradle\.org/distributions/#downloads.gradle.org/distributions/#' "$properties"
+          sed -i 's/^networkTimeout=.*/networkTimeout=120000/' "$properties"
+          echo "Configured $properties:"
+          grep -E 'distributionUrl|networkTimeout' "$properties"
+        done
+
     - name: publish aap-core to mavenLocal
       working-directory: android/external/aap-core
       run: ./gradlew --no-daemon publishToMavenLocal
