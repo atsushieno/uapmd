@@ -1,10 +1,14 @@
+# Rebuild after G-DaW mobile orientation and UI updates
+# Trigger rebuild for responsive phone timeline layout
 name: build android
 
-# Opt-in only: Android build depends on an unpublished aap-core, so we do not
-# run it on every push. The ARA backend also builds the unpublished aap-ara.
-# Trigger manually with compatible refs for both repositories.
+# Android build can be run manually or on the dedicated G-DaW development branch.
+# The ARA backend also builds the unpublished aap-ara.
 
 on:
+  push:
+    branches:
+      - gusho/android-debug-apk
   workflow_call:
     inputs:
       aap_core_ref:
@@ -30,10 +34,16 @@ on:
         type: string
         default: 'main'
 
+# Keep only the newest Android build for this branch; older builds are redundant.
+concurrency:
+  group: gdaw-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-android:
     name: 'build uapmd-app Android artifacts'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
     - name: checkout uapmd
       uses: actions/checkout@v6
@@ -65,6 +75,14 @@ jobs:
         java-version: 17
         distribution: temurin
 
+    - name: set up Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        packages: platform-tools
+
+    - name: install Android NDK and CMake
+      run: sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;29.0.14206865" "cmake;4.1.2"
+
     - name: cache gradle
       uses: actions/cache@v4
       with:
@@ -83,6 +101,20 @@ jobs:
         key: cpm-android-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
         restore-keys: cpm-android-${{ runner.os }}-
 
+    # services.gradle.org redirected to a host returning HTTP 403 in CI.
+    # Use Gradle's direct distribution host for both external projects.
+    - name: use direct Gradle distribution host
+      shell: bash
+      run: |
+        for properties in \
+          android/external/aap-core/gradle/wrapper/gradle-wrapper.properties \
+          android/external/aap-ara/gradle/wrapper/gradle-wrapper.properties; do
+          sed -i 's#services\.gradle\.org/distributions/#downloads.gradle.org/distributions/#' "$properties"
+          sed -i 's/^networkTimeout=.*/networkTimeout=120000/' "$properties"
+          echo "Configured $properties:"
+          grep -E 'distributionUrl|networkTimeout' "$properties"
+        done
+
     - name: publish aap-core to mavenLocal
       working-directory: android/external/aap-core
       run: ./gradlew --no-daemon publishToMavenLocal
@@ -91,36 +123,18 @@ jobs:
       working-directory: android/external/aap-ara
       run: ./gradlew --no-daemon :androidaudioplugin-ara:publishToMavenLocal
 
-    - name: bump Android versionCode
-      uses: chkfung/android-version-actions@v1.2.1
-      with:
-        gradlePath: android/app/build.gradle.kts
-        versionCode: ${{ github.run_number }}
-
     - name: build uapmd-app
       working-directory: android
       env:
         CPM_SOURCE_CACHE: /home/runner/.cache/CPM/uapmd
-      run: ./gradlew --no-daemon assembleDebug bundleRelease
+      run: ./gradlew --no-daemon assembleDebug
 
-    - name: sign release app bundle
-      uses: r0adkll/sign-android-release@v1
-      id: sign_app
-      with:
-        releaseDirectory: android/app/build/outputs/bundle/release
-        signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-        alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-        keyStorePassword: ${{ secrets.SIGNING_KEY_STORE_PASSWORD }}
-        keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
-
-    - name: upload Android artifacts
+    - name: upload debug APK
       if: success()
       uses: actions/upload-artifact@v6
       with:
-        name: build-android
-        path: |
-          android/app/build/outputs/apk/debug/*.apk
-          ${{ steps.sign_app.outputs.signedReleaseFile }}
+        name: G-DaW-android-debug
+        path: android/app/build/outputs/apk/debug/*.apk
 
     - name: upload build failure logs
       if: failure()

@@ -1253,6 +1253,11 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     // lines up with the clips below; the zoom slider gets only what remains after the button.
     const float navRowTopY = ImGui::GetCursorPosY();
     const float navBarStartX = ImGui::GetCursorScreenPos().x + context.legendWidth;
+#if defined(__ANDROID__)
+    const bool compactMobileNav = ImGui::GetContentRegionAvail().x < 680.0f * context.uiScale;
+#else
+    constexpr bool compactMobileNav = false;
+#endif
     ImGui::SetCursorPosY(navRowTopY + (kNavigatorHeightPt * context.uiScale - ImGui::GetFrameHeight()) * 0.5f);
     if (ImGui::Button(timelineViewMode_ == TimelineViewMode::AbsoluteTime ? "View: Seconds" : "View: Beats")) {
         timelineViewMode_ = (timelineViewMode_ == TimelineViewMode::AbsoluteTime)
@@ -1263,8 +1268,14 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         ImGui::SetTooltip("Switch between absolute-time and bars/beats rulers");
     ImGui::SameLine();
     sequenceEditor_.renderSnapCombo(context);
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(navRowTopY);
+    if (compactMobileNav) {
+        // Keep the timeline navigator on its own row on narrow phone screens.
+        // This avoids squeezing the zoom and position controls beside the view buttons.
+        ImGui::SetCursorPosY(navRowTopY + kNavigatorHeightPt * context.uiScale);
+    } else {
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(navRowTopY);
+    }
     sequenceEditor_.renderNavigator(context, navBarStartX);
     ImGui::Spacing();
 
