@@ -67,6 +67,12 @@ jobs:
         java-version: 17
         distribution: temurin
 
+    - name: set up Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: install Android NDK and CMake
+      run: sdkmanager --install "platforms;android-37" "ndk;29.0.14206865" "cmake;4.1.2"
+
     - name: cache gradle
       uses: actions/cache@v4
       with:
@@ -93,17 +99,11 @@ jobs:
       working-directory: android/external/aap-ara
       run: ./gradlew --no-daemon :androidaudioplugin-ara:publishToMavenLocal
 
-    - name: bump Android versionCode
-      uses: chkfung/android-version-actions@v1.2.1
-      with:
-        gradlePath: android/app/build.gradle.kts
-        versionCode: ${{ github.run_number }}
-
     - name: build uapmd-app
       working-directory: android
       env:
         CPM_SOURCE_CACHE: /home/runner/.cache/CPM/uapmd
-      run: ./gradlew --no-daemon assembleDebug bundleRelease
+      run: ./gradlew --no-daemon assembleDebug
 
     - name: upload debug APK
       if: success()
@@ -111,25 +111,6 @@ jobs:
       with:
         name: G-DaW-android-debug
         path: android/app/build/outputs/apk/debug/*.apk
-
-    - name: sign release app bundle
-      uses: r0adkll/sign-android-release@v1
-      id: sign_app
-      with:
-        releaseDirectory: android/app/build/outputs/bundle/release
-        signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-        alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-        keyStorePassword: ${{ secrets.SIGNING_KEY_STORE_PASSWORD }}
-        keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
-
-    - name: upload Android artifacts
-      if: success()
-      uses: actions/upload-artifact@v6
-      with:
-        name: build-android
-        path: |
-          android/app/build/outputs/apk/debug/*.apk
-          ${{ steps.sign_app.outputs.signedReleaseFile }}
 
     - name: upload build failure logs
       if: failure()
