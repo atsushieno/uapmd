@@ -7,6 +7,11 @@ on:
   push:
     branches:
       - gusho/android-debug-apk
+
+# Keep only the newest Android build for this branch; older builds are redundant.
+concurrency:
+  group: gdaw-android-${{ github.ref }}
+  cancel-in-progress: true
   workflow_call:
     inputs:
       aap_core_ref:
@@ -36,6 +41,7 @@ jobs:
   build-android:
     name: 'build uapmd-app Android artifacts'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
     - name: checkout uapmd
       uses: actions/checkout@v6
