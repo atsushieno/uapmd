@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">UAPMD</string>
+    <string name="app_name">G-DaW</string>
     <string name="audio_playback_attribution">This application generates audio outputs from synthesized audio plugins and/or audio files.</string>
 </resources>
