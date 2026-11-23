@@ -562,8 +562,9 @@ Changing the audio device restarts the engine, which reactivates every loaded pl
 On desktop, two more controls govern parallel processing:
 
 - **Audio Workers** -- `Serial`, or the number of worker threads used to process independent
-  tracks concurrently. The default is a quarter of the CPU count, up to four. Graph providers or
-  extensions that are not compatible with parallel processing keep their tracks serial.
+  tracks concurrently. The default is half of the CPU count, or 2 with 4 to 7 CPUs and 1 with
+  fewer. Graph providers or extensions that are not compatible with parallel processing keep their
+  tracks serial.
 - **Stop audio engine on deadline overrun** -- off by default: late blocks are silenced until the
   workers catch up, then processing resumes. Turn it on to stop the engine instead and require a
   [restart](#audio-engine). Overruns are always logged.
