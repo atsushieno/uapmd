@@ -7,7 +7,7 @@
 #include <utility>
 
 namespace uapmd {
-    bool AudioWorkersImpl::configurePool(uint32_t workerCount, const AudioWorkerThreadSetup& setup, size_t trackCount) {
+    bool AudioWorkersImpl::configurePool(uint32_t workerCount, size_t trackCount) {
         if (workerCount > 32)
             return false;
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
@@ -15,26 +15,36 @@ namespace uapmd {
             return false;
 #endif
         try {
-            auto pool = workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount, setup) : nullptr;
-            jobs_.resize(trackCount);
-            pool_ = std::move(pool);
+            replacePool(workerCount ? std::make_unique<AudioTrackWorkerPool>(workerCount, thread_setup_) : nullptr, trackCount);
             return true;
         } catch (...) {
             return false;
         }
     }
 
-    bool AudioWorkersImpl::configure(uint32_t workerCount) { return configure(workerCount, jobs_.size()); }
-    bool AudioWorkersImpl::configure(uint32_t workerCount, size_t trackCount) {
-        return configurePool(workerCount, thread_setup_, trackCount);
+    void AudioWorkersImpl::replacePool(std::unique_ptr<AudioTrackWorkerPool> pool, size_t trackCount) {
+        const std::function<void()> update = [&] {
+            jobs_.resize(trackCount);
+            pool_.swap(pool);
+        };
+        // Only the swap excludes the audio callback; threads start and stop outside of it.
+        if (update_handler_)
+            update_handler_(update);
+        else
+            update();
     }
 
-    bool AudioWorkersImpl::setThreadSetup(AudioWorkerThreadSetup setup) { return setThreadSetup(std::move(setup), jobs_.size()); }
-    bool AudioWorkersImpl::setThreadSetup(AudioWorkerThreadSetup setup, size_t trackCount) {
-        if (!configurePool(count(), setup, trackCount))
-            return false;
+    bool AudioWorkersImpl::configure(uint32_t workerCount) { return configure(workerCount, jobs_.size()); }
+    bool AudioWorkersImpl::configure(uint32_t workerCount, size_t trackCount) {
+        return configurePool(workerCount, trackCount);
+    }
+
+    bool AudioWorkersImpl::setThreadSetup(AudioWorkerThreadSetup setup) {
+        const auto workerCount = count();
+        // Drop the workers on the previous setup first, so that a failure leaves Serial processing.
+        replacePool(nullptr, jobs_.size());
         thread_setup_ = std::move(setup);
-        return true;
+        return configurePool(workerCount, jobs_.size());
     }
 
     bool AudioWorkersImpl::hasThreadSetup() const { return static_cast<bool>(thread_setup_); }
@@ -98,6 +108,7 @@ namespace uapmd {
 
     void AudioWorkersImpl::resetFault() { if (reset_handler_) reset_handler_(); clearFault(); }
     void AudioWorkersImpl::setResetHandler(std::function<void()> handler) { reset_handler_ = std::move(handler); }
+    void AudioWorkersImpl::setUpdateHandler(std::function<void(const std::function<void()>&)> handler) { update_handler_ = std::move(handler); }
     void AudioWorkersImpl::setWaitHandler(std::function<void()> handler) { wait_handler_ = std::move(handler); }
     void AudioWorkersImpl::reportDiagnostics() {
         std::lock_guard lock(diagnostic_mutex_);

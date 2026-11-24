@@ -12,7 +12,6 @@ namespace uapmd {
         bool configure(uint32_t workerCount) override;
         bool configure(uint32_t workerCount, size_t trackCount);
         bool setThreadSetup(AudioWorkerThreadSetup setup) override;
-        bool setThreadSetup(AudioWorkerThreadSetup setup, size_t trackCount);
         bool hasThreadSetup() const;
         uint32_t count() const override;
         bool enabled() const;
@@ -41,10 +40,13 @@ namespace uapmd {
         void resetFault() override;
         void setResetHandler(std::function<void()> handler);
         void setWaitHandler(std::function<void()> handler);
+        // The handler runs the given update while the audio callback is excluded.
+        void setUpdateHandler(std::function<void(const std::function<void()>&)> handler);
         void reportDiagnostics();
 
     private:
-        bool configurePool(uint32_t workerCount, const AudioWorkerThreadSetup& setup, size_t trackCount);
+        bool configurePool(uint32_t workerCount, size_t trackCount);
+        void replacePool(std::unique_ptr<AudioTrackWorkerPool> pool, size_t trackCount);
         std::unique_ptr<AudioTrackWorkerPool> pool_;
         std::vector<AudioTrackJob> jobs_;
         AudioWorkerThreadSetup thread_setup_;
@@ -58,5 +60,6 @@ namespace uapmd {
         std::mutex diagnostic_mutex_;
         std::function<void()> reset_handler_;
         std::function<void()> wait_handler_;
+        std::function<void(const std::function<void()>&)> update_handler_;
     };
 }

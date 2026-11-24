@@ -875,6 +875,10 @@ namespace uapmd {
             audio_workers_.reportDiagnostics();
         });
         audio_workers_.setWaitHandler([this] { discardLateAudioWorkerContexts(); });
+        audio_workers_.setUpdateHandler([this](const std::function<void()>& update) {
+            StructureMutationGuard guard(*this);
+            update();
+        });
         notifyAudioProcessingConfigurationChanged();
         audio_workers_.configure(defaultAudioWorkerCount(), tracks_.size());
     }
