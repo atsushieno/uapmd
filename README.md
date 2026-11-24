@@ -38,7 +38,7 @@ UAPMD is unique in that it supports audio plugins on desktop, iOS, and Android.
 |-|-|-|
 | Linux desktop | VST3,LV2,CLAP | |
 | macOS | VST3,AU(v2/v3),LV2,CLAP | |
-| Windows | VST3,LV2,CLAP | MIDI 2.0 virtual devices (WIP) |
+| Windows | VST3,LV2,CLAP | There is no known working MIDI 2.0 client for Windows MIDI Services |
 | Android | [AAP](https://github.com/atsushieno/aap-core) | MIDI 2.0 virtual devices (but AAP itself supports it statically) |
 | iOS | AUv3 | |
 | Web (Emscripten) | [WebCLAP](https://github.com/WebCLAP) | |
@@ -58,6 +58,7 @@ v0.3: UAPMD works everywhere on desktop, mobile, and web (virtual MIDI 2.0 devic
 
 v0.4 .. v0.5.x: it became a practical audio sequencer engine on Android and Web.
 
+v0.6 .. v0.7: it aims an extensible sequencer engine based on addin-architecture and project document model.
 
 ## Usage
 
@@ -67,15 +68,7 @@ There are supplemental tools for diagnosing problems we encounter.
 
 ### uapmd-app
 
-It is the primary multitrack sequencer, virtual MIDI 2.0 device service controller. Currently the public command line options are hacky:
-
-> $ uapmd-app (plugin-name) (format-name) (api-name)
-
-`plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
-
-`format-name` is one of `VST3` `AU`, `LV2`, or `CLAP`.
-
-`api-name` so far accepts only `PIPEWIRE` (on Linux) to use PipeWire, and uses default available API otherwise.
+It is the primary multitrack sequencer, virtual MIDI 2.0 device service controller.
 
 We have some [users guide documentation](docs/users/USERS_GUIDE.md).
 
