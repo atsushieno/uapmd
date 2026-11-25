@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>uapmd-app (WebAssembly)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        body { margin: 0; background: #101014; color: #f9f9f9; font-family: system-ui, sans-serif; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        canvas { display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<div id="loading">Loading uapmd-app...</div>
+<canvas id="canvas"></canvas>
+<script>
+    // Register the COOP/COEP service worker so that SharedArrayBuffer is available.
+    // SharedArrayBuffer is required for WASM_WORKERS=1 and AUDIO_WORKLET=1.
+    // On first load the SW is not yet active, so the page reloads once after registration.
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./coop-coep-sw.js').then((reg) => {
+            if (!crossOriginIsolated) {
+                // The SW was just installed — reload so it can inject the COOP/COEP headers.
+                window.location.reload();
+            }
+        });
+    }
+
+    if (!crossOriginIsolated) {
+        document.getElementById('loading').textContent =
+            'Waiting for cross-origin isolation (reloading…)';
+    } else {
+        // crossOriginIsolated == true: SharedArrayBuffer is available, load WASM.
+        var Module = {
+            canvas: document.getElementById('canvas'),
+            preRun: [() => document.getElementById('loading').style.display = 'none'],
+            print: (text) => console.log('[uapmd]', text),
+            printErr: (text) => console.error('[uapmd]', text)
+        };
+        var script = document.createElement('script');
+        script.src = 'uapmd-app.js';
+        document.body.appendChild(script);
+    }
+</script>
+</body>
+</html>
