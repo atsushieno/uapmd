@@ -105,9 +105,6 @@ virtual <a class="el" href="../../db/dcb/classuapmd__graph_1_1AudioGraphNode.htm
 <tr class="memitem:ab9e09ab33a7198d93f19fecc71bda96a" id="r_ab9e09ab33a7198d93f19fecc71bda96a"><td class="memItemLeft" align="right" valign="top"><a id="ab9e09ab33a7198d93f19fecc71bda96a" name="ab9e09ab33a7198d93f19fecc71bda96a"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setGroupResolver</b> (std::function&lt; uint8_t(int32_t)&gt; resolver)=0</td></tr>
 <tr class="separator:ab9e09ab33a7198d93f19fecc71bda96a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3cbc5ab6f7858dac8ad49f68abffa312" id="r_a3cbc5ab6f7858dac8ad49f68abffa312"><td class="memItemLeft" align="right" valign="top"><a id="a3cbc5ab6f7858dac8ad49f68abffa312" name="a3cbc5ab6f7858dac8ad49f68abffa312"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setEventOutputCallback</b> (std::function&lt; void(int32_t instanceId, const uapmd_ump_t *data, size_t dataSizeInBytes)&gt; callback)=0</td></tr>
-<tr class="separator:a3cbc5ab6f7858dac8ad49f68abffa312"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a177fdebb0840631045d837c20fd40c7e" id="r_a177fdebb0840631045d837c20fd40c7e"><td class="memItemLeft" align="right" valign="top"><a id="a177fdebb0840631045d837c20fd40c7e" name="a177fdebb0840631045d837c20fd40c7e"></a>
 virtual int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">uapmd::AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:a177fdebb0840631045d837c20fd40c7e"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -117,6 +114,12 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>supportsParal
 <tr class="memitem:af6ca3c9ee445954781b86179b14f36f0" id="r_af6ca3c9ee445954781b86179b14f36f0"><td class="memItemLeft" align="right" valign="top"><a id="af6ca3c9ee445954781b86179b14f36f0" name="af6ca3c9ee445954781b86179b14f36f0"></a>
 virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputBusCount</b> ()=0</td></tr>
 <tr class="separator:af6ca3c9ee445954781b86179b14f36f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6328e6e2dce59e7a62ac5480c1ca8b94" id="r_a6328e6e2dce59e7a62ac5480c1ca8b94"><td class="memItemLeft" align="right" valign="top"><a id="a6328e6e2dce59e7a62ac5480c1ca8b94" name="a6328e6e2dce59e7a62ac5480c1ca8b94"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyLatencyChanged</b> ()=0</td></tr>
+<tr class="separator:a6328e6e2dce59e7a62ac5480c1ca8b94"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac40141b6fef468497f3a7798befc4784" id="r_ac40141b6fef468497f3a7798befc4784"><td class="memItemLeft" align="right" valign="top"><a id="ac40141b6fef468497f3a7798befc4784" name="ac40141b6fef468497f3a7798befc4784"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyTailLengthChanged</b> ()=0</td></tr>
+<tr class="separator:ac40141b6fef468497f3a7798befc4784"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aab3111c760acbe0a3e3e31797ff1a772" id="r_aab3111c760acbe0a3e3e31797ff1a772"><td class="memItemLeft" align="right" valign="top"><a id="aab3111c760acbe0a3e3e31797ff1a772" name="aab3111c760acbe0a3e3e31797ff1a772"></a>
 virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputLatencyInSamples</b> (uint32_t outputBusIndex)=0</td></tr>
 <tr class="separator:aab3111c760acbe0a3e3e31797ff1a772"><td class="memSeparator" colspan="2">&#160;</td></tr>

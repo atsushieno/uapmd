@@ -89,7 +89,7 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d7/d7f/structuapmd_1_1TimelineFacade_1_1ContentBounds.html">ContentBounds</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html">MasterTrackSnapshot</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d4/dc6/structuapmd_1_1TimelineFacade_1_1LoopRegion.html">LoopRegion</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../da/d11/structuapmd_1_1TimelineFacade_1_1MidiNotePreview.html">MidiNotePreview</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -112,12 +112,24 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>ProjectSaveCallback<
 <tr class="memitem:ae49ee1df250fc72378c44fe6d93e70b9" id="r_ae49ee1df250fc72378c44fe6d93e70b9"><td class="memItemLeft" align="right" valign="top"><a id="ae49ee1df250fc72378c44fe6d93e70b9" name="ae49ee1df250fc72378c44fe6d93e70b9"></a>
 using&#160;</td><td class="memItemRight" valign="bottom"><b>ProjectLoadCallback</b> = std::function&lt; void(<a class="el" href="../../d8/de9/structuapmd_1_1TimelineFacade_1_1ProjectResult.html">ProjectResult</a>)&gt;</td></tr>
 <tr class="separator:ae49ee1df250fc72378c44fe6d93e70b9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a51727373daa3ab049547ff96141cd91c" id="r_a51727373daa3ab049547ff96141cd91c"><td class="memItemLeft" align="right" valign="top"><a id="a51727373daa3ab049547ff96141cd91c" name="a51727373daa3ab049547ff96141cd91c"></a>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>MasterTrackSnapshot</b> = <a class="el" href="../../d0/d47/structuapmd_1_1ProjectMasterTrackSnapshot.html">ProjectMasterTrackSnapshot</a></td></tr>
+<tr class="separator:a51727373daa3ab049547ff96141cd91c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a21f03f38d2c1e831061ec811f2210da0" id="r_a21f03f38d2c1e831061ec811f2210da0"><td class="memItemLeft" align="right" valign="top"><a id="a21f03f38d2c1e831061ec811f2210da0" name="a21f03f38d2c1e831061ec811f2210da0"></a>
 virtual <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>state</b> ()=0</td></tr>
 <tr class="separator:a21f03f38d2c1e831061ec811f2210da0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a443c3b0f7e719f0c09dd90b9eaf5c167" id="r_a443c3b0f7e719f0c09dd90b9eaf5c167"><td class="memItemLeft" align="right" valign="top"><a id="a443c3b0f7e719f0c09dd90b9eaf5c167" name="a443c3b0f7e719f0c09dd90b9eaf5c167"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loopRegion</b> (const <a class="el" href="../../d4/dc6/structuapmd_1_1TimelineFacade_1_1LoopRegion.html">LoopRegion</a> &amp;region)=0</td></tr>
+<tr class="separator:a443c3b0f7e719f0c09dd90b9eaf5c167"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ade023c5f3986b637e37a60cdfb6b2da7" id="r_ade023c5f3986b637e37a60cdfb6b2da7"><td class="memItemLeft" align="right" valign="top"><a id="ade023c5f3986b637e37a60cdfb6b2da7" name="ade023c5f3986b637e37a60cdfb6b2da7"></a>
+virtual <a class="el" href="../../d4/dc6/structuapmd_1_1TimelineFacade_1_1LoopRegion.html">LoopRegion</a>&#160;</td><td class="memItemRight" valign="bottom"><b>loopRegion</b> () const =0</td></tr>
+<tr class="separator:ade023c5f3986b637e37a60cdfb6b2da7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9d6119d26c9ca39cf077802f17df4006" id="r_a9d6119d26c9ca39cf077802f17df4006"><td class="memItemLeft" align="right" valign="top"><a id="a9d6119d26c9ca39cf077802f17df4006" name="a9d6119d26c9ca39cf077802f17df4006"></a>
+virtual int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>wrapToLoopRT</b> (int64_t transportSamples) const =0</td></tr>
+<tr class="separator:a9d6119d26c9ca39cf077802f17df4006"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa372961ae15d030ffcd67ae0b226c5c5" id="r_aa372961ae15d030ffcd67ae0b226c5c5"><td class="memItemLeft" align="right" valign="top"><a id="aa372961ae15d030ffcd67ae0b226c5c5" name="aa372961ae15d030ffcd67ae0b226c5c5"></a>
 virtual std::vector&lt; <a class="el" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a> * &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>tracks</b> ()=0</td></tr>
 <tr class="separator:aa372961ae15d030ffcd67ae0b226c5c5"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -154,9 +166,9 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>clipEnabled</
 <tr class="memitem:acd61f09a2eb68bdd8aa8c71fa80d7b62" id="r_acd61f09a2eb68bdd8aa8c71fa80d7b62"><td class="memItemLeft" align="right" valign="top"><a id="acd61f09a2eb68bdd8aa8c71fa80d7b62" name="acd61f09a2eb68bdd8aa8c71fa80d7b62"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceAudioClipContent</b> (int32_t trackIndex, int32_t clipId, const std::string &amp;filepath, std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt; markers, std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt; audioWarps, const std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt; &amp;masterTrackMarkers, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:acd61f09a2eb68bdd8aa8c71fa80d7b62"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2b679b3351dfd65989c4e400de697889" id="r_a2b679b3351dfd65989c4e400de697889"><td class="memItemLeft" align="right" valign="top"><a id="a2b679b3351dfd65989c4e400de697889" name="a2b679b3351dfd65989c4e400de697889"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceMidiClipContent</b> (int32_t trackIndex, int32_t clipId, std::vector&lt; uapmd_ump_t &gt; umpEvents, std::vector&lt; uint64_t &gt; umpTickTimestamps, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
-<tr class="separator:a2b679b3351dfd65989c4e400de697889"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afbd4856e61b69c834b18263efe7303c1" id="r_afbd4856e61b69c834b18263efe7303c1"><td class="memItemLeft" align="right" valign="top"><a id="afbd4856e61b69c834b18263efe7303c1" name="afbd4856e61b69c834b18263efe7303c1"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceMidiClipContent</b> (int32_t trackIndex, int32_t clipId, std::vector&lt; uapmd_ump_t &gt; umpEvents, std::vector&lt; uint64_t &gt; umpTickTimestamps, ProjectMutationOrigin origin=ProjectMutationOrigin::User, const <a class="el" href="../../d5/d9f/structuapmd_1_1MidiClipContentSnapshot.html">MidiClipContentSnapshot</a> *content=nullptr)=0</td></tr>
+<tr class="separator:afbd4856e61b69c834b18263efe7303c1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2814d028fe199c145b2b7e2f12b95906" id="r_a2814d028fe199c145b2b7e2f12b95906"><td class="memItemLeft" align="right" valign="top"><a id="a2814d028fe199c145b2b7e2f12b95906" name="a2814d028fe199c145b2b7e2f12b95906"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceMidiClipData</b> (int32_t trackIndex, int32_t clipId, <a class="el" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">MidiClipReader::ClipInfo</a> content, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:a2814d028fe199c145b2b7e2f12b95906"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -223,6 +235,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>beginDocument
 <tr class="memitem:a851025afbfa06c26031b5a416b517581" id="r_a851025afbfa06c26031b5a416b517581"><td class="memItemLeft" align="right" valign="top"><a id="a851025afbfa06c26031b5a416b517581" name="a851025afbfa06c26031b5a416b517581"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>endDocumentTransaction</b> ()=0</td></tr>
 <tr class="separator:a851025afbfa06c26031b5a416b517581"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae251a9a179ec6d806a538d966e85adbe" id="r_ae251a9a179ec6d806a538d966e85adbe"><td class="memItemLeft" align="right" valign="top"><a id="ae251a9a179ec6d806a538d966e85adbe" name="ae251a9a179ec6d806a538d966e85adbe"></a>
+virtual <a class="el" href="../../d1/d2e/classuapmd_1_1ProjectDocument.html">ProjectDocument</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>document</b> ()=0</td></tr>
+<tr class="separator:ae251a9a179ec6d806a538d966e85adbe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7abac892b59613837fa0c674893ef300" id="r_a7abac892b59613837fa0c674893ef300"><td class="memItemLeft" align="right" valign="top"><a id="a7abac892b59613837fa0c674893ef300" name="a7abac892b59613837fa0c674893ef300"></a>
+virtual const <a class="el" href="../../d1/d2e/classuapmd_1_1ProjectDocument.html">ProjectDocument</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>document</b> () const =0</td></tr>
+<tr class="separator:a7abac892b59613837fa0c674893ef300"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abcda93fb6f74084985834402cea8cb8e" id="r_abcda93fb6f74084985834402cea8cb8e"><td class="memItemLeft" align="right" valign="top"><a id="abcda93fb6f74084985834402cea8cb8e" name="abcda93fb6f74084985834402cea8cb8e"></a>
 virtual <a class="el" href="../../dc/d65/classuapmd_1_1ProjectDocumentEventSource.html">ProjectDocumentEventSource</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>projectDocumentEvents</b> ()=0</td></tr>
 <tr class="separator:abcda93fb6f74084985834402cea8cb8e"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -266,7 +284,7 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>saveProjectEx
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectExtensionData</b> (const std::filesystem::path &amp;projectFile, const std::filesystem::path &amp;projectDir, std::string &amp;error)=0</td></tr>
 <tr class="separator:a38c5be377b610fde3b729e344280ae64"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3190e9c0be9436a4476784a1bf1bcf3f" id="r_a3190e9c0be9436a4476784a1bf1bcf3f"><td class="memItemLeft" align="right" valign="top"><a id="a3190e9c0be9436a4476784a1bf1bcf3f" name="a3190e9c0be9436a4476784a1bf1bcf3f"></a>
-virtual <a class="el" href="../../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html">MasterTrackSnapshot</a>&#160;</td><td class="memItemRight" valign="bottom"><b>buildMasterTrackSnapshot</b> ()=0</td></tr>
+virtual <a class="el" href="../../d0/d47/structuapmd_1_1ProjectMasterTrackSnapshot.html">MasterTrackSnapshot</a>&#160;</td><td class="memItemRight" valign="bottom"><b>buildMasterTrackSnapshot</b> ()=0</td></tr>
 <tr class="separator:a3190e9c0be9436a4476784a1bf1bcf3f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a02a114d331cf7edc4f699fdbeb85d9ec" id="r_a02a114d331cf7edc4f699fdbeb85d9ec"><td class="memItemLeft" align="right" valign="top"><a id="a02a114d331cf7edc4f699fdbeb85d9ec" name="a02a114d331cf7edc4f699fdbeb85d9ec"></a>
 virtual const <a class="el" href="../../d8/df0/classuapmd_1_1TempoMap.html">uapmd::TempoMap</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>masterTempoMap</b> () const =0</td></tr>
@@ -295,9 +313,9 @@ virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>masterTra
 <tr class="memitem:a6fbdbc61d9cd3ca88768acd250b34167" id="r_a6fbdbc61d9cd3ca88768acd250b34167"><td class="memItemLeft" align="right" valign="top"><a id="a6fbdbc61d9cd3ca88768acd250b34167" name="a6fbdbc61d9cd3ca88768acd250b34167"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>trackHasLiveInput</b> (int32_t trackIndex)=0</td></tr>
 <tr class="separator:a6fbdbc61d9cd3ca88768acd250b34167"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9a6bb49786be2373c5ec1445275e2401" id="r_a9a6bb49786be2373c5ec1445275e2401"><td class="memItemLeft" align="right" valign="top"><a id="a9a6bb49786be2373c5ec1445275e2401" name="a9a6bb49786be2373c5ec1445275e2401"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>processTracksAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process, <a class="el" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a> &amp;targetSequence)=0</td></tr>
-<tr class="separator:a9a6bb49786be2373c5ec1445275e2401"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aaff68aba88543503c04e6b2dc5f61fa3" id="r_aaff68aba88543503c04e6b2dc5f61fa3"><td class="memItemLeft" align="right" valign="top"><a id="aaff68aba88543503c04e6b2dc5f61fa3" name="aaff68aba88543503c04e6b2dc5f61fa3"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>processTracksAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process, <a class="el" href="../../d1/d7c/classuapmd_1_1SequenceProcessContext.html">SequenceProcessContext</a> &amp;targetSequence, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> *offlineTransport=nullptr)=0</td></tr>
+<tr class="separator:aaff68aba88543503c04e6b2dc5f61fa3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adf1c2f251766f3e0df1cee84712ba8ac" id="r_adf1c2f251766f3e0df1cee84712ba8ac"><td class="memItemLeft" align="right" valign="top"><a id="adf1c2f251766f3e0df1cee84712ba8ac" name="adf1c2f251766f3e0df1cee84712ba8ac"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>onTrackAdded</b> (uint32_t outputChannels, double sampleRate, uint32_t bufferSizeInFrames, int32_t insertionIndex)=0</td></tr>
 <tr class="separator:adf1c2f251766f3e0df1cee84712ba8ac"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -128,9 +128,9 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a 
 <tr class="memitem:ac7b7c4ddd6fab6824109b1beb1a86bcf" id="r_ac7b7c4ddd6fab6824109b1beb1a86bcf"><td class="memItemLeft" align="right" valign="top"><a id="ac7b7c4ddd6fab6824109b1beb1a86bcf" name="ac7b7c4ddd6fab6824109b1beb1a86bcf"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudioForRenderPosition</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline, int64_t renderStartSample)</td></tr>
 <tr class="separator:ac7b7c4ddd6fab6824109b1beb1a86bcf"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8ffd8593eb2e954f2547d215c3c8bc36" id="r_a8ffd8593eb2e954f2547d215c3c8bc36"><td class="memItemLeft" align="right" valign="top"><a id="a8ffd8593eb2e954f2547d215c3c8bc36" name="a8ffd8593eb2e954f2547d215c3c8bc36"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudioForRenderSegment</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline, int64_t renderStartSample, int32_t destinationOffsetFrames, int32_t renderFrameCount)</td></tr>
-<tr class="separator:a8ffd8593eb2e954f2547d215c3c8bc36"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a019a5fb2cc4b247f2fbe3aaa10862ad6" id="r_a019a5fb2cc4b247f2fbe3aaa10862ad6"><td class="memItemLeft" align="right" valign="top"><a id="a019a5fb2cc4b247f2fbe3aaa10862ad6" name="a019a5fb2cc4b247f2fbe3aaa10862ad6"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudioForRenderSegment</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline, int64_t renderStartSample, int32_t destinationOffsetFrames, int32_t renderFrameCount, bool sendNoteOffsAtEnd=false)</td></tr>
+<tr class="separator:a019a5fb2cc4b247f2fbe3aaa10862ad6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af8f3a30d305b8f6aa306c0b0a6afd949" id="r_af8f3a30d305b8f6aa306c0b0a6afd949"><td class="memItemLeft" align="right" valign="top"><a id="af8f3a30d305b8f6aa306c0b0a6afd949" name="af8f3a30d305b8f6aa306c0b0a6afd949"></a>
 uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>channelCount</b> () const</td></tr>
 <tr class="separator:af8f3a30d305b8f6aa306c0b0a6afd949"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -140,6 +140,12 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>sampleRate</b> () c
 <tr class="memitem:af9fe887e8a99124f0fb41dff31000257" id="r_af9fe887e8a99124f0fb41dff31000257"><td class="memItemLeft" align="right" valign="top"><a id="af9fe887e8a99124f0fb41dff31000257" name="af9fe887e8a99124f0fb41dff31000257"></a>
 const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>referenceId</b> () const</td></tr>
 <tr class="separator:af9fe887e8a99124f0fb41dff31000257"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad3569b9625560810b9e1f322cecfd8d3" id="r_ad3569b9625560810b9e1f322cecfd8d3"><td class="memItemLeft" align="right" valign="top"><a id="ad3569b9625560810b9e1f322cecfd8d3" name="ad3569b9625560810b9e1f322cecfd8d3"></a>
+const <a class="el" href="../../da/d91/structuapmd_1_1TrackProperties.html">TrackProperties</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>properties</b> () const</td></tr>
+<tr class="separator:ad3569b9625560810b9e1f322cecfd8d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a63adfb5d718c3b59f81800e29f0b8318" id="r_a63adfb5d718c3b59f81800e29f0b8318"><td class="memItemLeft" align="right" valign="top"><a id="a63adfb5d718c3b59f81800e29f0b8318" name="a63adfb5d718c3b59f81800e29f0b8318"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>properties</b> (const <a class="el" href="../../da/d91/structuapmd_1_1TrackProperties.html">TrackProperties</a> &amp;value)</td></tr>
+<tr class="separator:a63adfb5d718c3b59f81800e29f0b8318"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a819d5a210e67235c9b672ac95cbe9e79" id="r_a819d5a210e67235c9b672ac95cbe9e79"><td class="memItemLeft" align="right" valign="top"><a id="a819d5a210e67235c9b672ac95cbe9e79" name="a819d5a210e67235c9b672ac95cbe9e79"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>hasDeviceInputSource</b> () const</td></tr>
 <tr class="separator:a819d5a210e67235c9b672ac95cbe9e79"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -8,7 +8,8 @@ var searchData=
   ['framebuffermenuitem_5',['FramebufferMenuItem',['../de/dec/structuapmd__plugin__hosting_1_1FramebufferMenuItem.html',1,'uapmd_plugin_hosting']]],
   ['framebufferuihost_6',['FramebufferUIHost',['../d9/d08/classuapmd__plugin__hosting_1_1FramebufferUIHost.html',1,'uapmd_plugin_hosting']]],
   ['framebufferview_7',['FramebufferView',['../dc/d33/structuapmd__plugin__hosting_1_1FramebufferView.html',1,'uapmd_plugin_hosting']]],
-  ['frozentrackaudioprocessorextension_8',['FrozenTrackAudioProcessorExtension',['../db/da6/classuapmd_1_1FrozenTrackAudioProcessorExtension.html',1,'uapmd']]],
-  ['frozentrackmanager_9',['FrozenTrackManager',['../d5/dff/classuapmd_1_1FrozenTrackManager.html',1,'uapmd']]],
-  ['frozentrackmanagerprojectserializationextension_10',['FrozenTrackManagerProjectSerializationExtension',['../da/dff/classuapmd_1_1FrozenTrackManagerProjectSerializationExtension.html',1,'uapmd']]]
+  ['frozenaudiosummary_8',['FrozenAudioSummary',['../dc/d2b/structuapmd_1_1FrozenTrackManager_1_1FrozenAudioSummary.html',1,'uapmd::FrozenTrackManager']]],
+  ['frozentrackaudioprocessorextension_9',['FrozenTrackAudioProcessorExtension',['../db/da6/classuapmd_1_1FrozenTrackAudioProcessorExtension.html',1,'uapmd']]],
+  ['frozentrackmanager_10',['FrozenTrackManager',['../d5/dff/classuapmd_1_1FrozenTrackManager.html',1,'uapmd']]],
+  ['frozentrackmanagerprojectserializationextension_11',['FrozenTrackManagerProjectSerializationExtension',['../da/dff/classuapmd_1_1FrozenTrackManagerProjectSerializationExtension.html',1,'uapmd']]]
 ];

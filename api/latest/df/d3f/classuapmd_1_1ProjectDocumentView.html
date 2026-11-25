@@ -85,6 +85,15 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a21a9fd5ada86058bfdf59967c95d16ac" id="r_a21a9fd5ada86058bfdf59967c95d16ac"><td class="memItemLeft" align="right" valign="top"><a id="a21a9fd5ada86058bfdf59967c95d16ac" name="a21a9fd5ada86058bfdf59967c95d16ac"></a>
 virtual ProjectRevision&#160;</td><td class="memItemRight" valign="bottom"><b>currentRevision</b> () const =0</td></tr>
 <tr class="separator:a21a9fd5ada86058bfdf59967c95d16ac"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af49b5bb356b58fb78ba5805be9220e4a" id="r_af49b5bb356b58fb78ba5805be9220e4a"><td class="memItemLeft" align="right" valign="top"><a id="af49b5bb356b58fb78ba5805be9220e4a" name="af49b5bb356b58fb78ba5805be9220e4a"></a>
+virtual <a class="el" href="../../d0/d47/structuapmd_1_1ProjectMasterTrackSnapshot.html">ProjectMasterTrackSnapshot</a>&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrackSnapshot</b> () const</td></tr>
+<tr class="separator:af49b5bb356b58fb78ba5805be9220e4a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad731758beafcf4acc271f95dd5c438e8" id="r_ad731758beafcf4acc271f95dd5c438e8"><td class="memItemLeft" align="right" valign="top"><a id="ad731758beafcf4acc271f95dd5c438e8" name="ad731758beafcf4acc271f95dd5c438e8"></a>
+virtual std::optional&lt; <a class="el" href="../../d9/df2/structuapmd_1_1ProjectObjectSnapshot.html">ProjectObjectSnapshot</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getObject</b> (ProjectObjectId id) const</td></tr>
+<tr class="separator:ad731758beafcf4acc271f95dd5c438e8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a84223047956fbf53f2ff391de62bd826" id="r_a84223047956fbf53f2ff391de62bd826"><td class="memItemLeft" align="right" valign="top"><a id="a84223047956fbf53f2ff391de62bd826" name="a84223047956fbf53f2ff391de62bd826"></a>
+virtual std::optional&lt; double &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>clipContentTickToProjectSeconds</b> (ProjectObjectId clipId, uint64_t tick) const</td></tr>
+<tr class="separator:a84223047956fbf53f2ff391de62bd826"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8db8ba06343131bf0e54f2e144e1d97d" id="r_a8db8ba06343131bf0e54f2e144e1d97d"><td class="memItemLeft" align="right" valign="top"><a id="a8db8ba06343131bf0e54f2e144e1d97d" name="a8db8ba06343131bf0e54f2e144e1d97d"></a>
 virtual std::optional&lt; ProjectObjectId &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrackId</b> () const =0</td></tr>
 <tr class="separator:a8db8ba06343131bf0e54f2e144e1d97d"><td class="memSeparator" colspan="2">&#160;</td></tr>

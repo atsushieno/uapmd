@@ -93,8 +93,8 @@ commands, display scale, theme.</li>
 zoom slider, and the whole-song position controller.</li>
 <li><strong>The track list</strong> -- the master track followed by your
 tracks, each with a legend on the left and its clips on the right.</li>
-<li><strong>The footer</strong> -- add a track, and open the Mixer
-Monitor window.</li>
+<li><strong>The footer</strong> opens the Mixer and adds empty
+tracks.</li>
 </ol>
 <p>Auxiliary windows (Settings, Plugin Selector, editors, and so on)
 open as floating panels inside the main window. They can be moved and
@@ -242,18 +242,18 @@ currently visible below. Drag it to scroll the track list.</p>
 <h3 id="the-master-track">The master track</h3>
 <p>The first row is the master track. It carries the tempo and
 time-signature meta events that the beats view is built from, and it can
-host its own plugin chain via <strong>Add Master Plugin</strong>. It has
-a gain slider but no mute or solo.</p>
+host its own plugin chain via <strong>Add Master Plugin</strong>. Its
+fader and output meters are on the Master strip in the Mixer.</p>
 <h3 id="the-footer">The footer</h3>
-<p><code>+</code> adds an empty track. <code>Mixer Monitor</code> opens
-the mixer window described below.</p>
+<p><code>+</code> adds an empty track. <strong>Mixer</strong> opens the
+<a href="#the-mixer">channel strips</a>.</p>
 <h2 id="tracks">Tracks</h2>
 <p>A track owns an audio plugin graph and a set of clips. It is not "a
 plugin" -- a track typically holds one instrument plugin followed by
 zero or more effects, or, for audio material, just effects.</p>
 <p>Each track legend has two rows of controls.</p>
-<p><strong>Row 1</strong> -- clipboard icon, graph icon, gain slider,
-<code>M</code>, <code>S</code>:</p>
+<p><strong>Row 1</strong> contains clip and graph actions and the mute
+and solo buttons.</p>
 <table>
 <thead>
 <tr class="header">
@@ -264,7 +264,8 @@ zero or more effects, or, for audio material, just effects.</p>
 <tbody>
 <tr class="odd">
 <td>Clipboard icon</td>
-<td>Opens the <a href="#clips">clip menu</a>.</td>
+<td>Opens the <a href="#clips">clip menu</a>, which also has
+<strong>Show in Mixer</strong>.</td>
 </tr>
 <tr class="even">
 <td>Graph icon</td>
@@ -272,19 +273,12 @@ zero or more effects, or, for audio material, just effects.</p>
 editor</a>.</td>
 </tr>
 <tr class="odd">
-<td>Gain slider</td>
-<td>Track volume. Hovering shows the value in dB and as a linear factor;
-at the bottom of its travel it reads <code>Mute</code>.</td>
+<td><code>M</code></td>
+<td>Toggles mute. On the Master row, mutes or unmutes all tracks.</td>
 </tr>
 <tr class="even">
-<td><code>M</code></td>
-<td>Mute. Turns red while the track is muted.</td>
-</tr>
-<tr class="odd">
 <td><code>S</code></td>
-<td>Solo. Turns amber while soloed.
-<code>Ctrl</code>/<code>Cmd</code>-click to add a track to the current
-solo set instead of replacing it.</td>
+<td>Toggles solo. On the Master row, solos or unsolos all tracks.</td>
 </tr>
 </tbody>
 </table>
@@ -339,8 +333,14 @@ alt="The track clip menu" /></p>
 <p>The clipboard icon in the track legend opens the clip menu, which
 applies to the track as a whole:</p>
 <ul>
-<li><strong>Edit Clips...</strong> -- opens the per-track clip editor
-window.</li>
+<li><strong>Track Details...</strong> -- opens track properties and the
+per-track clip editor. Choose a color (or reset to the theme default),
+edit the organizational path, and adjust order with the slider or
+numeric input. Tracks sort by case-sensitive path (non-empty first),
+then numeric order, retaining their existing order for ties. The master
+track always stays first. Properties support undo/redo and are saved in
+<code>extensions/track-properties/tracks.json</code> inside the project
+package.</li>
 <li><strong>Add an Empty MIDI2 Clip</strong> / <strong>Add Empty Audio
 Clip</strong>.</li>
 <li><strong>Create Audio Clip From File...</strong> --
@@ -645,14 +645,29 @@ removes the command. Re-enabling the addin creates devices for existing
 instances only when automatic creation is on.</p>
 <p>Note that this window lists plugin <em>instances</em>, not tracks --
 one track with two plugins appears as two rows.</p>
+<h3 id="the-mixer">The mixer</h3>
+<p>Open <strong>Mixer</strong> from the timeline footer. Each strip has
+a vertical gain fader and channel meters. <strong>Balance</strong>
+adjusts the selected stereo output bus on a track. Click its value to
+return to center. Use the bus numbers in the lower pane to select
+another output. Use <strong>M</strong> and <strong>S</strong> to mute
+and solo tracks. Several tracks can be soloed together. The Master strip
+stays visible at the right as you scroll through the other tracks.</p>
+<p>The lower pane shows the selected strip's outputs, routes, and
+per-channel peaks. It opens on Master by default. Click a strip's name,
+meters, or bus count to select it. For a strip with several buses, click
+a bus number to show that bus beside the fader. A <strong>!</strong>
+indicator jumps to the bus with an overload. <strong>Clear
+peaks</strong> resets the held peak readings.</p>
 <h3 id="the-mixer-monitor">The mixer monitor</h3>
 <p><img src="../images/uapmd-app-guide-mixer-monitor.png"
 alt="The Mixer Monitor window" /></p>
-<p>The Mixer Monitor reports latency compensation. The header shows the
-audible and render positions and the current playback phase; below it,
-<code>Playback Compensation</code> and <code>Input Monitoring</code>
-select the compensation strategy, and the table breaks down each track's
-reported latency, render lead, holdback, tail, and routing.</p>
+<p>Open <strong>Latency Monitor</strong> from the Mixer to see latency
+compensation. The header shows the audible and render positions and the
+current playback phase; below it, <code>Playback Compensation</code> and
+<code>Input Monitoring</code> select the compensation strategy, and the
+table breaks down each track's reported latency, render lead, holdback,
+tail, and routing.</p>
 <h2 id="projects-and-rendering">Projects and rendering</h2>
 <p>A project saves the tracks, their audio and MIDI 2.0 clips, and the
 plugin graphs with their state. <strong>Save Project</strong> and
@@ -703,9 +718,9 @@ every loaded plugin.</p>
 <ul>
 <li><strong>Audio Workers</strong> -- <code>Serial</code>, or the number
 of worker threads used to process independent tracks concurrently. The
-default is a quarter of the CPU count, up to four. Graph providers or
-extensions that are not compatible with parallel processing keep their
-tracks serial.</li>
+default is half of the CPU count, or 2 with 4 to 7 CPUs and 1 with
+fewer. Graph providers or extensions that are not compatible with
+parallel processing keep their tracks serial.</li>
 <li><strong>Stop audio engine on deadline overrun</strong> -- off by
 default: late blocks are silenced until the workers catch up, then
 processing resumes. Turn it on to stop the engine instead and require a
@@ -787,6 +802,26 @@ script documents the API:</p>
 <p>There is also an object-oriented wrapper
 (<code>PluginScanTool</code>, <code>sequencer</code>) imported from
 <code>remidy-bridge</code>; both styles work.</p>
+<p>Track listings from <code>uapmd.sequencer.getTrackInfos()</code>
+include a <code>properties</code> object with <code>color</code>,
+<code>path</code>, and <code>order</code>. Use the stable
+<code>trackId</code> to read or edit these properties:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode js"><code class="sourceCode javascript"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> trackId <span class="op">=</span> uapmd<span class="op">.</span><span class="at">sequencer</span><span class="op">.</span><span class="fu">getTrackInfos</span>()[<span class="dv">0</span>]<span class="op">.</span><span class="at">trackId</span><span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>uapmd<span class="op">.</span><span class="at">sequencer</span><span class="op">.</span><span class="fu">getTrackProperties</span>(trackId)<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>uapmd<span class="op">.</span><span class="at">sequencer</span><span class="op">.</span><span class="fu">setTrackProperties</span>(trackId<span class="op">,</span> {</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">color</span><span class="op">:</span> <span class="st">&quot;#8E55BC&quot;</span><span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">path</span><span class="op">:</span> <span class="st">&quot;Orchestra/Strings&quot;</span><span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">order</span><span class="op">:</span> <span class="fl">2.5</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>})<span class="op">;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>uapmd<span class="op">.</span><span class="at">sequencer</span><span class="op">.</span><span class="fu">setTrackProperties</span>(trackId<span class="op">,</span> {<span class="dt">color</span><span class="op">:</span> <span class="kw">null</span>})<span class="op">;</span> <span class="co">// Reset to theme default</span></span></code></pre></div>
+<p>Updates are synchronous and return the updated properties. Omitted
+fields stay unchanged; an empty <code>path</code> clears the path.
+Colors use <code>#RRGGBB</code> or <code>null</code>, and order must be
+a finite number. Invalid updates throw without changing any properties.
+Each update is one undoable edit and participates in compound history
+steps. The <code>remidy-bridge</code> <code>sequencer</code> wrapper
+provides the same methods. Master-track IDs are supported; the master
+track remains pinned first regardless of its path and order.</p>
 <h3 id="mcp">MCP</h3>
 <p><img src="../images/uapmd-app-guide-mcp-settings.png"
 alt="MCP Settings" /></p>
@@ -805,6 +840,7 @@ reports what it is doing. Launching with
 <code>--mcp-server [port]</code> starts server mode without visiting
 this window.</p>
 <p>The tool surface covers tracks (<code>list_tracks</code>,
+<code>get_track_properties</code>, <code>set_track_properties</code>,
 <code>create_track</code>, <code>add_plugin_to_track</code>), clips
 (<code>list_clips</code>, <code>add_midi_clip</code>,
 <code>create_empty_midi_clip</code>, <code>add_ump_event</code>,
@@ -816,6 +852,15 @@ this window.</p>
 <code>end_compound</code>), projects (<code>save_project</code>,
 <code>load_project</code>), presets, freezing, latency compensation
 state, and <code>run_script</code> for the JavaScript API above.</p>
+<p><code>list_tracks</code> includes each track's
+<code>properties</code>. Call <code>get_track_properties</code> with
+<code>{"trackId":"track_1"}</code>, or <code>set_track_properties</code>
+with
+<code>{"trackId":"track_1","properties":{"color":"#8E55BC","path":"Orchestra/Strings","order":2.5}}</code>.
+Both return <code>{trackId, properties}</code> and also accept
+<code>masterTrackId</code> from <code>list_tracks</code>. The setter
+uses the same partial-update, validation, and undo behavior as
+scripting.</p>
 <p>On the Web build MCP is always active as a JavaScript export instead,
 called through <code>Module.ccall('uapmd_mcp_call', ...)</code>, with
 <code>Module.ccall('uapmd_eval', ...)</code> for scripts.</p>

@@ -88,6 +88,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a5a03530a8bc80f16f9b701bebb22387f" id="r_a5a03530a8bc80f16f9b701bebb22387f"><td class="memItemLeft" align="right" valign="top"><a id="a5a03530a8bc80f16f9b701bebb22387f" name="a5a03530a8bc80f16f9b701bebb22387f"></a>
 <a class="el" href="../../d9/d70/classuapmd_1_1ProjectCommands.html">ProjectCommands</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>operator=</b> (const <a class="el" href="../../d9/d70/classuapmd_1_1ProjectCommands.html">ProjectCommands</a> &amp;)=delete</td></tr>
 <tr class="separator:a5a03530a8bc80f16f9b701bebb22387f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab82878ef392e4fdaba9c569d98b5dcd1" id="r_ab82878ef392e4fdaba9c569d98b5dcd1"><td class="memItemLeft" align="right" valign="top"><a id="ab82878ef392e4fdaba9c569d98b5dcd1" name="ab82878ef392e4fdaba9c569d98b5dcd1"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setMidiClipContent</b> (ProjectObjectId clipId, const <a class="el" href="../../d5/d9f/structuapmd_1_1MidiClipContentSnapshot.html">MidiClipContentSnapshot</a> &amp;content, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:ab82878ef392e4fdaba9c569d98b5dcd1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5daf8030a2969d41065f696355d52b95" id="r_a5daf8030a2969d41065f696355d52b95"><td class="memItemLeft" align="right" valign="top"><a id="a5daf8030a2969d41065f696355d52b95" name="a5daf8030a2969d41065f696355d52b95"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipEnabled</b> (int32_t trackIndex, int32_t clipId, bool enabled, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:a5daf8030a2969d41065f696355d52b95"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -121,9 +124,15 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipMarker
 <tr class="memitem:a034d57b4ddaf57ad67c8ef889ab7b21b" id="r_a034d57b4ddaf57ad67c8ef889ab7b21b"><td class="memItemLeft" align="right" valign="top"><a id="a034d57b4ddaf57ad67c8ef889ab7b21b" name="a034d57b4ddaf57ad67c8ef889ab7b21b"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipAudioWarps</b> (int32_t trackIndex, int32_t clipId, std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt; audioWarps, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:a034d57b4ddaf57ad67c8ef889ab7b21b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad8ba52ba59884b6bfe58473f431a3cfc" id="r_ad8ba52ba59884b6bfe58473f431a3cfc"><td class="memItemLeft" align="right" valign="top"><a id="ad8ba52ba59884b6bfe58473f431a3cfc" name="ad8ba52ba59884b6bfe58473f431a3cfc"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackProperties</b> (int32_t trackIndex, const <a class="el" href="../../da/d91/structuapmd_1_1TrackProperties.html">TrackProperties</a> &amp;properties, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:ad8ba52ba59884b6bfe58473f431a3cfc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a311c7e57db2e52075fff44142f14e38f" id="r_a311c7e57db2e52075fff44142f14e38f"><td class="memItemLeft" align="right" valign="top"><a id="a311c7e57db2e52075fff44142f14e38f" name="a311c7e57db2e52075fff44142f14e38f"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackGain</b> (int32_t trackIndex, double gain, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:a311c7e57db2e52075fff44142f14e38f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9714cad3280b745df2a95152fc5d8331" id="r_a9714cad3280b745df2a95152fc5d8331"><td class="memItemLeft" align="right" valign="top"><a id="a9714cad3280b745df2a95152fc5d8331" name="a9714cad3280b745df2a95152fc5d8331"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackOutputPanners</b> (int32_t trackIndex, TrackOutputPanners panners, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
+<tr class="separator:a9714cad3280b745df2a95152fc5d8331"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afe34c6d4d096a2e194cf231bdf06c424" id="r_afe34c6d4d096a2e194cf231bdf06c424"><td class="memItemLeft" align="right" valign="top"><a id="afe34c6d4d096a2e194cf231bdf06c424" name="afe34c6d4d096a2e194cf231bdf06c424"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>setTrackMuted</b> (int32_t trackIndex, bool muted, ProjectMutationOrigin origin=ProjectMutationOrigin::User)=0</td></tr>
 <tr class="separator:afe34c6d4d096a2e194cf231bdf06c424"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -177,7 +186,7 @@ virtual <a class="el" href="../../d3/d19/classuapmd_1_1ProjectCommandManager.htm
 <tr class="separator:a79ac403eb82fa32f2ac1a6a1e0059e72"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../dd/d0c/ProjectCommands_8hpp_source.html">ProjectCommands.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/command/<a class="el" href="../../da/dd5/uapmd-data_2include_2uapmd-data_2detail_2command_2ProjectCommands_8hpp_source.html">ProjectCommands.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

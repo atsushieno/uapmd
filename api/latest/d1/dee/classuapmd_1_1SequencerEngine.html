@@ -123,6 +123,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlatform
 <tr class="memitem:a71b683367c977b2716c2a7e211b806f5" id="r_a71b683367c977b2716c2a7e211b806f5"><td class="memItemLeft" align="right" valign="top"><a id="a71b683367c977b2716c2a7e211b806f5" name="a71b683367c977b2716c2a7e211b806f5"></a>
 virtual <a class="el" href="../../dc/dd3/classuapmd__plugin__hosting_1_1AudioPluginHostingAPI.html">uapmd_plugin_hosting::AudioPluginHostingAPI</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>pluginHost</b> ()=0</td></tr>
 <tr class="separator:a71b683367c977b2716c2a7e211b806f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae7bd34cd288e192f4a9c33bb1a4495b6" id="r_ae7bd34cd288e192f4a9c33bb1a4495b6"><td class="memItemLeft" align="right" valign="top"><a id="ae7bd34cd288e192f4a9c33bb1a4495b6" name="ae7bd34cd288e192f4a9c33bb1a4495b6"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyPluginEditorVisibilityChanged</b> (int32_t instanceId, bool visible)=0</td></tr>
+<tr class="separator:ae7bd34cd288e192f4a9c33bb1a4495b6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a31a66b79aeadf403eb0dff237177d822" id="r_a31a66b79aeadf403eb0dff237177d822"><td class="memItemLeft" align="right" valign="top"><a id="a31a66b79aeadf403eb0dff237177d822" name="a31a66b79aeadf403eb0dff237177d822"></a>
+virtual <a class="el" href="../../d1/d2e/classuapmd_1_1ProjectDocument.html">ProjectDocument</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>document</b> ()</td></tr>
+<tr class="separator:a31a66b79aeadf403eb0dff237177d822"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0fda5b2e10c1176b67271904a72fc979" id="r_a0fda5b2e10c1176b67271904a72fc979"><td class="memItemLeft" align="right" valign="top"><a id="a0fda5b2e10c1176b67271904a72fc979" name="a0fda5b2e10c1176b67271904a72fc979"></a>
 virtual <a class="el" href="../../d5/dff/classuapmd_1_1FrozenTrackManager.html">FrozenTrackManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>frozenTrackManager</b> ()=0</td></tr>
 <tr class="separator:a0fda5b2e10c1176b67271904a72fc979"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -144,6 +150,9 @@ virtual std::vector&lt; <a class="el" href="../../d0/dc0/classuapmd_1_1Sequencer
 <tr class="memitem:ac34e42230902217a17bf41586929cbb1" id="r_ac34e42230902217a17bf41586929cbb1"><td class="memItemLeft" align="right" valign="top"><a id="ac34e42230902217a17bf41586929cbb1" name="ac34e42230902217a17bf41586929cbb1"></a>
 virtual <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrack</b> ()=0</td></tr>
 <tr class="separator:ac34e42230902217a17bf41586929cbb1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa45e85788a89d858cfa3d6c8cd54732e" id="r_aa45e85788a89d858cfa3d6c8cd54732e"><td class="memItemLeft" align="right" valign="top"><a id="aa45e85788a89d858cfa3d6c8cd54732e" name="aa45e85788a89d858cfa3d6c8cd54732e"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>captureMixerPeaks</b> (bool enabled)=0</td></tr>
+<tr class="separator:aa45e85788a89d858cfa3d6c8cd54732e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a55b96ee0ac3134a82cc13d98426f0452" id="r_a55b96ee0ac3134a82cc13d98426f0452"><td class="memItemLeft" align="right" valign="top"><a id="a55b96ee0ac3134a82cc13d98426f0452" name="a55b96ee0ac3134a82cc13d98426f0452"></a>
 virtual const std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrackMarkers</b> () const =0</td></tr>
 <tr class="separator:a55b96ee0ac3134a82cc13d98426f0452"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -234,6 +243,9 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>offlineRender
 <tr class="memitem:acdfc6597c9d2e78a9ada1418b08b6338" id="r_acdfc6597c9d2e78a9ada1418b08b6338"><td class="memItemLeft" align="right" valign="top"><a id="acdfc6597c9d2e78a9ada1418b08b6338" name="acdfc6597c9d2e78a9ada1418b08b6338"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>offlineRendering</b> (bool enabled)=0</td></tr>
 <tr class="separator:acdfc6597c9d2e78a9ada1418b08b6338"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8a5de20f82da8b54e853b83ecae76401" id="r_a8a5de20f82da8b54e853b83ecae76401"><td class="memItemLeft" align="right" valign="top"><a id="a8a5de20f82da8b54e853b83ecae76401" name="a8a5de20f82da8b54e853b83ecae76401"></a>
+virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioProcessingMode</b> (int32_t instanceId, uapmd_plugin_hosting::AudioProcessingMode mode, bool restartProcessing=true)=0</td></tr>
+<tr class="separator:a8a5de20f82da8b54e853b83ecae76401"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a58795ed0d5c5852c972c6bfc909578f0" id="r_a58795ed0d5c5852c972c6bfc909578f0"><td class="memItemLeft" align="right" valign="top"><a id="a58795ed0d5c5852c972c6bfc909578f0" name="a58795ed0d5c5852c972c6bfc909578f0"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setEngineActive</b> (bool active)=0</td></tr>
 <tr class="separator:a58795ed0d5c5852c972c6bfc909578f0"><td class="memSeparator" colspan="2">&#160;</td></tr>

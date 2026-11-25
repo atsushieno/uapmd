@@ -83,9 +83,9 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:aeb3922ae27ad5b406996dcab56cdd01e" id="r_aeb3922ae27ad5b406996dcab56cdd01e"><td class="memItemLeft" align="right" valign="top"><a id="aeb3922ae27ad5b406996dcab56cdd01e" name="aeb3922ae27ad5b406996dcab56cdd01e"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>process</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;src)</td></tr>
-<tr class="separator:aeb3922ae27ad5b406996dcab56cdd01e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3ab2c64e8bd0d19f19841acac41ae964" id="r_a3ab2c64e8bd0d19f19841acac41ae964"><td class="memItemLeft" align="right" valign="top"><a id="a3ab2c64e8bd0d19f19841acac41ae964" name="a3ab2c64e8bd0d19f19841acac41ae964"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>process</b> (<a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;events)</td></tr>
+<tr class="separator:a3ab2c64e8bd0d19f19841acac41ae964"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a862fe6d708dae3eca406096dbfd78a59" id="r_a862fe6d708dae3eca406096dbfd78a59"><td class="memItemLeft" align="right" valign="top"><a id="a862fe6d708dae3eca406096dbfd78a59" name="a862fe6d708dae3eca406096dbfd78a59"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setParameterValue</b> (uint16_t index, double value)=0</td></tr>
 <tr class="separator:a862fe6d708dae3eca406096dbfd78a59"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -95,21 +95,15 @@ virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>getParamete
 <tr class="memitem:a8216cbcffde4d281b1247bf4ecd58b26" id="r_a8216cbcffde4d281b1247bf4ecd58b26"><td class="memItemLeft" align="right" valign="top"><a id="a8216cbcffde4d281b1247bf4ecd58b26" name="a8216cbcffde4d281b1247bf4ecd58b26"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPerNoteControllerValue</b> (uint8_t note, uint8_t index, double value)=0</td></tr>
 <tr class="separator:a8216cbcffde4d281b1247bf4ecd58b26"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a36ca67a7aa3c59a6c5c51f0e6271ac74" id="r_a36ca67a7aa3c59a6c5c51f0e6271ac74"><td class="memItemLeft" align="right" valign="top"><a id="a36ca67a7aa3c59a6c5c51f0e6271ac74" name="a36ca67a7aa3c59a6c5c51f0e6271ac74"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadPreset</b> (uint32_t index)=0</td></tr>
-<tr class="separator:a36ca67a7aa3c59a6c5c51f0e6271ac74"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7eb19df69dcd6d9a068fd842c2d654da" id="r_a7eb19df69dcd6d9a068fd842c2d654da"><td class="memItemLeft" align="right" valign="top"><a id="a7eb19df69dcd6d9a068fd842c2d654da" name="a7eb19df69dcd6d9a068fd842c2d654da"></a>
-virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>tryDequeuePresetRequest</b> (uint32_t &amp;index)=0</td></tr>
-<tr class="separator:a7eb19df69dcd6d9a068fd842c2d654da"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a160c1ba438be6a4944eb2914f3e6ece0" id="r_a160c1ba438be6a4944eb2914f3e6ece0"><td class="memItemLeft" align="right" valign="top"><a id="a160c1ba438be6a4944eb2914f3e6ece0" name="a160c1ba438be6a4944eb2914f3e6ece0"></a>
-virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>droppedPresetRequestCount</b> () const =0</td></tr>
-<tr class="separator:a160c1ba438be6a4944eb2914f3e6ece0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aad53c1ace83416c2d8df563506ba66a0" id="r_aad53c1ace83416c2d8df563506ba66a0"><td class="memItemLeft" align="right" valign="top"><a id="aad53c1ace83416c2d8df563506ba66a0" name="aad53c1ace83416c2d8df563506ba66a0"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>requestPresetLoad</b> (uint32_t index)=0</td></tr>
+<tr class="separator:aad53c1ace83416c2d8df563506ba66a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:aa630d963f6614ade82892c76b35abfb9" id="r_aa630d963f6614ade82892c76b35abfb9"><td class="memItemLeft" align="right" valign="top"><a id="aa630d963f6614ade82892c76b35abfb9" name="aa630d963f6614ade82892c76b35abfb9"></a>
-static std::unique_ptr&lt; <a class="el" href="../../d7/dde/classuapmd__midi__service_1_1UapmdUmpInputMapper.html">UapmdUmpInputMapper</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (<a class="el" href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">uapmd_plugin_hosting::AudioPluginInstanceAPI</a> *plugin)</td></tr>
-<tr class="separator:aa630d963f6614ade82892c76b35abfb9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a59d847ffdfd8f4d2264992299ca063ad" id="r_a59d847ffdfd8f4d2264992299ca063ad"><td class="memItemLeft" align="right" valign="top"><a id="a59d847ffdfd8f4d2264992299ca063ad" name="a59d847ffdfd8f4d2264992299ca063ad"></a>
+static std::unique_ptr&lt; <a class="el" href="../../d7/dde/classuapmd__midi__service_1_1UapmdUmpInputMapper.html">UapmdUmpInputMapper</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (<a class="el" href="../../da/d01/classuapmd__plugin__hosting_1_1AudioPluginInstanceAPI.html">uapmd_plugin_hosting::AudioPluginInstanceAPI</a> *plugin, std::function&lt; void(uint32_t)&gt; presetRequestSink)</td></tr>
+<tr class="separator:a59d847ffdfd8f4d2264992299ca063ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-midi-service/include/uapmd-midi-service/detail/midi/<a class="el" href="../../d5/dbf/UapmdUmpMapper_8hpp_source.html">UapmdUmpMapper.hpp</a></li>

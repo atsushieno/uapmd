@@ -74,6 +74,7 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
+<a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="#pro-methods">Protected Member Functions</a> &#124;
@@ -141,6 +142,36 @@ virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>trackGain</
 <tr class="memitem:a0a4d58ee5be04401196ece24b3ffd502" id="r_a0a4d58ee5be04401196ece24b3ffd502"><td class="memItemLeft" align="right" valign="top"><a id="a0a4d58ee5be04401196ece24b3ffd502" name="a0a4d58ee5be04401196ece24b3ffd502"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>trackGain</b> (double value)=0</td></tr>
 <tr class="separator:a0a4d58ee5be04401196ece24b3ffd502"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a17d7c6c1ce8a5c076ecc1274939d848a" id="r_a17d7c6c1ce8a5c076ecc1274939d848a"><td class="memItemLeft" align="right" valign="top"><a id="a17d7c6c1ce8a5c076ecc1274939d848a" name="a17d7c6c1ce8a5c076ecc1274939d848a"></a>
+const TrackOutputPanners &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>outputPanners</b> () const</td></tr>
+<tr class="separator:a17d7c6c1ce8a5c076ecc1274939d848a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acbcb2c72a2eb5c813649b2bf9f66aaa1" id="r_acbcb2c72a2eb5c813649b2bf9f66aaa1"><td class="memItemLeft" align="right" valign="top"><a id="acbcb2c72a2eb5c813649b2bf9f66aaa1" name="acbcb2c72a2eb5c813649b2bf9f66aaa1"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>outputPanners</b> (TrackOutputPanners value)</td></tr>
+<tr class="separator:acbcb2c72a2eb5c813649b2bf9f66aaa1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a80e1c7dc00719118ff67320ddab8bf22" id="r_a80e1c7dc00719118ff67320ddab8bf22"><td class="memItemLeft" align="right" valign="top"><a id="a80e1c7dc00719118ff67320ddab8bf22" name="a80e1c7dc00719118ff67320ddab8bf22"></a>
+std::optional&lt; float &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>stereoBalance</b> (uint32_t bus) const</td></tr>
+<tr class="separator:a80e1c7dc00719118ff67320ddab8bf22"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a43d9f388e17acf5f14f6108eb9e770e8" id="r_a43d9f388e17acf5f14f6108eb9e770e8"><td class="memItemLeft" align="right" valign="top"><a id="a43d9f388e17acf5f14f6108eb9e770e8" name="a43d9f388e17acf5f14f6108eb9e770e8"></a>
+TrackOutputPanners&#160;</td><td class="memItemRight" valign="bottom"><b>outputPannersWithStereoBalance</b> (uint32_t bus, float balance) const</td></tr>
+<tr class="separator:a43d9f388e17acf5f14f6108eb9e770e8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab4c2c5b114017b6b153b54bcb9404fca" id="r_ab4c2c5b114017b6b153b54bcb9404fca"><td class="memItemLeft" align="right" valign="top"><a id="ab4c2c5b114017b6b153b54bcb9404fca" name="ab4c2c5b114017b6b153b54bcb9404fca"></a>
+float&#160;</td><td class="memItemRight" valign="bottom"><b>applyOutputPanners</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;context, int32_t frames)</td></tr>
+<tr class="separator:ab4c2c5b114017b6b153b54bcb9404fca"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9a8487ab18660db997a91732f8f8ca59" id="r_a9a8487ab18660db997a91732f8f8ca59"><td class="memItemLeft" align="right" valign="top"><a id="a9a8487ab18660db997a91732f8f8ca59" name="a9a8487ab18660db997a91732f8f8ca59"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>configureOutputMixing</b> (const <a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;context)</td></tr>
+<tr class="separator:a9a8487ab18660db997a91732f8f8ca59"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a07470f4514593fdb5ac40f4eaa9c126e" id="r_a07470f4514593fdb5ac40f4eaa9c126e"><td class="memItemLeft" align="right" valign="top"><a id="a07470f4514593fdb5ac40f4eaa9c126e" name="a07470f4514593fdb5ac40f4eaa9c126e"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>captureOutputPeaks</b> (const <a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;context, int32_t frames)</td></tr>
+<tr class="separator:a07470f4514593fdb5ac40f4eaa9c126e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aba54c19f5882045466f534a8d9081d07" id="r_aba54c19f5882045466f534a8d9081d07"><td class="memItemLeft" align="right" valign="top"><a id="aba54c19f5882045466f534a8d9081d07" name="aba54c19f5882045466f534a8d9081d07"></a>
+size_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputMeterBusCount</b> () const</td></tr>
+<tr class="separator:aba54c19f5882045466f534a8d9081d07"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a273e8b4d3d586822ce26cba55568ab7c" id="r_a273e8b4d3d586822ce26cba55568ab7c"><td class="memItemLeft" align="right" valign="top"><a id="a273e8b4d3d586822ce26cba55568ab7c" name="a273e8b4d3d586822ce26cba55568ab7c"></a>
+size_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputMeterChannelCount</b> (size_t bus) const</td></tr>
+<tr class="separator:a273e8b4d3d586822ce26cba55568ab7c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3c7cc4fb8a49d4dacfb1d156448a3cb7" id="r_a3c7cc4fb8a49d4dacfb1d156448a3cb7"><td class="memItemLeft" align="right" valign="top"><a id="a3c7cc4fb8a49d4dacfb1d156448a3cb7" name="a3c7cc4fb8a49d4dacfb1d156448a3cb7"></a>
+float&#160;</td><td class="memItemRight" valign="bottom"><b>consumeOutputPeak</b> (size_t bus, size_t channel)</td></tr>
+<tr class="separator:a3c7cc4fb8a49d4dacfb1d156448a3cb7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a112ab4670319ff05ab83cb49fdafd569" id="r_a112ab4670319ff05ab83cb49fdafd569"><td class="memItemLeft" align="right" valign="top"><a id="a112ab4670319ff05ab83cb49fdafd569" name="a112ab4670319ff05ab83cb49fdafd569"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>muted</b> () const =0</td></tr>
 <tr class="separator:a112ab4670319ff05ab83cb49fdafd569"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -99,6 +99,24 @@ Public Types</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:a5abc6c2ca97c3e8afc6908d329d66425" id="r_a5abc6c2ca97c3e8afc6908d329d66425"><td class="memItemLeft" align="right" valign="top"><a id="a5abc6c2ca97c3e8afc6908d329d66425" name="a5abc6c2ca97c3e8afc6908d329d66425"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>PianoRollSession</b> (std::shared_ptr&lt; <a class="el" href="../../d6/d96/classuapmd_1_1MidiClipDocument.html">uapmd::MidiClipDocument</a> &gt; document)</td></tr>
+<tr class="separator:a5abc6c2ca97c3e8afc6908d329d66425"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ade21da17562990de758b99bc7f35769c" id="r_ade21da17562990de758b99bc7f35769c"><td class="memItemLeft" align="right" valign="top"><a id="ade21da17562990de758b99bc7f35769c" name="ade21da17562990de758b99bc7f35769c"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>publishSelection</b> ()</td></tr>
+<tr class="separator:ade21da17562990de758b99bc7f35769c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad091e69b24b7759fe2d0b74e4b664cd2" id="r_ad091e69b24b7759fe2d0b74e4b664cd2"><td class="memItemLeft" align="right" valign="top"><a id="ad091e69b24b7759fe2d0b74e4b664cd2" name="ad091e69b24b7759fe2d0b74e4b664cd2"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>syncSelection</b> ()</td></tr>
+<tr class="separator:ad091e69b24b7759fe2d0b74e4b664cd2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a61326202bd7f72072d1b074492cc2e58" id="r_a61326202bd7f72072d1b074492cc2e58"><td class="memItemLeft" align="right" valign="top"><a id="a61326202bd7f72072d1b074492cc2e58" name="a61326202bd7f72072d1b074492cc2e58"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>isObjectSelected</b> (const uapmd::ProjectObjectId &amp;id) const</td></tr>
+<tr class="separator:a61326202bd7f72072d1b074492cc2e58"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a35ee2d22ba8ef311143cd028b2f8b02e" id="r_a35ee2d22ba8ef311143cd028b2f8b02e"><td class="memItemLeft" align="right" valign="top"><a id="a35ee2d22ba8ef311143cd028b2f8b02e" name="a35ee2d22ba8ef311143cd028b2f8b02e"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>isAutomationInSelectedRegion</b> (const <a class="el" href="../../d1/d9c/structuapmd_1_1MidiAutomationEvent.html">PianoRollAutomationEvent</a> &amp;event, std::optional&lt; uapmd::ProjectObjectId &gt; noteId={}) const</td></tr>
+<tr class="separator:a35ee2d22ba8ef311143cd028b2f8b02e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a24fd8a15d6116e346f4aac9743f9829c" id="r_a24fd8a15d6116e346f4aac9743f9829c"><td class="memItemLeft" align="right" valign="top"><a id="a24fd8a15d6116e346f4aac9743f9829c" name="a24fd8a15d6116e346f4aac9743f9829c"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>selectObject</b> (const uapmd::ProjectObjectId &amp;id, bool additive, bool toggle)</td></tr>
+<tr class="separator:a24fd8a15d6116e346f4aac9743f9829c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7505ca1e16806952805a1b795c478253" id="r_a7505ca1e16806952805a1b795c478253"><td class="memItemLeft" align="right" valign="top"><a id="a7505ca1e16806952805a1b795c478253" name="a7505ca1e16806952805a1b795c478253"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>selectNote</b> (int index, bool additive=false, bool toggle=false)</td></tr>
 <tr class="separator:a7505ca1e16806952805a1b795c478253"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -106,10 +124,10 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>selectNote</b> (int i
 void&#160;</td><td class="memItemRight" valign="bottom"><b>performAction</b> (Action action, double pasteSeconds)</td></tr>
 <tr class="separator:a91b07602acab63a50af2675d272dc5f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a58cd233a473c5f3125773c5aa7d5acee" id="r_a58cd233a473c5f3125773c5aa7d5acee"><td class="memItemLeft" align="right" valign="top"><a id="a58cd233a473c5f3125773c5aa7d5acee" name="a58cd233a473c5f3125773c5aa7d5acee"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>moveNotes</b> (const std::vector&lt; std::pair&lt; int, <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt; &gt; &amp;originalNotes, double timeDelta, int pitchDelta)</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>moveNotes</b> (const std::vector&lt; std::pair&lt; int, <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt; &gt; &amp;originalNotes, double timeDelta, int pitchDelta)</td></tr>
 <tr class="separator:a58cd233a473c5f3125773c5aa7d5acee"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aafcd99fc6bb1d84e67ca6c3f8d52844d" id="r_aafcd99fc6bb1d84e67ca6c3f8d52844d"><td class="memItemLeft" align="right" valign="top"><a id="aafcd99fc6bb1d84e67ca6c3f8d52844d" name="aafcd99fc6bb1d84e67ca6c3f8d52844d"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>restoreNotes</b> (const std::vector&lt; std::pair&lt; int, <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt; &gt; &amp;originalNotes)</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>restoreNotes</b> (const std::vector&lt; std::pair&lt; int, <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt; &gt; &amp;originalNotes)</td></tr>
 <tr class="separator:aafcd99fc6bb1d84e67ca6c3f8d52844d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4185f6b7a503dca1d834835b31498cf6" id="r_a4185f6b7a503dca1d834835b31498cf6"><td class="memItemLeft" align="right" valign="top"><a id="a4185f6b7a503dca1d834835b31498cf6" name="a4185f6b7a503dca1d834835b31498cf6"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>resizeNote</b> (int index, double startSeconds, double durationSeconds, uint8_t noteNumber)</td></tr>
@@ -120,14 +138,17 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>finishNoteDrag</b> (i
 <tr class="memitem:a64ff42e7f9d43d78198d13686a1aeb9b" id="r_a64ff42e7f9d43d78198d13686a1aeb9b"><td class="memItemLeft" align="right" valign="top"><a id="a64ff42e7f9d43d78198d13686a1aeb9b" name="a64ff42e7f9d43d78198d13686a1aeb9b"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>createNote</b> (double startSeconds, double durationSeconds, uint8_t noteNumber, float velocity)</td></tr>
 <tr class="separator:a64ff42e7f9d43d78198d13686a1aeb9b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afcce91595b33acf197979527cfdf11d9" id="r_afcce91595b33acf197979527cfdf11d9"><td class="memItemLeft" align="right" valign="top"><a id="afcce91595b33acf197979527cfdf11d9" name="afcce91595b33acf197979527cfdf11d9"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>setNoteVelocity</b> (int index, float velocity)</td></tr>
+<tr class="separator:afcce91595b33acf197979527cfdf11d9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa2bebcb4db4e42152996bb06c916382a" id="r_aa2bebcb4db4e42152996bb06c916382a"><td class="memItemLeft" align="right" valign="top"><a id="aa2bebcb4db4e42152996bb06c916382a" name="aa2bebcb4db4e42152996bb06c916382a"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>deleteNote</b> (int index)</td></tr>
 <tr class="separator:aa2bebcb4db4e42152996bb06c916382a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af2657418c5b20b85c5e1210fe2b14da3" id="r_af2657418c5b20b85c5e1210fe2b14da3"><td class="memItemLeft" align="right" valign="top"><a id="af2657418c5b20b85c5e1210fe2b14da3" name="af2657418c5b20b85c5e1210fe2b14da3"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>loadNotes</b> (const std::vector&lt; <a class="el" href="../../d3/d27/structuapmd__app_1_1PianoRollMidiNote.html">PianoRollMidiNote</a> &gt; &amp;notes, std::shared_ptr&lt; <a class="el" href="../../d5/d2f/structuapmd__app_1_1PianoRollRawMidiData.html">PianoRollRawMidiData</a> &gt; raw, double durationSeconds)</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>loadNotes</b> (const std::vector&lt; <a class="el" href="../../d4/de1/structuapmd_1_1MidiNote.html">PianoRollMidiNote</a> &gt; &amp;notes, std::shared_ptr&lt; <a class="el" href="../../da/d1f/structuapmd_1_1MidiRawData.html">PianoRollRawMidiData</a> &gt; raw, double durationSeconds)</td></tr>
 <tr class="separator:af2657418c5b20b85c5e1210fe2b14da3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a10c314afb0c340a1f1e1ccf5454663b5" id="r_a10c314afb0c340a1f1e1ccf5454663b5"><td class="memItemLeft" align="right" valign="top"><a id="a10c314afb0c340a1f1e1ccf5454663b5" name="a10c314afb0c340a1f1e1ccf5454663b5"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>matchesSource</b> (const <a class="el" href="../../d5/d2f/structuapmd__app_1_1PianoRollRawMidiData.html">PianoRollRawMidiData</a> &amp;incoming) const</td></tr>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>matchesSource</b> (const <a class="el" href="../../da/d1f/structuapmd_1_1MidiRawData.html">PianoRollRawMidiData</a> &amp;incoming) const</td></tr>
 <tr class="separator:a10c314afb0c340a1f1e1ccf5454663b5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e62bb2311b046a7549c7d29fda8a5f0" id="r_a3e62bb2311b046a7549c7d29fda8a5f0"><td class="memItemLeft" align="right" valign="top"><a id="a3e62bb2311b046a7549c7d29fda8a5f0" name="a3e62bb2311b046a7549c7d29fda8a5f0"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>commit</b> (class <a class="el" href="../../d6/da8/classuapmd__app_1_1AppModel.html">AppModel</a> &amp;app)</td></tr>
@@ -136,10 +157,10 @@ bool&#160;</td><td class="memItemRight" valign="bottom"><b>commit</b> (class <a 
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a5e9838214f64d5c397bbb4c7c5e83915" id="r_a5e9838214f64d5c397bbb4c7c5e83915"><td class="memItemLeft" align="right" valign="top"><a id="a5e9838214f64d5c397bbb4c7c5e83915" name="a5e9838214f64d5c397bbb4c7c5e83915"></a>
-static void&#160;</td><td class="memItemRight" valign="bottom"><b>parseAutomationFromRaw</b> (const <a class="el" href="../../d5/d2f/structuapmd__app_1_1PianoRollRawMidiData.html">PianoRollRawMidiData</a> &amp;raw, std::vector&lt; <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt; &amp;notes, std::vector&lt; <a class="el" href="../../d0/ddb/structuapmd__app_1_1PianoRollAutomationEvent.html">PianoRollAutomationEvent</a> &gt; &amp;clipEvents)</td></tr>
+static void&#160;</td><td class="memItemRight" valign="bottom"><b>parseAutomationFromRaw</b> (const <a class="el" href="../../da/d1f/structuapmd_1_1MidiRawData.html">PianoRollRawMidiData</a> &amp;raw, std::vector&lt; <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt; &amp;notes, std::vector&lt; <a class="el" href="../../d1/d9c/structuapmd_1_1MidiAutomationEvent.html">PianoRollAutomationEvent</a> &gt; &amp;clipEvents)</td></tr>
 <tr class="separator:a5e9838214f64d5c397bbb4c7c5e83915"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1344cddbe210a790c182dbbd1bfa8631" id="r_a1344cddbe210a790c182dbbd1bfa8631"><td class="memItemLeft" align="right" valign="top"><a id="a1344cddbe210a790c182dbbd1bfa8631" name="a1344cddbe210a790c182dbbd1bfa8631"></a>
-static void&#160;</td><td class="memItemRight" valign="bottom"><b>seedNoteAttributesFromRaw</b> (const <a class="el" href="../../d5/d2f/structuapmd__app_1_1PianoRollRawMidiData.html">PianoRollRawMidiData</a> &amp;raw, std::vector&lt; <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt; &amp;notes)</td></tr>
+static void&#160;</td><td class="memItemRight" valign="bottom"><b>seedNoteAttributesFromRaw</b> (const <a class="el" href="../../da/d1f/structuapmd_1_1MidiRawData.html">PianoRollRawMidiData</a> &amp;raw, std::vector&lt; <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt; &amp;notes)</td></tr>
 <tr class="separator:a1344cddbe210a790c182dbbd1bfa8631"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
@@ -150,26 +171,38 @@ int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackIndex</b> {-1
 <tr class="memitem:a6d7f6914660aa8b9b7aaacb010a5f318" id="r_a6d7f6914660aa8b9b7aaacb010a5f318"><td class="memItemLeft" align="right" valign="top"><a id="a6d7f6914660aa8b9b7aaacb010a5f318" name="a6d7f6914660aa8b9b7aaacb010a5f318"></a>
 int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>clipId</b> {-1}</td></tr>
 <tr class="separator:a6d7f6914660aa8b9b7aaacb010a5f318"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae8dff1208e42404c8ba498c0ae4e699b" id="r_ae8dff1208e42404c8ba498c0ae4e699b"><td class="memItemLeft" align="right" valign="top"><a id="ae8dff1208e42404c8ba498c0ae4e699b" name="ae8dff1208e42404c8ba498c0ae4e699b"></a>
-std::shared_ptr&lt; <a class="el" href="../../d5/d2f/structuapmd__app_1_1PianoRollRawMidiData.html">PianoRollRawMidiData</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>rawMidiData</b></td></tr>
-<tr class="separator:ae8dff1208e42404c8ba498c0ae4e699b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a74235ad46eac3923f37a0dbc72791d28" id="r_a74235ad46eac3923f37a0dbc72791d28"><td class="memItemLeft" align="right" valign="top"><a id="a74235ad46eac3923f37a0dbc72791d28" name="a74235ad46eac3923f37a0dbc72791d28"></a>
-std::vector&lt; <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>editNotes</b></td></tr>
-<tr class="separator:a74235ad46eac3923f37a0dbc72791d28"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0115fa1d03cb5f27d4602ed877c05ccf" id="r_a0115fa1d03cb5f27d4602ed877c05ccf"><td class="memItemLeft" align="right" valign="top"><a id="a0115fa1d03cb5f27d4602ed877c05ccf" name="a0115fa1d03cb5f27d4602ed877c05ccf"></a>
-std::vector&lt; <a class="el" href="../../d0/ddb/structuapmd__app_1_1PianoRollAutomationEvent.html">PianoRollAutomationEvent</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>editClipEvents</b></td></tr>
-<tr class="separator:a0115fa1d03cb5f27d4602ed877c05ccf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adc406ec9c6e44b83c071a4ed48e77455" id="r_adc406ec9c6e44b83c071a4ed48e77455"><td class="memItemLeft" align="right" valign="top"><a id="adc406ec9c6e44b83c071a4ed48e77455" name="adc406ec9c6e44b83c071a4ed48e77455"></a>
+std::shared_ptr&lt; <a class="el" href="../../d6/d96/classuapmd_1_1MidiClipDocument.html">uapmd::MidiClipDocument</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>content</b></td></tr>
+<tr class="separator:adc406ec9c6e44b83c071a4ed48e77455"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7a093e382356f7598a45c02886de26d0" id="r_a7a093e382356f7598a45c02886de26d0"><td class="memItemLeft" align="right" valign="top"><a id="a7a093e382356f7598a45c02886de26d0" name="a7a093e382356f7598a45c02886de26d0"></a>
+std::shared_ptr&lt; <a class="el" href="../../da/d1f/structuapmd_1_1MidiRawData.html">PianoRollRawMidiData</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>rawMidiData</b></td></tr>
+<tr class="separator:a7a093e382356f7598a45c02886de26d0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac416c59ad4fb93a2d9ee2e5929924302" id="r_ac416c59ad4fb93a2d9ee2e5929924302"><td class="memItemLeft" align="right" valign="top"><a id="ac416c59ad4fb93a2d9ee2e5929924302" name="ac416c59ad4fb93a2d9ee2e5929924302"></a>
+std::vector&lt; <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>editNotes</b></td></tr>
+<tr class="separator:ac416c59ad4fb93a2d9ee2e5929924302"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a734a5e61a23fcdfc1c85ceefe0bf36fc" id="r_a734a5e61a23fcdfc1c85ceefe0bf36fc"><td class="memItemLeft" align="right" valign="top"><a id="a734a5e61a23fcdfc1c85ceefe0bf36fc" name="a734a5e61a23fcdfc1c85ceefe0bf36fc"></a>
+std::vector&lt; <a class="el" href="../../d1/d9c/structuapmd_1_1MidiAutomationEvent.html">PianoRollAutomationEvent</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>editClipEvents</b></td></tr>
+<tr class="separator:a734a5e61a23fcdfc1c85ceefe0bf36fc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a20922ea3ba207758c3c5f7ca4608561d" id="r_a20922ea3ba207758c3c5f7ca4608561d"><td class="memItemLeft" align="right" valign="top"><a id="a20922ea3ba207758c3c5f7ca4608561d" name="a20922ea3ba207758c3c5f7ca4608561d"></a>
+uint64_t &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>next_note_id</b></td></tr>
+<tr class="separator:a20922ea3ba207758c3c5f7ca4608561d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afb0df2d0127009229f350b160ade02c4" id="r_afb0df2d0127009229f350b160ade02c4"><td class="memItemLeft" align="right" valign="top"><a id="afb0df2d0127009229f350b160ade02c4" name="afb0df2d0127009229f350b160ade02c4"></a>
+<a class="el" href="../../d1/d2e/classuapmd_1_1ProjectDocument.html">uapmd::ProjectDocument</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>project</b> {}</td></tr>
+<tr class="separator:afb0df2d0127009229f350b160ade02c4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0ee73ee10780d99227e089c341a91104" id="r_a0ee73ee10780d99227e089c341a91104"><td class="memItemLeft" align="right" valign="top"><a id="a0ee73ee10780d99227e089c341a91104" name="a0ee73ee10780d99227e089c341a91104"></a>
+uapmd::ProjectObjectId&#160;</td><td class="memItemRight" valign="bottom"><b>clip_reference_id</b></td></tr>
+<tr class="separator:a0ee73ee10780d99227e089c341a91104"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3217c88ea9e81a455856d0b112f238d8" id="r_a3217c88ea9e81a455856d0b112f238d8"><td class="memItemLeft" align="right" valign="top"><a id="a3217c88ea9e81a455856d0b112f238d8" name="a3217c88ea9e81a455856d0b112f238d8"></a>
+uapmd::SelectionContextId&#160;</td><td class="memItemRight" valign="bottom"><b>selection_context</b> {0}</td></tr>
+<tr class="separator:a3217c88ea9e81a455856d0b112f238d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a036c48d9db54efa553e36e0d7facf8d0" id="r_a036c48d9db54efa553e36e0d7facf8d0"><td class="memItemLeft" align="right" valign="top"><a id="a036c48d9db54efa553e36e0d7facf8d0" name="a036c48d9db54efa553e36e0d7facf8d0"></a>
 std::unordered_set&lt; uint64_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>selected_notes</b></td></tr>
 <tr class="separator:a036c48d9db54efa553e36e0d7facf8d0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4f84301a70b668fc4160003bbb42ff91" id="r_a4f84301a70b668fc4160003bbb42ff91"><td class="memItemLeft" align="right" valign="top"><a id="a4f84301a70b668fc4160003bbb42ff91" name="a4f84301a70b668fc4160003bbb42ff91"></a>
 int&#160;</td><td class="memItemRight" valign="bottom"><b>selectedNoteIdx</b> {-1}</td></tr>
 <tr class="separator:a4f84301a70b668fc4160003bbb42ff91"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:acb60264800fbf6e4cf48715dd4ce0f5f" id="r_acb60264800fbf6e4cf48715dd4ce0f5f"><td class="memItemLeft" align="right" valign="top"><a id="acb60264800fbf6e4cf48715dd4ce0f5f" name="acb60264800fbf6e4cf48715dd4ce0f5f"></a>
-uint64_t&#160;</td><td class="memItemRight" valign="bottom"><b>next_note_id</b> {1}</td></tr>
-<tr class="separator:acb60264800fbf6e4cf48715dd4ce0f5f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a68f3e926198e0e61efde24c4c78f8ca0" id="r_a68f3e926198e0e61efde24c4c78f8ca0"><td class="memItemLeft" align="right" valign="top"><a id="a68f3e926198e0e61efde24c4c78f8ca0" name="a68f3e926198e0e61efde24c4c78f8ca0"></a>
-std::vector&lt; <a class="el" href="../../d6/d6b/structuapmd__app_1_1PianoRollEditNote.html">PianoRollEditNote</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>clipboard</b></td></tr>
+std::vector&lt; <a class="el" href="../../d9/d98/structuapmd_1_1MidiEditNote.html">PianoRollEditNote</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>clipboard</b></td></tr>
 <tr class="separator:a68f3e926198e0e61efde24c4c78f8ca0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0c3a4bd9e8010e9c961034da9105277c" id="r_a0c3a4bd9e8010e9c961034da9105277c"><td class="memItemLeft" align="right" valign="top"><a id="a0c3a4bd9e8010e9c961034da9105277c" name="a0c3a4bd9e8010e9c961034da9105277c"></a>
 std::vector&lt; size_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>deletedRawIdxs</b></td></tr>

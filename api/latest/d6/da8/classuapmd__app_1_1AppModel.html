@@ -256,6 +256,9 @@ bool&#160;</td><td class="memItemRight" valign="bottom"><b>isAudioEngineEnabled<
 <tr class="memitem:a05235db564c484176eee697c6cd28789" id="r_a05235db564c484176eee697c6cd28789"><td class="memItemLeft" align="right" valign="top"><a id="a05235db564c484176eee697c6cd28789" name="a05235db564c484176eee697c6cd28789"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioEngineEnabled</b> (bool enabled)</td></tr>
 <tr class="separator:a05235db564c484176eee697c6cd28789"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac003fd03874d29674cd01bc7f203860b" id="r_ac003fd03874d29674cd01bc7f203860b"><td class="memItemLeft" align="right" valign="top"><a id="ac003fd03874d29674cd01bc7f203860b" name="ac003fd03874d29674cd01bc7f203860b"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>shutdownAudioEngine</b> ()</td></tr>
+<tr class="separator:ac003fd03874d29674cd01bc7f203860b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a88bc9eaee67504a379fef34e96937d71" id="r_a88bc9eaee67504a379fef34e96937d71"><td class="memItemLeft" align="right" valign="top"><a id="a88bc9eaee67504a379fef34e96937d71" name="a88bc9eaee67504a379fef34e96937d71"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>toggleAudioEngine</b> ()</td></tr>
 <tr class="separator:a88bc9eaee67504a379fef34e96937d71"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -316,6 +319,9 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>createPluginInstanceA
 <tr class="memitem:a7e0079f484df77cdf894ce092306fa34" id="r_a7e0079f484df77cdf894ce092306fa34"><td class="memItemLeft" align="right" valign="top"><a id="a7e0079f484df77cdf894ce092306fa34" name="a7e0079f484df77cdf894ce092306fa34"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>removePluginInstance</b> (int32_t instanceId)</td></tr>
 <tr class="separator:a7e0079f484df77cdf894ce092306fa34"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6f08cefbf15cd0f9f13cc48571cd29c7" id="r_a6f08cefbf15cd0f9f13cc48571cd29c7"><td class="memItemLeft" align="right" valign="top"><a id="a6f08cefbf15cd0f9f13cc48571cd29c7" name="a6f08cefbf15cd0f9f13cc48571cd29c7"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioProcessingMode</b> (int32_t instanceId, uapmd_plugin_hosting::AudioProcessingMode mode, std::string &amp;error)</td></tr>
+<tr class="separator:a6f08cefbf15cd0f9f13cc48571cd29c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afd0c346eccbbf3a28f715a9e07fdd898" id="r_afd0c346eccbbf3a28f715a9e07fdd898"><td class="memItemLeft" align="right" valign="top"><a id="afd0c346eccbbf3a28f715a9e07fdd898" name="afd0c346eccbbf3a28f715a9e07fdd898"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>enableUmpDevice</b> (int32_t instanceId, const std::string &amp;deviceName)</td></tr>
 <tr class="separator:afd0c346eccbbf3a28f715a9e07fdd898"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -505,9 +511,9 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>saveProjectToDocument
 <tr class="memitem:a196bf5085b7bb8da0a96a57d422a26d1" id="r_a196bf5085b7bb8da0a96a57d422a26d1"><td class="memItemLeft" align="right" valign="top"><a id="a196bf5085b7bb8da0a96a57d422a26d1" name="a196bf5085b7bb8da0a96a57d422a26d1"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectFromResolvedPath</b> (const std::filesystem::path &amp;file, std::function&lt; void(<a class="el" href="../../d3/de1/structuapmd__app_1_1AppModel_1_1ProjectResult.html">ProjectResult</a>)&gt; callback)</td></tr>
 <tr class="separator:a196bf5085b7bb8da0a96a57d422a26d1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4a89727f402bb8932d44ae524853f324" id="r_a4a89727f402bb8932d44ae524853f324"><td class="memItemLeft" align="right" valign="top"><a id="a4a89727f402bb8932d44ae524853f324" name="a4a89727f402bb8932d44ae524853f324"></a>
-<a class="el" href="../../d3/de1/structuapmd__app_1_1AppModel_1_1ProjectResult.html">ProjectResult</a>&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectFromHandleToken</b> (const std::string &amp;token)</td></tr>
-<tr class="separator:a4a89727f402bb8932d44ae524853f324"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4de4409b4aaaf83d0ec881f7b0332da6" id="r_a4de4409b4aaaf83d0ec881f7b0332da6"><td class="memItemLeft" align="right" valign="top"><a id="a4de4409b4aaaf83d0ec881f7b0332da6" name="a4de4409b4aaaf83d0ec881f7b0332da6"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>loadProjectFromDocument</b> (<a class="el" href="../../d1/da2/structuapmd_1_1DocumentHandle.html">uapmd::DocumentHandle</a> handle, std::function&lt; void(<a class="el" href="../../d3/de1/structuapmd__app_1_1AppModel_1_1ProjectResult.html">ProjectResult</a>)&gt; callback)</td></tr>
+<tr class="separator:a4de4409b4aaaf83d0ec881f7b0332da6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a194c845aa73b65e06c7e49e21f8ac466" id="r_a194c845aa73b65e06c7e49e21f8ac466"><td class="memItemLeft" align="right" valign="top"><a id="a194c845aa73b65e06c7e49e21f8ac466" name="a194c845aa73b65e06c7e49e21f8ac466"></a>
 <a class="el" href="../../d9/d77/structuapmd__app_1_1AppModel_1_1MasterTrackSnapshot.html">MasterTrackSnapshot</a>&#160;</td><td class="memItemRight" valign="bottom"><b>buildMasterTrackSnapshot</b> ()</td></tr>
 <tr class="separator:a194c845aa73b65e06c7e49e21f8ac466"><td class="memSeparator" colspan="2">&#160;</td></tr>

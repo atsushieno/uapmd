@@ -126,6 +126,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ae9b543d5bf419768856d18a54e3bc184"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4b48345758a552f3e8cb2956f1d9a2c8" id="r_a4b48345758a552f3e8cb2956f1d9a2c8"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/da7/classuapmd_1_1MidiClipSourceNode.html#a4b48345758a552f3e8cb2956f1d9a2c8">processEvents</a> (<a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;eventOut, int32_t frameCount, int32_t sampleRate, double tempo, uint32_t frameOffsetInBlock=0) override</td></tr>
 <tr class="separator:a4b48345758a552f3e8cb2956f1d9a2c8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a66d0f6811ccfc2bc5705c01ee462610a" id="r_a66d0f6811ccfc2bc5705c01ee462610a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/da7/classuapmd_1_1MidiClipSourceNode.html#a66d0f6811ccfc2bc5705c01ee462610a">sendNoteOffsForActiveNotes</a> (<a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;eventOut, uint32_t frameOffset, int32_t sampleRate) override</td></tr>
+<tr class="separator:a66d0f6811ccfc2bc5705c01ee462610a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a23d5f30615811fad62116be42cc2ca5c" id="r_a23d5f30615811fad62116be42cc2ca5c"><td class="memItemLeft" align="right" valign="top"><a id="a23d5f30615811fad62116be42cc2ca5c" name="a23d5f30615811fad62116be42cc2ca5c"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>setNrpnInterceptCallback</b> (NrpnInterceptCallback cb)</td></tr>
 <tr class="separator:a23d5f30615811fad62116be42cc2ca5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -463,6 +465,50 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlaybackTempoMap
 </div><div class="memdoc">
 
 <p>Implements <a class="el" href="../../d7/d4f/classuapmd_1_1MidiSourceNode.html">uapmd::MidiSourceNode</a>.</p>
+
+</div>
+</div>
+<a id="a66d0f6811ccfc2bc5705c01ee462610a" name="a66d0f6811ccfc2bc5705c01ee462610a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a66d0f6811ccfc2bc5705c01ee462610a">&#9670;&#160;</a></span>sendNoteOffsForActiveNotes()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void uapmd::MidiClipSourceNode::sendNoteOffsForActiveNotes </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;&#160;</td>
+          <td class="paramname"><em>eventOut</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>frameOffset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int32_t&#160;</td>
+          <td class="paramname"><em>sampleRate</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">override</span><span class="mlabel">virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Reimplemented from <a class="el" href="../../d7/d4f/classuapmd_1_1MidiSourceNode.html">uapmd::MidiSourceNode</a>.</p>
 
 </div>
 </div>

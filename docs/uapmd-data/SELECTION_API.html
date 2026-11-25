@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAPMD Documentation</title>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../">Documentation</a>
+            <a class="nav-link" href="../../playground/">Playground</a>
+            <a class="nav-link" href="../../api/">API references</a>
+        </div>
+    </nav>
+
+    <main class="panel documentation">
+<h1 id="document-selection-api-ai-slop">Document Selection API (AI
+slop)</h1>
+<h2 id="status-and-authorship">Status and authorship</h2>
+<p>This is an AI-authored design record without maintainer edits. It
+records the design choices for selection and the document API. The
+implementation status below describes the first implementation; the
+design sketches remain provisional.</p>
+<p>Selection should be a document service over stable object identities,
+with independent selection contexts and explicit coordinate systems for
+ranges. Tracks, clips, notes, and automation points use the same
+service. Containment affects object lookup and edit behavior; it does
+not require separate selection APIs for timeline objects and clip
+contents.</p>
+<p>Selection is transient document interaction state. Changing it does
+not change the document's edit revision, dirty state, saved content, or
+undo history.</p>
+<h2 id="first-implementation">First implementation</h2>
+<p>The following contracts and implementations now live in
+<code>uapmd-data</code>:</p>
+<ul>
+<li><code>ProjectDocument</code>, reached through
+<code>SequencerEngine::document()</code> or
+<code>TimelineFacade::document()</code>, exposes inspection, events,
+selections, MIDI content, commands, command manager, and document
+transactions.</li>
+<li><code>ProjectSelectionService</code> manages a default timeline
+context, additional optionally scoped contexts, active context,
+validation, and notifications. <code>snapshot()</code> returns an
+optional value so a removed context is distinguishable from an empty
+selection. <code>defaultContext()</code> and <code>hasContext()</code>
+support caller lifetime management.</li>
+<li><code>ProjectSelectionRegion</code> supports the three
+coordinate/scope types described below. Time intervals are half-open,
+with equal endpoints representing a point. Pitch and normalized-value
+constraints include both endpoints. An absent timeline track list means
+all tracks; a present empty list means none.</li>
+<li><code>MidiClipDocument</code> owns shared editable notes and
+automation, committed snapshots, stable object IDs, normalization, and
+encoding. Existing editor field names are retained for compatibility.
+<code>encodedSnapshot()</code> constructs a candidate without committing
+it. <code>ProjectCommands::setMidiClipContent()</code> applies it by
+persistent clip ID through the engine and records history.</li>
+<li>Data-only addresses, <code>ProjectCommands</code>, persisted latency
+settings, and <code>ProjectMasterTrackSnapshot</code> have moved into
+the data module. Compatibility facade aliases and headers remain in the
+engine module.</li>
+</ul>
+<p><code>TimelineFacadeImpl</code> implements the document interface
+using the existing engine storage and the data-module services. It
+reconciles shared MIDI content and selection against final document
+state before delivering a document batch, then releases deferred
+selection notifications after document listeners finish. Whole-clip
+replacement is batched across removal and restoration so undo retains
+both selection and the shared MIDI model. Fragments retain committed
+MIDI identities, restore them on undo, and mint new ones on paste.
+Recording append uses an explicit encoding-offset mapping to retain
+existing logical identities; extending a MIDI clip before its content
+start also carries its identities.</p>
+<p>The application routes timeline and piano-roll selection through this
+service. Automation points can be selected independently or together
+with notes. Editors read API-driven selection changes, and render
+explicit timeline, note, and controller-lane regions. UI-generated
+timeline ranges are currently published when the range gesture
+completes; the service also supports continuous region updates.</p>
+<p>The native ARA adapter consumes the document API and forwards
+selection to visible editor views, with an initial notification during
+UI setup/reopening. Relevant document changes refresh its projection
+after model synchronization. The AAP adapter uses the same SDK
+controller and selection projection through the ARAAAP companion
+integration in <code>aap-ara</code>. SDK playback-region and
+region-sequence references plus the optional explicit project-time range
+reach the bound editor-view role after model synchronization. ARAAAP
+transports these notifications over its <code>/ara/v2</code> Binder
+control path, outside audio processing.</p>
+<p>The selection state and note/automation IDs are not added to
+project-file serialization by this implementation. Identity-bearing
+fragments and history retain them for the lifetime of the open
+document.</p>
+<h2 id="starting-implementation-and-prerequisites">Starting
+implementation and prerequisites</h2>
+<p>Before this work, selection used several separate
+representations:</p>
+<ul>
+<li><code>AppModel</code> owned timeline clip selection in
+<code>selected_clip_references_</code>.</li>
+<li><code>SequenceEditor</code> owned range-drag state and the requested
+interval used by the add-clip popup. There was no shared explicit range
+selection model.</li>
+<li><code>PianoRollSession</code> owned editable notes, automation
+events, and note selection. Notes had session-local <code>edit_id</code>
+values. Its own commits preserved these IDs while updating raw event
+indexes, but <code>loadNotes()</code> assigned new IDs and cleared
+selection when content is reloaded, including after undo/redo.</li>
+<li><code>PianoRollAutomationEvent</code> had a <code>rawEventIdx</code>
+but no equivalent stable edit identity.</li>
+<li><code>ProjectDocumentView</code> and
+<code>ProjectDocumentEventSource</code> are in <code>uapmd-data</code>.
+Their concrete implementation, command services, and project lifetime
+are currently coordinated by <code>TimelineFacadeImpl</code> in
+<code>uapmd-engine</code>.</li>
+<li>ARA already binds the editor-view role and maps document clips and
+tracks to playback regions and region sequences. It did not yet forward
+host selection through
+<code>ARAEditorViewInterface::notifySelection()</code>.</li>
+</ul>
+<p>Moving the existing selection containers into <code>uapmd-data</code>
+is insufficient. Shared identities for notes and automation points must
+survive ordinary edits, UMP reconstruction, and undo/redo.</p>
+<p>Relevant current sources:</p>
+<ul>
+<li><a
+href="../../source/uapmd-data/include/uapmd-data/detail/project/ProjectDocumentView.hpp">Document
+inspection API</a></li>
+<li><a
+href="../../source/uapmd-data/include/uapmd-data/detail/project/ProjectDocumentEvents.hpp">Document
+events</a></li>
+<li><a
+href="../../source/tools/uapmd-app-model/include/uapmd-app-model/detail/PianoRollTypes.hpp">Piano-roll
+data and session types</a></li>
+<li><a
+href="../../source/tools/uapmd-app-model/src/PianoRollSession.cpp">Piano-roll
+session implementation</a></li>
+<li><a
+href="../../source/uapmd-engine/include/uapmd-engine/detail/sequencer/TimelineFacade.hpp">Timeline
+facade API</a></li>
+<li><a
+href="../../source/uapmd-ara/src/AraHostDocumentController.cpp">ARA host
+document controller</a></li>
+</ul>
+<h2 id="object-identity">Object identity</h2>
+<p>Reuse <code>ProjectObjectId</code>, with uniqueness within a
+document, for selectable objects. Existing track and clip reference IDs
+provide a starting point; notes and automation points need equivalent
+identities in the shared data model.</p>
+<p>An ID identifies the object independently of its current parent,
+position, duration, pitch, controller value, or encoded position. Object
+type and parentage are available through document queries. The selection
+service stores object IDs without needing separate containers for each
+object type.</p>
+<p>In particular, selection identity must not be a track index, clip
+numeric ID, event-array index, UMP word offset, or time/pitch/value
+tuple. A clip's current track is location information, and moving it to
+another track must preserve its selection identity. Existing compound
+addresses used by commands can be adapted without making their current
+containment path the selection identity.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Identity behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Move, resize, change pitch or value</td>
+<td>Preserve identity</td>
+</tr>
+<tr class="even">
+<td>Reorder events or rebuild encoded UMP</td>
+<td>Preserve identity</td>
+</tr>
+<tr class="odd">
+<td>Move an existing object into another container</td>
+<td>Preserve identity</td>
+</tr>
+<tr class="even">
+<td>Duplicate or paste a copy</td>
+<td>Allocate new identities and remap internal relationships</td>
+</tr>
+<tr class="odd">
+<td>Undo restoration</td>
+<td>Restore original identities</td>
+</tr>
+<tr class="even">
+<td>Import unrelated replacement content</td>
+<td>Allocate new identities unless explicit correspondence is
+supplied</td>
+</tr>
+</tbody>
+</table>
+<p>These guarantees cover the document's lifetime and its retained
+undo/redo content. Persisting note and automation identities across
+save/reopen is a separate decision. Transient selection does not require
+it.</p>
+<h2 id="common-selection-representation">Common selection
+representation</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> ProjectSelection <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Ordered by relevance; the first object is primary.</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>vector<span class="op">&lt;</span>ProjectObjectId<span class="op">&gt;</span> objects<span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>vector<span class="op">&lt;</span>ProjectSelectionRegion<span class="op">&gt;</span> regions<span class="op">;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>Object IDs are deduplicated while preserving their order. A change in
+order can change the primary selection and therefore counts as a
+selection change.</p>
+<p>An editor can restrict the objects it accepts, but that is an
+interaction policy of the editor. A combined editor can select different
+object types together through the same representation and notification
+API.</p>
+<p>Selecting a parent does not insert its children into
+<code>objects</code>. Commands decide how dependent objects participate
+in an edit. For example, moving a selected note may also move its
+per-note automation, even when those automation points are not
+explicitly selected. Selecting an automation point directly is supported
+as well. Both clip-level and per-note automation use stable object
+identities.</p>
+<h2 id="explicit-regions-and-coordinate-systems">Explicit regions and
+coordinate systems</h2>
+<p>Selected objects and explicit regions have different semantics. A
+marquee that selects existing objects produces object IDs. A time-range
+tool produces an explicit region. A region does not continuously
+recalculate object membership unless an operation requests that
+calculation.</p>
+<p>The initial <code>ProjectSelectionRegion</code> can be a typed
+variant of these region types:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Region</th>
+<th>Coordinates and scope</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>TimelineSelectionRegion</code></td>
+<td>Project seconds and an explicit track scope</td>
+</tr>
+<tr class="even">
+<td><code>MidiNoteSelectionRegion</code></td>
+<td>Clip-content ticks, a clip scope, and optional pitch/group/channel
+constraints</td>
+</tr>
+<tr class="odd">
+<td><code>MidiAutomationSelectionRegion</code></td>
+<td>Clip-content ticks, a controller-lane address, and an optional value
+interval</td>
+</tr>
+</tbody>
+</table>
+<p>These types describe coordinate systems and constraints; they share
+one selection service. Scope must distinguish all applicable tracks from
+an explicit set of tracks without relying on an ambiguous empty list
+convention.</p>
+<p>MIDI time coordinates refer to source content. Trimming a clip must
+not silently redefine their origin. Document queries convert those
+coordinates to project time using clip placement, source offset, and the
+applicable tempo mapping. Moving a clip can therefore change a region's
+project-time projection while its stored clip-content coordinates remain
+unchanged.</p>
+<p>Controller-lane information describes what a region covers. It does
+not identify individual automation points. Per-note associations must
+refer to note identity rather than a mutable note number alone.</p>
+<p>Region updates reject invalid coordinates, including nonfinite values
+and reversed intervals. Zero-length time intervals can represent a point
+selection. The exact region structures and endpoint conventions need to
+be specified before implementation.</p>
+<p>The bounding interval of selected objects is a derived query. It must
+not become the stored identity of a selection, and it must not turn
+object selection into an explicit range selection.</p>
+<h2 id="selection-contexts-and-service">Selection contexts and
+service</h2>
+<p>One document owns a collection of selection contexts. A timeline and
+two piano-roll windows can retain three independent selections while
+referring to the same document objects. Contexts express independent
+interactions; they do not create separate content models or separate
+item identities.</p>
+<p>The following is a schematic public surface in
+<code>uapmd-data</code>. Supporting handle, result, and listener types
+remain to be finalized.</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ProjectSelectionService <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">public</span><span class="op">:</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    SelectionContextId createContext<span class="op">();</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> removeContext<span class="op">(</span>SelectionContextId context<span class="op">);</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    ProjectSelection snapshot<span class="op">(</span>SelectionContextId context<span class="op">)</span> <span class="at">const</span><span class="op">;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    SelectionUpdateResult replace<span class="op">(</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        SelectionContextId context<span class="op">,</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        ProjectSelection selection<span class="op">);</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> clear<span class="op">(</span>SelectionContextId context<span class="op">);</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> setActiveContext<span class="op">(</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        <span class="bu">std::</span>optional<span class="op">&lt;</span>SelectionContextId<span class="op">&gt;</span> context<span class="op">);</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>optional<span class="op">&lt;</span>SelectionContextId<span class="op">&gt;</span> activeContext<span class="op">()</span> <span class="at">const</span><span class="op">;</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    SelectionListenerToken addListener<span class="op">(</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        ProjectSelectionListener<span class="op">&amp;</span> listener<span class="op">);</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> removeListener<span class="op">(</span>SelectionListenerToken token<span class="op">);</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>The service validates object references and regions against document
+queries. An invalid replacement fails without partially applying the
+supplied selection. Additive and toggle interactions can construct
+replacements using the same API.</p>
+<p>Listeners receive selection changes, active-context changes, and
+context removal. A selection-change notification contains the context ID
+and the previous and current snapshots. Replacing selection with an
+identical value emits no notification. Changing the active context is
+observable even when the selections involved contain the same
+objects.</p>
+<p>The application reports the active host context. Window focus
+handling remains in the application; opening or focusing a plugin view
+must not discard the host selection it should display.</p>
+<p>Closing an editor removes its selection context. The underlying
+shared MIDI model and its identities remain alive with the document
+content. Project replacement clears selections and invalidates contexts
+whose scopes no longer exist; stale handles must not silently refer to a
+new context.</p>
+<h2 id="continuous-edits-events-and-history">Continuous edits, events,
+and history</h2>
+<p>Access and notification delivery occur on the model thread. The
+selection service is not an audio-thread API. Its callbacks must not
+introduce blocking work into audio processing.</p>
+<p>Selection notifications are separate from
+<code>ProjectDocumentEventDispatcher</code> edit events. Selection
+changes do not advance <code>ProjectRevision</code>, create history
+entries, or mark the project dirty. The existing command/history
+machinery continues to manage authored edits.</p>
+<p>Moving a group of selected clips, notes, or automation points
+preserves their selection throughout the gesture:</p>
+<pre class="text"><code>Select objects       -&gt; selection notification
+Move/update objects  -&gt; document notifications
+Finish edit gesture  -&gt; finish the history step</code></pre>
+<p>Changes to selected objects' geometry or values do not by themselves
+emit <code>selectionChanged</code>. Consumers that need current geometry
+subscribe to document changes as well as selection changes, then resolve
+the selected IDs again.</p>
+<p>An explicit region can be adjusted continuously by publishing
+successive selection replacements during a drag. The API does not impose
+publication only on mouse release. Cancelling the gesture restores its
+initial selection snapshot. Selection gestures remain outside document
+undo history.</p>
+<p>Document transactions reconcile selection references against their
+final state. An internal remove/reconstruct sequence that preserves an
+object's identity must not transiently deselect it. Completed deletion
+prunes that object from every affected context. Undo restores the
+object's identity without automatically reselecting it.</p>
+<p>Reconciliation and notifications must expose consistent post-mutation
+state. Consumers must not observe intermediate reconstruction or failed
+changes as a completed selection update. Exact ordering between document
+batches and selection notifications must be specified with the
+implementation.</p>
+<h2 id="shared-editable-midi-model">Shared editable MIDI model</h2>
+<p>Extract the authored note and automation representation and its
+identity handling from <code>PianoRollSession</code> into a shared MIDI
+clip model in <code>uapmd-data</code>. Keep window state, input
+gestures, and application clipboard interaction in the application
+layer.</p>
+<p>The shared model retains:</p>
+<ul>
+<li>Stable note and automation-point IDs.</li>
+<li>Relationships between notes and their associated automation.</li>
+<li>Authored timing and controller information.</li>
+<li>The association between logical objects and their encoded UMP
+messages.</li>
+</ul>
+<p>A note is a logical object whose encoding can include note-on and
+note-off messages. An automation point is a logical editable event.
+Neither identity depends on the number of words in its UMP
+representation. Raw word indexes are encoding details and can change
+after sorting, translation, or reconstruction.</p>
+<p>The writer must carry logical identities through such reconstruction
+explicitly. Source reloads must resolve to the shared model rather than
+recreate an editor's private identity space after every change.</p>
+<p>MIDI snapshots retained by commands and
+<code>ProjectClipFragment</code> need to carry identity information so
+undo can restore it. Editor commits through the current
+<code>replaceMidiClipContent()</code> path must migrate to
+identity-bearing content. An import of unrelated raw UMP is an explicit
+content replacement. Matching objects heuristically by timestamp, pitch,
+controller value, or raw index cannot provide the identity
+guarantee.</p>
+<p>The shared model must retain unedited UMP content as well;
+introducing selectable notes and automation points must not discard
+other messages during a round trip. Playback source nodes consume the
+resulting authored content or published snapshots without owning editor
+selections.</p>
+<h2 id="document-api-and-engine-boundary">Document API and engine
+boundary</h2>
+<p>Introduce a document entry point in <code>uapmd-data</code>,
+retaining <code>ProjectDocumentView</code> as the read-only inspection
+contract. A tentative interface is:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ProjectDocument <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">public</span><span class="op">:</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> <span class="op">~</span>ProjectDocument<span class="op">()</span> <span class="op">=</span> <span class="cf">default</span><span class="op">;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> <span class="at">const</span> ProjectDocumentView<span class="op">&amp;</span> view<span class="op">()</span> <span class="at">const</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> ProjectDocumentEventSource<span class="op">&amp;</span> events<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> ProjectSelectionService<span class="op">&amp;</span> selections<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> <span class="at">const</span> ProjectSelectionService<span class="op">&amp;</span> selections<span class="op">()</span> <span class="at">const</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> ProjectCommands<span class="op">&amp;</span> commands<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> ProjectCommandManager<span class="op">&amp;</span> commandManager<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> <span class="dt">void</span> beginTransaction<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">virtual</span> <span class="dt">void</span> endTransaction<span class="op">()</span> <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>The document API needs queries for resolving selectable objects,
+inspecting their type and parentage, and projecting explicit regions
+into project time. Existing typed snapshots should be extended as
+needed. The selection service itself does not need a switch over every
+object type or engine runtime pointers.</p>
+<p>The <code>ProjectCommands</code> interface can move from
+<code>uapmd-engine</code> to <code>uapmd-data</code>, alongside the
+data-only addresses and persisted settings it needs. Engine-backed
+command implementations remain in <code>uapmd-engine</code>. The
+document transaction guard can move to <code>uapmd-data</code> and
+operate on <code>ProjectDocument</code>.</p>
+<p>The document API should expose <code>commandManager()</code>
+explicitly; the current <code>commands().history()</code> returns a
+<code>ProjectCommandManager</code>, so those names should be reconciled
+during migration rather than introducing another history mechanism.</p>
+<table>
+<thead>
+<tr class="header">
+<th><code>uapmd-data</code> responsibilities</th>
+<th><code>uapmd-engine</code> responsibilities</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Document inspection and identity contracts</td>
+<td>Runtime track and plugin lookup</td>
+</tr>
+<tr class="even">
+<td>Selection storage, contexts, and notifications</td>
+<td>Transport integration and audio rendering</td>
+</tr>
+<tr class="odd">
+<td>Shared editable MIDI content and logical identities</td>
+<td>Playback snapshot publication and source-node realization</td>
+</tr>
+<tr class="even">
+<td>Document events and command/history abstractions</td>
+<td>Engine-backed command execution and resource preparation</td>
+</tr>
+<tr class="odd">
+<td>Authored metadata and time-mapping value types</td>
+<td>Latency, freeze behavior, and live graph replacement</td>
+</tr>
+</tbody>
+</table>
+<p>Initially, the engine can continue owning the document's lifetime and
+existing track/clip storage. Concrete selection storage and the shared
+MIDI model are implemented in <code>uapmd-data</code>; an engine-backed
+document composes those services. <code>TimelineFacade</code> exposes
+the document and forwards legacy accessors during migration. This does
+not require moving the full <code>TimelineFacade</code> into
+<code>uapmd-data</code>.</p>
+<p>Move the value types currently nested in
+<code>TimelineFacade::MasterTrackSnapshot</code> to
+<code>uapmd-data</code>, so document consumers can inspect
+tempo/signature metadata without naming the engine facade.</p>
+<p><code>ProjectAddressBook</code> now lives in <code>uapmd-data</code>
+and resolves stable track and clip identities against authored
+track/clip storage. It is exposed through
+<code>ProjectDocument::addresses()</code>;
+<code>TimelineFacade::addresses()</code> forwards to the same book.
+Lookups of live <code>SequencerTrack*</code> and runtime plugin
+instances remain on the engine-private command target.</p>
+<p>Live project load/save orchestration can remain in the engine
+initially: serializing authored data and reconstructing live
+tracks/plugins are distinct responsibilities. Relocating all
+authoritative authored storage is a later refactor, not a prerequisite
+for delivering selection.</p>
+<h2 id="ara-projection">ARA projection</h2>
+<p>ARA consumes the active host selection context through the document
+API.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Document selection</th>
+<th>ARA representation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Selected clip</td>
+<td>Playback-region reference</td>
+</tr>
+<tr class="even">
+<td>Selected track</td>
+<td>Region-sequence reference</td>
+</tr>
+<tr class="odd">
+<td>Selected note or automation point</td>
+<td>Containing playback region</td>
+</tr>
+<tr class="even">
+<td>Explicit region</td>
+<td>Applicable sequences and a project-time interval</td>
+</tr>
+<tr class="odd">
+<td>Multiple explicit temporal regions</td>
+<td>Their enclosing project-time interval</td>
+</tr>
+<tr class="even">
+<td>Object-only selection</td>
+<td>No explicit time range</td>
+</tr>
+<tr class="odd">
+<td>Empty selection</td>
+<td>Empty <code>ARAViewSelection</code></td>
+</tr>
+</tbody>
+</table>
+<p>Resolve and deduplicate references while preserving relevance order.
+ARA has no individual-note or automation-point field in
+<code>ARAViewSelection</code>. Projecting those objects to their
+containing clip does not turn them into an explicit range. The original
+document selection remains available in full to other consumers.</p>
+<p>Use document time-mapping queries when projecting clip-content
+regions. The adapter must refresh its projection after document changes
+that affect ownership or coordinate conversion, even when selection
+membership is unchanged. Examples include moving a clip, changing tempo,
+or changing source offset.</p>
+<p>Selection itself does not start an ARA editing cycle. The SDK permits
+editor-view notifications inside editing cycles; sending them after
+model synchronization is a host scheduling choice to ensure references
+and mappings are current.</p>
+<p>Send the current projection during view setup or reopening and update
+visible views. The SDK limits these view notifications to a displayed UI
+or its setup phase. Rebinding or rebuilding ARA objects requires
+resolving their references again before forwarding the current
+selection.</p>
+<p>All format bindings use the SDK editor-view role, including AAP
+through ARAAAP. Selection support requires a successfully bound
+editor-view interface; it must not be assumed merely because a plug-in
+supports document edits.</p>
+<h2 id="implementation-sequence">Implementation sequence</h2>
+<ol type="1">
+<li>Establish the document API, object identity contract, and region
+coordinate definitions in <code>uapmd-data</code>. Introduce the engine
+bridge and retain compatible facade accessors while callers
+migrate.</li>
+<li>Extract shared editable MIDI content. Preserve note and automation
+identities through UMP reconstruction, fragments, command snapshots, and
+undo/redo.</li>
+<li>Implement the common selection service and migrate timeline,
+piano-roll, and automation editing to its contexts. Reflect API-driven
+changes in editor rendering as well as publishing user
+interactions.</li>
+<li>Connect ARA selection projection, view lifecycle, and relevant
+document changes. Continue migrating document-facing facade accessors
+independently from audio/runtime integration.</li>
+</ol>
+<p>Validation should cover grouped clip moves, note and automation
+drags, mixed selection, UMP sorting/rebuilding, copy/paste identities,
+deletion and undo, content replacement, multiple contexts, project
+replacement, and ARA projection. Verify that selection alone leaves
+revisions, dirty state, and history unchanged. Build with an existing
+configured build directory; this plan does not require CMake
+reconfiguration or prescribe new automated tests.</p>
+<h2 id="details-to-settle-during-implementation">Details to settle
+during implementation</h2>
+<ul>
+<li>Exact object-resolution queries and the identity-bearing MIDI
+snapshot format.</li>
+<li>Region endpoint conventions, controller-lane addresses, and scope
+types.</li>
+<li>Context and listener lifetime handling, including stale-handle
+rejection.</li>
+<li>Reentrant updates and ordering between document batches, selection
+reconciliation, and selection notifications.</li>
+<li>Whether note and automation IDs should eventually be persisted
+across save/reopen.</li>
+<li>Selection forwarding capabilities of the alternate AAP backend.</li>
+</ul>
+<p>These details refine the contracts above; they should not reintroduce
+editor boundaries into the common selection representation.</p>
+    </main>
+</div>
+</body>
+</html>
