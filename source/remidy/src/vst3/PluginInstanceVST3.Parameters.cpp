@@ -155,18 +155,26 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value) {
-    if (index >= parameter_ids.size() || !owner->component_handler)
+    if (index >= parameter_ids.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
 
+    // Host-originated edits bypass IComponentHandler, which carries plugin-originated edits, and go to both processor and controller.
     const ParamID id = parameter_ids[index];
-    auto normalized = owner->controller->plainParamToNormalized(id, value);
-    auto handler = owner->component_handler.get();
+    auto controller = owner->controller;
+    const auto normalized = controller->plainParamToNormalized(id, value);
 
-    if (handler->beginEdit(id) != kResultOk)
+    int32_t queueIndex = 0;
+    auto queue = owner->processDataInputParameterChanges.asInterface()->addParameterData(id, queueIndex);
+    int32_t pointIndex = 0;
+    if (!queue || queue->addPoint(0, normalized, pointIndex) != kResultOk)
         return StatusCode::INVALID_PARAMETER_OPERATION;
-    auto result = handler->performEdit(id, normalized);
-    auto endResult = handler->endEdit(id);
-    return result == kResultOk && endResult == kResultOk ? StatusCode::OK : StatusCode::INVALID_PARAMETER_OPERATION;
+
+    EventLoop::runTaskOnMainThread([controller, id, normalized] {
+        controller->setParamNormalized(id, normalized);
+    });
+
+    parameterChangeEvent().notify(index, value);
+    return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
@@ -199,10 +207,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParamete
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
-    // FIXME: it has to delegate to IComponentHandler::performEdit() instead (but to do so we need to implement that function first).
-    // The event lists belong to the audio thread, so this only notifies listeners.
-    perNoteControllerChangeEvent().notify(PER_NOTE_CONTROLLER_PER_NOTE, context.note, index, value);
-    return StatusCode::OK;
+    // Like setParameter(), this queues the change into the next process() input.
+    return enqueuePerNoteControllerRT(context, index, value, 0);
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {

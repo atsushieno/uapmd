@@ -482,7 +482,6 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     processData.numSamples = numFrames;
 
     // handle UMP inputs via UmpInputDispatcher.
-    processDataInputEvents.clear();
     ump_input_dispatcher.process(process);
 
     processDataOutputParameterChanges.clear();
@@ -490,6 +489,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     // invoke plugin process
     auto result = processor->process(processData);
 
+    // Cleared after process() so that events queued by setPerNoteController() between calls are delivered.
+    processDataInputEvents.clear();
     processDataInputParameterChanges.clear();
 
     if (result != kResultOk) {
