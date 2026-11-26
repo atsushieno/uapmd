@@ -5,6 +5,7 @@
 #include "clap/helpers/event-list.hh"
 #include "clap/helpers/plugin-proxy.hh"
 #include "clap/helpers/plugin-proxy.hxx"
+#include <array>
 #include <optional>
 #include <unordered_map>
 #include <functional>
@@ -193,6 +194,10 @@ namespace remidy {
         class CLAPUmpInputDispatcher : public TypedUmpInputDispatcher {
             PluginInstanceCLAP* owner;
             int32_t note_serial{1};
+            // Pitch 7.9 offset in semitones of the latest note-on per channel and key, which per-note pitch bend is relative to.
+            std::array<double, 16 * 128> note_tuning_offsets{};
+
+            void addTuningExpression(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, double semitones);
 
         public:
             explicit CLAPUmpInputDispatcher(PluginInstanceCLAP* owner) : owner(owner) {}

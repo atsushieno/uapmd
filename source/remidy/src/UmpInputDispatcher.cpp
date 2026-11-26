@@ -122,6 +122,7 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
                                ump.getMidi2Note(),
                                static_cast<uint8_t>(ump.int1 & 0xFFu),
                                ump.int2);
+                        break;
                     case umppi::MidiChannelStatus::PER_NOTE_ACC:
                         onPNAC(group, channel,
                                ump.getMidi2Note(),

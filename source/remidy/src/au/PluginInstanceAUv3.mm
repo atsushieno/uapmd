@@ -459,11 +459,22 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
             if (@available(macOS 12.0, *)) {
                 AUMIDIEventListBlock midiListBlock = audioUnit.scheduleMIDIEventListBlock;
                 if (midiListBlock && midi_event_list && midi_event_list_capacity >= sizeof(MIDIEventList)) {
-                    MIDIEventPacket* packet = MIDIEventListInit(midi_event_list, kMIDIProtocol_1_0);
+                    const uint8_t* umpData = static_cast<const uint8_t*>(process.eventIn().getMessages());
+                    // A MIDI 2.0 list keeps per-note data such as note attributes; the framework translates it to the AU's protocol.
+                    bool hasMidi2Message = false;
+                    for (size_t scan = 0; scan + sizeof(uint32_t) <= eventBytes;) {
+                        auto type = static_cast<uint8_t>(reinterpret_cast<const UInt32*>(umpData + scan)[0] >> 28);
+                        if (type == static_cast<uint8_t>(umppi::MessageType::MIDI2)) {
+                            hasMidi2Message = true;
+                            break;
+                        }
+                        scan += static_cast<size_t>(umppi::umpSizeInInts(type)) * sizeof(uint32_t);
+                    }
+                    MIDIEventPacket* packet = MIDIEventListInit(midi_event_list,
+                                                                hasMidi2Message ? kMIDIProtocol_2_0 : kMIDIProtocol_1_0);
                     bool buildSucceeded = packet != nullptr;
 
                     if (buildSucceeded) {
-                        const uint8_t* umpData = static_cast<const uint8_t*>(process.eventIn().getMessages());
                         bool unsupportedMessage = false;
                         size_t offset = 0;
                         while (offset + sizeof(uint32_t) <= eventBytes) {
@@ -475,7 +486,12 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
                                 buildSucceeded = false;
                                 break;
                             }
-                            if (messageType != static_cast<uint8_t>(umppi::MessageType::MIDI1)) {
+                            if (messageType == static_cast<uint8_t>(umppi::MessageType::UTILITY)) {
+                                offset += static_cast<size_t>(wordCount) * sizeof(uint32_t);
+                                continue;
+                            }
+                            if (messageType != static_cast<uint8_t>(umppi::MessageType::MIDI1) &&
+                                messageType != static_cast<uint8_t>(umppi::MessageType::MIDI2)) {
                                 unsupportedMessage = true;
                                 break;
                             }

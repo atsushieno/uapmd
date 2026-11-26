@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <umppi/umppi.hpp>
 #include "remidy/remidy.hpp"
 #include "../utils.hpp"
@@ -12,11 +13,12 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_
     // use IEventList to add Event (kNoteOnEvent)
     auto& el = owner->processDataInputEvents;
 
+    // VST3 tuning is in cents relative to the note pitch.
     float tuning = 0;
     if (attributeType == umppi::MidiNoteAttributeType::Pitch7_9)
-        tuning = (float) ((uint8_t) (attribute >> 9) + (float) (attribute & 0x1F) / 512.0);
+        tuning = static_cast<float>(pitch7_9OffsetSemitones(note, attribute) * 100.0);
 
-    int32_t noteId = -1; // should be alright, UMP has no concept for that
+    const int32_t noteId = vst3NoteId(channel, note);
 
     Event e{};
     e.busIndex = group;
@@ -37,7 +39,10 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
                                                                         uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOffEvent)
     auto& el = owner->processDataInputEvents;
-    int32_t noteId = -1; // should be alright, UMP has no concept for that
+    const int32_t noteId = vst3NoteId(channel, note);
+    float tuning = 0;
+    if (attributeType == umppi::MidiNoteAttributeType::Pitch7_9)
+        tuning = static_cast<float>(pitch7_9OffsetSemitones(note, attribute) * 100.0);
 
     Event e{};
     e.busIndex = group;
@@ -49,6 +54,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
     e.noteOff.pitch = note;
     e.noteOff.velocity = (float) (velocity / 65535.0);
     e.noteOff.noteId = noteId;
+    e.noteOff.tuning = tuning;
     el.addEvent(e);
 }
 
@@ -180,6 +186,21 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t 
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
+    if (perNoteOrMinus >= 0) {
+        // Per-note pitch bend maps to the predefined tuning note expression (normalized 0.5 = no tuning, range +/-120 semitones).
+        Event e{};
+        e.busIndex = group;
+        e.sampleOffset = static_cast<int32_t>(timestamp());
+        e.ppqPosition = masterContext()->ppqPosition();
+        e.flags = 0;
+        e.type = Event::kNoteExpressionValueEvent;
+        e.noteExpressionValue.typeId = NoteExpressionTypeIDs::kTuningTypeID;
+        e.noteExpressionValue.noteId = vst3NoteId(channel, static_cast<uint8_t>(perNoteOrMinus));
+        e.noteExpressionValue.value = std::clamp(0.5 + perNotePitchBendSemitones(data) / 240.0, 0.0, 1.0);
+        owner->processDataInputEvents.addEvent(e);
+        return;
+    }
+
     // Note: Pitch bend is a dedicated MIDI message type in both MIDI 1.0 and MIDI 2.0
     // It is represented using ControllerNumbers::kPitchBend in MIDI 1.0 mappings
     ParamID id = 0;
@@ -215,12 +236,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uin
         return;
     }
 
-    if (perNoteOrMinus < 0)
-        owner->parameters()->enqueueParameterRT(id, value, timestamp());
-    else
-        owner->parameters()->enqueuePerNoteControllerRT(
-            { .note = static_cast<uint8_t>(perNoteOrMinus), .channel = channel, .group = group },
-            id, value, timestamp());
+    owner->parameters()->enqueueParameterRT(id, value, timestamp());
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,

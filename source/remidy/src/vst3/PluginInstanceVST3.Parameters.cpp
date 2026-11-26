@@ -171,7 +171,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
     // use IParameterChanges.
-    int32_t sampleOffset = 0; // FIXME: calculate from timestamp
+    const auto sampleOffset = static_cast<int32_t>(timestamp);
     auto pvc = owner->processDataInputParameterChanges.asInterface();
     if (index >= parameter_ids.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
@@ -200,12 +200,13 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParamete
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
     // FIXME: it has to delegate to IComponentHandler::performEdit() instead (but to do so we need to implement that function first).
-    // enqueueParameterRT() is not safe to call from here.
-    return enqueuePerNoteControllerRT(context, index, value, 0);
+    // The event lists belong to the audio thread, so this only notifies listeners.
+    perNoteControllerChangeEvent().notify(PER_NOTE_CONTROLLER_PER_NOTE, context.note, index, value);
+    return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
-    int32_t sampleOffset = 0; // FIXME: calculate from timestamp
+    const auto sampleOffset = static_cast<int32_t>(timestamp);
     double ppqPosition = owner->ump_input_dispatcher.masterContext()->ppqPosition(); // I guess only either of those time options are needed.
     uint16_t flags = owner->processData.processMode == kRealtime ? Event::kIsLive : 0; // am I right?
     Event evt{};
@@ -218,11 +219,9 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueuePerNoteC
     if (const auto* info = resolveNoteExpressionInfo(context.group, context.channel, index))
         typeId = info->typeId;
     evt.noteExpressionValue.typeId = typeId;
-    evt.noteExpressionValue.noteId = static_cast<int32_t>(context.note);
+    evt.noteExpressionValue.noteId = vst3NoteId(static_cast<uint8_t>(context.channel), static_cast<uint8_t>(context.note));
     evt.noteExpressionValue.value = value;
-    auto evtList = owner->processDataOutputEvents.asInterface();
-    // This should copy the argument evt, right?
-    evtList->addEvent(evt);
+    owner->processDataInputEvents.addEvent(evt);
 
     // Notify per-note controller change event listeners (e.g., UMP output mapper)
     perNoteControllerChangeEvent().notify(PER_NOTE_CONTROLLER_PER_NOTE, context.note, index, value);

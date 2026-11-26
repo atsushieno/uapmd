@@ -126,6 +126,7 @@ AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(
 
                 default:
                     // Unknown/unsupported message type, skip
+                    offset += messageSize;
                     continue;
             }
 
@@ -167,6 +168,7 @@ AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(
                     break;
                 default:
                     // Unknown status, skip
+                    offset += messageSize;
                     continue;
             }
 
