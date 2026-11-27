@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <umppi/umppi.hpp>
 #include "remidy/remidy.hpp"
 
@@ -9,6 +10,43 @@ inline uint8_t midi2NoteAttributeType(const umppi::Ump& ump) {
 inline uint16_t midi2NoteAttributeData(const umppi::Ump& ump) {
     return static_cast<uint16_t>(ump.int2 & 0xFFFFu);
 }
+}
+
+bool remidy::Sysex7Assembler::feed(uint32_t word0, uint32_t word1, const uint8_t*& data, size_t& size) {
+    auto& state = groups[(word0 >> 24) & 0xFu];
+    const auto status = static_cast<uint8_t>((word0 >> 16) & 0xF0u);
+    const auto count = std::min<uint32_t>((word0 >> 16) & 0xFu, 6);
+    const bool starts = status == umppi::Midi2BinaryChunkStatus::COMPLETE_PACKET || status == umppi::Midi2BinaryChunkStatus::START;
+    const bool ends = status == umppi::Midi2BinaryChunkStatus::COMPLETE_PACKET || status == umppi::Midi2BinaryChunkStatus::END;
+    if (starts) {
+        state.size = 0;
+        state.overflow = false;
+        state.buffer[state.size++] = 0xF0;
+    } else if (state.size == 0 || (status != umppi::Midi2BinaryChunkStatus::CONTINUE && !ends))
+        return false;
+
+    const uint8_t bytes[6] = {
+        static_cast<uint8_t>(word0 >> 8), static_cast<uint8_t>(word0),
+        static_cast<uint8_t>(word1 >> 24), static_cast<uint8_t>(word1 >> 16),
+        static_cast<uint8_t>(word1 >> 8), static_cast<uint8_t>(word1)};
+    // One byte is kept for the trailing F7.
+    if (state.size + count + 1 > MAX_MESSAGE_SIZE)
+        state.overflow = true;
+    else {
+        std::copy_n(bytes, count, state.buffer.data() + state.size);
+        state.size += count;
+    }
+    if (!ends)
+        return false;
+
+    const bool complete = !state.overflow;
+    if (complete) {
+        state.buffer[state.size++] = 0xF7;
+        data = state.buffer.data();
+        size = state.size;
+    }
+    state.size = 0;
+    return complete;
 }
 
 void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
@@ -48,6 +86,13 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
                         break;
                 }
                 break;
+            case umppi::MessageType::SYSEX7: {
+                const uint8_t* sysex = nullptr;
+                size_t sysexSize = 0;
+                if (sysex7_assembler.feed(ump.int1, ump.int2, sysex, sysexSize))
+                    onSysEx7(static_cast<uint4_t>(ump.getGroup()), sysex, sysexSize);
+                break;
+            }
             case umppi::MessageType::MIDI1:
                 group = ump.getGroup();
                 channel = ump.getChannelInGroup();

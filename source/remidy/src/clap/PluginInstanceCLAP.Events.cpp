@@ -91,4 +91,18 @@ namespace remidy {
         evt->velocity = (double) velocity / UINT16_MAX;
     }
 
+    void PluginInstanceCLAP::CLAPUmpInputDispatcher::onSysEx7(remidy::uint4_t group, const uint8_t* data, size_t size) {
+        // tryPush() copies the bytes into the event list heap, which lives until the list is cleared after process().
+        clap_event_midi_sysex_t evt{};
+        evt.header.size = sizeof(clap_event_midi_sysex_t);
+        evt.header.time = timestamp();
+        evt.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt.header.type = CLAP_EVENT_MIDI_SYSEX;
+        evt.header.flags = 0;
+        evt.port_index = group;
+        evt.buffer = data;
+        evt.size = static_cast<uint32_t>(size);
+        owner->events_in->tryPush(&evt.header);
+    }
+
 }

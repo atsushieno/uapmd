@@ -264,6 +264,16 @@ namespace uapmd_jsfx {
             else
                 send(0xD0 | (channel & 0xF), static_cast<uint8_t>(data >> 25), 0);
         }
+        void onSysEx7(remidy::uint4_t group, const uint8_t* data, size_t size) override {
+            (void) group;
+            // ysfx copies the message, which midirecv_buf() then delivers whole.
+            ysfx_midi_event_t event{};
+            event.bus = 0;
+            event.offset = static_cast<uint32_t>(timestamp());
+            event.size = static_cast<uint32_t>(size);
+            event.data = data;
+            ysfx_send_midi(fx_, &event);
+        }
 
     public:
         explicit JsfxMidiDispatcher(ysfx_t* fx) : fx_(fx) {}

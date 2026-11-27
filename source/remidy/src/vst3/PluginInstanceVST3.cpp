@@ -29,6 +29,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
 ) : PluginInstance(info), owner(owner), module(module), factory(factory),
     component(component), processor(processor), controller(controller),
     isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
+    process_data_input_sysex_bytes.reserve(SYSEX_INPUT_BYTES_CAPACITY);
 
     pluginName = info->displayName();
     cached_latency_samples_.store(
@@ -491,6 +492,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
 
     // Cleared after process() so that events queued by setPerNoteController() between calls are delivered.
     processDataInputEvents.clear();
+    process_data_input_sysex_bytes.clear();
     processDataInputParameterChanges.clear();
 
     if (result != kResultOk) {

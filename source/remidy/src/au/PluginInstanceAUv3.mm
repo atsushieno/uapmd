@@ -491,7 +491,8 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
                                 continue;
                             }
                             if (messageType != static_cast<uint8_t>(umppi::MessageType::MIDI1) &&
-                                messageType != static_cast<uint8_t>(umppi::MessageType::MIDI2)) {
+                                messageType != static_cast<uint8_t>(umppi::MessageType::MIDI2) &&
+                                messageType != static_cast<uint8_t>(umppi::MessageType::SYSEX7)) {
                                 unsupportedMessage = true;
                                 break;
                             }
@@ -531,6 +532,27 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
             }
 
             if (!midiEventsScheduled && midiConverter && audioUnit.scheduleMIDIEventBlock) {
+                // SysEx7 has no AURenderEventMIDI form, so it is scheduled as raw F0..F7 bytes, ahead of the notes it may retune.
+                const auto* umpBytes = static_cast<const uint8_t*>(process.eventIn().getMessages());
+                for (size_t offset = 0; offset + sizeof(uint32_t) <= eventBytes;) {
+                    auto* words = reinterpret_cast<const uint32_t*>(umpBytes + offset);
+                    const auto messageType = static_cast<uint8_t>(words[0] >> 28);
+                    const auto messageSize = static_cast<size_t>(umppi::umpSizeInInts(messageType)) * sizeof(uint32_t);
+                    if (offset + messageSize > eventBytes)
+                        break;
+                    const uint8_t* sysex = nullptr;
+                    size_t sysexSize = 0;
+                    if (messageType == static_cast<uint8_t>(umppi::MessageType::SYSEX7) &&
+                        sysex7_assembler.feed(words[0], words[1], sysex, sysexSize)) {
+                        audioUnit.scheduleMIDIEventBlock(eventSampleTime,
+                                                         static_cast<uint8_t>((words[0] >> 24) & 0xFu),
+                                                         static_cast<NSInteger>(sysexSize),
+                                                         sysex);
+                        midiEventsScheduled = true;
+                    }
+                    offset += messageSize;
+                }
+
                 AURenderEvent* midiEvents = midiConverter->convertUMPToRenderEvents(process.eventIn(), eventSampleTime);
 
                 if (midiEvents) {

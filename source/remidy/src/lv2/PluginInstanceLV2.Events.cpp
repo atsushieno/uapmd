@@ -2,14 +2,26 @@
 #include <umppi/umppi.hpp>
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize) {
+    enqueueMidiEvent(atomInIndex, midi1Bytes, eventSize);
+}
+
+void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidiEvent(uint8_t atomInIndex, const uint8_t* bytes, size_t eventSize) {
     int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atomInIndex);
+    if (lv2PortIndex < 0)
+        return;
     auto& forge = owner->lv2_ports[lv2PortIndex].forge;
 
     auto timestampInSamples = static_cast<int64_t>(timestamp());
 
     lv2_atom_forge_frame_time(&forge, timestampInSamples);
     lv2_atom_forge_atom(&forge, eventSize, owner->implContext.statics->urids.urid_midi_event_type);
-    lv2_atom_forge_write(&forge, midi1Bytes, eventSize);
+    lv2_atom_forge_write(&forge, bytes, eventSize);
+}
+
+void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onSysEx7(
+        remidy::uint4_t group, const uint8_t* data, size_t size) {
+    // LV2 MIDI events carry raw MIDI 1.0 bytes, SysEx included with its F0/F7 framing.
+    enqueueMidiEvent(group, data, size);
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueuePatchSetEvent(int32_t index, double value, remidy_timestamp_t timestamp) {

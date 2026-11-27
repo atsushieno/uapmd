@@ -58,6 +58,25 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
     el.addEvent(e);
 }
 
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onSysEx7(remidy::uint4_t group, const uint8_t* data, size_t size) {
+    auto& bytes = owner->process_data_input_sysex_bytes;
+    if (bytes.size() + size > bytes.capacity())
+        return;
+    const auto* stored = bytes.data() + bytes.size();
+    bytes.insert(bytes.end(), data, data + size);
+
+    Event e{};
+    e.busIndex = group;
+    e.sampleOffset = static_cast<int32_t>(timestamp());
+    e.ppqPosition = masterContext()->ppqPosition();
+    e.flags = 0;
+    e.type = Event::kDataEvent;
+    e.data.type = DataEvent::kMidiSysEx;
+    e.data.size = static_cast<uint32>(size);
+    e.data.bytes = stored;
+    owner->processDataInputEvents.addEvent(e);
+}
+
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
     // Assignable Controller (MIDI 2.0)

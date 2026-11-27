@@ -268,6 +268,7 @@ namespace remidy {
             void onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
             void onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
             void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+            void onSysEx7(remidy::uint4_t group, const uint8_t* data, size_t size) override;
         };
 
         class AudioBuses : public GenericAudioBuses {
@@ -439,6 +440,9 @@ namespace remidy {
         ProcessContext process_context{};
         HostEventList processDataInputEvents{};
         HostEventList processDataOutputEvents{};
+        // Bytes of input SysEx data events; reserved once so their pointers stay valid until process() returns.
+        static constexpr size_t SYSEX_INPUT_BYTES_CAPACITY = 8192;
+        std::vector<uint8_t> process_data_input_sysex_bytes{};
         HostParameterChanges processDataInputParameterChanges{};
         HostParameterChanges processDataOutputParameterChanges{};
         ProcessSetup last_process_setup{};

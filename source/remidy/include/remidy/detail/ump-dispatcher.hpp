@@ -1,6 +1,27 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
 namespace remidy {
+    // Reassembles SysEx7 UMP packets per group into F0..F7 framed MIDI 1.0 SysEx bytes.
+    class Sysex7Assembler {
+    public:
+        static constexpr size_t MAX_MESSAGE_SIZE = 1024;
+
+        // Returns true with the complete message, which stays valid until the next start packet of the same group.
+        bool feed(uint32_t word0, uint32_t word1, const uint8_t*& data, size_t& size);
+
+    private:
+        struct GroupState {
+            std::array<uint8_t, MAX_MESSAGE_SIZE> buffer{};
+            size_t size{0};
+            bool overflow{false};
+        };
+        std::array<GroupState, 16> groups{};
+    };
+
     class UmpInputDispatcher {
     public:
         virtual ~UmpInputDispatcher() = default;
@@ -15,6 +36,7 @@ namespace remidy {
     class TypedUmpInputDispatcher : public UmpInputDispatcher {
         uint64_t _jr_timestamp_ticks{0};
         MasterContext* master_context;
+        Sysex7Assembler sysex7_assembler{};
 
     protected:
         // 80h
@@ -39,6 +61,8 @@ namespace remidy {
         virtual void onRC(uint4_t group, uint4_t channel, uint7_t bank, uint7_t index, uint32_t data, bool relative) {}
         // 30h, 50h (rel)
         virtual void onAC(uint4_t group, uint4_t channel, uint7_t bank, uint7_t index, uint32_t data, bool relative) {}
+        // SysEx7 (message type 3), reassembled into F0..F7 framed bytes
+        virtual void onSysEx7(uint4_t group, const uint8_t* data, size_t size) {}
 
         virtual void onProcessStart(AudioProcessContext& src) {}
         virtual void onProcessEnd(AudioProcessContext& src) {}

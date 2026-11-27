@@ -250,6 +250,8 @@ namespace remidy {
         size_t midi_output_count{0};
         MIDIEventList* midi_event_list{nullptr};
         size_t midi_event_list_capacity{0};
+        // Used only when scheduleMIDIEventBlock (MIDI 1.0 bytes) is the delivery path.
+        Sysex7Assembler sysex7_assembler{};
 #ifdef UAPMD_HAS_ARA
         AraHandleExtension ara_handle_extension{*this};
 #endif
@@ -395,6 +397,7 @@ namespace remidy {
         class AUUmpInputDispatcher : UmpInputDispatcher {
             remidy::PluginInstanceAUv2 *owner;
             MIDIEventList* ump_event_list{};
+            Sysex7Assembler sysex7_assembler{};
         public:
             explicit AUUmpInputDispatcher(remidy::PluginInstanceAUv2 *owner);
             ~AUUmpInputDispatcher() override;

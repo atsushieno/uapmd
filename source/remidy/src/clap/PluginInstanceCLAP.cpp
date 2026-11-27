@@ -20,7 +20,8 @@ namespace remidy {
             this->host->attachInstance(this);
 
         audio_buses = new AudioBuses(this);
-        events_in = std::make_unique<clap::helpers::EventList>();
+        // The input heap also holds SysEx bytes (e.g. MTS tuning messages), so it gets more room than the default.
+        events_in = std::make_unique<clap::helpers::EventList>(16384);
         events_out = std::make_unique<clap::helpers::EventList>();
     }
 
