@@ -1,302 +1,228 @@
 # Project Commands and Undo History (AI slop)
 
-## Scope and status
-
-The command and history infrastructure is implemented in `uapmd-data`.
-`uapmd-engine` owns each project's history instance through `TimelineFacadeImpl`
-and supplies the concrete sequencer mutations. The native application,
-JavaScript and MCP clients share that project history. The scope is the project
-document: clips, tracks, plug-in graphs, plug-in state and authored content.
-Transport, rendering, scanning, cache contents and UI-window state are runtime
-state and are not undoable.
-
-The document mutation funnel, persistent object identity, event transactions
-and detachable fragments are in place. Phase 1 tasks 1–7 and task 10 are
-implemented. Tasks 8, 9 and 11 are substantially implemented but still have
-the remaining work listed below. Clipboard and paste semantics are Phase 2.
-
-The ARA integration has not been verified against a real ARA plug-in.
-
-| Phase 1 area | Status |
-| --- | --- |
-| History core and operation API | Implemented |
-| Clip properties, structure and compounds | Implemented |
-| Gesture scopes and compatible coalescing | Implemented in the command/history layer; additional callers may still need integration |
-| Track add, remove and restore | Implemented, including asynchronous preparation and failure cleanup |
-| Plug-in graph, parameter, state and lifecycle operations | Implemented for command surfaces; unprovenanceable plug-in notifications are synchronization-only |
-| Native, JavaScript and MCP history control | Implemented; persistent progress UI remains |
-| Save point and dirty state | Implemented in the history layer; exposed with pending plug-in state by `SequencerEngine` |
-| Resource retention and replay failures | Core policy implemented and tested; relinking UX remains |
-
-## Why undo precedes the clipboard
-
-Copy and paste are document mutations. Once the mutation funnel and detached
-fragments exist, paste and duplicate can reuse them and become undoable without
-a second insertion architecture. Undoing a deletion also needs the same
-self-contained fragment that a clipboard payload needs, so the dependency runs
-from undo to clipboard rather than the other way around.
+The native application, JavaScript and MCP share one undo history for the
+current project. History covers authored changes submitted through project
+commands, including clips, tracks, plug-in graphs and explicit plug-in
+parameter and state edits. Transport controls, the playback loop, selection,
+clipboard contents, rendering caches, plug-in scanning and window state stay
+outside history.
 
 ## Module responsibilities
 
-`uapmd-data` provides `ProjectCommand`, `ProjectCommandManager`, `ProjectHistory`
-and the operation-level `ProjectUndoEngine`, along with persistent addresses,
-fragment types and document-event transactions. These contracts do not require
-`uapmd-engine`.
+`uapmd-data` defines the document contracts, persistent addresses, fragments,
+document events and the command and history interfaces. `ProjectCommands` is
+the typed edit API. `ProjectCommandManager` applies the mutation-origin policy
+and exposes history controls through `ProjectCommands::history()`.
 
-`uapmd-engine` provides `ProjectCommands`, concrete commands and mutation
-primitives in `TimelineFacade`, including resource preparation and fragment
-capture/restore. `TimelineFacadeImpl` owns the history and command manager,
-supplying model-thread dispatch and document-transaction callbacks. A
-`ProjectHistoryFactory` passed at engine construction selects the history
-implementation.
+`uapmd-engine` implements `ProjectCommands` and the sequencer mutations behind
+it. Structural and asynchronous edit entry points also live on
+`TimelineFacade`. `TimelineFacadeImpl` owns the history and command manager and
+provides model-thread dispatch and document-transaction callbacks.
 
-The default `CommandInverseHistory` adapts forward/revert command pairs onto
-`ProjectUndoEngine`. `ProjectHistory` is expressed in commands so alternative
-strategies, such as snapshots or journals, need not implement retained inverse
-operations. `NullProjectHistory` executes commands without recording history;
-it reports no history-derived dirty state and is unsuitable for callers that
-use that state to decide whether to prompt for saving.
+The default `CommandInverseHistory` stores forward and revert commands using
+the operation-level `ProjectUndoEngine`. A `ProjectHistoryFactory` supplied
+when constructing the engine can select another implementation. The
+`ProjectHistory` interface receives commands, so an implementation can capture
+snapshots or journal edits. `NullProjectHistory` executes commands without
+retaining undo entries and always reports a clean history. Save prompts that
+depend on history-derived dirty state require a history implementation that
+tracks it.
 
-The sequencer, plug-in, ARA and application sections below describe integration
-with this infrastructure, rather than additional responsibilities of
-`uapmd-data`.
+## Recording and replay
 
-## Design contract
+Use the document view to read project state and the command entry points to
+submit edits. The command manager sends `User` and `Remote` mutations to
+history. It applies `Load`, `Internal` and `UndoRedo` mutations without
+creating new entries.
 
-The existing document model remains the observer-facing API. A mutation layer
-is the only path that changes document state and it emits the existing document
-events as a projection of its committed activity.
+A command captures the state it will overwrite and registers a reversing
+command with `ProjectCommandContext::recordRevert()`. A successful edit with
+no revert creates no history entry. Some structural operations can capture a
+complete forward/revert pair only after constructing the new object. These use
+`ProjectCommandManager::recordExecuted()` after the change and its history
+payload are ready.
 
-Undo entries are created at the mutation boundary, not by listening to events.
-Events contain post-change state and cannot reliably recover before-state or
-gesture boundaries. A failed mutation must therefore fail at its call site,
-not silently leave an incorrect history entry.
+Undo runs the revert command. Redo runs the forward command. Each successful
+execution can refresh the command for the opposite direction. Property
+commands retain the values needed in each direction. Structural commands can
+retain detached fragments and extension data. The same mutation primitives
+emit document events and invalidate derived state during replay. Observers
+receive the committed changes and can read the resulting document state.
 
-The default history uses typed commands and their inverses rather than
-whole-project snapshots or JSON Patch. This is the default implementation's
-strategy, not a restriction on `ProjectHistory` implementations. Property
-commands retain the values needed in each direction. Structural commands retain
-detached fragments and opaque extension data. Every operation addresses tracks,
-clips and graph nodes by persistent identity, never by a mutable vector index.
+Tracks, clips and plug-in graph nodes use persistent identities so replay can
+find an object even when its index or runtime plug-in instance ID changes.
+The project format stores these identities. The reader supplies positional
+fallback IDs for older track and clip records without IDs.
 
-The authoritative project model remains mutable. Immutable real-time snapshots
-are a separate audio-publication mechanism; undo does not replace them with a
-copy-on-write project tree.
+## Asynchronous commands and event delivery
 
-## Asynchronous execution
+Commands and history operations complete through callbacks. Simple property
+edits can complete inline. Track or plug-in operations may need to prepare
+resources asynchronously. Document commits and history changes run on the model
+thread. Callbacks from external APIs must dispatch back to it before touching
+the document or registering a revert. Audio processing consumes real-time
+snapshots independently of the mutable project and its history.
 
-Commands expose callback-based `execute` completion, and `ProjectHistory`
-exposes callback-based undo and redo. The default history uses
-`ProjectUndoEngine`, whose operations expose asynchronous `perform`, `undo` and
-`redo` completion; there is no separate synchronous variant of that engine.
-Simple property commands complete inline, while plug-in and track commands may
-prepare resources asynchronously.
+A pending history operation makes competing history operations return
+`Busy`. Failed edits create no history entry. Failed undo or redo clears the
+busy state and leaves the history cursor and entry in place. A successful new
+edit after undo discards the redo branch.
 
-History state and document commits are serialized on the model thread. Callbacks
-from plug-in or file APIs must be dispatched back to that thread before they
-touch the document or history. The audio thread never participates in history
-execution.
+`ProjectDocumentTransaction` batches observer events until the outermost
+transaction closes. Events emitted outside a transaction arrive as a batch of
+one. Repeated events with the same kind and track, clip and audio-source IDs
+can collapse into one notification. Listeners can then reread the current
+state from `ProjectDocumentView`.
 
-The history cursor advances only after the requested operation succeeds. A
-pending operation makes competing history mutations busy. A failed operation is
-not added to history; a failed undo or redo leaves the cursor and the pending
-entry unchanged.
+An event transaction only controls delivery. History scopes define undo steps
+and cancellation runs inverse operations. Keep event transactions closed
+during external work such as plug-in state requests and ARA archiving. An
+asynchronous command can open a transaction around its synchronous commit.
 
-Fallible preparation happens before the visible document commit where possible.
-Compound operations execute children in reverse order for undo and forward order
-for redo. If a later child fails after earlier children have committed, the
-completed children are compensated. A half-applied compound step is not a valid
-success or failure result.
+## Compound steps and gestures
 
-Replay uses the same mutation primitives with history recording disabled.
-Ordinary document events, graph updates and derived cache invalidation remain
-enabled. Replay suppression is carried in an operation context rather than a
-process-wide flag.
+Open a named step when one action submits several commands. For synchronous
+actions, `ScopedCommandStep` cancels an uncommitted step on scope exit.
+Asynchronous callers can pair `beginStep()` with `endStep()` or
+`cancelStep()` after the pending children complete. Only one step or gesture
+can be open at a time. Both default to per-command event delivery. Whole-step
+event batching is intended for actions whose commands all finish inline.
 
-`ProjectDocumentTransaction` batches observer events. It is not an undo scope,
-does not capture inverses and does not roll back failed work. Named compounds
-and gesture scopes are explicit history scopes.
+A gesture can merge adjacent compatible commands with the same command ID,
+keeping the initial revert and the final forward value. Intermediate values
+still reach the document, so controls and observers update during the gesture.
+The mixer uses this for gain and balance drags, and the built-in plug-in
+parameter controls also use gesture scopes.
 
-## Foundation
+Undo and cancellation run children in reverse order. Redo runs them in
+forward order. If a child fails during replay, the engine tries to reverse the
+children that already succeeded in that attempt. A failure in this rollback
+is reported alongside the original error and can leave the document partially
+changed, while the history cursor stays in place.
 
-### Persistent identity
+## Supported edits
 
-Tracks, clips and plug-in graph nodes have identifiers that survive save/load
-and can be restored. Readers mint positional identifiers for older files that
-do not contain IDs. Graph node IDs are persisted instead of being derived from
-session-local plug-in instance IDs.
+### Clips and MIDI content
 
-### Mutation funnel and transactions
+Undoable clip properties include position and anchoring, start trim and
+duration, enabled state, name, file path, file-save flag, markers, audio warps,
+gain and mute. Audio and MIDI content replacement retains before and after
+clip fragments. Authored MIDI edits such as piano-roll note changes, raw UMP
+edits and recorded MIDI use the clip content path. A MIDI import that also
+changes master-track content groups the edits into one step.
 
-`ProjectCommands` supplies concrete sequencer commands to
-`ProjectCommandManager`, which centralizes mutation-origin policy, history
-interaction, model-thread completion dispatch and event-transaction scoping.
-For recorded edits, `ProjectHistory` executes the command so it can capture
-state before mutation. `TimelineFacade` supplies the underlying mutation
-primitives and emits document events from the same committed path. Event
-transactions nest; only the outermost transaction flushes. Events outside an explicit transaction are delivered as a batch of
-one. Repeated events for the same object and event kind may collapse, with
-listeners re-reading the current document state at the batch boundary.
+Clip creation, deletion and clearing use `ProjectClipFragment`. Deletion
+captures the fragment before the document edit so extensions can archive
+their state. Restoration reuses the original persistent identity. The fragment
+carries clip and source-node data, MIDI content where applicable, and extension
+state. File-backed audio may still depend on the source file.
 
-Transactions must not remain open across asynchronous external work, including
-plug-in state requests and ARA archiving. Such commands batch only their
-synchronous commits. Steps and gestures default to per-command event batching;
-whole-step batching is reserved for steps whose commands all complete inline.
+### Tracks and routing
 
-### Detachable fragments
+Track edits include gain, output panners, mute, solo, bypass, freeze policy,
+and the presentation properties for color, organizational path and sort
+order. Track properties address the master track where applicable. Project
+configuration commands cover master-track markers and the latency and
+monitoring settings snapshot, including record-arm and input monitoring.
+Device-input creation, rerouting and removal are undoable.
 
-`ProjectClipFragment` and `ProjectTrackFragment` are non-destructive detached
-representations used by undo and, later, the clipboard. Restore reuses the
-captured identity; paste and duplicate will use `Mint` in Phase 2.
-
-Track fragments include graph topology, plug-in state, clips and extension
-state. Capturing or attaching a track may be asynchronous. Capture fails rather
-than returning a fragment that silently lost extension or graph state.
-
-### ARA invalidation
-
-ARA content-change notifications revoke affected frozen renders. Notifications
-that only indicate dirty state for re-archiving are ignored because projects
-are written as complete archives. ARA region head/tail timing is not currently
-queried; see the ARA follow-up section.
-
-## Implemented Phase 1 operations
-
-### Clip properties and content
-
-Clip enablement, duration, name, file path, save state, markers, warps, gain
-and mute are undoable property operations. Audio and MIDI content replacement
-retains complete before/after clip fragments, including source-node content,
-duration and extension state. Piano-roll/raw UMP edits and MIDI recording use
-the same content operation.
-
-Clip creation, deletion, clearing and restoration use `ProjectClipFragment`.
-Deletion captures before the document edit so ARA archiving remains legal;
-restore reuses the original persistent identity. MIDI imports that affect
-musical and master-track clips group their changes into one compound step.
-
-### Track structure and properties
-
-Track creation, deletion and restoration use asynchronous fragment operations.
-Preparation constructs plug-ins, state, clips and graph topology on a detached
-track. The track is published only after preparation succeeds. Failure removes
-the detached resources and does not advance history or expose a partial track.
-
-Track and master-track gain, mute, solo, bypass and freeze policy are undoable.
-Record-arm, input monitoring, playback compensation and latency settings use a
-single snapshot operation. Device-input creation, routing and removal use typed
-operations and avoid collisions with clip/source-node IDs.
+Track creation and removal retain the data needed to replay them.
+`ProjectTrackFragment` captures track settings, clips, graph topology,
+plug-in state and extension data. Track restoration can prepare plug-ins and
+their state asynchronously on a detached track. The track is published after
+preparation succeeds. On preparation failure the detached resources are
+cleaned up.
 
 ### Plug-ins and graphs
 
-Global and per-note parameter commands use persistent plug-in identity. Generic
-hosted plug-in parameter notifications only synchronize the engine's cached
-value; they do not create history. The formats do not identify whether such a
-notification came from a human editor gesture, preset loading, state restore,
-initialization or automation, so inferring history from it can corrupt undo and
-redo. Hosted plug-in state-dirty notifications have the same limitation and
-only refresh the cached opaque state.
+The command paths for global parameters, per-note controllers, bypass, UMP
+group, presets and whole-state replacement participate in history. Plug-in
+insertion and removal retain the format, plug-in identifier, persistent graph
+node identity, UMP group and state. Adding a plug-in on a new track records the
+track and its initial plug-in together. Graph type changes and connection
+edits are also undoable.
 
-Plug-in insertion and deletion restore format, identifier, persistent graph
-node identity, UMP group and state. Insertion on a new track records the track,
-instance, state, group and graph together. Graph type replacement, connection
-edits, preset loading and whole-state replacement have undo/redo operations.
+Hosted parameter and state-dirty notifications synchronize cached values.
+Those notifications can come from preset loading, state restore,
+initialization, automation or a plug-in editor, so they do not establish the
+origin of a new authored edit. Native plug-in editor gestures need a hosting
+contract that can distinguish a human gesture from those other causes.
 
-### Application surfaces
+### Clipboard
 
-The native application exposes history state and asynchronous undo/redo. Menu
-items and shortcuts report descriptions, busy state and failures. JavaScript
-and MCP expose pollable mutation jobs, history queries and named remote
-compound scopes. A remote mutation is one history step unless its client owns
-an explicit compound scope.
+Timeline copy captures `ProjectClipFragment` values in the application's
+internal clipboard with relative time and track offsets. Copy changes only the
+clipboard. Cut and group deletion each record one named history step for the
+clip removals.
 
-## Save points and dirty state
+Paste can use offsets from the destination track or resolve the original
+tracks by persistent ID. The initial paste uses `ProjectObjectIdPolicy::Mint`
+to give the new clips fresh identities. The paste is one history step, and
+redo restores those pasted clips using the identities recorded by that step.
+Piano-roll cut, paste and group deletion commit their note changes through the
+MIDI clip content path.
 
-`SequencerEngine::isProjectDirty()` combines the selected history's dirty state
-with pending asynchronous plug-in mutations. The default history compares the
-current history-node identity with the node marked saved. This handles undo
-followed by a new edit, where a numeric cursor alone would be ambiguous.
+## Application and remote controls
 
-File saves capture the history-node ID when serialization starts and mark that
-node saved only after the write succeeds. Document-provider saves defer the
-mark until the provider confirms the final write. Per-track dirty state is
-runtime cache/render invalidation state and is owned by `SequencerEngine`, not
-`AppModel`.
+The native application's System menu shows the next undo and redo descriptions
+and disables those actions while history is busy. Menu actions and keyboard
+shortcuts use asynchronous undo and redo and report failures. After successful
+replay, the app model reconciles plug-in instances and republishes the track
+layout.
 
-## Resource and retention policy
+JavaScript exposes `uapmd.sequencer.getHistoryState()`, `undo()`, `redo()` and
+`beginCompound()` / `endCompound()` / `cancelCompound()`. MCP exposes the
+corresponding `get_history_state`, `undo`, `redo`, `begin_compound`,
+`end_compound` and `cancel_compound` tools. History queries and opening a scope
+return immediately. For undo, redo, ending or cancelling a remote scope, poll
+the returned mutation job using `uapmd.mutations.getJob()` or MCP
+`get_mutation_job`. A remote scope uses the shared project history and is
+visible to other application surfaces.
 
-The default history uses command retention estimates to account for its
-operations. `ProjectUndoEngine` evicts complete oldest history entries when the configured budget is exceeded, retains a newest
-operation even when it alone exceeds the budget, and treats a compound as one
-atomic budget unit. Clearing or evicting entries releases their fragments and
-opaque state on the model thread, never on the audio thread.
+## Save points and retention
 
-Missing file sources and unavailable plug-ins are replay failures. The history
-entry remains available for retry after the resource is restored, and detached
-track construction ensures that failed plug-in restoration leaves no published
-track or hosted instance behind.
+The default history compares the current history-state ID with the saved ID.
+An open compound or gesture also counts as dirty. A fresh edit after undo
+gets a new state ID, even if it lands at the same depth as the saved state.
+`SequencerEngine::isProjectDirty()` also checks for pending asynchronous
+plug-in mutations. Per-track dirty flags belong to the engine and serve
+runtime cache and render invalidation.
 
-## Remaining Phase 1 work
+File saves capture the history-state ID at the start of serialization and
+mark that ID saved after a successful write. Document-provider saves mark it
+saved after the provider confirms the final write. A later history state stays
+dirty. Loading a project establishes a fresh, saved history root.
 
-### Plug-in and graph adoption
+The default history budget is 64 MiB of estimated retained data. When enforcing
+the budget, `ProjectUndoEngine` evicts the oldest complete undo entries while
+keeping at least one undo entry. A compound counts as one unit. Clearing
+history or dropping entries releases their retained fragments and opaque
+state on the model thread.
 
-- Route every authored parameter or state mutation through an explicit project
-  command so its cause is known before it reaches the plug-in.
-- Define a hosting contract with genuine human-gesture provenance before
-  making native plug-in-editor changes undoable. VST3 begin/perform/end edit is
-  insufficient: a plug-in may emit the same sequence while loading a preset.
-  Playback automation remains excluded; authored automation data remains a
-  document operation.
-- Keep runtime metadata such as virtual MIDI labels outside project undo.
+A missing file source or unavailable plug-in can cause replay to fail.
+The entry stays available for retry once the resource is restored. File-backed
+audio relinking still needs a user-facing recovery path.
 
-### Application and remote clients
+## ARA and verification
 
-- Add persistent progress and cancellation presentation for long-running native
-  operations.
-- Narrow replay notifications from full track-layout republishing to precise
-  app-model deltas after all mutations are behind the funnel.
-- Ensure future JavaScript/MCP device-routing surfaces use callback jobs or
-  request identifiers and never block the model thread.
-- Audit every persisted GUI, JavaScript and MCP edit and classify any remaining
-  bypass as either an undoable document mutation or explicit runtime state.
+ARA state participates through clip fragment extension data. Content-change
+notifications revoke affected frozen renders. A notification that only marks
+the ARA document dirty for re-archiving does not create a history entry. The
+host exposes an ARA content reader, but project editing does not currently
+consume its results. ARA playback-region head and tail timing remains outside
+the current implementation. Real ARA plug-in verification remains open.
 
-### Resource UX
-
-- Provide user-facing recovery or relinking for file-backed audio when a redo
-  source is unavailable.
-
-## ARA follow-up
-
-The ARA content reader is available but has no consumer. A future consumer may
-generate MIDI clips from detected notes, converting ARA seconds to ticks; the
-resulting clip creation must use the mutation funnel.
-
-ARA playback-region head and tail timing is not queried. General plug-in tail
-handling is conservative but does not model per-region head time. Bounded
-offline render and track-freeze paths will need a contributor hook for region
-head requirements before this can be implemented and verified with a real ARA
-plug-in.
-
-Frozen render revocation from clip and document changes is implemented and
-idempotent. Graph-change invalidation needs separate review because the freeze
-renderer temporarily changes graphs while rendering.
-
-## Verification
-
-Coverage includes project-file backward compatibility, event batching, fragment
-round trips, asynchronous plug-in creation/state restoration, compound and
-gesture behavior, clip and track undo/redo, graph and parameter operations,
-resource failures, memory-budget eviction, save-point dirty state and the
-JavaScript/MCP history jobs. Plug-in lifecycle tests also send synchronization
-notifications after several event-loop turns and from a worker thread, and
-verify that they do not replace the add/remove history entries.
-
-Tests do not replace verification with a real ARA plug-in or every platform
-plug-in implementation. The current test suite uses deterministic plug-in and
-audio-file doubles for those paths.
+Repository tests exercise project-file compatibility, document event batching,
+fragment identity and round trips, clip and track replay, graph and plug-in
+changes, asynchronous restoration and failure cleanup, history retention,
+save points and JavaScript history jobs. Plug-in lifecycle tests use a test
+host to check that delayed and worker-thread notifications leave the
+add/remove history intact.
 
 ## Related documents
 
+- [UAPMD app editing and clipboard controls](../users/UAPMD_APP.md#clips)
+- [UAPMD project file format](UAPMD_PROJECT_FILE.md)
 - [Sequencer](../uapmd-engine/SEQUENCER.md)
 - [Track freezing](../uapmd-engine/TRACK_FREEZING.md)
 - [API policy](../design/API_POLICY.md)
