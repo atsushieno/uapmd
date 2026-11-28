@@ -18,6 +18,7 @@
 #include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ClipPreview.hpp"
 #include "ContextActions.hpp"
+#include "Playhead.hpp"
 
 using namespace uapmd;
 
@@ -28,7 +29,6 @@ namespace {
 constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
-constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
 constexpr ImU32 kLoopBandColor = IM_COL32(70, 150, 255, 150);
 constexpr ImU32 kLoopEdgeColor = IM_COL32(120, 185, 255, 255);
 constexpr ImU32 kLoopLaneTintColor = IM_COL32(70, 150, 255, 24);
@@ -108,6 +108,13 @@ bool timelineStyleMatches(const ImTimelineStyle& style, const SequenceEditor::Re
         style.HeaderHeight == expectedHeaderHeight &&
         style.ScrollbarThickness == expectedScrollbarThickness &&
         std::fabs(style.SeekbarWidth - expectedSeekbarWidth) < 0.5f;
+}
+
+double currentPlayheadSeconds(uapmd_app::AppModel& appModel) {
+    const int32_t sampleRate = appModel.sampleRate();
+    return sampleRate > 0
+        ? static_cast<double>(appModel.sequencer().engine()->playbackPosition()) / sampleRate
+        : -1.0;
 }
 } // namespace
 
@@ -665,9 +672,7 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
 
     auto& appModel = uapmd_app::AppModel::instance();
     const auto bounds = appModel.timelineContentBounds();
-    const int32_t sampleRate = appModel.sampleRate();
-    const double playheadSeconds = sampleRate > 0
-        ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
+    const double playheadSeconds = currentPlayheadSeconds(appModel);
     // The scrollable domain has to include the same trailing pad rebuildTimeline gives
     // the timeline's max frame. Without it the furthest scroll position puts the last clip's end
     // exactly on the right edge, so its end is clipped away and can never be brought into view.
@@ -808,7 +813,7 @@ void SequenceEditor::renderTimeline(const RenderContext& context, float availabl
             renderLoopRegion(context, winPos.y, clipAreaMinY,
                 clipAreaMaxY - static_cast<float>(timeline_.style.ScrollbarThickness), clipAreaMaxX,
                 timelineHovered && !shouldBlockInput);
-            drawPlayheadIndicator(clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
+            drawPlayheadIndicator(winPos.y, clipAreaMinY, clipAreaMaxY, context.uiScale);
         }
 
         const ImVec2 headerMousePos = ImGui::GetMousePos();
@@ -1832,66 +1837,40 @@ void SequenceEditor::renderLoopRegion(const RenderContext& context, float header
 }
 
 void SequenceEditor::drawPlayheadIndicator(
-    float headerMinX,
     float headerMinY,
-    float headerMaxX,
-    float headerMaxY
+    float headerMaxY,
+    float lanesMaxY,
+    float uiScale
 ) const {
-    if (!timeline_.widget)
-        return;
-
-    auto& appModel = uapmd_app::AppModel::instance();
-    const int32_t sampleRate = appModel.sampleRate();
-    if (sampleRate <= 0)
-        return;
-
-    const auto& timelineState = appModel.timeline();
-    const double playheadSeconds = timelineState.playheadPosition.toSeconds(sampleRate);
-    if (!std::isfinite(playheadSeconds))
-        return;
-
-    const int32_t maxFrame = timeline_.widget->GetMaxFrame();
-    if (maxFrame <= 0)
-        return;
-
-    const double playheadFrame = static_cast<double>(axis_.frameFromSeconds(playheadSeconds));
-    const double clampedFrame = std::clamp(playheadFrame, 0.0, static_cast<double>(maxFrame));
-    const double startFrame = static_cast<double>(timeline_.widget->GetStartTimestamp());
-    if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
-        return;
-
+    const double playheadSeconds = currentPlayheadSeconds(uapmd_app::AppModel::instance());
     const float scale = timeline_.widget->GetScale();
-    const float clipMinX = headerMinX;
-    const float clipMaxX = headerMaxX;
-    if (clipMaxX <= clipMinX) {
+    if (playheadSeconds < 0.0 || scale <= 0.0f)
         return;
-    }
 
-    // Same origin the clips use, so the playhead lines up with them rather than with this
-    // window's edge (see drawRuler).
-    const float nodeOriginX = timeline_.widget->mContentAreaRect.Min.x + timeline_.style.LegendWidth;
-    const float x = nodeOriginX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale));
-    const float yTop = headerMinY;
-    const float yBottom = headerMaxY;
-    if (yBottom <= yTop) {
+    // Use the padded child origin shared by the clips and the ruler.
+    const auto& content = timeline_.widget->mContentAreaRect;
+    const float left = content.Min.x + timeline_.style.LegendWidth;
+    const float right = content.Max.x;
+    const double playheadFrame = axis_.frameFromSeconds(playheadSeconds);
+    const float x = left + static_cast<float>((playheadFrame - timeline_.widget->GetStartTimestamp()) * scale);
+    if (right <= left || x < left || x > right)
         return;
-    }
 
-    const float headerHeight = yBottom - yTop;
-    const float triangleHeight = std::clamp(headerHeight * 0.75f, 6.0f, headerHeight);
+    const float headerHeight = headerMaxY - headerMinY;
+    const float triangleHeight = std::min(headerHeight, std::max(6.0f, headerHeight * 0.75f));
     const float halfBaseWidth = std::clamp(triangleHeight * 0.35f, 4.0f, 12.0f);
 
-    const float tipX = std::clamp(x, clipMinX, clipMaxX);
-    const float baseLeftX = std::max(clipMinX, tipX - halfBaseWidth);
-    const float baseRightX = std::min(clipMaxX, tipX + halfBaseWidth);
-    const float tipY = std::min(yBottom, yTop + triangleHeight);
-
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->PushClipRect(ImVec2(clipMinX, yTop), ImVec2(clipMaxX, yBottom), true);
-    const ImVec2 baseLeft(baseLeftX, yTop);
-    const ImVec2 baseRight(baseRightX, yTop);
-    const ImVec2 tip(tipX, tipY);
-    drawList->AddTriangleFilled(baseLeft, baseRight, tip, kTimelinePlayheadColor);
+    const float tipY = headerMinY + triangleHeight;
+    drawPlayheadBar(drawList, x, {left, tipY}, {right, headerMaxY}, uiScale);
+    drawPlayheadBar(timelineSelectionDrawList(), x, {left, headerMaxY},
+                    {right, std::min(lanesMaxY, content.Max.y)}, uiScale);
+
+    drawList->PushClipRect({left, headerMinY}, {right, headerMaxY}, true);
+    const ImVec2 baseLeft(std::max(left, x - halfBaseWidth), headerMinY);
+    const ImVec2 baseRight(std::min(right, x + halfBaseWidth), headerMinY);
+    const ImVec2 tip(x, tipY);
+    drawList->AddTriangleFilled(baseLeft, baseRight, tip, kPlayheadColor);
     drawList->AddTriangle(baseLeft, baseRight, tip, IM_COL32(0, 0, 0, 200), 1.0f);
     drawList->PopClipRect();
 }

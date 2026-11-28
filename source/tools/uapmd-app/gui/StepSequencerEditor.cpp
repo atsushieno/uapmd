@@ -1,4 +1,5 @@
 #include "StepSequencerEditor.hpp"
+#include "Playhead.hpp"
 #include "TouchInput.hpp"
 
 #include <algorithm>
@@ -410,16 +411,27 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         }
 
         ImGui::Separator();
+        const auto loopTicks = patternTicks();
         ImGui::Text("Pattern length: %llu ticks | Expanded length: %llu ticks",
-                    static_cast<unsigned long long>(patternTicks()),
-                    static_cast<unsigned long long>(patternTicks() * state_.repetitions));
+                    static_cast<unsigned long long>(loopTicks),
+                    static_cast<unsigned long long>(loopTicks * state_.repetitions));
+        std::optional<double> playbackStep;
+        if (context.clipPlaybackBeat) {
+            if (const auto beat = context.clipPlaybackBeat(state_.trackIndex, state_.clipId)) {
+                const double tick = *beat * state_.tickResolution;
+                if (tick >= 0.0 && tick < loopTicks * state_.repetitions)
+                    playbackStep = std::fmod(tick, static_cast<double>(loopTicks)) / stepTicks();
+            }
+        }
         const float velocityPanelHeight = 140.0f * context.uiScale;
         ImGui::BeginChild("##StepSequencerLanes",
                           ImVec2(0.0f, -velocityPanelHeight - ImGui::GetFrameHeightWithSpacing() * 2.0f),
                           true, ImGuiWindowFlags_HorizontalScrollbar);
         const float labelWidth = 190.0f * context.uiScale;
         const float buttonSize = 26.0f * context.uiScale;
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2.0f * context.uiScale, 2.0f * context.uiScale));
+        const float cellSpacing = 2.0f * context.uiScale;
+        const float stepWidth = buttonSize + cellSpacing;
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(cellSpacing, cellSpacing));
         if (state_.focusDrumRoot) {
             // MIDI 36 (C2) is the usual kick-drum root for a GM pattern.
             ImGui::SetScrollY(static_cast<float>(81 - 36) *
@@ -428,10 +440,11 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         }
         ImGui::TextUnformatted("Note");
         ImGui::SameLine(labelWidth);
+        const ImVec2 stepsOrigin = ImGui::GetCursorScreenPos();
         for (int i = 0; i < state_.patternSteps; ++i) {
             ImGui::Text("%d", i + 1);
             if (i + 1 < state_.patternSteps)
-                ImGui::SameLine(labelWidth + (i + 1) * (buttonSize + ImGui::GetStyle().ItemSpacing.x));
+                ImGui::SameLine(labelWidth + (i + 1) * stepWidth);
         }
         ImGui::Separator();
         bool inlineEditorVisible = false;
@@ -654,6 +667,12 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
             }
             ImGui::PopID();
         }
+        if (playbackStep) {
+            const float x = stepsOrigin.x + static_cast<float>(*playbackStep * stepWidth);
+            drawPlayheadBar(ImGui::GetWindowDrawList(), x, stepsOrigin,
+                            {stepsOrigin.x + state_.patternSteps * stepWidth, ImGui::GetCursorScreenPos().y},
+                            context.uiScale);
+        }
         if (state_.inlineEditor != InlineEditor::None && !inlineEditorVisible) {
             state_.inlineEditor = InlineEditor::None;
             state_.focusInlineEditor = false;
@@ -668,7 +687,6 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         ImGui::TextDisabled("Each active note is shown separately; editing will be added in-place later.");
         const ImVec2 meterOrigin = ImGui::GetCursorScreenPos();
         const ImVec2 meterAvailable = ImGui::GetContentRegionAvail();
-        const float stepWidth = buttonSize + 2.0f * context.uiScale;
         const float meterWidth = std::max(meterAvailable.x, labelWidth + state_.patternSteps * stepWidth);
         const float meterHeight = std::max(20.0f * context.uiScale, meterAvailable.y - 2.0f * context.uiScale);
         auto* drawList = ImGui::GetWindowDrawList();
@@ -697,6 +715,11 @@ void StepSequencerEditor::renderWindow(const RenderContext& context) {
         drawList->AddLine(ImVec2(meterLeft + state_.patternSteps * stepWidth, meterOrigin.y),
                           ImVec2(meterLeft + state_.patternSteps * stepWidth, meterBottom),
                           ImGui::GetColorU32(ImGuiCol_Separator));
+        if (playbackStep) {
+            const float x = meterLeft + static_cast<float>(*playbackStep * stepWidth);
+            drawPlayheadBar(drawList, x, {meterLeft, meterOrigin.y},
+                            {meterLeft + state_.patternSteps * stepWidth, meterBottom}, context.uiScale);
+        }
         ImGui::Dummy(ImVec2(meterWidth, meterHeight));
         ImGui::EndChild();
         if (editedThisFrame && state_.dirty)

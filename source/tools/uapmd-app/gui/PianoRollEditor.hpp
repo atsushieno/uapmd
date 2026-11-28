@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,6 +46,7 @@ public:
     // Passed each frame to render(); carries per-frame scale and write-back callbacks.
     struct RenderContext {
         float uiScale{1.0f};
+        std::function<std::optional<double>(int32_t trackIndex, int32_t clipId)> clipPlaybackBeat;
         std::function<void(int32_t trackIndex, int32_t clipId)> onCommitted;
         // Called when the user presses/slides on a piano key (for live note preview).
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOn;
@@ -142,7 +144,7 @@ private:
     // Returns true if a note was clicked (selectedNoteIdx updated).
     void renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width, float height,
                         float noteH, float pxPerSec, float hScroll, float vScrollPx,
-                        WindowState& state, float uiScale) const;
+                        WindowState& state, float uiScale, std::optional<double> playbackBeat) const;
 
     // Automation event list for the selected note (bottom panel)
     void renderAutomationPanel(WindowState& state, const RenderContext& ctx) const;

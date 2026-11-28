@@ -20,7 +20,6 @@
 #include <imgui.h>
 #include <umppi/umppi.hpp>
 #include <uapmd-data/uapmd-data.hpp>
-#include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
@@ -36,6 +35,52 @@ namespace uapmd_app_gui {
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
+
+std::optional<double> clipPlaybackBeat(int32_t trackIndex, int32_t clipId) {
+    auto& app = uapmd_app::AppModel::instance();
+    const auto tracks = app.getTimelineTracks();
+    const auto sampleRate = app.sampleRate();
+    if (sampleRate <= 0 || trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+        return std::nullopt;
+
+    auto* track = tracks[trackIndex];
+    const auto* clip = track->clipManager().getClip(clipId);
+    if (!clip || clip->clipType != ClipType::Midi)
+        return std::nullopt;
+
+    const uapmd::TimelinePosition position(app.sequencer().engine()->playbackPosition());
+    const auto sourceSample = clip->getSourcePosition(position);
+    if (sourceSample < 0)
+        return std::nullopt;
+
+    // Invert the MIDI playback schedule, including any source content before a trimmed clip start.
+    const auto& tempoMap = app.masterTempoMap();
+    if (tempoMap.hasTempoData()) {
+        const double sourceStart = static_cast<double>(clip->position.samples - clip->sourceOffsetSamples) / sampleRate;
+        return tempoMap.secondsToBeats(position.toSeconds(sampleRate)) -
+               tempoMap.secondsToBeats(std::max(0.0, sourceStart));
+    }
+
+    const auto node = track->getSourceNode(clip->sourceNodeInstanceId);
+    const auto* source = dynamic_cast<const uapmd::MidiClipSourceNode*>(node.get());
+    if (!source)
+        return std::nullopt;
+
+    double seconds = static_cast<double>(sourceSample) / sampleRate;
+    double beat = 0.0;
+    double bpm = source->clipTempo();
+    for (const auto& change : source->tempoChanges()) {
+        const double changeBeat = static_cast<double>(change.tickPosition) / source->tickResolution();
+        const double span = (changeBeat - beat) * 60.0 / bpm;
+        if (seconds < span)
+            break;
+        seconds -= span;
+        beat = changeBeat;
+        bpm = change.bpm;
+    }
+    return beat + seconds * bpm / 60.0;
+}
+
 class PianoRollClipEditor final : public uapmd_addin::ClipEditor {
 public:
     explicit PianoRollClipEditor(TimelineEditor* timelineEditor)
@@ -1172,6 +1217,7 @@ void TimelineEditor::renderMidiDumpFromClipEditor() {
 void TimelineEditor::renderPianoRollFromClipEditor() {
     PianoRollEditor::RenderContext pianoCtx;
     pianoCtx.uiScale = currentUiScale_;
+    pianoCtx.clipPlaybackBeat = clipPlaybackBeat;
     pianoCtx.onCommitted = [this](int32_t trackIndex, int32_t clipId) {
         onPianoRollCommitted(trackIndex, clipId);
     };
@@ -1204,6 +1250,7 @@ void TimelineEditor::renderPianoRollFromClipEditor() {
 void TimelineEditor::renderStepSequencerFromClipEditor() {
     StepSequencerEditor::RenderContext stepCtx;
     stepCtx.uiScale = currentUiScale_;
+    stepCtx.clipPlaybackBeat = clipPlaybackBeat;
     stepCtx.applyEdits = [this](int32_t trackIndex, int32_t clipId,
                                 std::vector<uapmd_ump_t> newEvents,
                                 std::vector<uint64_t> newTicks,

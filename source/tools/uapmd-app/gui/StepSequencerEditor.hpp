@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ class StepSequencerEditor {
 public:
     struct RenderContext {
         float uiScale{1.0f};
+        std::function<std::optional<double>(int32_t trackIndex, int32_t clipId)> clipPlaybackBeat;
         std::function<bool(int32_t, int32_t, std::vector<uapmd_ump_t>,
                            std::vector<uint64_t>, std::string&)> applyEdits;
         std::function<std::shared_ptr<ClipPreview>(int32_t, int32_t)> reloadPreview;

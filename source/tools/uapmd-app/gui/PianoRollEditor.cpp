@@ -9,6 +9,7 @@
 
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
+#include "Playhead.hpp"
 #include "SnapDivisions.hpp"
 #include "TouchInput.hpp"
 
@@ -358,7 +359,7 @@ void PianoRollEditor::renderPianoKeys(ImDrawList* dl, ImVec2 origin, float width
 
 void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width, float height,
                                      float noteH, float pxPerSec, float hScroll, float vScrollPx,
-                                     WindowState& state, float uiScale) const {
+                                     WindowState& state, float uiScale, std::optional<double> playbackBeat) const {
     if (width <= 0.0f || height <= 0.0f) return;
     const auto theme = getPianoRollTheme();
 
@@ -813,6 +814,12 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     }
     dl->AddLine({origin.x, origin.y + rulerH}, {origin.x + width, origin.y + rulerH},
                  theme.ruler_bottom_line);
+
+    if (playbackBeat) {
+        const double seconds = *playbackBeat * 60.0 / bpm;
+        const float x = origin.x + static_cast<float>(seconds * pxPerSec) - hScroll;
+        drawPlayheadBar(dl, x, origin, {origin.x + width, origin.y + height}, uiScale);
+    }
 
     dl->PopClipRect();
 }
@@ -1671,7 +1678,8 @@ void PianoRollEditor::renderWindow(WindowState& state, const RenderContext& ctx)
 
         renderNoteGrid(ImGui::GetWindowDrawList(), ImGui::GetWindowPos(),
                        visW, visH, noteH, pxPerSec, hScroll, vScrollPx,
-                       state, uiScale);
+                       state, uiScale, ctx.clipPlaybackBeat
+                           ? ctx.clipPlaybackBeat(state.trackIndex, state.clipId) : std::nullopt);
     }
     ImGui::EndChild();
 

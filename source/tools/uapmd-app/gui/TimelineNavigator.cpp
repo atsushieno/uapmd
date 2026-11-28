@@ -1,4 +1,5 @@
 #include "TimelineNavigator.hpp"
+#include "Playhead.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -106,7 +107,7 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
         if (playheadFrame >= 0.0 && playheadFrame <= domain) {
             const float px = barMin.x + static_cast<float>(playheadFrame / domain) * barWidth;
             drawList->AddLine(ImVec2(px, barMin.y), ImVec2(px, barMax.y),
-                              IM_COL32(255, 230, 0, 255), std::max(1.0f, uiScale));
+                              kPlayheadColor, std::max(1.0f, uiScale));
         }
 
         if (renderProgress) {

@@ -226,10 +226,10 @@ private:
     void renderLoopRegion(const RenderContext& context, float headerMinY, float headerMaxY,
                           float lanesMaxY, float contentMaxX, bool acceptsInput);
     void drawPlayheadIndicator(
-        float clipAreaMinX,
-        float clipAreaMinY,
-        float clipAreaMaxX,
-        float clipAreaMaxY
+        float headerMinY,
+        float headerMaxY,
+        float lanesMaxY,
+        float uiScale
     ) const;
     void drawRangeSelectionOverlay(
         float clipAreaMinX,
